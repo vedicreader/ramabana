@@ -30,9 +30,9 @@ h('Find what fetch() returns in fossick and summarize it.')
    dirs) against the request; lexical by default, or pass `embed=` for embedding search.
 2. **loads them** — SKILL.md bodies go in as `<skill>` blocks; pyskills are star-imported into the
    executor namespace and documented via `doc()`.
-3. **runs the loop** — the model replies with ```` ```python ```` fences; the `Executor` runs them
-   in a persistent, approval-gated namespace and feeds output back as ```` ```result ```` fences
-   until the model answers in prose.
+3. **runs the loop** — the model replies with ```` ```python ```` fences; the executor runs them
+   in a persistent Jupyter kernel (approval-gated, interruptible, restartable) and feeds output back
+   as ```` ```result ```` fences until the model answers in prose.
 4. **compacts when needed** — past `compact_at` context fullness, the conversation is summarized
    through a *retain-list schema* (`chat.structured`, so every retained item is a required field)
    and a fresh chat on the same engine takes over. The executor namespace survives compaction.
@@ -43,7 +43,7 @@ h('Find what fetch() returns in fossick and summarize it.')
 |---|---|
 | `registry` | One `Skill` list over pyskills entry points and `SKILL.md` dirs; `catalog()`, `load()` |
 | `finder` | Rank skills against a request (lexical or `embed=`); optional `chat.classify` confirm |
-| `executor` | Persistent-namespace python runner; rishi-compatible `approve` gate instead of a syscall sandbox |
+| `executor` | Persistent Jupyter kernel per session ([conkernelclient](https://github.com/AnswerDotAI/conkernelclient)) with a rishi-compatible `approve` gate; interrupt/restart/timeout; in-process fallback |
 | `compact` | `compact(chat, retain=[...])` — structured summary, fresh chat on the same engine |
 | `harness` | `Harness` — the loop tying it all together |
 

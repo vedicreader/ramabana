@@ -13,7 +13,7 @@ import re
 from fastcore.utils import store_attr
 from .registry import Registry
 from .finder import Finder
-from .executor import Executor
+from .executor import Executor, default_executor
 from .compact import compact, needs_compact
 
 # %% ../nbs/04_harness.ipynb #cell-har-fence
@@ -51,7 +51,7 @@ class Harness:
                  chat=None,          # rishi Chat (or anything callable returning text); lazily built if None
                  registry=None,      # skill Registry (default: discover from cwd + entry points)
                  finder=None,        # Finder over the registry (default: lexical)
-                 executor=None,      # Executor for python fences (default: approval-gated fresh namespace)
+                 executor=None,      # executor for python fences (default: kernel-backed `default_executor`)
                  approve=None,       # rishi-style approve(tool_call)->bool for the default executor/chat
                  retain=(),          # information-to-retain instructions used at every compaction
                  compact_at:float=0.85, # pct_full threshold that triggers compaction after a task
@@ -61,7 +61,7 @@ class Harness:
                  chat_kw:dict=None): # extra kwargs for the lazily-built rishi Chat
         self.registry = registry if registry is not None else Registry()
         self.finder = finder if finder is not None else Finder(self.registry)
-        self.executor = executor if executor is not None else Executor(approve=approve)
+        self.executor = executor if executor is not None else default_executor(approve=approve)
         store_attr('approve,retain,compact_at,keep_skills,max_rounds,done,chat_kw')
         self._chat, self.loaded = chat, {}
     @property
