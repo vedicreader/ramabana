@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ramabana"
+dynamic = ["version"]
+description = "ramabana (रामबाण) — an agentic harness for on-device models: pyskills + SKILL.md skill management, a skill finder, fenced python execution, and controlled conversation compaction over rishi/litert_lm."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Karthik", email = "karthik.rajgopal@hotmail.com"}]
+keywords = ['agent','harness','pyskills','skills','litert','on-device','nbdev']
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+    "fastcore>=1.7.29",
+    "pyskills>=0.0.22",
+    "pyyaml>=6.0",
+    "rishi>=0.0.1",
+]
+
+[project.urls]
+Repository = "https://github.com/vedicreader/ramabana"
+Documentation = "https://vedicreader.github.io/ramabana/"
+
+[project.entry-points.nbdev]
+ramabana = "ramabana._modidx:d"
+
+[tool.hatch.version]
+path = "ramabana/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ramabana"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/ramabana", "/pyproject.toml", "/README.md"]
+
+[tool.nbdev]
+lib_name = "ramabana"
+lib_path = "ramabana"
+
+[dependency-groups]
+dev = [
+    "nbdev>=3.0.15",
+    "notebook>=7.0.0",
+]

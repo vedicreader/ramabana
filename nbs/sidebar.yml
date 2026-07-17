@@ -1,0 +1,9 @@
+website:
+  sidebar:
+    contents:
+      - index.ipynb
+      - 00_registry.ipynb
+      - 01_executor.ipynb
+      - 02_finder.ipynb
+      - 03_compact.ipynb
+      - 04_harness.ipynb
