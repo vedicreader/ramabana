@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "ramabana"
+  site-url: "https://vedicreader.github.io/ramabana"
+  description: "rama's arrow. a harness that does not miss"
+  repo-branch: main
+  repo-url: "https://github.com/vedicreader/ramabana"

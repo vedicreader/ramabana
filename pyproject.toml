@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ramabana"
+dynamic = ["version"]
+description = "rama's arrow. a harness that does not miss"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Karthik", email = "karthik.rajgopal@hotmail.com"}]
+keywords = ['nbdev']
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/vedicreader/ramabana"
+Documentation = "https://vedicreader.github.io/ramabana/"
+
+[project.entry-points.nbdev]
+ramabana = "ramabana._modidx:d"
+
+[tool.nbdev]
+
+[tool.hatch.build.targets.wheel]
+packages = ["ramabana"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/ramabana", "/README.md", "/pyproject.toml"]
+
+[tool.hatch.version]
+path = "ramabana/__init__.py"
