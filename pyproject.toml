@@ -7,7 +7,7 @@ name = "ramabana"
 dynamic = ["version"]
 description = "rama's arrow. a harness that does not miss"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
 authors = [{name = "Karthik", email = "karthik.rajgopal@hotmail.com"}]
 keywords = ['nbdev']
@@ -15,7 +15,20 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
 ]
-dependencies = []
+dependencies = [
+    "aidialog>=0.0.6",         # fastllm's message model, and the dlgskill the agent discovers
+    "exhash>=0.4.9",           # hash-verified line addressing: how the agent edits files safely
+    "fastcore>=2.1.16",        # fenced_blocks / str_diff, behind the completion and diff surfaces
+    "python-fastllm>=0.0.36",  # hosted models, and the model table's context/pricing lookup
+    "rishi>=0.0.2",            # the chat and the tool loop every backend runs through
+    "toolslm>=0.3.0,!=0.3.47",  # tool schemas from signatures; 0.3.47 dropped `toolslm.funccall`
+]
+
+# What the harness does *not* depend on is the point of `Host`: code search, web fetch and
+# the sandbox are the application's to supply, so kosha, fossick and safepyrun stay in leela.
+
+[project.optional-dependencies]
+dev = ["nbdev>=3.1.0", "notebook>=7.6.0", "pytest>=8.0.0"]
 
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
