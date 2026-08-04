@@ -21,7 +21,7 @@ dependencies = [
     "fastcore>=2.1.16",        # fenced_blocks / str_diff, behind the completion and diff surfaces
     "python-fastllm>=0.0.36",  # hosted models, and the model table's context/pricing lookup
     "rishi>=0.0.2",            # the chat and the tool loop every backend runs through
-    "toolslm>=0.3.0,!=0.3.47",  # tool schemas from signatures; 0.3.47 dropped `toolslm.funccall`
+    "toolslm>=0.3.0,<0.3.47",  # 0.3.47 removed `toolslm.funccall`, which rishi.core imports
 ]
 
 # What the harness does *not* depend on is the point of `Host`: code search, web fetch and
