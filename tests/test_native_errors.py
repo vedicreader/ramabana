@@ -19,11 +19,11 @@ import sys
 
 import pytest
 
-from ramabana.backend import Backend, Usage
-from ramabana.compact import Compactor, RESERVE, threshold
-from ramabana.models import DFLT_LOCAL_CTX, local_ctx, resolve
-from ramabana.native import captured, interesting
-from ramabana.native import capture as native_capture
+from ramabana.runtime import Backend, Usage
+from ramabana.runtime import Compactor, RESERVE, threshold
+from ramabana.core import DFLT_LOCAL_CTX, local_ctx, resolve
+from ramabana.runtime import captured, interesting
+from ramabana.runtime import capture as native_capture
 from ramabana.testing import GEMMA, MutteringBackend
 
 
@@ -55,14 +55,14 @@ def test_recent_is_capped_by_the_window_too():
 def test_the_local_window_errs_small_and_can_be_overridden(monkeypatch):
     "Under-stating a window costs one early compaction; over-stating it costs the turn."
     monkeypatch.delenv('LEELA_LOCAL_CTX', raising=False)
-    assert local_ctx('gemma-e2b') == 4096
-    assert resolve('gemma-e2b').ctx == 4096
+    assert local_ctx('gemma-e2b') == 16_384
+    assert resolve('gemma-e2b').ctx == 16_384
     assert local_ctx('something-else') == DFLT_LOCAL_CTX
     monkeypatch.setenv('LEELA_LOCAL_CTX', '8192')
     assert local_ctx('gemma-e2b') == 8192
     monkeypatch.setenv('LEELA_LOCAL_CTX', 'gemma-e4b:16384,gemma-12b:32000')
     assert local_ctx('gemma-e4b') == 16384
-    assert local_ctx('gemma-e2b') == 4096, 'a per-model override must not move the others'
+    assert local_ctx('gemma-e2b') == 16_384, 'a per-model override must not move the others'
 
 
 # ---- what the engine says on its way past ----------------------------------
@@ -124,7 +124,7 @@ def test_capture_can_be_switched_off(monkeypatch):
 # ---- and how the harness reports it ----------------------------------------
 @pytest.fixture
 def muttering():
-    from ramabana.models import ModelSpec
+    from ramabana.core import ModelSpec
     return MutteringBackend(ModelSpec('gemma-e2b', 'muttering', 'gemma/e2b', ctx=4096))
 
 

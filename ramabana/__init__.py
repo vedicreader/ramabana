@@ -1,33 +1,36 @@
-"""ramabana: the brain of a coding agent, and nothing else.
+"""rama's arrow. a harness that does not miss
 
-The application around it supplies hands, through the `Host` protocol in `host.py`; the
-model arrives through rishi. Nothing in here knows what an editor is, which is what makes
-it possible to host one somewhere that is not leela.
+Modules:
 
-Read `host.py` first. It is the entire dependency this package has on the world, and the
-docstrings in it are the specification -- a host that satisfies the signatures and not the
-contracts is a host that quietly hands an agent the whole filesystem.
-"""
+- `ramabana.agent`: The turn: what the model is told, what it is allowed to do, what it did, and what that cost.
+- `ramabana.cli`: Ramabana in a terminal: a transcript of blocks, a status bar, and one line to type in.
+- `ramabana.core`: The error type, the environment convention, and the one place that decides which model runs what.
+- `ramabana.mcp`: Ramabana's tools, and Ramabana's whole agent, as an MCP server.
+- `ramabana.runtime`: Everything that runs a model: native output capture, the context window, and the backend the harness talks to.
+- `ramabana.shop`: A trolley the agent can fill: `fossick.shop` behind a small interface, and the weekly grocery run it was written for.
+- `ramabana.testing`: The doubles: a host with no disk, backends with no model, and a script that behaves like a bad local engine.
+- `ramabana.tools`: The hands: what the application under the agent must provide, and every tool built on top of it.
+- `ramabana.vault`: Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing watches that put things back on the agent's desk."""
 
-__version__ = "0.0.1"
+__version__ = "0.2.0"
 
 from .core import AgentError, agent_err, env
 
 __all__ = ['Host', 'NullHost', 'Hit', 'Backend', 'Agent', 'Completer', 'Approvals', 'Ask',
            'ModelSpec', 'Routing', 'AgentError', 'agent_err', 'env']
 
-_lazy = {'Host': ('.host', 'Host'), 'NullHost': ('.host', 'NullHost'), 'Hit': ('.host', 'Hit'),
-         'Backend': ('.backend', 'Backend'), 'Agent': ('.chat', 'Agent'),
-         'Completer': ('.chat', 'Completer'), 'Approvals': ('.hitl', 'Approvals'),
-         'Ask': ('.hitl', 'Ask'), 'ModelSpec': ('.models', 'ModelSpec'),
-         'Routing': ('.models', 'Routing')}
+_lazy = {'Host': ('.tools', 'Host'), 'NullHost': ('.tools', 'NullHost'), 'Hit': ('.tools', 'Hit'),
+         'Backend': ('.runtime', 'Backend'), 'Agent': ('.agent', 'Agent'),
+         'Completer': ('.agent', 'Completer'), 'Approvals': ('.agent', 'Approvals'),
+         'Ask': ('.agent', 'Ask'), 'ModelSpec': ('.core', 'ModelSpec'),
+         'Routing': ('.core', 'Routing')}
 
 
 def __getattr__(name):
     """Import the heavy names on first touch.
 
-    `backend` reaches for rishi (a multi-gigabyte local engine) and fastllm (which pulls a
-    provider stack); neither should be imported because someone asked for `ramabana.Host`.
+    `runtime` reaches for Rishi, which lazily loads the selected local or hosted engine;
+    it should not be imported because someone merely asked for `ramabana.Host`.
     """
     if name in _lazy:
         from importlib import import_module

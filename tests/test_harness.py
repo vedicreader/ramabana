@@ -18,11 +18,11 @@ import time
 
 import pytest
 
-from ramabana import activity, compact, hitl, models, skills
-from ramabana.backend import Backend, Usage
-from ramabana.chat import Agent
-from ramabana.extensions import Registry, load
-from ramabana.host import Host, NullHost
+from ramabana import agent, runtime, core, tools
+from ramabana.runtime import Backend, Usage
+from ramabana.agent import Agent
+from ramabana.tools import Registry, load
+from ramabana.tools import Host, NullHost
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 from ramabana.tools import WRITE_TOOLS, tools_for
 
@@ -56,40 +56,42 @@ def test_mem_host_gets_the_session_tools_it_supports():
 def test_cheap_jobs_stay_local_when_the_turn_goes_to_the_cloud(monkeypatch):
     "The whole argument for routing: pointing the turn at a frontier model must not move completions."
     monkeypatch.delenv('LEELA_MODEL', raising=False)
-    r = models.Routing(turn='gemma-e2b')
+    r = core.Routing(turn='gemma-e2b')
     r.set('gemma-12b')                       # stand-in for a cloud model, no network needed
     assert r.spec('turn').name == 'gemma-12b'
-    for job in ('completion', 'classify', 'summary', 'subagent'):
-        assert r.spec(job).name == models.DFLT_LOCAL, job
+    expected = {'completion': 'mini-coder-4b', 'classify': core.DFLT_LOCAL,
+                'summary': core.DFLT_LOCAL, 'subagent': core.DFLT_LOCAL}
+    for job, name in expected.items():
+        assert r.spec(job).name == name, job
         assert r.spec(job).local
 
 
 def test_env_overrides_a_single_job(monkeypatch):
     monkeypatch.setenv('LEELA_MODEL_SUMMARY', 'gemma-12b')
-    r = models.Routing(turn='gemma-e2b')
+    r = core.Routing(turn='gemma-e2b')
     assert r.spec('summary').name == 'gemma-12b'
-    assert r.spec('classify').name == 'gemma-e2b'
+    assert r.spec('classify').name == core.DFLT_LOCAL
 
 
 def test_unknown_bare_name_is_an_error_not_a_guess():
     "Silently running a typo on a frontier model is the kind of surprise that shows up on a bill."
-    with pytest.raises(KeyError): models.resolve('sonnnet')
+    with pytest.raises(KeyError): core.resolve('sonnnet')
 
 
 def test_a_vendor_slash_model_spec_is_taken_at_face_value():
-    s = models.resolve('somevendor/some-model')
-    assert (s.backend, s.model_id) == ('fastllm', 'somevendor/some-model')
+    s = core.resolve('somevendor/some-model')
+    assert (s.backend, s.model_id) == ('remote', 'somevendor/some-model')
     assert s.ctx > 0
 
 
 def test_ungated_tools_run_without_asking():
-    ap = hitl.Approvals(tools={'edit_file'})
+    ap = agent.Approvals(tools={'edit_file'})
     assert ap.gate({'function': {'name': 'search_code', 'arguments': {'query': 'x'}}})
 
 
 def test_nothing_listening_refuses_immediately_rather_than_hanging():
     "A blocked worker thread is a hung IDE. Refusing fast is a bad answer that is at least an answer."
-    ap = hitl.Approvals(tools={'edit_file'}, timeout=30)
+    ap = agent.Approvals(tools={'edit_file'}, timeout=30)
     t0 = time.time()
     d = ap.gate({'function': {'name': 'edit_file', 'arguments': {'path': 'a.py'}}})
     assert not d and time.time() - t0 < 1
@@ -98,7 +100,7 @@ def test_nothing_listening_refuses_immediately_rather_than_hanging():
 
 def test_a_refusal_carries_the_reason_back_to_the_model():
     "The point of the whole module: 'that file is generated' redirects, 'denied' just gets retried."
-    ap = hitl.Approvals(tools={'edit_file'}, timeout=5)
+    ap = agent.Approvals(tools={'edit_file'}, timeout=5)
     stop = ap.listen()
     out = {}
 
@@ -117,17 +119,17 @@ def test_a_refusal_carries_the_reason_back_to_the_model():
 
 
 def test_an_approval_note_rides_back_with_the_result():
-    ap = hitl.Approvals(tools={'edit_file'}, mode='auto')
+    ap = agent.Approvals(tools={'edit_file'}, mode='auto')
     d = ap.request('edit_file', {'path': 'a.py'})
     assert d and d.reply() is None          # nothing to say when it was simply approved
-    d2 = hitl.Ask(tool='edit_file').resolve(True, 'keep the docstring')
+    d2 = agent.Ask(tool='edit_file').resolve(True, 'keep the docstring')
     assert 'keep the docstring' in d2.reply()
 
 
 def test_every_watcher_and_the_recorder_both_hear_it():
     "A second frontend opening must not unhook the notebook recorder, or the first frontend."
     seen = []
-    ap = hitl.Approvals(tools={'edit_file'}, mode='auto', on_ask=lambda a: seen.append('recorder'))
+    ap = agent.Approvals(tools={'edit_file'}, mode='auto', on_ask=lambda a: seen.append('recorder'))
     ap.listen(on_ask=lambda a: seen.append('one'))
     ap.listen(on_ask=lambda a: seen.append('two'))
     ap.mode = 'ask'
@@ -142,14 +144,14 @@ def test_every_watcher_and_the_recorder_both_hear_it():
 
 
 def test_preview_shows_what_would_change():
-    p = hitl.preview_for('edit_file', {'path': 'a.py', 'commands': '[["12|ab|","s","old","new"]]'})
+    p = agent.preview_for('edit_file', {'path': 'a.py', 'commands': '[["12|ab|","s","old","new"]]'})
     assert '12|ab|' in p and 'old' in p and 'new' in p
-    p2 = hitl.preview_for('create_file', {'path': 'b.py', 'text': 'x = 1'})
+    p2 = agent.preview_for('create_file', {'path': 'b.py', 'text': 'x = 1'})
     assert 'new file' in p2 and 'x = 1' in p2
 
 
 def test_cancelling_a_turn_releases_a_waiting_approval():
-    ap = hitl.Approvals(tools={'edit_file'}, timeout=30)
+    ap = agent.Approvals(tools={'edit_file'}, timeout=30)
     stop = ap.listen()
     threading.Thread(target=lambda: (time.sleep(0.05), ap.cancel_all()), daemon=True).start()
     d = ap.gate({'function': {'name': 'edit_file', 'arguments': {}}})
@@ -159,8 +161,8 @@ def test_cancelling_a_turn_releases_a_waiting_approval():
 
 def _fl():
     fastllm = pytest.importorskip('fastllm.chat')
-    from ramabana import fastllm_hitl
-    assert fastllm_hitl.apply(), fastllm_hitl.note()
+    from ramabana import agent
+    assert agent.apply(), agent.note()
     return fastllm
 
 
@@ -179,8 +181,8 @@ def _call(approve=None):
 
 
 def test_fastllm_patch_is_idempotent():
-    from ramabana import fastllm_hitl
-    assert fastllm_hitl.apply() and fastllm_hitl.apply() and fastllm_hitl.applied()
+    from ramabana import agent
+    assert agent.apply() and agent.apply() and agent.applied()
 
 
 def test_fastllm_runs_the_tool_when_nothing_gates_it():
@@ -188,14 +190,14 @@ def test_fastllm_runs_the_tool_when_nothing_gates_it():
 
 
 def test_fastllm_refuses_a_gated_tool_and_says_why():
-    out = _call(approve=hitl.Approvals(tools={'hello'}, mode='off').gate)
-    assert hitl.DENIED in out and 'switched off' in out
+    out = _call(approve=agent.Approvals(tools={'hello'}, mode='off').gate)
+    assert agent.DENIED in out and 'switched off' in out
 
 
 def test_fastllm_carries_an_approval_note_back():
-    ap = hitl.Approvals(tools={'hello'}, mode='auto')
+    ap = agent.Approvals(tools={'hello'}, mode='auto')
     ap.on_answer = None
-    out = _call(approve=lambda tc: hitl.Ask(tool='hello').resolve(True, 'be careful'))
+    out = _call(approve=lambda tc: agent.Ask(tool='hello').resolve(True, 'be careful'))
     assert 'hi x' in out and 'be careful' in out
 
 
@@ -208,25 +210,25 @@ def test_fastllm_tcdict_carries_the_policy_per_chat():
 
 
 def test_threshold_leaves_room_for_one_more_reply():
-    assert compact.threshold(200_000, 16_384) == 200_000 - 16_384
-    assert compact.threshold(0) is None
-    assert compact.should_compact(190_000, 200_000)
-    assert not compact.should_compact(100_000, 200_000)
+    assert runtime.threshold(200_000, 16_384) == 200_000 - 16_384
+    assert runtime.threshold(0) is None
+    assert runtime.should_compact(190_000, 200_000)
+    assert not runtime.should_compact(100_000, 200_000)
 
 
 def test_an_existing_summary_is_updated_not_re_summarised():
     "Summarising a summary loses a little every time; tau's second prompt exists to stop that."
-    msgs = [{'role': 'user', 'content': compact.SUMMARY_PREFIX + 'old summary'},
+    msgs = [{'role': 'user', 'content': runtime.SUMMARY_PREFIX + 'old summary'},
             {'role': 'assistant', 'content': 'later work'}]
-    prev, rest = compact.split_previous(msgs)
+    prev, rest = runtime.split_previous(msgs)
     assert prev == 'old summary' and len(rest) == 1
-    p = compact.summarise_prompt(msgs)
+    p = runtime.summarise_prompt(msgs)
     assert '<previous-summary>' in p and 'PRESERVE' in p
 
 
 def test_the_kept_tail_starts_at_a_user_turn():
     "A tail starting at an orphaned tool result is a dangling call some providers reject outright."
-    c = compact.Compactor(keep_recent=50)
+    c = runtime.Compactor(keep_recent=50)
     msgs = [{'role': 'user', 'content': 'a' * 400}, {'role': 'assistant', 'content': 'b'},
             {'role': 'tool', 'content': 'c'}, {'role': 'user', 'content': 'd'},
             {'role': 'assistant', 'content': 'e'}]
@@ -239,37 +241,37 @@ def test_compaction_replaces_history_and_reorients(spec):
     be.start()
     be.hist_ = [{'role': 'user', 'content': 'x' * 4000}, {'role': 'assistant', 'content': 'y' * 4000},
                 {'role': 'user', 'content': 'recent'}]
-    c = compact.Compactor(keep_recent=40)
+    c = runtime.Compactor(keep_recent=40)
     out = c.compact(be, lambda p, sp: 'GOAL: ship it')
     assert out == 'GOAL: ship it'
     head = be.hist[0]['content']
-    assert head.startswith(compact.SUMMARY_PREFIX) and 'GOAL: ship it' in head
+    assert head.startswith(runtime.SUMMARY_PREFIX) and 'GOAL: ship it' in head
     # the reorientation note is the aai-coding idea, and its value is in being specific
     assert 'kernel process was not touched' in head
     assert 'do not re-import' in head
 
 
 def test_a_dead_kernel_is_not_promised():
-    assert 'clean namespace' in compact.reorient(kernel_alive=False)
+    assert 'clean namespace' in runtime.reorient(kernel_alive=False)
 
 
 def test_prompt_notices_fire_where_they_should():
-    assert compact.prompt_notices('where is this handled?') == [compact.Q_NOTICE]
-    assert compact.APPROVAL_NOTICE in compact.prompt_notices('go')
-    assert compact.APPROVAL_NOTICE in compact.prompt_notices('ok.')
-    assert compact.BTW_NOTICE in compact.prompt_notices('BTW can you also check the tests')
-    assert compact.prompt_notices('add a test for this') == []
+    assert runtime.prompt_notices('where is this handled?') == [runtime.Q_NOTICE]
+    assert runtime.APPROVAL_NOTICE in runtime.prompt_notices('go')
+    assert runtime.APPROVAL_NOTICE in runtime.prompt_notices('ok.')
+    assert runtime.BTW_NOTICE in runtime.prompt_notices('BTW can you also check the tests')
+    assert runtime.prompt_notices('add a test for this') == [runtime.ACTION_NOTICE]
 
 
 def test_notices_ride_along_with_the_prompt():
-    assert '<system-reminder>' in compact.notices_block('what does this do?')
-    assert compact.notices_block('add a test') == ''
+    assert '<system-reminder>' in runtime.notices_block('what does this do?')
+    assert runtime.ACTION_NOTICE in runtime.notices_block('add a test')
 
 
 def test_pyskills_are_discovered_from_installed_packages():
     """The test of whether this feature is real rather than architectural: installing a
     package that publishes the entry point should hand the agent its skill, no code here."""
-    found = {s.name: s for s in skills.discover()}
+    found = {s.name: s for s in tools.discover()}
     assert 'exhash' in found, 'exhash ships the editing reference leela used to paste by hand'
     assert found['exhash'].source == 'pyskill'
     assert found['exhash'].text().strip()
@@ -279,7 +281,7 @@ def test_skill_md_directories_win_over_packages(tmp_path):
     d = tmp_path/'skills'/'exhash'
     d.mkdir(parents=True)
     (d/'SKILL.md').write_text('---\nname: exhash\ndescription: ours\n---\n\nlocal body\n')
-    found = {s.name: s for s in skills.discover(cfg=tmp_path)}
+    found = {s.name: s for s in tools.discover(cfg=tmp_path)}
     assert found['exhash'].source == 'md' and found['exhash'].description == 'ours'
     assert 'local body' in found['exhash'].text()
 
@@ -288,32 +290,32 @@ def test_a_bare_md_at_the_root_is_not_a_skill(tmp_path):
     d = tmp_path/'skills'
     d.mkdir(parents=True)
     (d/'loose.md').write_text('not a skill')
-    assert not [s for s in skills.discover(cfg=tmp_path) if s.name == 'loose']
+    assert not [s for s in tools.discover(cfg=tmp_path) if s.name == 'loose']
 
 
 def test_the_index_carries_names_not_bodies():
     "Progressive disclosure: a dozen full skill texts would crowd out the code being worked on."
-    ss = skills.discover()
-    idx = skills.skill_index(ss)
+    ss = tools.discover()
+    idx = tools.skill_index(ss)
     assert 'read_skill' in idx
     for s in ss: assert s.name in idx
     assert len(idx) < 4000
 
 
 def test_find_refuses_to_guess_between_two_matches():
-    from ramabana.skills import Skill, find
+    from ramabana.tools import Skill, find
     ss = [Skill('editskill', 'pyskill'), Skill('editor', 'pyskill')]
     assert find(ss, 'edit') is None
     assert find(ss, 'editskill').name == 'editskill'
 
 
 def test_frontmatter_parses_without_a_yaml_dependency():
-    meta, body = skills.frontmatter('---\nname: x\ndescription: "y z"\n---\nbody\n')
+    meta, body = tools.frontmatter('---\nname: x\ndescription: "y z"\n---\nbody\n')
     assert meta == {'name': 'x', 'description': 'y z'} and body.strip() == 'body'
 
 
 def test_summaries_read_like_what_a_person_would_say():
-    s = activity.summarise
+    s = agent.summarise
     assert s('search_code', {'query': 'AgentSession'}) == 'Search AgentSession'
     assert s('view_file', {'path': 'leela/ai.py', 'start': 240, 'end': 290}) == 'View leela/ai.py:240-290'
     assert s('read_url', {'url': 'https://github.com/AnswerDotAI/ipymini'}).startswith('Web fetch: https://')
@@ -323,7 +325,7 @@ def test_summaries_read_like_what_a_person_would_say():
 def test_activity_fires_at_the_start_of_a_call_not_only_at_the_end():
     "Showing ⏳ while a fetch happens is the difference between looking alive and looking stuck."
     seen = []
-    act = activity.Activity(on_change=lambda a: seen.append((a.summary, a.done)))
+    act = agent.Activity(on_change=lambda a: seen.append((a.summary, a.done)))
     a = act.start('read_url', {'url': 'https://x'})
     act.finish(a, 'the page')
     assert [d for _, d in seen] == [False, True]
@@ -331,7 +333,7 @@ def test_activity_fires_at_the_start_of_a_call_not_only_at_the_end():
 
 
 def test_activity_markdown_folds_the_result():
-    act = activity.Activity()
+    act = agent.Activity()
     act.mark()
     act.finish(act.start('search_code', {'query': 'q'}), 'a hit')
     md = act.md(mark=0)
@@ -339,7 +341,7 @@ def test_activity_markdown_folds_the_result():
 
 
 def test_a_fence_in_a_result_cannot_escape_the_fold():
-    act = activity.Activity()
+    act = agent.Activity()
     a = act.start('view_file', {'path': 'a.md'})
     act.finish(a, 'text\n```\nfenced\n```\n')
     assert '\n```\n' not in a.md().split('```\n', 1)[1].rsplit('```', 1)[0]
@@ -381,12 +383,15 @@ def test_a_question_gets_the_answer_first_notice():
 
 
 def test_write_tools_are_the_ones_approval_draws_its_line_around():
-    assert {'edit_file', 'create_file', 'edit_cell', 'add_cell', 'run_python'} == set(WRITE_TOOLS)
+    # Not only the filesystem: deleting a standing reminder and spending money in a trolley are
+    # both things a person should get to see before they happen.
+    assert {'edit_file', 'create_file', 'edit_cell', 'add_cell', 'run_python', 'memory_forget',
+            'create_skill', 'cancel_watch', 'cart_add', 'cart_remove'} == set(WRITE_TOOLS)
 
 
 def test_a_subagent_never_gets_a_write_tool():
     "A delegated question is a question. An agent nobody is watching should not be editing files."
-    from ramabana.subagent import read_only
+    from ramabana.tools import read_only
     a, _ = fake_agent()
     names = {t.__name__ for t in read_only(a.tools)}
     assert not (names & WRITE_TOOLS)
@@ -394,7 +399,7 @@ def test_a_subagent_never_gets_a_write_tool():
 
 
 def test_delegation_runs_on_a_thrown_away_conversation(spec):
-    from ramabana.subagent import delegate
+    from ramabana.tools import delegate
     be = FakeBackend(spec)
     be.start()
     out = delegate(be, 'where do we do X?', tools=[])
@@ -452,7 +457,7 @@ def test_commands_exist_once_for_both_frontends():
 def test_the_model_command_reports_the_whole_policy():
     a, _ = fake_agent()
     out = a.command('model')
-    for job in models.JOBS: assert job in out
+    for job in core.JOBS: assert job in out
 
 
 def test_usage_adds_up_across_models():
@@ -487,12 +492,54 @@ def test_a_streamed_turn_still_records_usage_and_activity():
     assert a.use.total == 15
 
 
+def test_remote_reasoning_effort_is_applied_to_chat_not_passed_to_chat_call():
+    from ramabana.runtime import RishiBackend
+    spec = core.ModelSpec('cloud', 'remote', 'openai/gpt-test', ctx=1000)
+    backend = RishiBackend(spec)
+    class Chat:
+        reasoning_effort = None
+        def __call__(self, msg, **kw):
+            assert 'reasoning_effort' not in kw
+            return {'content': [{'type': 'text', 'text': 'ok'}]}
+    backend.chat = Chat()
+    assert backend._send('hello', reasoning_effort='high') == 'ok'
+    assert backend.chat.reasoning_effort == 'high'
+
+
+def test_surgical_compaction_keeps_questions_calls_results_and_both_text_ends():
+    from ramabana.runtime import surgical_history, truncate_middle
+    msgs = [
+        {'role': 'user', 'content': 'first ' + 'middle ' * 100 + 'last'},
+        {'role': 'assistant', 'content': 'I will inspect.', 'tool_calls': [
+            {'function': {'name': 'view_file', 'arguments': {'path': 'a.py'}}}]},
+        {'role': 'tool', 'content': 'line one\nline two'},
+    ]
+    text = surgical_history(msgs, {'user': 20, 'assistant': 20, 'call': 30, 'result': 20})
+    assert text.startswith('§ first ') and 'last §' in text
+    assert "▶ view_file(path='a.py')" in text
+    assert '> line one ¶ line two' in text
+    clipped = truncate_middle('begin ' + 'x ' * 200 + 'end', 12)
+    assert clipped.startswith('begin ') and clipped.endswith('end')
+
+
+def test_turns_have_stable_ids_and_model_context_can_fork_and_revise():
+    a, be = fake_agent(replies=['first answer', 'branch answer'])
+    assert a.ask('first question') == 'first answer'
+    turn_id = a.history[-1]['turn_id']
+    assert turn_id and a.history[-1]['branch_id'] == 'main'
+    branch = a.revise(turn_id, 'user authored answer')
+    assert branch['branch_id'].startswith('branch_')
+    assert be.hist[-1]['content'] == 'user authored answer'
+    assert a.ask('continue from revision') == 'branch answer'
+    assert a.history[-1]['branch_id'] == branch['branch_id']
+
+
 def test_a_subagent_can_ask_for_the_overlay_scope():
     """A sub-agent gets the scope choice too, because the sandbox is a limit on the Python
     available and not on what it is allowed to see — the overlay scope is protected by the
     AST policy rather than by an allowlist, so it is no more dangerous to delegate."""
     import inspect as _i
-    from ramabana.subagent import read_only
+    from ramabana.tools import read_only
 
     class H(NullHost):
         def __init__(self, *a, **kw):
@@ -515,7 +562,7 @@ def test_a_subagent_can_ask_for_the_overlay_scope():
 
 
 def test_a_narrow_host_says_why_rather_than_failing_silently():
-    from ramabana.host import NullHost as _N
+    from ramabana.tools import NullHost as _N
 
     class H(_N):
         scopes = ('isolated',)

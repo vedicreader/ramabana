@@ -7,7 +7,7 @@ name = "ramabana"
 dynamic = ["version"]
 description = "rama's arrow. a harness that does not miss"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = {text = "Apache-2.0"}
 authors = [{name = "Karthik", email = "karthik.rajgopal@hotmail.com"}]
 keywords = ['nbdev']
@@ -16,34 +16,49 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only",
 ]
 dependencies = [
-    "aidialog>=0.0.6",         # fastllm's message model, and the dlgskill the agent discovers
     "exhash>=0.4.9",           # hash-verified line addressing: how the agent edits files safely
     "fastcore>=2.1.16",        # fenced_blocks / str_diff, behind the completion and diff surfaces
-    "python-fastllm>=0.0.36",  # hosted models, and the model table's context/pricing lookup
-    "rishi>=0.0.2",            # the chat and the tool loop every backend runs through
-    "toolslm>=0.3.0,<0.3.47",  # 0.3.47 removed `toolslm.funccall`, which rishi.core imports
+    "rishi>=0.1.1",            # every model runtime, including MLX and hosted FastLLM
+    "fossick>=0.1.0",           # first-party web research primitives and skill
+    "koshas>=0.0.31",           # first-party repo/environment context primitives and skill
+    "fastllm-claude-code>=0.0.7",
+    "vishalakshi>=0.0.1",
 ]
 
-# What the harness does *not* depend on is the point of `Host`: code search, web fetch and
-# the sandbox are the application's to supply, so kosha, fossick and safepyrun stay in leela.
+# Applications may supply their own implementations through Host; these dependencies make
+# Ramabana's standard research/search vocabulary available without importing an IDE.
 
 [project.optional-dependencies]
-dev = ["nbdev>=3.1.0", "notebook>=7.6.0", "pytest>=8.0.0"]
+# The terminal app. teleprint owns the transcript surface; pyghostty is what makes it
+# testable, since the whole UI is asserted against a headless emulator in 05_cli.ipynb.
+cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0"]
+mcp = ["mcp>=1.2"]
+all = ["ramabana[cli,mcp]"]
+# Every notebook is executed by `nbdev-test`, including the cli and mcp pages, so the dev
+# environment needs both frontends' dependencies or CI cannot run the docs as tests.
+dev = ["ramabana[cli,mcp]", "nbdev>=3.3", "notebook>=7.6.0", "pytest>=8.0.0"]
 
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
 Documentation = "https://vedicreader.github.io/ramabana/"
 
+[project.scripts]
+ramabana = "ramabana.cli:main"
+ramabana-mcp = "ramabana.mcp:main"
+
 [project.entry-points.nbdev]
 ramabana = "ramabana._modidx:d"
 
 [tool.nbdev]
+# leela tags cells with `leela.context`; without this, `nbdev-clean` strips it and CI then
+# fails on the diff it just created.
+allowed_cell_metadata_keys = ["leela"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["ramabana"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/ramabana", "/README.md", "/pyproject.toml"]
+include = ["/ramabana", "/nbs", "/tests", "/CHANGELOG.md", "/README.md", "/pyproject.toml"]
 
 [tool.hatch.version]
 path = "ramabana/__init__.py"

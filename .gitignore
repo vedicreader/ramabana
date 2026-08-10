@@ -150,3 +150,10 @@ checklink/cookies.txt
 
 # Quarto
 .quarto
+.attic/
+
+# kosha's local repo index
+.kosha/
+
+# per-machine session key; never publish
+.sesskey

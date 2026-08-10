@@ -7,3 +7,8 @@ website:
   description: "rama's arrow. a harness that does not miss"
   repo-branch: main
   repo-url: "https://github.com/vedicreader/ramabana"
+
+format-links:
+  - html
+  - format: commonmark
+    text: Markdown
