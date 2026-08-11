@@ -13,7 +13,7 @@ Modules:
 - `ramabana.tools`: The hands: what the application under the agent must provide, and every tool built on top of it.
 - `ramabana.vault`: Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing watches that put things back on the agent's desk."""
 
-__version__ = "0.2.0"
+__version__ = "0.1.1"
 
 from .core import AgentError, agent_err, env
 
@@ -38,6 +38,5 @@ def __getattr__(name):
         mod, attr = _lazy[name]
         return getattr(import_module(mod, __name__), attr)
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
-
 
 def __dir__(): return sorted(list(globals()) + list(_lazy))

@@ -1,7 +1,6 @@
 # Changelog
 
-## Unreleased
-
+## 0.1.1
 Memory that outlives the process, and the first extension that spends money.
 
 ### Added
@@ -33,7 +32,7 @@ Memory that outlives the process, and the first extension that spends money.
   policy draws is no longer only around the filesystem: deleting someone's standing reminder
   and spending their money both belong in front of a person.
 
-## 0.2.0
+## 0.1.0
 
 The nbdev source became honest again, and the harness grew two frontends of its own.
 
