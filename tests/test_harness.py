@@ -814,3 +814,24 @@ def test_research_hands_over_the_digest_rather_than_the_whole_record(monkeypatch
         'digest': '## t\nhttps://x\n\nbody', 'dropped': []})
     out = LocalHost(['.'], web=True, index=False).research('what is nbdev')
     assert out == '## t\nhttps://x\n\nbody' and 'dropped' not in out
+
+
+def test_the_code_index_builds_the_graph_it_later_queries(monkeypatch, tmp_path):
+    """`_semantic` asks `Kosha.context` for graph expansion, so the sync has to have built one.
+
+    The call passed `sync_graph=force` -- kosha's deprecated name for `graph` -- so with
+    `force` at its default the graph was switched off on every ordinary sync.
+    """
+    import kosha
+    from ramabana.tools import LocalHost
+    seen = {}
+
+    class FakeKosha:
+        def __init__(self, dir=None): pass
+        def sync(self, **kw):
+            seen.update(kw)
+            return self
+
+    monkeypatch.setattr(kosha, 'Kosha', FakeKosha)
+    LocalHost([tmp_path], web=False).sync_index(wait=True)
+    assert seen.get('graph') is True and 'sync_graph' not in seen

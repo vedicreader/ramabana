@@ -516,8 +516,12 @@ class LocalHost(Host):
                     for k, root in zip(self._koshas, self._roots):
                         # `sync`, not a private subset: code store, environment metadata and
                         # graph stay mutually consistent. It is incremental after first use.
+                        # `graph=True` because `_semantic` asks `context` for graph expansion:
+                        # this used to pass Kosha's deprecated `sync_graph=force`, which is the
+                        # old name for `graph` and therefore switched the call graph *off* on
+                        # every ordinary sync, leaving that expansion nothing to walk.
                         k.sync(dir=Path(root), verbose=False, force=force, pyproject=True,
-                               in_parallel=False, sync_graph=force)
+                               in_parallel=False, graph=True)
                 except Exception as e:
                     self._index_errors.append(agent_err(e))
             self._index_thread = threading.Thread(target=run, name='ramabana-kosha-sync', daemon=True)
