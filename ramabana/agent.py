@@ -1180,18 +1180,39 @@ class Agent:
         conversation per question and builds another from scratch if the first prompt
         overflows the window. Both still happen; they just happen on weights we already have.
         A host with no `mk_chat` is left alone, and so is one somebody has already given one.
+
+        The factory honours the model it is asked for, and that is load-bearing rather than
+        polite. When the retrieved sections turn out to hold personal information, vishalakshi
+        asks for its *local* model by name and then checks that what it got back really runs
+        here -- so a factory that ignored the name and handed over the session's cloud chat
+        would be handing a bank statement to a hosted API, and would be caught doing it.
         """
         if getattr(self.host, 'mk_chat', 'none of its business') is not None: return False
 
         def mk(model=None, **kw):
             from rishi import Chat
-            b = self._be_or_none('oneshot')
-            if b is None or b.chat is None: return Chat(model, **kw)
-            spec = b.spec
-            shared = {'engine': b.chat.engine} if spec.local and hasattr(b.chat, 'engine') else {}
+            spec = self._spec_for(model)
+            if spec is None: return Chat(model, **kw)
+            b = self._backends.get((spec.backend, spec.model_id))
+            engine = getattr(getattr(b, 'chat', None), 'engine', None)
+            shared = {'engine': engine} if spec.local and engine is not None else {}
             return Chat(spec.model_id, runtime=spec.runtime, ctx_limit=spec.ctx, **shared, **kw)
         self.host.mk_chat = mk
         return True
+
+    def _spec_for(self, model=None):
+        """The `ModelSpec` a lent factory should build on, for the model name it was handed.
+
+        `None` means "whatever the cheap jobs run on", which is the ordinary case. A *name* is
+        somebody asking for that model specifically, and the only caller that does is asking
+        because the answer must not leave the machine -- so it is resolved, and a name that
+        does not resolve here is answered with None rather than quietly substituted.
+        """
+        if model:
+            try: return self.routing._resolve(str(model))
+            except Exception: return None
+        b = self._be_or_none('oneshot')
+        return None if b is None or b.chat is None else b.spec
 
     # -- standing interests --------------------------------------------------
     def poll_watches(self, force=False):

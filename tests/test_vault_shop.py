@@ -166,3 +166,112 @@ def test_the_vault_answers_on_this_sessions_model_rather_than_loading_its_own(tm
     host.vault.note('Ramabana is a harness over rishi.', title='n1')
     assert host.ask('what is ramabana?').answer == 'lent [1]'
     assert len(built) == 1
+
+
+def _fake_chat(runtime, reply, sent):
+    def mk(model=None, **kw):
+        class C:
+            use, hist = None, []
+            def __init__(s): s.runtime = runtime
+            def __call__(s, prompt, **k):
+                sent.append((runtime, model, prompt, kw.get('sp', '')))
+                return {'role': 'assistant', 'content': reply}
+        return C()
+    return mk
+
+
+def _private_host(tmp_path):
+    from ramabana.vault import VaultHost
+    host = VaultHost(roots=(str(tmp_path),), vault=str(tmp_path/'v.db'), index=False, web=False)
+    host.vault.note('Invoice 4471 for Ada Lovelace, ada@example.com, phone 020 7946 0958. '
+                    'Card 4111 1111 1111 1111. Amount 240.00 GBP, due 2026-09-01.', title='invoice 4471')
+    host.vault.note('The deploy pipeline runs on GitHub Actions and takes about 20 minutes.',
+                    title='pipeline')
+    return host
+
+
+def test_private_sections_never_reach_a_hosted_model(tmp_path):
+    "A hosted chat lent for a private question is refused before a character is sent."
+    host, sent = _private_host(tmp_path), []
+    host.mk_chat = _fake_chat('remote', 'THIS MUST NEVER BE SENT', sent)
+    r = host.ask('what is on invoice 4471?')
+    assert r.refused is True
+    assert 'not a local runtime' in r.answer
+    assert sent == []
+
+
+def test_a_local_model_answers_it_under_a_briefing_that_forbids_the_details(tmp_path):
+    from vishalakshi.ask import PII_SP
+    host, sent = _private_host(tmp_path), []
+    host.mk_chat = _fake_chat('litert', 'One invoice, 240.00 GBP, due in September. Holding back '
+                                        'the name, email and card. Tell me what you need.', sent)
+    r = host.ask('what is on invoice 4471?')
+    assert r.get('refused', False) is False
+    assert sent[0][0] == 'litert' and sent[0][3] == PII_SP
+    assert r.pii.has_pii and set(r.pii.identifying) == {'card', 'email', 'phone'}
+
+
+def test_the_instruction_comes_back_for_a_second_turn(tmp_path):
+    host, sent = _private_host(tmp_path), []
+    host.mk_chat = _fake_chat('litert', 'Total 240.00 GBP, due 2026-09-01.', sent)
+    r = host.ask('what is on invoice 4471?', instruction='Give me the total and the due date only.')
+    assert 'Instruction from the questioner' in sent[0][2]
+    assert r.answer == 'Total 240.00 GBP, due 2026-09-01.'
+
+
+def test_a_local_model_that_leaks_anyway_is_masked_on_the_way_out(tmp_path):
+    host, sent = _private_host(tmp_path), []
+    host.mk_chat = _fake_chat('litert', 'It is for ada@example.com, card 4111 1111 1111 1111.', sent)
+    r = host.ask('what is on invoice 4471?')
+    assert r.answer == 'It is for [EMAIL], card [CARD].'
+    assert set(r.leaked) == {'email', 'card'}
+
+
+def test_the_model_cannot_switch_the_gate_off_through_the_tool(tmp_path):
+    "`pii='off'` is a caller's setting, not an argument reachable from the far end of a tool call."
+    host, sent = _private_host(tmp_path), []
+    host.mk_chat = _fake_chat('remote', 'LEAKED', sent)
+    assert host.ask('what is on invoice 4471?', pii='off').refused is True
+    assert sent == []
+
+
+def test_private_filler_is_dropped_rather_than_making_the_question_private(tmp_path):
+    """`doc_context` puts sections from elsewhere behind the document asked about. One of those
+    being private should cost that section, not send the whole answer to a smaller model."""
+    host, sent = _private_host(tmp_path), []
+    host.mk_chat = _fake_chat('remote', 'About 20 minutes [1]', sent)
+    r = host.ask('how long does the pipeline take?', ref='pipeline')
+    assert r.pii.has_pii is False
+    assert sent[0][0] == 'remote'
+    assert 'ada@example.com' not in sent[0][2]
+
+
+def test_ask_memory_appears_only_for_a_host_that_can_ask(tmp_path):
+    from ramabana.tools import tools_for, LocalHost
+    from ramabana.testing import FullHost
+    names = lambda h: {t.__name__ for t in tools_for(h)}
+    assert 'ask_memory' in names(_private_host(tmp_path))
+    assert 'ask_memory' not in names(FullHost())          # has the memory group, has no model to ask
+    assert 'ask_memory' not in names(LocalHost(roots=(str(tmp_path),), index=False, web=False))
+
+
+def test_ask_memory_tells_the_model_what_it_can_ask_for_next(tmp_path):
+    from ramabana.tools import tools_for
+    host, sent = _private_host(tmp_path), []
+    host.mk_chat = _fake_chat('litert', 'One invoice, 240.00 GBP. Holding back the details.', sent)
+    ask_memory = {t.__name__: t for t in tools_for(host)}['ask_memory']
+    out = ask_memory('what is on invoice 4471?')
+    assert 'One invoice, 240.00 GBP' in out
+    assert 'answered on a local model' in out and 'instruction=' in out
+
+
+def test_a_lent_factory_honours_the_model_it_is_asked_for(tmp_path):
+    """The vault names its local model and then checks what came back really runs here, so a
+    factory that ignored the name would be handing a statement to a hosted API."""
+    from ramabana.agent import Agent
+    host = _private_host(tmp_path)
+    agent = Agent(host, model='gpt-mini', extensions=False, subagents=False)
+    assert agent.lend_model() is True
+    spec = agent._spec_for('gemma-e4b')
+    assert spec is not None and spec.runtime == 'litert' and spec.local is True
+    assert agent._spec_for('mlx/not-installed-here') is None

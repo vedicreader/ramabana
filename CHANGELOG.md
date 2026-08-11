@@ -7,6 +7,20 @@ everything the harness was leaving on the table in the four libraries underneath
 
 ### Added
 
+- **`ask_memory`**, and `Host.ask` behind it — ask remembered research a question and get a
+  short cited answer rather than the sections. The same trade `delegate_search` makes: reading
+  the material yourself costs every section of every candidate document in your context.
+  It appears only for a host that implements `Host.ask`.
+- **Private material is answered on this machine.** When the sections a question retrieved hold
+  personal information — decided arithmetically by `vishalakshi.pii`, never by asking a model to
+  read it first — the answer is computed by a local model under a briefing that forbids it
+  repeating any personal detail to the caller. It says what it is holding and what instruction
+  would let it answer usefully; the caller sends that back as `instruction` and it gets another
+  turn on the same sections. The runtime is checked on the chat object before a character is
+  sent, so a lent hosted chat is refused rather than trusted, and `pii='off'` is deliberately
+  not reachable from the far end of a tool call.
+- `Agent.lend_model`'s factory honours the model it is asked for (`Agent._spec_for`), which is
+  what makes "the local one" mean it.
 - **`Host.capabilities`** — a host declares which tool groups it supports, and `tools_for`
   asks before it probes. The probe is the first thing to touch a host, so a capability whose
   answer sits behind a model load is one the probe waits through: `VaultHost` opens its vault

@@ -249,16 +249,22 @@ class VaultHost(LocalHost):
         head = f'searched the web for {q!r}; filed {len(r.added)} of {r.n_found} sources in the vault'
         return '\n\n'.join([head] + [f"## {s['breadcrumb']}\n\n{s['text']}" for s in c.results])
 
-    def ask(self, question, ref=None, **kw):
+    def ask(self, question, ref=None, instruction='', **kw):
         """Have the vault answer `question` with citations, on this session's model.
 
         vishalakshi builds a chat per `ask` from `$VISHALAKSHI_MODEL`, which on a local model
         means loading a second copy of an engine that is already in memory -- and answering on
         a different model from the one the user is talking to. `mk_chat` is the factory that
         lends it ours instead; without one this is vishalakshi's own behaviour, unchanged.
+
+        The one thing this host does *not* pass through is `pii='off'`. Whether the sections
+        are somebody's business is a property of what was retrieved, and a tool argument is a
+        thing a model can set -- so the switch that would send a bank statement to a hosted API
+        is not one that lives on the far end of a tool call.
         """
+        kw.pop('pii', None)
         if self.mk_chat is not None: kw.setdefault('mk_chat', self.mk_chat)
-        return self.vault.ask(question, ref=ref, **kw)   # `ask_doc` is this with `ref` set
+        return self.vault.ask(question, ref=ref, instruction=instruction, **kw)   # `ask_doc` is this with `ref`
 
     @property
     def research_note(self): return f'fossick, filed in {Path(self.vault.path).name}'

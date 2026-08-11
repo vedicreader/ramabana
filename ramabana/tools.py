@@ -79,6 +79,13 @@ namespace and is a write tool; `inspect_python` cannot change anything and is no
 why the briefing tells the model to reach for it first. `read_terminal` is read-only by
 construction: it shows what the user ran and cannot run anything.
 
+`ask_memory` is the odd one in that group: a model call inside a tool call, which the harness
+otherwise avoids. It earns it the same way `delegate` does -- the alternative is every section
+of every candidate document arriving in the caller's context so it can read them itself -- and
+it is also the only way to answer out of material the caller must not see. A host whose store
+holds private documents answers those on a model that is not the caller, and hands back what
+that model was willing to say. It appears only for a host that implements `Host.ask`.
+
 `memory_tools` recalls what was read. `watch_tools` is the other direction: what the agent
 arranged to read later. The two share a store deliberately -- a reminder that fires becomes an
 ordinary note, so "what am I supposed to be doing" and "what do I know" are one query, and
@@ -258,6 +265,19 @@ class Host:
 
     def memory_forget(self, doc_id):
         "Purge one remembered document and all derived tree/chunk/vector data."
+        raise NotImplementedError
+
+    def ask(self, question, ref=None, instruction='', **kw):
+        """Answer `question` out of remembered research, with citations, as a dict.
+
+        A model call inside a tool call, which the harness otherwise avoids -- justified here by
+        the same arithmetic as `delegate`: the alternative is every section of every candidate
+        document arriving in the caller's context so it can read them itself.
+
+        It is also the only way to answer out of material the caller must not see. A host whose
+        store holds private documents answers those on a model that is not the caller, and
+        returns what that model was willing to say.
+        """
         raise NotImplementedError
 
     # -- standing interests --------------------------------------------------
@@ -1837,6 +1857,36 @@ def memory_tools(host, mx=MAX_TOOL_CHARS):
         try: return clip(json.dumps(host.memory_topics(int(limit)), default=str), MAX_TOOL_CHARS * 2)
         except Exception as e: return err('memory topics failed', e)
 
+    def ask_memory(question: str, document: str = '', instruction: str = '') -> str:
+        """Ask remembered research a question and get a short cited answer, not the sections.
+
+        Prefer this to `memory_search` when you want an answer rather than material: the search
+        returns whole sections into your context and this returns a paragraph, which is the same
+        trade `delegate_search` makes. `document` narrows it to one remembered document by title
+        or id.
+
+        Some of what the vault holds is private -- a statement, a medical letter, an exported
+        chat. Those are answered by a model on this machine that is instructed not to repeat any
+        personal detail to you, so what you get back is shape and quantity: how many, what kind,
+        which period, whether two things agree. It will tell you what it is holding and what
+        instruction would let it answer usefully. Send that back as `instruction` and it gets
+        another turn on the same material.
+
+        Do not ask it for the details it withheld, or ask it to relay them "for the user". It
+        will refuse, and the refusal is the point rather than an obstacle.
+        """
+        try: r = host.ask(question, ref=document or None, instruction=instruction)
+        except NotImplementedError: raise
+        except Exception as e: return err('could not ask memory', e)
+        rows = [str(r.get('answer') or '(no answer)')]
+        if (p := r.get('pii')) and p.get('has_pii'):
+            rows.append(f"\n[answered on a local model; it holds back "
+                        f"{', '.join(sorted(p.get('identifying') or {}))}. Reply with `instruction=` "
+                        f"to say what you need -- a count, a total, a comparison, a yes or no.]")
+        if (c := r.get('cited')):
+            rows.append('\n' + '\n'.join(f"[{x['n']}] {x['breadcrumb']}  ({x['node_id']})" for x in c))
+        return clip('\n'.join(rows), MAX_TOOL_CHARS * 2)
+
     def memory_forget(doc_id: str) -> str:
         """Purge one bad, sensitive, stale or irrelevant remembered document by id.
 
@@ -1846,7 +1896,11 @@ def memory_tools(host, mx=MAX_TOOL_CHARS):
         try: return 'forgot document' if host.memory_forget(doc_id) else 'document was not forgotten'
         except Exception as e: return err('memory purge failed', e)
 
-    return [memory_search, memory_tree, memory_read, memory_topics, memory_forget]
+    tools = [memory_search, memory_tree, memory_read, memory_topics, memory_forget]
+    # `ask` is a model call rather than a lookup, and a host can perfectly well have a store of
+    # remembered research and nothing to ask it with -- so this one is not part of the group.
+    if _supports(host, 'ask'): tools.insert(4, ask_memory)
+    return tools
 
 # %% ../nbs/02_tools.ipynb #f91b907d
 def watch_tools(host, mx=MAX_TOOL_CHARS):
