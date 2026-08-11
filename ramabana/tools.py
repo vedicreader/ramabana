@@ -382,6 +382,25 @@ class Host:
         "How commands are run here (the interpreter, the default directory), or why they are not."
         return ''
 
+    # -- what this host can do -----------------------------------------------
+    @property
+    def capabilities(self):
+        """Which tool groups this host supports, for the ones it can answer without being asked to prove it.
+
+        `tools_for` normally probes a group with a harmless call, which is right when the
+        answer is cheap. It is wrong when the answer is behind the very thing the probe
+        would start: `VaultHost` opens its vault -- an embedding model -- in a background
+        thread precisely so building the tool list does not wait for it, and then
+        `memory_tree('')` waits for it anyway, on the first `Agent.tools` access.
+
+        Return `{group: bool}` for the groups this host *knows* its answer to, and leave the
+        rest out; anything absent is probed exactly as before. The names are the tool group
+        functions: `notebook`, `web`, `memory`, `watch`, `session`, `shell`. A `False` is as
+        useful as a `True` -- it drops a group without constructing whatever would have
+        raised `NotImplementedError` on the way to saying so.
+        """
+        return {}
+
     # -- the person ----------------------------------------------------------
     @property
     def approvals(self):
@@ -463,6 +482,45 @@ def denied(path, patterns=DENY):
     s = Path(path).as_posix()
     return any(fnmatch(s, pat) for pat in patterns)
 
+def _md_doc(d):
+    "One of fossick's document readers' results as markdown: the fields it has, then its text."
+    if isinstance(d, str): return d
+    if not isinstance(d, dict): return str(d or '')
+    head = [f'**{k}**: {v}' for k in ('title', 'authors', 'published', 'channel', 'duration', 'link')
+            if (v := d.get(k)) not in (None, '', [], {})]
+    body = next((str(d[k]) for k in ('source', 'text', 'content', 'summary') if d.get(k)), '')
+    return '\n'.join(head + [''] + [body]).strip() if head else body.strip()
+
+def _fuse(legs, limit):
+    """Merge ranked `Hit` lists into one ranking, by rank, through `fossick.rrf`.
+
+    The legs share no score: Kosha returns embedding distances and ripgrep returns nothing at
+    all, so there is no scale to average and rank is the only thing they have in common.
+    fossick's `rrf` is that fusion, already written and already relied on -- `VaultHost.search`
+    reaches the same function through the vault -- so it is imported rather than written twice.
+    It keys on a `url`, and `path:line` is the address a code hit is identified by.
+
+    fossick is an optional dependency of a host that may have `web=False`, so the leg that is
+    already ranked is the answer when it is not importable. One leg is never fused: RRF over a
+    single list only reorders it into itself, more slowly.
+    """
+    legs = [list(l) for l in legs if l]
+    if not legs: return []
+    if len(legs) == 1: return legs[0][:limit]
+    by_key, lists = {}, []
+    for leg in legs:
+        rows = []
+        for h in leg:
+            key = f'{h.path}:{h.line}'
+            by_key.setdefault(key, h)
+            rows.append({'url': key, 'body': h.text or ''})
+        lists.append(rows)
+    try:
+        from fossick.search import rrf
+        fused = rrf(lists)
+    except Exception: return legs[0][:limit]
+    return [by_key[r['url']] for r in fused if r.get('url') in by_key][:limit]
+
 def ld_json(html):
     "The `schema.org` JSON-LD blocks in `html` -- where a page states its price, author or rating."
     out = []
@@ -487,6 +545,8 @@ class LocalHost(Host):
                  note=None,             # callable for out-of-band status lines
                  web=True,              # wire the web tools to fossick when it is installed
                  index=True,            # start a Kosha sync for every open root
+                 rerank=True,           # reorder Kosha's hits with its flashrank cross-encoder
+                 rerank_model=None,     # flashrank model name; None is its fast default
                  read_outside=False,    # let read-only tools name any path on this machine
                  deny=DENY):            # what `read_outside` still refuses to open
         self._roots = [str(Path(r).expanduser().resolve()) for r in roots]
@@ -495,6 +555,8 @@ class LocalHost(Host):
         self.read_outside, self.deny = bool(read_outside), tuple(deny or ())
         self.transcript = []           # what this process has printed, for `read_terminal`
         self._koshas, self._index_errors, self._index_thread = [], [], None
+        self._pending = list(self._roots)     # roots whose sync has not returned yet
+        self.rerank, self.rerank_model, self._rerank_note = bool(rerank), rerank_model, ''
         if index: self.sync_index()
 
     def sync_index(self, wait=False, force=False):
@@ -504,6 +566,11 @@ class LocalHost(Host):
         model is already waiting. Kosha's sync is incremental, so an existing `.kosha`
         usually becomes ready immediately; the first run parses, embeds and graphs the repo.
         `wait=True` is for a command or test that needs semantic results now.
+
+        Each root is published the moment *its own* sync returns, rather than the whole list
+        when the last one does. Readiness was one flag for every folder, so opening a small
+        repo alongside a large one meant the small one answered literally for as long as the
+        large one took -- on `search_code`, which is the most-called tool there is.
         """
         if self._index_thread is None or not self._index_thread.is_alive():
             def run():
@@ -512,18 +579,30 @@ class LocalHost(Host):
                     # import so a background sync never writes through teleprint's live tail.
                     os.environ.setdefault('TQDM_DISABLE', '1')
                     from kosha import Kosha
-                    self._koshas = [Kosha(dir=Path(root)) for root in self._roots]
-                    for k, root in zip(self._koshas, self._roots):
+                except Exception as e:
+                    self._index_errors.append(agent_err(e)); self._pending = []; return
+                for root in list(self._roots):
+                    try:
+                        k = Kosha(dir=Path(root))
                         # `sync`, not a private subset: code store, environment metadata and
                         # graph stay mutually consistent. It is incremental after first use.
                         # `graph=True` because `_semantic` asks `context` for graph expansion:
                         # this used to pass Kosha's deprecated `sync_graph=force`, which is the
                         # old name for `graph` and therefore switched the call graph *off* on
                         # every ordinary sync, leaving that expansion nothing to walk.
+                        # `in_parallel` is Kosha's own default, and was being overridden to
+                        # `False` here for no reason anyone wrote down. It fans the repo, the
+                        # environment and the graph across threads, and the environment's
+                        # packages across more; they write three different SQLite files, and
+                        # this whole call already runs off the turn. Serialising it only ever
+                        # made `index_ready` take minutes and every search until then literal.
                         k.sync(dir=Path(root), verbose=False, force=force, pyproject=True,
-                               in_parallel=False, graph=True)
-                except Exception as e:
-                    self._index_errors.append(agent_err(e))
+                               in_parallel=True, graph=True)
+                        self._koshas.append(k)   # published only once its own sync has returned
+                    except Exception as e: self._index_errors.append(agent_err(e))
+                    finally:
+                        try: self._pending.remove(root)
+                        except ValueError: pass
             self._index_thread = threading.Thread(target=run, name='ramabana-kosha-sync', daemon=True)
             self._index_thread.start()
         if wait: self._index_thread.join()
@@ -531,7 +610,13 @@ class LocalHost(Host):
 
     @property
     def index_ready(self):
-        return bool(self._koshas) and self._index_thread is not None and not self._index_thread.is_alive()
+        "Whether *every* open folder is indexed. `indexed` is the per-folder answer `search` uses."
+        return bool(self._koshas) and not self._pending
+
+    @property
+    def indexed(self):
+        "The folders whose index is built and searchable now. The rest are still syncing."
+        return [str(getattr(k, 'root', '')) for k in list(self._koshas)]
 
     def wait_index(self, timeout=None):
         "Wait for the automatic Kosha sync. Returns whether semantic search is ready."
@@ -625,9 +710,29 @@ class LocalHost(Host):
             hits.append(Hit(path, int(num), '', text.strip()[:200]))
         return hits
 
+    def _ranked(self, call, **kw):
+        """One Kosha context call, reordered by its cross-encoder when reranking is on and working.
+
+        `rerank=` widens the retrieval limit and reorders what comes back with a flashrank
+        cross-encoder -- the cheapest relevance win available to the most-called tool, and it
+        was sitting unused on both `repo_context` and `context`.
+
+        flashrank fetches its model the first time it is asked, so the first search on a
+        machine without one cached is also the search that finds out. That is not a search
+        failure -- unranked hits are exactly what this host returned for its whole life
+        before -- so it falls back once, says so in `search_note`, and stops asking.
+        """
+        if self.rerank:
+            try: return call(rerank=True, rerank_model=self.rerank_model, **kw)
+            except Exception as e:
+                self.rerank = False
+                self._rerank_note = f'; reranking off ({agent_err(e)})'
+        return call(**kw)
+
     def _semantic(self, query, limit):
-        "Kosha's repo-first hybrid results as the Host's stable `Hit` shape."
-        if not self.index_ready: return []
+        "Kosha's repo-first hybrid results as the Host's stable `Hit` shape, from whatever is indexed."
+        koshas = list(self._koshas)
+        if not koshas: return []
         out, seen = [], set()
 
         def add(rows):
@@ -650,22 +755,19 @@ class LocalHost(Host):
 
         # The open repository comes first. Fill any room from Kosha's environment index,
         # which is how `search_code` can find an installed library's implementation too.
-        for k in self._koshas:
+        for k in koshas:
             try:
-                if add(k.repo_context(query, columns='content,path,metadata')): return out
+                if add(self._ranked(k.repo_context, q=query, columns='content,path,metadata')): return out
             except Exception as e: self._index_errors.append(agent_err(e))
-        for k in self._koshas:
+        for k in koshas:
             try:
-                if add(k.context(query, limit=limit, repo=False, env=True, graph=True,
-                                 columns='content,metadata')): return out
+                if add(self._ranked(k.context, q=query, limit=limit, repo=False, env=True,
+                                    graph=True, columns='content,metadata')): return out
             except Exception as e: self._index_errors.append(agent_err(e))
         return out
 
-    def search(self, query, limit=20):
-        "Semantic + keyword search through Kosha, with a literal fallback while its first sync runs."
-        if not (query or '').strip(): return []
-        if (hits := self._semantic(query, limit)): return hits
-        if (hits := self._rg(query, limit)) is not None: return hits
+    def _scan(self, query, limit):
+        "Every matching line, by reading the files. What is left when there is no index and no ripgrep."
         hits = []
         for p in self.walk():
             try: text = p.read_text(encoding='utf-8')
@@ -677,9 +779,34 @@ class LocalHost(Host):
                     if len(hits) >= limit: return hits
         return hits
 
+    def search(self, query, limit=20):
+        """The code index and the literal scan, fused by rank rather than tried in order.
+
+        "Semantic, else literal" threw away whichever leg it did not reach, and the two are
+        good at different questions: Kosha answers "what is this like", ripgrep answers "where
+        is this exact string". A rename whose query happened to embed well lost its own call
+        sites that way. So both run, and `fossick.rrf` merges them -- reciprocal rank fusion,
+        because an ordering is all two engines with no shared vector space have in common, and
+        it is the fusion `VaultHost.search` already uses through the vault for three legs.
+
+        The old behaviour survives inside the new one: while the index is still syncing the
+        literal leg is simply the only one with results, arrived at by fusion rather than by
+        fallback.
+        """
+        if not (query or '').strip(): return []
+        rg = self._rg(query, limit)
+        if (hits := _fuse([self._semantic(query, limit), rg or []], limit)): return hits
+        # `_rg` answers None when ripgrep is not installed, and `[]` when it ran and found
+        # nothing. Only the first of those leaves anything worth reading every file for.
+        return [] if rg is not None else self._scan(query, limit)
+
     @property
     def search_note(self):
-        if self.index_ready: return f'Kosha semantic + keyword index over {len(self._roots)} folder(s) and environment'
+        n, tot = len(self._koshas), len(self._roots)
+        if n:
+            where = f'{n} of {tot} folder(s)' if self._pending else f'{tot} folder(s)'
+            fused = ' fused with ripgrep' if shutil.which('rg') else ''
+            return f'Kosha semantic + keyword index over {where} and environment{fused}{self._rerank_note}'
         if self._index_errors: return f'Kosha unavailable ({self._index_errors[-1]}); literal fallback'
         return 'Kosha sync in progress; literal fallback' + (' via ripgrep' if shutil.which('rg') else '')
 
@@ -850,26 +977,60 @@ class LocalHost(Host):
     #: the status code never fires and fossick's own `auto=` tier stops at `plain`.
     THIN_PAGE = 400
 
+    #: URLs that are not really pages, and the fossick reader that knows what each one *is*.
+    #: Fetched as a page, a GitHub blob is chrome and line numbers wrapped around the file, an
+    #: arxiv abstract is not the paper, and a YouTube watch page does not contain its
+    #: transcript at all. `read_url`'s docstring has promised the first two all along.
+    #: `read_gh_repo` is deliberately not here: cloning a repository is not reading a page,
+    #: and it is reached by name, not by handing this tool a URL.
+    READERS = (
+        (re.compile(r'https?://(www\.)?github\.com/[^/]+/[^/]+/(blob|raw)/', re.I), 'read_gh_file', {}),
+        (re.compile(r'https?://(www\.)?arxiv\.org/(abs|pdf)/', re.I), 'read_arxiv', dict(save_pdf=False, source=True)),
+        (re.compile(r'https?://(www\.)?(youtube\.com/watch|youtu\.be/)', re.I), 'read_yt', {}),
+    )
+
     def read_url(self, url, remember=True):
         """One page as markdown: the prose, and the structured data the prose leaves out.
 
-        Two things go wrong on a modern page and neither shows up as an error. It renders in
-        the browser, so a plain fetch returns a shell -- answered by escalating to a real
-        browser when the extracted text comes back too thin to be a page. And its *facts*
-        live in `schema.org` JSON-LD rather than in its prose, so readability extraction on a
-        product page faithfully keeps the ingredient list and throws the price away. Both are
-        general: the JSON-LD block is a standard, not a selector for one shop.
+        Some URLs are not pages, and fossick ships a reader for each: `READERS` routes those
+        first, which is what this docstring has been promising since it was written while the
+        implementation was a plain fetch.
+
+        For everything else, two things go wrong on a modern page and neither shows up as an
+        error. It renders in the browser, so a plain fetch returns a shell. `auto=True` is
+        fossick's answer -- plain, then heavy, then stealthy, then the logged-in Chrome, one
+        tier at a time, on its own bot-block detection. Hand-rolling plain -> stealthy here
+        skipped the tier that fixes almost all of these: most pages that need a browser need
+        *rendering*, not evasion, and a stealth Chrome costs ten seconds.
+
+        `auto`'s detection cannot see the other shape of the same failure -- a 200 whose body
+        is an empty shell, which is what a site that turns scrapers away actually returns -- so
+        a page that extracts to nothing is escalated here as well, and from the cheap tier up.
+
+        And a page's *facts* live in `schema.org` JSON-LD rather than in its prose, so
+        readability extraction on a product page faithfully keeps the ingredient list and
+        throws the price away. That is a standard, not a selector for one shop.
         """
         fossick = self._fossick()
-        page = fossick.fetch(str(url))
-        text = str(fossick.to_md(page) or '')
+        for rx, name, kw in self.READERS:
+            if not rx.search(str(url)) or (reader := getattr(fossick, name, None)) is None: continue
+            try: text = _md_doc(reader(str(url), **kw))
+            except Exception as e:
+                # A reader that cannot answer is not a URL that cannot be read: the abstract
+                # page is worse than the paper, and better than nothing.
+                self.note(f'{name} could not read {url} ({agent_err(e)}); fetching the page')
+                break
+            if text.strip(): return AttrDict(text=text, url=str(url))
+            break
+        page = fossick.fetch(str(url), auto=True)
+        text = str(fossick.to_md(page) or '') if page is not None else ''
         if len(text.strip()) < self.THIN_PAGE:
-            # Only now: a stealth browser costs ten seconds and a Chrome, and most pages
-            # never need one.
-            try:
-                heavy = fossick.fetch(str(url), stealthy=True)
-                page, text = heavy, str(fossick.to_md(heavy) or '') or text
-            except Exception: pass
+            for opts in ({'heavy': True}, {'stealthy': True}):
+                try: heavy = fossick.fetch(str(url), **opts)
+                except Exception: continue
+                if len((got := str(fossick.to_md(heavy) or '')).strip()) >= self.THIN_PAGE:
+                    page, text = heavy, got
+                    break
         if (ld := ld_json(getattr(page, 'html_content', '') or '')):
             text = f'<structured-data>\n{json.dumps(ld)[:LD_CHARS]}\n</structured-data>\n\n{text}'
         return None if not text.strip() else AttrDict(text=text, url=str(url))
@@ -1252,6 +1413,13 @@ def readable(host, path, must_exist=False):
     return host.check(path, must_exist=must_exist)
 
 
+def _declared(host, group):
+    "What `host.capabilities` says about `group`, or None when it does not say."
+    try: d = host.capabilities or {}
+    except Exception: return None
+    return bool(d[group]) if group in d else None
+
+
 def _probe(host, *calls):
     "Whether every one of `calls` is supported. A host says 'no' by raising `NotImplementedError`."
     for f in calls:
@@ -1280,6 +1448,12 @@ def _supports(host, name, probe=None):
     except NotImplementedError: return False
     except Exception: pass
     return True
+
+
+def _has(host, group, *calls):
+    "Whether `host` supports `group`: its own declaration when it makes one, a harmless call otherwise."
+    d = _declared(host, group)
+    return _probe(host, *calls) if d is None else d
 
 # %% ../nbs/02_tools.ipynb #367262aa
 def code_tools(host, mx=MAX_TOOL_CHARS):
@@ -1564,7 +1738,8 @@ def web_tools(host, mx=MAX_TOOL_CHARS):
         return clip('\n'.join(f'{d.title}\n  {d.url}' for d in docs))
 
     def read_url(url: str, remember: bool = True) -> str:
-        """Read one web page (or GitHub file, arxiv paper) as markdown.
+        """Read one web page as markdown; a GitHub file, an arxiv paper or a YouTube
+        transcript is read as what it is rather than as the page around it.
 
         It enters durable research memory by default. Pass `remember=False` for sensitive,
         obviously irrelevant, or exploratory results that should remain ephemeral.
@@ -1844,10 +2019,16 @@ def skill_tools(host, get_skills, mx=MAX_TOOL_CHARS):
 def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS):
     """Every tool this host can actually support, plus whatever extensions registered.
 
-    Each group is probed with a harmless call and dropped whole if the host does not
-    implement it. Whole groups rather than individual tools because the groups are the
-    real units of capability: a host with no notebook representation cannot support any of
-    the four notebook tools, and one with no kernel cannot support any of the session ones.
+    Each group is dropped whole if the host does not implement it. Whole groups rather than
+    individual tools because the groups are the real units of capability: a host with no
+    notebook representation cannot support any of the four notebook tools, and one with no
+    kernel cannot support any of the session ones.
+
+    A group is answered by `Host.capabilities` when the host declares it, and by a harmless
+    call otherwise. The declaration exists because the probe is not always harmless: it is
+    the *first* thing to touch the host, so a capability whose answer sits behind a model
+    load is one the probe waits through -- which is how a vault opened in the background to
+    keep the tool list fast came to be the reason the tool list was slow.
 
     `mx` is what one tool result may spend. It belongs here rather than in each tool
     because it is a property of the *model* the results are going to, not of the tool: the
@@ -1858,14 +2039,16 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS):
     tools = []
     tools += code_tools(host, mx)
     tools += file_tools(host, mx)
-    if _probe(host, lambda: host.nb_cells('.')): tools += notebook_tools(host, mx)
-    if _probe(host, lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
-    if _probe(host, lambda: host.memory_tree('')): tools += memory_tools(host, mx)
-    if _probe(host, lambda: host.watches()): tools += watch_tools(host, mx)
-    if _probe(host, lambda: host.list_vars(), lambda: host.terminal_text(1)): tools += session_tools(host, mx)
+    if _has(host, 'notebook', lambda: host.nb_cells('.')): tools += notebook_tools(host, mx)
+    if _has(host, 'web', lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
+    if _has(host, 'memory', lambda: host.memory_tree('')): tools += memory_tools(host, mx)
+    if _has(host, 'watch', lambda: host.watches()): tools += watch_tools(host, mx)
+    if _has(host, 'session', lambda: host.list_vars(), lambda: host.terminal_text(1)): tools += session_tools(host, mx)
     # `run_cmd` is the one capability with no harmless probe, so it is answered by asking
     # whether the host overrode the method rather than by running something.
-    if _supports(host, 'run_cmd', lambda: host.run_cmd('')): tools += shell_tools(host, mx)
+    shell = _declared(host, 'shell')
+    if _supports(host, 'run_cmd', lambda: host.run_cmd('')) if shell is None else shell:
+        tools += shell_tools(host, mx)
     if get_skills is not None: tools += skill_tools(host, get_skills, mx)
     tools += list(extra or ())
     return tools

@@ -89,10 +89,18 @@ class VaultHost(LocalHost):
     ripgrep the same question at once.
 
     The vault is opened in a background thread, for the same reason the kosha sync is: it loads
-    an embedding model, and the first thing that touches it is `tools_for` probing whether the
-    memory tools should exist at all. Nobody should wait through a model load to find out that
-    the answer is yes.
+    an embedding model, and the first thing that touches it is `tools_for` working out whether
+    the memory tools should exist at all. Nobody should wait through a model load to find out
+    that the answer is yes -- which is why the answer is `capabilities` and not a probe. A
+    probe would have called `memory_tree('')`, which reaches `self.vault`, which blocks on the
+    lock the warm thread is holding: the background open, waited through in full, by the one
+    caller it was added for.
     """
+
+    @property
+    def capabilities(self):
+        "Memory and watches, by construction: a `VaultHost` is the host that has a vault."
+        return {**super().capabilities, 'memory': True, 'watch': True}
 
     def __init__(self,
                  roots=('.',),          # the folders the agent is confined to
@@ -104,7 +112,7 @@ class VaultHost(LocalHost):
         super().__init__(roots, **kw)
         self._vault, self._vlock, self._vthread = vault, threading.Lock(), None
         self.federate, self.remember_reads = federate, remember_reads
-        self._legs = None
+        self._legs, self._cthread = None, None
         if warm: self.open_vault()
 
     # -- the vault itself ----------------------------------------------------
@@ -128,6 +136,27 @@ class VaultHost(LocalHost):
     def vault(self):
         "The `Vault`, opened on first use."
         return self._open()
+
+    def connect(self, wait=False):
+        """Rebuild the entity graph `related` walks, in a daemon thread, once at a time.
+
+        `Vault.connect` reads the whole store. `poll`'s docstring already says that is right
+        for a nightly cron and wrong for a tool call somebody is waiting on -- and then
+        `research` ran it inline anyway, on the one path where the user is definitely
+        waiting, having just sat through five pages being fetched and filed.
+
+        So it is a background job wherever it is called from. What `related` walks is then a
+        graph that is at most one query stale, which is the cost of the thing; a turn held
+        open for a full rebuild is not.
+        """
+        if self._cthread is None or not self._cthread.is_alive():
+            def run():
+                try: self.vault.connect()
+                except Exception as e: self.note(f'could not rebuild the memory graph: {agent_err(e)}')
+            self._cthread = threading.Thread(target=run, name='ramabana-vault-connect', daemon=True)
+            self._cthread.start()
+        if wait: self._cthread.join()
+        return self
 
     # -- durable research memory --------------------------------------------
     def memory_search(self, query, limit=MEM_SECTIONS):
@@ -213,8 +242,7 @@ class VaultHost(LocalHost):
         """
         v, q = self.vault, str(query)
         r = v.web(q, n=5)
-        try: v.connect()          # the graph is what `related` walks; rebuild once, after the batch
-        except Exception: pass
+        self.connect()            # the graph is what `related` walks; rebuild after the batch, off the turn
         c = v.context(q, sections=MEM_SECTIONS, related=4)
         head = f'searched the web for {q!r}; filed {len(r.added)} of {r.n_found} sources in the vault'
         return '\n\n'.join([head] + [f"## {s['breadcrumb']}\n\n{s['text']}" for s in c.results])
@@ -238,11 +266,13 @@ class VaultHost(LocalHost):
         """Fire everything due. `connect=False`: the graph rebuild is the expensive part.
 
         `Vault.poll` rebuilds the entity graph when anything succeeded, which reads the whole
-        store. That is right for a nightly cron and wrong for a tool call the user is waiting
-        on, so the rebuild is left to `research`, which is already slow, or to the next poll
-        that has time.
+        store -- right for a nightly cron, wrong for a tool call the user is waiting on. So
+        the tick returns as soon as the watches have run, and the rebuild it earned goes to
+        `connect`, which is a background thread and coalesces with `research`'s.
         """
-        return self.vault.poll(connect=False)
+        r = self.vault.poll(connect=False)
+        if r.get('ran'): self.connect()
+        return r
 
     @property
     def watch_actions(self):
