@@ -836,7 +836,9 @@ class LocalHost(Host):
         """
         fossick = self._fossick()
         if not str(query).strip(): return []
-        rows = fossick.search(str(query))[:int(n)]
+        # `n` to fossick, not a slice afterwards: its own default is 10, so asking for twenty
+        # results and truncating twenty to twenty quietly returned ten.
+        rows = fossick.search(str(query), n=int(n))
         return [AttrDict(title=str(r.get('title', '')), url=str(r.get('href') or r.get('url', ''))) for r in rows]
 
     #: Extracted characters below which a page did not really load. A site that turns away
@@ -869,7 +871,13 @@ class LocalHost(Host):
         return None if not text.strip() else AttrDict(text=text, url=str(url))
 
     def research(self, query):
-        return str(self._fossick().research(str(query)) or '')
+        """The cited corpus fossick assembled, and not the record it assembled it from.
+
+        `fossick.research` answers `{query, sources, digest, dropped}`, where `digest` *is*
+        the cited markdown and `sources` is the same markdown again, per page. Stringifying
+        the whole dict sent the model both copies wrapped in Python dict syntax.
+        """
+        return str((self._fossick().research(str(query)) or {}).get('digest') or '')
 
     @property
     def research_note(self): return 'fossick' if self.web else 'web access is switched off'

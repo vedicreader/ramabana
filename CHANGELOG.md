@@ -53,6 +53,11 @@ Half the sandbox, a row of options, and the message a screenshot was actually se
 - With an agent, the MCP server now mounts the agent's own recorded tools, which is what its
   documentation already claimed: a client's call lands in the same activity feed and the same
   `changes()` as a call the model made for itself.
+- `LocalHost.web_search` sliced fossick's results to `n` instead of asking for `n`, and
+  fossick's own default is 10 — so a request for twenty results returned ten.
+- `LocalHost.research` stringified the whole `{query, sources, digest, dropped}` record
+  fossick returns. `digest` *is* the cited markdown and `sources` is the same markdown again
+  per page, so the model was handed both copies wrapped in Python dict syntax.
 - Four tests asserted against `fastllm.chat` privates (`_alite_call_func`, `AsyncChat.tcdict`)
   for a shim this package no longer installs, and had been failing since that library changed
   shape. Replaced with tests of the approval behaviour they were really protecting.

@@ -785,3 +785,32 @@ def test_native_capture_follows_the_application_env_prefix():
     try: assert captured().enabled is False
     finally: os.environ.pop('RAMABANA_NO_NATIVE_CAPTURE', None)
     assert captured().enabled is True
+
+
+# -- the fossick binding ------------------------------------------------------
+
+
+def test_web_search_asks_fossick_for_as_many_results_as_it_wants(monkeypatch):
+    "fossick's own default is 10, so slicing twenty down to twenty quietly returned ten."
+    from ramabana.tools import LocalHost
+    import fossick
+    asked = {}
+
+    def search(q, **kw):
+        asked.update(q=q, **kw)
+        return [{'title': f'r{i}', 'href': f'https://x/{i}'} for i in range(kw.get('n', 10))]
+
+    monkeypatch.setattr(fossick, 'search', search)
+    host = LocalHost(['.'], web=True, index=False)
+    assert len(host.web_search('nbdev export', n=20)) == 20 and asked['n'] == 20
+
+
+def test_research_hands_over_the_digest_rather_than_the_whole_record(monkeypatch):
+    "`{query, sources, digest, dropped}` stringified sent the same markdown twice, in dict syntax."
+    from ramabana.tools import LocalHost
+    import fossick
+    monkeypatch.setattr(fossick, 'research', lambda q, **kw: {
+        'query': q, 'sources': [{'title': 't', 'href': 'https://x', 'md': 'body'}],
+        'digest': '## t\nhttps://x\n\nbody', 'dropped': []})
+    out = LocalHost(['.'], web=True, index=False).research('what is nbdev')
+    assert out == '## t\nhttps://x\n\nbody' and 'dropped' not in out
