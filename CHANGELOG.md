@@ -2,11 +2,39 @@
 
 ## Unreleased
 
-Half the sandbox, a row of options, and the terminal app's hands back: things you can
-copy, a transcript that moves, and a prompt that carries pictures and sound.
+Half the sandbox, a row of options, and the terminal app's hands back — plus a pass over
+everything the harness was leaving on the table in the four libraries underneath it.
 
 ### Added
 
+- **`Host.capabilities`** — a host declares which tool groups it supports, and `tools_for`
+  asks before it probes. The probe is the first thing to touch a host, so a capability whose
+  answer sits behind a model load is one the probe waits through: `VaultHost` opens its vault
+  in the background precisely so the tool list does not wait, and `memory_tree('')` then
+  blocked on the lock that thread holds. 3.0s against a stub, a whole embedding model against
+  a real one, on the first `Agent.tools` access.
+- **`Agent.poll_watches`** and `Agent(poll_every=)` — the tick the watch feature was built
+  around and nothing ever called. A turn is the tick, in a daemon thread; whatever fires files
+  itself into memory. `VaultHost.connect` is the same move for the entity graph, which
+  `research` used to rebuild inline on the one path where the user is definitely waiting.
+- **`Host.grep`** — a host with a fast exact matcher answers it, and `LocalHost` does through
+  ripgrep, covering exactly the files `walk` yields. The tool read every file through
+  `host.read`, and therefore `check`, and therefore a `resolve` per file.
+- **`Agent.snapshot_tree`** and `SHELL_SNAPSHOT` — `changes()` keyed on a tool argument named
+  `path`, and `run_shell` has none, so a command that rewrote twenty files reported `{}`.
+- **`LocalHost(rerank=, rerank_model=)`** — Kosha's cross-encoder, wired through to both
+  context calls. It falls back once and stops asking if flashrank cannot fetch its model.
+- **`LocalHost.indexed`** — per-folder index readiness, so a small repo goes semantic while a
+  large one is still syncing. `index_ready` is now "all of them".
+- **An `oneshot` routing job**, and `Routing.spec` falling back when a job's model is not
+  installed here. `inline`, `completion`, `classify` and `summary` take it unless singled out.
+- **`Agent.lend_model`** and `VaultHost(mk_chat=)` — vishalakshi builds a chat per `ask`, which
+  on a local model is a second copy of an engine already in memory, answering on a different
+  model from the one being talked to.
+- **`core.claude_tags`** and `$RAMABANA_CLAUDE_TAG_TOOLS` — Claude Code declares tools as an
+  in-process MCP server and an enterprise-managed configuration forbids every dynamic MCP
+  server, so the tools were stripped and the model ran blind. They travel in the system prompt
+  instead, through Rishi's `tool_mode='tags'`.
 - **`LocalHost(read_outside=True)`** — the sandbox has two halves and only one of them is
   usually the point. Confining *writes* stops an agent damaging something nobody opened;
   confining *reads* stops it answering a question whose answer is in a sibling checkout or a
@@ -46,6 +74,37 @@ copy, a transcript that moves, and a prompt that carries pictures and sound.
 
 ### Fixed
 
+- **`Agent.changes()` was blind to `run_shell`.** It keyed on a tool argument called `path`,
+  and a command names no files: `black .`, a codemod, a `git checkout` can rewrite twenty
+  files and mention none of them, and the answer came back `{}` — worse than a gap, because
+  the README points at `changes()` as the thing that knows what moved.
+- **`_named` dropped the positional half of a mixed call.** `args = kw if kw else _named(f, a)`,
+  so `edit_file('a.py', commands=...)` was recorded with no path — an unreadable activity line,
+  and a file that was never snapshotted, because the path `changes()` looks for is that one.
+- **`LocalHost.search` tried its legs in order instead of fusing them**, so a rename whose query
+  happened to embed well lost its own call sites. Both run and `fossick.rrf` merges them.
+- **`read_url` promised "(or GitHub file, arxiv paper)" and plain-fetched both.** It routes to
+  fossick's own readers now, and escalates through `fetch(auto=True)` — plain, heavy, stealthy,
+  logged-in Chrome — rather than jumping hand-rolled from plain to a stealth browser.
+- **Kosha was told to sync serially** (`in_parallel=False`, overriding its own default, for no
+  reason anyone wrote down), which is why `index_ready` took minutes and every search until
+  then was literal.
+- **`resolve` checked `runtime_available` for a `vendor/model` name and not for a short one**, so
+  `resolve('qwen-4b')` succeeded on a machine with no MLX; the job built a backend, `start()`
+  failed, and `Agent.oneshot` returned `''`. The cheap jobs did not error — they stopped
+  happening.
+- **`LocalHost(roots=())` raised `IndexError` out of `check`.** It is a legal host; it refuses
+  paths with an `AgentError` that says why.
+- **`ramabana.core` wrote into `sys.modules` at import time**, rearranging `toolslm` for every
+  other consumer in the interpreter because somebody imported this library to read a constant.
+  The shim is installed at the two points that need it.
+- **`scale_numeric` is gone** — a pandas min-max scaler in the permanent tool list of a general
+  coding harness, which is what `coding_patterns` says not to do.
+- **`RishiBackend` reached into five Rishi privates** (`_oneshot`, `_sys_pre`, `toolspecs`, `ns`,
+  `_recreate_conv`). Rishi grew `Chat.oneshot` and `Chat.reconfigure`; `think=False` now applies
+  on every runtime rather than only MLX.
+- `LlamaBackend` and `FastllmBackend` warn as deprecated aliases for `RishiBackend`.
+- `pyproject` refused to install below 3.12 while its classifiers claimed only "Python 3".
 - **An attached image shredded the rest of the message.** `compose` returns a list of content
   parts when there is an image, and `_prepare` then did `list += str` — which extends a list
   one character at a time. Every multimodal turn reached the model as the image followed by
