@@ -149,7 +149,18 @@ def _claude_login():
 
 
 def _install_toolslm_funccall():
-    "Expose fastcore's replacement under the module name python-fastllm 0.0.36 imports."
+    """Expose fastcore's replacement under the module name python-fastllm 0.0.36 imports.
+
+    Called where it is needed, not at import. Writing into `sys.modules` is a process-wide
+    edit to somebody else's package, and doing it as a side effect of `import ramabana.core`
+    meant importing anything at all from this library rearranged `toolslm` for every other
+    consumer in the interpreter -- a test that imports Ramabana to read one constant, a
+    notebook that imports it beside a library with its own opinion about `toolslm`.
+
+    Only `fastllm.chat` needs the shim, and only the Claude Code transport imports that, so
+    the two callers are `_load_claude_transport` and the moment a `claude_code/` model is
+    resolved -- both of which already run before anything can reach the transport.
+    """
     try: return importlib.import_module('toolslm.funccall')
     except ModuleNotFoundError as e:
         if e.name != 'toolslm.funccall': raise
@@ -158,8 +169,6 @@ def _install_toolslm_funccall():
     sys.modules['toolslm.funccall'] = funccall
     toolslm.funccall = funccall
     return funccall
-
-_install_toolslm_funccall()
 def _managed_claude_mcp():
     "Whether this machine has an organisation-controlled Claude Code MCP configuration."
     paths = [Path('/Library/Application Support/ClaudeCode/managed-mcp.json'),

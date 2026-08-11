@@ -26,8 +26,34 @@ def test_claude_code_transport_loads_through_fastllm_plugin(monkeypatch):
     assert payload['options'].mcp_servers == {}
 
 
-def test_fastllm_sees_funccall_compatibility_module_process_wide():
-    code = 'import ramabana; from toolslm.funccall import mk_ns; import fastllm.chat'
+def test_importing_ramabana_does_not_rearrange_toolslm():
+    """The shim writes into `sys.modules`, which is a process-wide edit to another package.
+
+    Doing it as a side effect of `import ramabana.core` meant importing this library to read
+    one constant rearranged `toolslm` for every other consumer in the interpreter.
+    """
+    code = ('import sys, ramabana\n'
+            "assert 'toolslm.funccall' not in sys.modules, 'importing ramabana installed the shim'\n")
+    result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_loading_the_claude_transport_installs_the_funccall_shim():
+    "`fastllm.chat` is the only thing that needs it, and the Claude Code transport is what imports it."
+    code = ('import ramabana.core as core\n'
+            'ok, err = core._load_claude_transport()\n'
+            'assert ok, err\n'
+            'from toolslm.funccall import mk_ns\n'
+            'import fastllm.chat\n')
+    result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_resolving_a_claude_code_model_installs_it_too():
+    "Nothing can reach the transport without first resolving the model that uses it."
+    code = ('import sys, ramabana.core as core\n'
+            "core.resolve('claude_code/claude-sonnet-5')\n"
+            "assert 'toolslm.funccall' in sys.modules\n")
     result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 

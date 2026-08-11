@@ -112,9 +112,9 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 # %% auto #0
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
-           'ACTION_NOTICE', 'THINK', 'MAX_STEPS', 'ONESHOT_TOKENS', 'LlamaBackend', 'FastllmBackend', 'interesting',
-           'captured', 'capture', 'estimate_tokens', 'threshold', 'should_compact', 'serialise', 'split_previous',
-           'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
+           'ACTION_NOTICE', 'THINK', 'MAX_STEPS', 'ONESHOT_TOKENS', 'interesting', 'captured', 'capture',
+           'estimate_tokens', 'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt',
+           'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
            'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
            'RishiBackend', 'make_backend']
 
@@ -966,18 +966,24 @@ class RishiBackend(Backend):
             self.problem(f'{self.spec.name} spent the whole turn thinking ({f.thought} characters) '
                          'and never answered; route `turn` to a larger model, or raise its output cap')
     def _oneshot(self,prompt,sp,max_tokens):
-        if self.spec.runtime!='mlx': return self.chat._oneshot(prompt,sp)
+        # `think=False` on every runtime, not only the local ones. A cheap job's whole budget
+        # can be 32 tokens and a reasoning model will spend all of them deliberating, leaving
+        # no answer for `answer_only` to strip the thinking off of. Cleaning up afterwards is
+        # not the fix; asking not to think is, and Rishi now knows how to ask each runtime --
+        # a `/no_think` line, `enable_thinking=False`, a conversation with no thinking
+        # channel, the lowest reasoning effort the API takes.
+        if self.spec.runtime!='mlx':
+            return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
         # Keep a completion-only MLX conversation: rewriting its single user message lets
         # Rishi trim to the common token prefix and reuse the KV cache without teaching a
         # suggestion about prior suggestions.
         if getattr(self,'_oneshot_chat',None) is None:
             from rishi import Chat
-            # `think=False` closes the template's thinking block in the prompt instead of
-            # leaving it to the model. A cheap job's whole budget can be 32 tokens, and a
-            # reasoning model spends all of them deliberating -- there is then no answer to
-            # strip the thinking off of. Asked not to think, it answers immediately.
             self._oneshot_chat=Chat(self.spec.model_id,runtime='mlx',engine=self.chat.engine,think=False,
                                     sp=sp,ctx_limit=self.spec.ctx,max_output_tokens=ONESHOT_TOKENS)
+        # `c.sp=`, not `reconfigure`: this conversation exists to be rewritten in place so MLX
+        # can trim to the common token prefix and keep its KV cache, and `reconfigure` rebuilds
+        # backend state -- which for MLX means throwing that cache away every cheap job.
         c=self._oneshot_chat; c.sp=sp; c.hist[:]=[c.mk_msg(prompt)]
         from rishi.core import resp_text
         # Always an explicit cap: this conversation is reused across jobs, so a 32-token
@@ -990,15 +996,23 @@ class RishiBackend(Backend):
         return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
                      total=u.total_tokens,cached=u.cached_tokens,cost=u.cost,turns=u.n)
     def _refresh(self):
-        from fastcore.funccall import mk_ns
-        from rishi.core import mk_toolspec
-        c=self.chat; c.sp,c.tools=self.sp,type(c.tools)(self.tools)
-        if hasattr(c,'_sys_pre'):c._sys_pre=[{'role':'system','content':self.sp}] if self.sp else []
-        if hasattr(c,'toolspecs'):c.toolspecs=[mk_toolspec(t) for t in self.tools]
-        if hasattr(c,'ns'):c.ns=mk_ns([t for t in self.tools if callable(t)])
-        c._recreate_conv()
+        # One public call, where this used to set `sp`, `tools`, `_sys_pre`, `toolspecs` and
+        # `ns` by hand and then call `_recreate_conv` -- five attributes, four of them private
+        # and three of them only present on some backends, which is why each was behind a
+        # `hasattr`. `Chat.reconfigure` is that operation, owned by the library that owns the
+        # state, so a backend changing shape is Rishi's business rather than a silent no-op here.
+        self.chat.reconfigure(sp=self.sp,tools=self.tools)
 
-# Compatibility names: model execution now always goes through Rishi.
-LlamaBackend=FastllmBackend=RishiBackend
+# Compatibility names from when llama.cpp and FastLLM were separate backends. Model execution
+# has gone through Rishi for both since, so these are the same class under two dead names, kept
+# only so an extension pinned to one keeps importing. Deprecated: use `RishiBackend`.
+def __getattr__(name):
+    if name in ('LlamaBackend','FastllmBackend'):
+        import warnings
+        warnings.warn(f'{name} is a deprecated alias for RishiBackend; model execution goes '
+                      'through Rishi for every runtime. Use RishiBackend.',
+                      DeprecationWarning, stacklevel=2)
+        return RishiBackend
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
 def make_backend(spec,**kw):return RishiBackend(spec,**kw)

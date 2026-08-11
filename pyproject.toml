@@ -14,6 +14,11 @@ keywords = ['nbdev']
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    # `requires-python` is what a resolver enforces, but the classifiers are what a person
+    # reads on the package page -- and saying only "Python 3" there while refusing to install
+    # on 3.11 is the sort of thing you find out from a failed install.
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
     "exhash>=0.4.9",           # hash-verified line addressing: how the agent edits files safely
