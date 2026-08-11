@@ -276,7 +276,9 @@ ramabana --root . --model gpt-mini
 A transcript of blocks, a status bar, and one line to type in. Tool calls are foldable blocks
 rather than lines, writes stop for approval, a request whose reading matters (“refactor the
 runtime”) gets a row of options before it becomes a turn, and every slash command is the
-agent’s own – see [cli](05_cli.ipynb).
+agent’s own – see [cli](05_cli.ipynb). Drop or paste a path to attach a picture or a sound
+file, `@path` names one inline, and `/copy` or the transcript view’s `y` yields the model’s
+own Markdown rather than the terminal’s wrapping of it.
 
 `--read_outside` is the switch described above, and `--vault` keeps what the session reads in
 a [vishalakshi](https://github.com/vedicreader/vishalakshi) vault, so the five `memory_*`

@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-Half the sandbox, a row of options, and the message a screenshot was actually sending.
+Half the sandbox, a row of options, and the terminal app's hands back: things you can
+copy, a transcript that moves, and a prompt that carries pictures and sound.
 
 ### Added
 
@@ -24,6 +25,24 @@ Half the sandbox, a row of options, and the message a screenshot was actually se
   pick one, and cancelling hands the typed line back to the composer instead of dropping it.
 - `cli.mk_host`, and `--vault` on both frontends: durable memory through `VaultHost` was
   reachable only by writing Python, so neither frontend could use vishalakshi at all.
+- **Attachments** in `ramabana.cli` — `MEDIA`, `Attachment`, `media_path`, `media_paths`,
+  `attach_refs`, `media_parts`, `media_note`, and `Ui.attach`/`detach`/`attach_row`. A prompt
+  now carries up to `MAX_ATTACH` files, images *and* audio, named the way a terminal already
+  hands files over: dropped on the window, pasted as a path, or written `@path` in the
+  sentence. Every shape a terminal delivers a drop in resolves to the same attachment —
+  quoted, bracketed, a `file://` URI, spaces backslash-escaped, several at once — where
+  before only a bare unquoted path did, which is why dropping a picture on the prompt
+  usually just typed its path. Pictures go out as content parts; *every* attachment is also
+  named by absolute path, so a runtime with no ear for audio can still reach a `.wav`
+  through the file tools. Chips above the prompt say what the next message will carry, and
+  the turn that named them is the only one that carries them.
+- **`Ui.attach_clipboard` and `clipboard_png`**, on `ctrl+v` and `/paste`. Bracketed paste
+  carries text and only text, so a copied *image* never arrived as input at all; the picture
+  has to be asked of the platform (`pngpaste`, `wl-paste`, `xclip`), and a missing helper is
+  a plain sentence rather than a silent no-op.
+- **`Ui.copy_last`, on `/copy`** — the newest reply to the system clipboard over OSC 52,
+  without leaving the prompt for the transcript view to get it.
+- `Ui.note`, `Ui.touch`, and `Ui.enter_transcript`/`leave_transcript`.
 
 ### Fixed
 
@@ -65,6 +84,26 @@ Half the sandbox, a row of options, and the message a screenshot was actually se
 - Four tests asserted against `fastllm.chat` privates (`_alite_call_func`, `AsyncChat.tcdict`)
   for a shim this package no longer installs, and had been failing since that library changed
   shape. Replaced with tests of the approval behaviour they were really protecting.
+- **Copying a reply returned the screen, not the reply.** No block passed Teleprint a
+  `source`, and `set_body` clears it unless given one, so `y` and search fell back to
+  scraping the rendering: prose re-wrapped to the terminal's width, code indented by the
+  gutter and stripped of the fences that made it paste-able. Every block now states its own
+  text, and a plain string or `Text` states it for free.
+- **The transcript view froze during a turn.** It is entered pinned to the tail (`less +F`)
+  but nothing ever called `TranscriptView.notify`, and `set_tail` goes model-only while the
+  alt screen owns the tty — so a streaming reply, arriving tool calls, and the status bar
+  itself all stopped until the next keystroke. `Ui.touch` and `Ui.paint` now drive it, rate
+  limited by `NOTIFY_EVERY` because a rebuild re-renders every block in the model.
+- **Mouse reporting was on everywhere, which took drag-select away from the terminal** —
+  the ordinary way anyone copies out of a scrollback — and in the main screen spent it on
+  nothing but accidental fold toggles. It is now switched on only while the transcript view
+  is up, which is Teleprint's own division: the main screen belongs to the terminal.
+- `/help` described keys the app does not have: `↑`/`↓` enter the transcript rather than
+  walking prompt history (that is `ctrl+p`/`ctrl+n`), and `ctrl+y` yanks.
+- The attachment hint overwrote the roots hint permanently and outlived the turn it
+  described, so the status line went on claiming an image was attached after it was sent.
+- Cancelling the refactor menu with `esc` discarded the prompt that opened it; it now
+  returns to the composer.
 
 ## 0.1.1
 Memory that outlives the process, and the first extension that spends money.
