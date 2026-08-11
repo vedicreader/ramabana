@@ -890,7 +890,11 @@ def mk_agent(roots=('.',),
     # The gate previews `create_file` by asking the host whether the path already exists, so
     # "new file" and "OVERWRITES an existing file" are different sentences to approve.
     if approvals is not None: approvals.host = host
-    return Agent(host, model=model, approvals=approvals, **kw), host
+    agent = Agent(host, model=model, approvals=approvals, **kw)
+    # A `--vault` session has two model runtimes in it otherwise: ours, and the one
+    # vishalakshi builds for itself the first time the vault is asked anything.
+    agent.lend_model()
+    return agent, host
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
 async def amain(agent, hint=''):

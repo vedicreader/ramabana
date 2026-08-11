@@ -1168,6 +1168,31 @@ class Agent:
         self.note = f'local multimodal {"on" if enabled else "off"}'
         return enabled
 
+    def lend_model(self):
+        """Let a host that builds its own chats use this session's engine instead of loading one.
+
+        `VaultHost.ask` reaches vishalakshi, which builds a `rishi.Chat` from
+        `$VISHALAKSHI_MODEL` on every call. On a local model that is a second copy of an
+        engine already in memory -- gigabytes, to answer on a *different* model from the one
+        the user is talking to.
+
+        What is lent is a factory rather than a chat, because vishalakshi builds a fresh
+        conversation per question and builds another from scratch if the first prompt
+        overflows the window. Both still happen; they just happen on weights we already have.
+        A host with no `mk_chat` is left alone, and so is one somebody has already given one.
+        """
+        if getattr(self.host, 'mk_chat', 'none of its business') is not None: return False
+
+        def mk(model=None, **kw):
+            from rishi import Chat
+            b = self._be_or_none('oneshot')
+            if b is None or b.chat is None: return Chat(model, **kw)
+            spec = b.spec
+            shared = {'engine': b.chat.engine} if spec.local and hasattr(b.chat, 'engine') else {}
+            return Chat(spec.model_id, runtime=spec.runtime, ctx_limit=spec.ctx, **shared, **kw)
+        self.host.mk_chat = mk
+        return True
+
     # -- standing interests --------------------------------------------------
     def poll_watches(self, force=False):
         """Fire whatever the host has due, in a daemon thread, at most every `poll_every` seconds.

@@ -132,3 +132,37 @@ def test_the_tools_report_a_bad_add_rather_than_ending_the_turn():
 def test_spending_money_is_gated_like_a_write():
     assert {'cart_add', 'cart_remove'} <= WRITE_TOOLS
     assert 'cart_find' not in WRITE_TOOLS
+
+
+def test_the_vault_answers_on_this_sessions_model_rather_than_loading_its_own(tmp_path):
+    """vishalakshi builds a `rishi.Chat` per `ask` from `$VISHALAKSHI_MODEL`. Unlent, that is a
+    second engine beside the one already running, answering on a different model."""
+    from ramabana.vault import VaultHost
+    from ramabana.agent import Agent
+    from ramabana.tools import LocalHost
+
+    host = VaultHost(roots=(str(tmp_path),), vault=str(tmp_path/'v.db'), index=False, web=False)
+    assert host.mk_chat is None
+    agent = Agent(host, model='gpt-mini', extensions=False, subagents=False)
+    assert agent.lend_model() is True
+    assert callable(host.mk_chat)
+    assert agent.lend_model() is False          # never replaces a factory somebody chose
+
+    plain = LocalHost(roots=(str(tmp_path),), index=False, web=False)
+    assert Agent(plain, model='gpt-mini', extensions=False, subagents=False).lend_model() is False
+    assert not hasattr(plain, 'mk_chat')
+
+    built = []
+
+    def mk(model=None, **kw):
+        built.append(kw)
+
+        class Lent:
+            runtime, use, hist = 'lent', None, []
+            def __call__(self, prompt, **kw): return {'role': 'assistant', 'content': 'lent [1]'}
+        return Lent()
+
+    host.mk_chat = mk
+    host.vault.note('Ramabana is a harness over rishi.', title='n1')
+    assert host.ask('what is ramabana?').answer == 'lent [1]'
+    assert len(built) == 1

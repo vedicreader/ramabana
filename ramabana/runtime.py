@@ -121,7 +121,7 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
 # %% ../nbs/01_runtime.ipynb #835f4984
 import copy, os, re, sys, threading
 from dataclasses import dataclass
-from .core import agent_err, env
+from .core import agent_err, claude_tags, env
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # tail kept per call; an engine that logs a lot must not eat memory
@@ -913,6 +913,11 @@ class RishiBackend(Backend):
         import os
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
+        # An enterprise-managed Claude Code forbids every dynamic MCP server, and an MCP server
+        # is how that transport declares tools -- so the tools were stripped out of the payload
+        # and the model ran blind. `tool_mode='tags'` sends the schemas in the system prompt and
+        # reads the calls back out of the reply text, a channel no MCP policy can close.
+        if self.spec.runtime=='remote' and claude_tags(self.spec.model_id): kw.setdefault('tool_mode','tags')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
             if 'backend' not in eng and (backend := env('LITERT_BACKEND')):
@@ -929,6 +934,13 @@ class RishiBackend(Backend):
         return kw
     def _start(self):
         from rishi import Chat
+        # The Claude Code transport imports `fastllm.chat`, which imports `toolslm.funccall`.
+        # `resolve` installs that shim for every model that came through it -- but a caller
+        # holding a hand-built `ModelSpec` never went through `resolve`, and the missing module
+        # would surface here as an unexplained "unavailable".
+        if self.spec.model_id.startswith('claude_code/'):
+            from .core import _install_toolslm_funccall
+            _install_toolslm_funccall()
         return Chat(self.spec.model_id,runtime=self.spec.runtime,sp=self.sp,tools=self.tools,
                     approve=self.approve,tool_max_len=self.tool_max_len,max_steps=self.max_steps,
                     ctx_limit=self.spec.ctx,**self._runtime_kw())

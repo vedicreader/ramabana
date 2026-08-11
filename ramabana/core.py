@@ -55,8 +55,8 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLAUDE', 'CLOUD', 'CUSTOM',
            'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'AgentError', 'agent_err',
-           'use_env_prefix', 'env', 'runtime_available', 'auth_status', 'available_models', 'local_ctx', 'ModelSpec',
-           'resolve', 'model_note', 'register_model', 'unregister_model', 'Routing']
+           'use_env_prefix', 'env', 'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx',
+           'ModelSpec', 'resolve', 'model_note', 'register_model', 'unregister_model', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
@@ -186,15 +186,22 @@ def _managed_claude_mcp():
 
 
 def _claude_payload_compat(transport):
-    "Make FastLLM's Claude Code payload legal under an enterprise-managed MCP policy."
+    """Make FastLLM's Claude Code payload legal under an enterprise-managed MCP policy.
+
+    The transport declares Ramabana's tools to Claude Code as an in-process MCP server, and a
+    managed configuration forbids every dynamic MCP server there is. Stripping them is the
+    only legal payload -- and on its own it left the model with no tools at all, which is a
+    coding agent that cannot read a file.
+
+    So the tools go through the other channel, the one no policy can close: the system prompt.
+    `claude_tags` is what asks Rishi for that, and this stays what it always was -- the last
+    edit before the payload goes out, making it legal.
+    """
     mk_payload = transport.mk_payload
     if getattr(mk_payload, '_ramabana_enterprise_mcp', False): return
     def compatible_payload(*args, **kwargs):
         payload = mk_payload(*args, **kwargs)
         if _managed_claude_mcp():
-            # Claude Code forbids every dynamic MCP server when a managed config exists.
-            # The transport can still run the model, but organisation policy means Ramabana's
-            # callable tools cannot be injected into that Claude Code session.
             options = payload['options']
             options.strict_mcp_config = False
             options.mcp_servers = {}
@@ -202,6 +209,22 @@ def _claude_payload_compat(transport):
         return payload
     compatible_payload._ramabana_enterprise_mcp = True
     transport.mk_payload = compatible_payload
+
+
+def claude_tags(model_id):
+    """Whether this model's tools have to travel in the system prompt rather than over MCP.
+
+    Only Claude Code, and only under a managed configuration. Everywhere else the transport's
+    own tool declaration is better in every way -- the schemas are validated, the calls come
+    back structured, and nothing depends on the model minding its punctuation.
+
+    `$RAMABANA_CLAUDE_TAG_TOOLS` forces it either way, because the managed-config probe reads
+    three fixed paths and an organisation that has moved them should not have to discover this
+    by watching an agent sit there with no tools.
+    """
+    if (v := (env('CLAUDE_TAG_TOOLS') or '').strip().lower()) in ('1', 'true', 'yes'): return True
+    if v in ('0', 'false', 'no'): return False
+    return str(model_id or '').startswith('claude_code/') and _managed_claude_mcp()
 
 
 def _load_claude_transport():

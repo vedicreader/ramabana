@@ -166,3 +166,54 @@ def test_a_short_local_name_is_checked_for_its_runtime_like_a_long_one():
             continue
         with pytest.raises(RuntimeError, match='unavailable'): resolve(short)
         with pytest.raises(RuntimeError, match='unavailable'): resolve(long)
+
+
+def test_managed_mcp_sends_the_tools_in_the_system_prompt_instead(monkeypatch):
+    """An enterprise-managed Claude Code forbids every dynamic MCP server, and MCP is how that
+    transport declares tools -- so stripping them left the model with no tools at all."""
+    import ramabana.core as core
+    from ramabana.core import ModelSpec
+    from fastllm.acomplete import api_registry
+
+    def search_code(query: str) -> str:
+        "Search the codebase."
+        return ''
+
+    spec = ModelSpec('claude', 'remote', 'claude_code/claude-sonnet-5', 200_000)
+    assert core.claude_tags(spec.model_id) is False           # unmanaged: the native path
+    assert RishiBackend(spec)._runtime_kw().get('tool_mode') is None
+
+    monkeypatch.setattr(core, '_managed_claude_mcp', lambda: True)
+    assert core.claude_tags(spec.model_id) is True
+    backend = RishiBackend(spec, sp='You are Ramabana.', tools=[search_code])
+    assert backend._runtime_kw()['tool_mode'] == 'tags'
+
+    chat = backend.start()
+    kw = chat._kw()
+    assert 'tools' not in kw                                  # the channel policy closed
+    assert '<tools>' in kw['system'] and '"search_code"' in kw['system']
+
+    # and the strip that policy requires no longer takes the tools with it
+    core._load_claude_transport()
+    payload = api_registry['claude_code'].mk_payload([], 'claude-sonnet-5', system=kw['system'])
+    assert payload['options'].mcp_servers == {}
+    assert '<tools>' in payload['options'].system_prompt
+
+    # a model that is not Claude Code keeps its native tool calling
+    assert core.claude_tags('openai/gpt-5.6') is False
+
+
+def test_a_tag_tool_call_comes_back_as_a_real_tool_call():
+    "The reply is text either way; what changed is that rishi now reads the calls out of it."
+    from aidialog.msg_parts import Msg, Part, PartType
+    import rishi.remote as remote
+
+    class Comp:
+        tool_calls, finish_reason, model, usage = None, 'stop', 'claude-sonnet-5', None
+        message = Msg(role='assistant', content=[Part(
+            type=PartType.text,
+            text='Looking now.\n<tool_call>\n{"name":"search_code","arguments":{"query":"rrf"}}\n</tool_call>')])
+
+    res = remote.norm_completion(Comp())
+    assert res['content'] == 'Looking now.'
+    assert [(t.name, t.arguments) for t in res['tool_calls']] == [('search_code', {'query': 'rrf'})]

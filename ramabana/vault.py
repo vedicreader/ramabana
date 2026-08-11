@@ -108,8 +108,10 @@ class VaultHost(LocalHost):
                  federate=True,         # fuse vault prose into `search_code` alongside kosha and ripgrep
                  remember_reads=True,   # file what `read_url` fetches, so the next session has it
                  warm=True,             # open the vault in the background at construction
+                 mk_chat=None,          # build the vault's chats with this; None -> vishalakshi's own
                  **kw):                 # forwarded to `LocalHost`
         super().__init__(roots, **kw)
+        self.mk_chat = mk_chat
         self._vault, self._vlock, self._vthread = vault, threading.Lock(), None
         self.federate, self.remember_reads = federate, remember_reads
         self._legs, self._cthread = None, None
@@ -246,6 +248,17 @@ class VaultHost(LocalHost):
         c = v.context(q, sections=MEM_SECTIONS, related=4)
         head = f'searched the web for {q!r}; filed {len(r.added)} of {r.n_found} sources in the vault'
         return '\n\n'.join([head] + [f"## {s['breadcrumb']}\n\n{s['text']}" for s in c.results])
+
+    def ask(self, question, ref=None, **kw):
+        """Have the vault answer `question` with citations, on this session's model.
+
+        vishalakshi builds a chat per `ask` from `$VISHALAKSHI_MODEL`, which on a local model
+        means loading a second copy of an engine that is already in memory -- and answering on
+        a different model from the one the user is talking to. `mk_chat` is the factory that
+        lends it ours instead; without one this is vishalakshi's own behaviour, unchanged.
+        """
+        if self.mk_chat is not None: kw.setdefault('mk_chat', self.mk_chat)
+        return self.vault.ask(question, ref=ref, **kw)   # `ask_doc` is this with `ref` set
 
     @property
     def research_note(self): return f'fossick, filed in {Path(self.vault.path).name}'
