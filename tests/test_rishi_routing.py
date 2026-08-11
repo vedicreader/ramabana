@@ -4,13 +4,46 @@ import sys
 
 import pytest
 
-from ramabana.core import DEFAULT_POLICY, LOCAL, resolve
+from ramabana.core import DEFAULT_POLICY, LOCAL, ONESHOT_JOBS, Routing, resolve
 
 
 def test_litert_model_is_the_configurable_default():
     assert LOCAL['gemma-e4b'] == 'litert-community/gemma-4-E4B-it-litert-lm'
-    assert DEFAULT_POLICY['completion'] == 'gemma-e4b'
+    assert DEFAULT_POLICY['oneshot'] == 'gemma-e4b'
     assert resolve('gemma-e4b').runtime == 'litert'
+
+
+def test_every_cheap_job_takes_the_one_shot_model():
+    "The default is unchanged; what changed is that it is now named once instead of three times."
+    r = Routing(turn='gpt-mini')
+    for job in ONESHOT_JOBS: assert r.name_for(job) == 'gemma-e4b', job
+    assert r.name_for('turn') == 'gpt-mini'
+    assert r.name_for('subagent') == 'gemma-e4b'
+
+
+def test_pointing_the_one_shot_model_somewhere_moves_every_cheap_job():
+    r = Routing(turn='gpt-mini')
+    r.policy['oneshot'] = 'gpt-sol'
+    for job in ONESHOT_JOBS: assert r.name_for(job) == 'gpt-sol', job
+    r.policy['summary'] = 'gpt'                       # one job may still be singled out
+    assert r.name_for('summary') == 'gpt'
+    assert r.name_for('classify') == 'gpt-sol'
+
+
+def test_a_cheap_job_whose_model_is_not_installed_runs_somewhere_else():
+    """`resolve` raises for a runtime whose dependency is missing, and the caller swallowed it --
+    so on a machine without LiteRT every one-shot silently returned ''."""
+    r = Routing(turn='gpt-mini')
+    r.policy['oneshot'] = 'mlx/not-installed-here'
+    with pytest.raises(Exception): r.spec('oneshot', fallback=False)
+    assert r.spec('classify').name == 'gpt-mini'      # the turn model, which is by definition here
+    assert 'unavailable' in r.notes['classify']
+
+
+def test_the_turn_model_never_falls_back():
+    "The user chose it. Running something else without saying so is worse than failing."
+    r = Routing(turn='mlx/not-installed-here')
+    with pytest.raises(Exception): r.spec('turn')
 
 
 def test_claude_code_transport_loads_through_fastllm_plugin(monkeypatch):
@@ -119,3 +152,17 @@ def test_ramabana_does_not_import_leela():
             for n,line in enumerate(f.read_text().splitlines(),1):
                 if line.startswith(('from leela','import leela')): bad.append(f'{f.name}:{n}')
     assert not bad
+
+
+def test_a_short_local_name_is_checked_for_its_runtime_like_a_long_one():
+    """`resolve('mlx/...')` always refused a runtime that is not installed; `resolve('qwen-4b')`
+    did not, so a job routed to it got a spec, built a backend, and failed at `start()`."""
+    from ramabana.core import runtime_available
+    for short, long in (('qwen-4b', 'mlx/mlx-community/Qwen3.5-4B-MLX-4bit'),
+                        ('gemma-e4b', 'litert/litert-community/gemma-4-E4B-it-litert-lm')):
+        runtime = resolve.__globals__['MODELS'][short][0]
+        if runtime_available(runtime):
+            assert resolve(short).runtime == runtime
+            continue
+        with pytest.raises(RuntimeError, match='unavailable'): resolve(short)
+        with pytest.raises(RuntimeError, match='unavailable'): resolve(long)

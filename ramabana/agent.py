@@ -1445,8 +1445,14 @@ class Agent:
         return branch
 
     # -- the cheap jobs ------------------------------------------------------
-    def oneshot(self, prompt, sp='', job='classify', max_tokens=None):
-        "A question on whichever model `job` routes to, in a conversation that is thrown away."
+    def oneshot(self, prompt, sp='', job='oneshot', max_tokens=None):
+        """A question on whichever model `job` routes to, in a conversation that is thrown away.
+
+        `oneshot` is a job in its own right now, so the small fast model every cheap call
+        wants has a name that can be pointed somewhere -- `/model qwen-4b oneshot`, or
+        `$RAMABANA_MODEL_ONESHOT` -- and `Routing` can find it a substitute when it is not
+        installed, instead of the call silently returning nothing.
+        """
         b = self._be_or_none(job)
         return '' if b is None else b.oneshot(prompt, sp, max_tokens)
 
