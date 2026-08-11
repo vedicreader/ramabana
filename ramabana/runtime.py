@@ -101,7 +101,9 @@ recorded problem, because the alternative is a traceback in a chat window.
 Rishi runs every model, local or hosted, so there is one subclass. It translates a
 `ModelSpec` into rishi's `Chat`, adapts per-runtime quirks (litert wants its token ceiling
 and constrained decoding; MLX wants a separate completion-only conversation so a suggestion
-never sees prior suggestions), and converts rishi's usage into `Usage`.
+never sees prior suggestions), and converts rishi's usage into `Usage`. Set
+`RAMABANA_LITERT_BACKEND=gpu` to select LiteRT's GPU backend process-wide; `cpu` is also
+accepted, and an explicit `eng_kw={'backend': ...}` still takes precedence.
 
 Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 
@@ -119,7 +121,7 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
 # %% ../nbs/01_runtime.ipynb #835f4984
 import copy, os, re, sys, threading
 from dataclasses import dataclass
-from .core import agent_err
+from .core import agent_err, env
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # tail kept per call; an engine that logs a lot must not eat memory
@@ -146,11 +148,9 @@ def interesting(text, limit=4):
 # %% ../nbs/01_runtime.ipynb #c5fce893
 class _Tee:
     "One redirected descriptor: everything through a pipe, out to the original, and into a buffer."
-
     def __init__(self, fd):
         self.fd, self.buf, self.thread = fd, bytearray(), None
         self.saved = self.r = self.w = None
-
     def start(self):
         self.saved = os.dup(self.fd)              
         self.r, self.w = os.pipe()
@@ -159,7 +159,6 @@ class _Tee:
         self.w = None
         self.thread = threading.Thread(target=self._pump, daemon=True)
         self.thread.start()
-
     def _pump(self):
         while True:
             try: b = os.read(self.r, 4096)
@@ -169,7 +168,6 @@ class _Tee:
             del self.buf[:-MAX_KEEP]
             try: os.write(self.saved, b)              # still goes where it was going
             except OSError: pass
-
     def stop(self):
         # Order matters: put the real descriptor back *first*, so anything written while
         # the pipe is being torn down goes somewhere real rather than to a closed fd.
@@ -193,19 +191,16 @@ class captured:
     restore each other's copies. Model calls already hold a per-backend lock; this is the
     guard for the case where two different backends are called at once.
     """
-
     _lock = threading.Lock()
-
     def __init__(self, fds=(1, 2), enabled=None):
         self.fds = fds
         self.text = ''
         self.enabled = (os.environ.get('LEELA_NO_NATIVE_CAPTURE', '') not in ('1', 'true', 'yes')
                         if enabled is None else enabled)
         self._tees, self._held = [], False
-
     def __enter__(self):
         if not self.enabled: return self
-        if not self._lock.acquire(timeout=0.5): return self      # someone else has it; don't queue
+        if not self._lock.acquire(timeout=0.5): return self
         self._held = True
         for fd in self.fds:
             t = _Tee(fd)
@@ -213,10 +208,8 @@ class captured:
                 sys.stdout.flush(); sys.stderr.flush()
                 t.start()
                 self._tees.append(t)
-            except Exception:
-                break                                            # not a real fd here; capture what we can
+            except Exception: break
         return self
-
     def __exit__(self, *exc):
         parts = []
         for t in reversed(self._tees):
@@ -238,7 +231,6 @@ class captured:
 # %% ../nbs/01_runtime.ipynb #1b16a11e
 def capture(fn, *a, **kw):
     """Call `fn`, returning `(result, captured_problem_text)`. Exceptions carry the text out too.
-
     The re-raise happens *after* the context manager exits, because the text does not exist
     until the pipe has been drained -- reading it from inside the block would attach an
     empty string to every exception, which is the failure this module exists to prevent.
@@ -268,7 +260,6 @@ def estimate_tokens(text, count=None):
         except Exception: pass
     return max(1, (len(text) + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN)
 
-
 def threshold(ctx, reserve=RESERVE):
     """The token count at which a conversation should be compacted, or None when there is no window.
 
@@ -280,7 +271,6 @@ def threshold(ctx, reserve=RESERVE):
     """
     if not ctx or ctx <= 0: return None
     return max(1, ctx - min(reserve, max(1, ctx // 4)))
-
 
 def should_compact(used, ctx, reserve=RESERVE):
     "Whether `used` tokens against a `ctx` window has crossed the line."
@@ -302,10 +292,7 @@ def _text(m):
         elif p.get('type') == 'tool_response': out.append(f"[{p.get('name','tool')}] {p.get('response')}")
     return '\n'.join(x for x in out if x)
 
-
-def _role(m):
-    return getattr(m, 'role', None) or (m.get('role', '?') if isinstance(m, dict) else '?')
-
+def _role(m): return getattr(m, 'role', None) or (m.get('role', '?') if isinstance(m, dict) else '?')
 
 def _calls(m):
     "Tool call names on an assistant message, in either shape."
@@ -611,7 +598,6 @@ class Compactor:
 
     def budget(self, ctx=0):
         """How much recent conversation to keep, for a window of `ctx`.
-
         Capped at half the window for the same reason the reserve is: 20k of "recent" on a
         4k local model means the tail is the whole conversation, `older` is empty, and
         compaction reports "everything is recent; nothing to compact" right up until the
@@ -621,7 +607,6 @@ class Compactor:
 
     def _keep(self, msgs, count=None, ctx=0):
         """The tail to keep uncompacted, newest-first until the budget runs out.
-
         Kept whole-message: half a tool result is worse than none, and a kept assistant
         message whose tool result was dropped leaves a dangling call that some providers
         reject outright.
@@ -763,6 +748,11 @@ class Usage:
         fs=('input','output','total','cached','cache_write','reasoning','cost','turns')
         return Usage(model=o.model or self.model,**{k:getattr(self,k)+getattr(o,k) for k in fs})
     def __radd__(self,o): return self if o in (None,0) else self+o
+    def __sub__(self,o):
+        "What this counter has added since `o`. A backend counts cumulatively; a turn is a delta."
+        if o is None: return self
+        fs=('input','output','total','cached','cache_write','reasoning','cost','turns')
+        return Usage(model=self.model or o.model, **{k:max(0, getattr(self,k)-getattr(o,k)) for k in fs})
     def __repr__(self):
         p=[f'{self.total:,} tok',f'in {self.input:,}',f'out {self.output:,}']
         if self.cached:p.append(f'cached {100*self.cached/max(self.input,1):.0f}%')
@@ -780,6 +770,7 @@ class Backend:
         self.tool_max_len,self.shared,self.kw=tool_max_len,shared,kw
         self.chat,self.use,self.note=None,Usage(model=spec.model_id),'not started'
         self.problems,self.last_native,self._tried=[], '', False
+        self._resume_hist=None
         self.lock=threading.Lock()
     @property
     def ready(self): return self.chat is not None
@@ -799,7 +790,11 @@ class Backend:
     def start(self):
         if self._tried:return self.chat
         self._tried=True
-        try:self.chat=self._start(); self.note=f'{len(self.tools)} tools'
+        try:
+            self.chat=self._start()
+            if self._resume_hist is not None:
+                self.restore_hist(self._resume_hist); self._resume_hist=None
+            self.note=f'{len(self.tools)} tools'
         except Exception as e:self.chat=None; self._failed('unavailable',e)
         return self.chat
     def retry(self): self._tried,self.chat=False,None; return self.start()
@@ -855,6 +850,10 @@ class Backend:
     def snapshot_hist(self):
         "A detached model-history checkpoint suitable for an in-process branch."
         return copy.deepcopy(list(self.hist))
+    def resume_hist(self,hist):
+        "Restore canonical history now, or after this backend starts lazily."
+        if self.chat:return self.restore_hist(hist)
+        self._resume_hist=copy.deepcopy(list(hist or [])); return self
     def restore_hist(self,hist):
         "Restore a checkpoint and rebuild provider conversation state."
         if not self.chat:raise RuntimeError('nothing to restore: the model is not running')
@@ -912,7 +911,15 @@ class RishiBackend(Backend):
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         if self.spec.runtime=='litert':
-            eng=dict(kw.pop('eng_kw',{}) or {}); eng.setdefault('max_num_tokens',self.spec.ctx); kw['eng_kw']=eng
+            eng=dict(kw.pop('eng_kw',{}) or {})
+            if 'backend' not in eng and (backend := env('LITERT_BACKEND')):
+                from litert_lm import Backend as LB
+                backends = {'cpu': LB.CPU, 'gpu': LB.GPU}
+                if backend.lower() not in backends:
+                    raise ValueError(f'unknown LiteRT backend {backend!r}; use cpu or gpu')
+                eng['backend'] = backends[backend.lower()]()
+            eng.setdefault('max_num_tokens',self.spec.ctx)
+            kw['eng_kw']=eng
             conv=dict(kw.pop('conv_kw',{}) or {})
             if self.tools:conv.setdefault('enable_constrained_decoding',True)
             if conv:kw['conv_kw']=conv
@@ -935,6 +942,9 @@ class RishiBackend(Backend):
             self.chat.reasoning_effort = effort
         return kw
     def _send(self,msg,**kw):
+        # FastLLM's Claude Code transport is stream-only. Consume that same Rishi stream for
+        # blocking Agent.ask callers; the CLI already takes the streaming path directly.
+        if self.spec.model_id.startswith('claude_code/'): return answer_only(''.join(self._stream(msg, **kw)))
         from rishi.core import resp_text
         # A blocking turn is read as prose by whoever asked for it, so the thinking comes off here too.
         return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))

@@ -118,11 +118,12 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 
 # %% auto #0
 __all__ = ['SANDBOX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'MAX_FILE', 'MAX_VARS', 'LD_CHARS', 'GROUP', 'EXTRA_MODULES',
-           'MAX_SKILL_CHARS', 'EVENTS', 'MAX_TOOL_CHARS', 'MAX_HITS', 'WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP',
-           'NO_SUB', 'Hit', 'Host', 'NullHost', 'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover',
-           'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'clip', 'code_tools', 'file_tools', 'notebook_tools',
-           'web_tools', 'memory_tools', 'watch_tools', 'session_tools', 'skill_tools', 'tools_for', 'read_only',
-           'delegate', 'delegate_many', 'subagent_tools']
+           'MAX_SKILL_CHARS', 'SKILL_DESC_MAX', 'EVENTS', 'MAX_TOOL_CHARS', 'MAX_HITS', 'MAX_GREP_HITS', 'WRITE_TOOLS',
+           'ERR', 'SUB_MAX_STEPS', 'SUB_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'ld_json', 'LocalHost', 'Skill',
+           'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'err', 'failed', 'clip',
+           'clip_lines', 'code_tools', 'file_tools', 'notebook_tools', 'web_tools', 'memory_tools', 'watch_tools',
+           'session_tools', 'shell_tools', 'skill_tools', 'tools_for', 'read_only', 'delegate', 'delegate_many',
+           'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, functools, json, os, re, runpy, shutil, threading, uuid
@@ -135,8 +136,7 @@ from .core import AgentError, agent_err
 # %% ../nbs/02_tools.ipynb #561c4516
 class Hit:
     "One search result, in the shape every backend of `Host.search` returns."
-    def __init__(self, path, line=1, symbol='', text=''):
-        self.path, self.line, self.symbol, self.text = path, line, symbol, text
+    def __init__(self, path, line=1, symbol='', text=''): self.path, self.line, self.symbol, self.text = path, line, symbol, text
     def __repr__(self): return f'{self.path}:{self.line}  {self.symbol}  {self.text}'
 
 # %% ../nbs/02_tools.ipynb #4c397f68
@@ -345,6 +345,38 @@ class Host:
         "What the IDE's terminal has printed. Read-only: this shows what the user ran, it cannot run anything."
         raise NotImplementedError
 
+    # -- running a command ---------------------------------------------------
+    def run_cmd(self, command, cwd=None, timeout=120):
+        """Run `command` in a shell and return `(exit_code, combined_output)`.
+
+        This is the capability the harness went longest without, and its absence was the
+        single biggest reason the loop did not converge: an agent that can edit but cannot
+        run `pytest` has no way to find out whether the edit was right, so it reports
+        success instead of checking. Everything else here answers questions about the
+        code; this is the only thing that can contradict the model.
+
+        Contract a host must keep, because the tool trusts it:
+
+        - `cwd` is resolved through `check`, so a command cannot be started outside the
+          open folders. Confining the *working directory* is not confining the command --
+          a shell can still name any path -- which is exactly why `run_shell` is in
+          `WRITE_TOOLS` and goes to a person for approval.
+        - stdout and stderr come back interleaved, in one string, as the person would see
+          them. A failing test is its traceback; splitting the streams loses the order.
+        - `timeout` is enforced and the whole process *group* is killed on expiry, or a
+          hung `pytest -f` keeps a worker forever.
+        - It returns a non-zero exit code rather than raising. A failed command is a
+          result, not an exception; the model needs to read it.
+        - An **empty** command is a no-op returning `(0, '')` and must not spawn anything.
+          That is how `tools_for` asks "can you run commands?" without running one.
+        """
+        raise NotImplementedError
+
+    @property
+    def shell_note(self):
+        "How commands are run here (the interpreter, the default directory), or why they are not."
+        return ''
+
     # -- the person ----------------------------------------------------------
     @property
     def approvals(self):
@@ -391,6 +423,7 @@ class NullHost(Host):
     def nb_cells(self, path): raise NotImplementedError
     def nb_add_cell(self, path, source, index=-1, cell_type='code'): raise NotImplementedError
     def run_python(self, code): raise NotImplementedError
+    def run_cmd(self, command, cwd=None, timeout=120): raise NotImplementedError
     def inspect_python(self, code, scope='isolated'): raise NotImplementedError
     def list_vars(self): raise NotImplementedError
     def terminal_text(self, lines=200): raise NotImplementedError
@@ -701,6 +734,38 @@ class LocalHost(Host):
     @property
     def kernel_kind(self): return 'inprocess'
 
+    # -- running a command ---------------------------------------------------
+    def run_cmd(self, command, cwd=None, timeout=120):
+        """Run `command` in a shell under one of the open folders.
+
+        Without this, an agent driven from the terminal or over MCP can edit a project but
+        never find out whether the edit was right -- which is the failure `run_shell`'s
+        docstring describes, and there is no reason a real filesystem host should have it.
+
+        The process is started in its own group and the *group* is killed on timeout, so a
+        command that spawns children (`pytest -n`, a build) cannot leave one behind. stdout
+        and stderr are interleaved, as a person would see them.
+        """
+        import subprocess
+        if not str(command or '').strip(): return 0, ''   # the capability probe
+        d = self.check(cwd) if cwd else Path(self._roots[0])
+        if not d.is_dir(): raise AgentError(f'not a directory: {d}')
+        p = subprocess.Popen(str(command), shell=True, cwd=str(d), text=True, errors='replace',
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             start_new_session=True)
+        try: out, _ = p.communicate(timeout=max(1, int(timeout)))
+        except subprocess.TimeoutExpired:
+            import os, signal
+            try: os.killpg(p.pid, signal.SIGKILL)
+            except Exception: p.kill()
+            out, _ = p.communicate()
+            return 124, (out or '') + f'\n[killed after {int(timeout)}s]'
+        return p.returncode, out or ''
+
+    @property
+    def shell_note(self):
+        return f'shell, in {self._roots[0]}'
+
     def list_vars(self):
         rows = []
         for k, v in list(self.ns.items())[:MAX_VARS]:
@@ -820,8 +885,7 @@ def _mod_skill(name, modpath):
     try:
         from importlib import import_module
         doc = import_module(modpath).__doc__ or ''
-    except Exception:
-        return None
+    except Exception: return None
     if not doc.strip(): return None
     return Skill(name=name, source='pyskill', description=_describe(doc), where=modpath, _text=load)
 
@@ -891,12 +955,26 @@ def discover(roots=(), cfg=None, extra=()):
     return sorted(by_name.values(), key=lambda s: s.name)
 
 # %% ../nbs/02_tools.ipynb #bfaf4907
+SKILL_DESC_MAX = 160   # per skill, so one verbose description cannot crowd out the rest
+
+def _clip_desc(s, n=SKILL_DESC_MAX):
+    """One line, clipped at a word boundary.
+
+    Descriptions are written to be *found* -- some enumerate every trigger word their author
+    could think of, running to a thousand characters. In the index they only have to be
+    distinguishable enough to pick, since `read_skill` then supplies the whole text.
+    """
+    s = ' '.join(str(s).split())
+    if len(s) <= n: return s
+    cut = s.rfind(' ', 0, n)
+    return s[:cut if cut > 0 else n].rstrip(' .,;:\u2014-') + '\u2026'
+
 def skill_index(skills):
-    "The block that goes in the system prompt: names and descriptions, never bodies."
+    "The block that goes in the system prompt: names and clipped descriptions, never bodies."
     if not skills: return ''
-    rows = '\n'.join(f'- `{s.name}` — {s.description}' for s in skills)
+    rows = '\n'.join(f'- `{s.name}` \u2014 {_clip_desc(s.description)}' for s in skills)
     return ('\n\n## Skills\n\nKnow-how available to you. Read one with `read_skill(name)` when its '
-            'description matches what you are about to do, *before* you do it — several of these '
+            'description matches what you are about to do, *before* you do it \u2014 several of these '
             'describe tools already installed in this environment, so the code they discuss is '
             'also searchable with `search_code`.\n\n' + rows)
 
@@ -1000,8 +1078,7 @@ def load(reg, roots=(), cfg=None, project=False, paths=()):
         p = Path(p)
         files += sorted(p.glob('*.py')) if p.is_dir() else [p]
     for f in files:
-        try:
-            ns = runpy.run_path(str(f))
+        try: ns = runpy.run_path(str(f))
         except Exception as e:
             reg.notes.append(f'{f.name}: failed to load ({agent_err(e)})')
             continue
@@ -1019,18 +1096,75 @@ def load(reg, roots=(), cfg=None, project=False, paths=()):
     return reg
 
 # %% ../nbs/02_tools.ipynb #faa16c87
-MAX_TOOL_CHARS = 6000     # per tool result; the context window is the scarce resource here
+# How many chars one tool result may spend, by default. Deliberately small: this is a
+# budget against the *smallest* model the harness runs, and an on-device model with a
+# 16k window is spent by three generous results. A host that knows it is talking to a
+# large-context model raises it -- `Agent(tool_max_len=...)`, threaded into `tools_for`.
+MAX_TOOL_CHARS = 6000
 MAX_HITS = 20
+MAX_GREP_HITS = 60
 
-# The tools that change something on disk or in the live session. Named as a set because
-# that is the line an approval policy needs to draw -- see `hitl.Approvals`.
-WRITE_TOOLS = frozenset({'edit_file', 'create_file', 'edit_cell', 'add_cell', 'run_python', 'memory_forget',
-                         'create_skill', 'cancel_watch', 'cart_add', 'cart_remove'})
+# The tools that change something on disk, in the live session, or on the machine. Named
+# as a set because that is the line an approval policy needs to draw -- see `Approvals`.
+WRITE_TOOLS = frozenset({'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell',
+                         'run_python', 'run_shell', 'memory_forget', 'create_skill',
+                         'cancel_watch', 'cart_add', 'cart_remove'})
+
+# Every tool failure starts with this. A tool result is just text to the engines underneath
+# us -- neither rishi nor fastllm carries an `is_error` flag through to the model -- so the
+# flag has to be *in* the text, spelled the same way every time. That is what lets the
+# activity feed mark a call as failed, `Agent.problems` collect them, and the model tell
+# "the file says X" apart from "I could not read the file".
+ERR = 'ERROR: '
 
 
-def clip(s, n=MAX_TOOL_CHARS):
+def err(what, e=None):
+    "One tool failure, spelled the way every other tool spells it."
+    return f'{ERR}{what}' + (f': {agent_err(e)}' if e is not None else '')
+
+
+def failed(result):
+    "Whether a tool result is a failure. The one place that knows how a failure is spelled."
+    return str(result or '').startswith(ERR)
+
+
+def clip(s, n=MAX_TOOL_CHARS, more=''):
+    """Truncate a tool result to `n` chars, saying how to get the rest.
+
+    Truncation happens here rather than in the context window because a tool result goes
+    straight back into the prompt, so the tokens are cheaper to not spend than to spend.
+    But a truncated result the model cannot *resume* is a dead end: it will either invent
+    the remainder or call the same tool again and get the same first half. So a caller
+    with a way to continue passes it as `more`, and it is included in the notice.
+    """
     s = str(s)
-    return s if len(s) <= n else s[:n] + f'\n…[{len(s)-n} more chars]'
+    if len(s) <= n: return s
+    cut = s[:n]
+    nl = cut.rfind('\n')                    # never end mid-line: the line would look complete
+    if nl > n * 0.6: cut = cut[:nl]
+    note = f'[truncated: {len(cut)} of {len(s)} chars shown'
+    return cut + f'\n…{note}. {more}]' if more else cut + f'\n…{note}]'
+
+
+def clip_lines(lines, start=1, n=MAX_TOOL_CHARS, more='', empty='(nothing)'):
+    """Render `lines` within the budget, and say which line to resume from.
+
+    The line-oriented half of `clip`. It counts what it dropped rather than describing it
+    in characters, because everything that produces lines here -- a file view, a grep, a
+    directory -- is resumed by *line or offset*, not by character.
+    """
+    lines = list(lines)
+    if not lines: return empty
+    out, used = [], 0
+    for i, line in enumerate(lines):
+        line = str(line)
+        if used + len(line) + 1 > n and out:
+            rest = len(lines) - i
+            tail = f'\n…[{rest} more line(s) not shown'
+            hint = more.format(next=start + i) if '{next}' in more else more
+            return '\n'.join(out) + (f'{tail}. {hint}]' if hint else f'{tail}]')
+        out.append(line); used += len(line) + 1
+    return '\n'.join(out)
 
 
 def _cmds(commands):
@@ -1055,8 +1189,28 @@ def _probe(host, *calls):
         except Exception: pass
     return True
 
+
+def _supports(host, name):
+    """Whether `host` implements `name`, without calling it.
+
+    Every other capability here is probed by making a harmless call. `run_cmd` has no
+    harmless call -- running a command is the side effect -- so this one is answered by
+    asking whether the host overrode the method at all.
+
+    Not calling it also means this cannot detect a host that overrides the method and then
+    refuses anyway, so `run_cmd`'s contract closes that: an empty command is a no-op that
+    returns `(0, '')`, and a host that cannot run commands raises `NotImplementedError`
+    from it like any other absent capability.
+    """
+    own, base = getattr(type(host), name, None), getattr(Host, name, None)
+    if own is None or own is base: return False
+    try: host.run_cmd('')
+    except NotImplementedError: return False
+    except Exception: pass
+    return True
+
 # %% ../nbs/02_tools.ipynb #367262aa
-def code_tools(host):
+def code_tools(host, mx=MAX_TOOL_CHARS):
     "Seeing the code: the index, the shapes in it, and the files it covers."
 
     def search_code(query: str) -> str:
@@ -1069,35 +1223,150 @@ def code_tools(host):
         if not hits: return f'no matches ({host.search_note})'
         rows = []
         for h in hits:
-            target = (f'NOTEBOOK — use this exact path with notebook_cells, then view_cell/edit_cell'
+            target = ('NOTEBOOK — use this exact path with notebook_cells, then view_cell/edit_cell'
                       if str(h.path).lower().endswith('.ipynb')
                       else 'FILE — use this exact path with view_file/edit_file')
             rows.append(f'{h.path}:{h.line}  {h.symbol or ""}  {h.text}\n  {target}')
-        return clip(f'[{host.search_note}]\n' + '\n'.join(rows))
+        return clip(f'[{host.search_note}]\n' + '\n'.join(rows), mx)
 
     def similar_code(path: str, line: int = 1) -> str:
         "Find code shaped like the function at `path`:`line` -- every place a pattern was already used."
         hits = host.peers(str(host.check(path)), int(line), limit=MAX_HITS)
         if not hits: return f'nothing similar ({host.search_note})'
-        return clip('\n'.join(f'{h.path}:{h.line}  {h.symbol or ""}  {h.text}' for h in hits))
+        return clip('\n'.join(f'{h.path}:{h.line}  {h.symbol or ""}  {h.text}' for h in hits), mx)
 
     def outline(path: str) -> str:
         "The defs and classes in one file, with line numbers."
         syms = host.symbols(str(host.check(path)))
         if not syms: return f'no symbols in {path}'
-        return clip('\n'.join(f'{int(getattr(s, "score", 0))*" "}{s.line}: {s.symbol}' for s in syms))
+        return clip('\n'.join(f'{int(getattr(s, "score", 0))*" "}{s.line}: {s.symbol}' for s in syms), mx)
 
     def list_files(pattern: str = '') -> str:
         "Files in the open folders, optionally filtered by a substring of the path."
         ps = [str(p) for p in host.walk()]
         if pattern: ps = [p for p in ps if pattern.lower() in p.lower()]
-        return clip('\n'.join(ps[:400]) or 'no matching files')
+        return clip_lines(ps, n=mx, more='narrow `pattern`', empty='no matching files')
 
-    return [search_code, similar_code, outline, list_files]
+    def grep(pattern: str, path_filter: str = '', regex: bool = True, ignore_case: bool = False) -> str:
+        """Find every line in the open folders matching `pattern`, exactly.
+
+        The literal counterpart to `search_code`, and not a replacement for it. Use
+        `search_code` for "how does this work" -- it is a semantic index and it covers
+        installed packages. Use `grep` when you know the string: a symbol you are about to
+        rename, an error message, an import, a call site you must not miss. An index answers
+        with what is *like* the query; this answers with what *is* the query, which is what
+        a rename or an audit needs.
+
+        `path_filter` is a substring of the path (`tests/`, `.py`). Set `regex=False` to
+        match `pattern` literally when it contains regex punctuation.
+        """
+        if not str(pattern or '').strip(): return err('grep needs a pattern')
+        flags = re.IGNORECASE if ignore_case else 0
+        try: rx = re.compile(pattern if regex else re.escape(pattern), flags)
+        except re.error as e: return err('bad pattern', e)
+        pf, hits, scanned, capped = str(path_filter or '').lower(), [], 0, False
+        for p in host.walk():
+            sp = str(p)
+            if pf and pf not in sp.lower(): continue
+            try: text = host.read(sp)
+            except Exception: continue
+            if not text: continue
+            scanned += 1
+            for i, line in enumerate(text.splitlines(), 1):
+                if rx.search(line):
+                    hits.append(f'{sp}:{i}: {line.strip()[:200]}')
+                    if len(hits) >= MAX_GREP_HITS: capped = True; break
+            if capped: break
+        if not hits: return f'no matches for {pattern!r} in {scanned} file(s)'
+        head = f'{len(hits)}{"+" if capped else ""} match(es) in {scanned} file(s) searched'
+        return clip_lines([head] + hits, n=mx, more='narrow `pattern` or set `path_filter`')
+
+    def ls(path: str = '') -> str:
+        """List one directory: its subdirectories, then its files with sizes.
+
+        For finding your way around. `list_files` walks everything and `grep` reads
+        everything; this just says what is here, which is usually the cheaper question.
+        Empty `path` lists each open folder.
+        """
+        roots = [host.check(path)] if str(path or '').strip() else [host.check(r) for r in host.roots]
+        out = []
+        for d in roots:
+            if not d.exists(): out.append(f'{d}: does not exist'); continue
+            if d.is_file(): out.append(f'{d}  ({d.stat().st_size} bytes, a file)'); continue
+            try: kids = sorted(d.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
+            except Exception as e: out.append(err(f'cannot list {d}', e)); continue
+            out.append(f'{d}/')
+            for k in kids:
+                if k.name.startswith('.') and k.name not in ('.agents', '.leela'): continue
+                try: out.append(f'  {k.name}/' if k.is_dir() else f'  {k.name}  {k.stat().st_size}')
+                except Exception: out.append(f'  {k.name}')
+        return clip_lines(out, n=mx, more='name a subdirectory to list it', empty='(nothing)')
+
+    return [search_code, grep, ls, similar_code, outline, list_files]
 
 # %% ../nbs/02_tools.ipynb #3cd7c09b
-def file_tools(host):
-    "Reading and editing files, always by hash-verified address."
+def _edits(edits):
+    """Parse `replace_text`'s edits from what a tool call can carry.
+
+    Models send this three ways and all three are unambiguous, so all three are accepted:
+    a JSON string, a list of `{'oldText','newText'}` dicts, or a list of `[old, new]`
+    pairs. Rejecting a shape a model reliably produces buys nothing -- it just costs a
+    turn to a message that says "send it the other way".
+    """
+    if isinstance(edits, str): edits = json.loads(edits)
+    if isinstance(edits, dict): edits = [edits]
+    if not isinstance(edits, (list, tuple)): raise ValueError('edits must be a JSON array')
+    out = []
+    for e in edits:
+        if isinstance(e, dict):
+            if 'oldText' not in e or 'newText' not in e:
+                raise ValueError("each edit needs 'oldText' and 'newText'")
+            out.append((str(e['oldText']), str(e['newText'])))
+        elif isinstance(e, (list, tuple)) and len(e) == 2: out.append((str(e[0]), str(e[1])))
+        else: raise ValueError('each edit must be {"oldText":…,"newText":…} or [old, new]')
+    return out
+
+
+def _apply_edits(text, edits):
+    """Apply exact-text edits to `text`, or raise saying which one is wrong and why.
+
+    Everything is located against the *original* text first, and only then applied. That
+    ordering is the whole design: it is what makes the operation atomic, what lets
+    overlap be detected at all, and what means a model whose third edit is stale does not
+    have to work out what its first two did to the file.
+    """
+    spans = []
+    for i, (old, new) in enumerate(edits, 1):
+        if not old: raise ValueError(f'edit {i}: oldText is empty; use create_file to write a whole file')
+        n = text.count(old)
+        if n == 0:
+            raise ValueError(f'edit {i}: oldText not found. It must match the file exactly, '
+                             f'including indentation. Re-read the file and try again')
+        if n > 1:
+            raise ValueError(f'edit {i}: oldText matches {n} places. Include more surrounding '
+                             f'lines so it matches exactly one')
+        at = text.index(old)
+        spans.append((at, at + len(old), new, i))
+    spans.sort()
+    for (s1, e1, _, i1), (s2, _, _, i2) in zip(spans, spans[1:]):
+        if s2 < e1: raise ValueError(f'edits {i1} and {i2} overlap; merge them into one edit')
+    out, at = [], 0
+    for s, e, new, _ in spans:
+        out.append(text[at:s]); out.append(new); at = e
+    out.append(text[at:])
+    return ''.join(out)
+
+
+def _diff(before, after, path='file'):
+    "A unified diff, which is what a person approving an edit should be looking at."
+    import difflib
+    d = difflib.unified_diff(before.splitlines(), after.splitlines(),
+                             f'a/{path}', f'b/{path}', lineterm='', n=2)
+    return '\n'.join(d)
+
+
+def file_tools(host, mx=MAX_TOOL_CHARS):
+    "Reading and editing files, by exact text or by hash-verified address."
 
     def view_file(path: str, start: int = 0, end: int = 0) -> str:
         """Read a file as `lineno|hash|content` lines. Optionally limit to lines `start`..`end`.
@@ -1107,8 +1376,49 @@ def file_tools(host):
         """
         from exhash import lnhashview_file
         p = host.check(path)
-        if not p.exists(): return f'no such file: {p}'
-        return clip(str(lnhashview_file(str(p), start or None, end or None)))
+        if not p.exists(): return err(f'no such file: {p}')
+        view = str(lnhashview_file(str(p), start or None, end or None))
+        return clip_lines(view.splitlines(), start=(start or 1), n=mx,
+                          more='call view_file(path, start={next}) to continue')
+
+    def replace_text(path: str, edits: str) -> str:
+        """Edit a file by exact text replacement, and return the diff. Usually the easier editor.
+
+        `edits` is a JSON array of objects, applied together:
+          [{"oldText": "def old(a):", "newText": "def new(a, b):"},
+           {"oldText": "return a", "newText": "return a + b"}]
+
+        Rules, all of them checked *before* anything is written, so a rejected edit leaves
+        the file exactly as it was:
+
+        - Every `oldText` must appear **exactly once** in the file. If it appears twice,
+          include more surrounding lines until it is unique -- do not guess which one.
+        - Every `oldText` is matched against the file as it is **now**, not against the
+          result of the earlier edits in the same call. Overlapping or nested spans are
+          refused; merge them into one edit instead.
+        - Keep `oldText` as short as it can be while still unique. Do not paste a whole
+          function to change one line of it.
+        - An empty `oldText` is refused. To create a file use `create_file`; to append,
+          include the last existing line in `oldText`.
+
+        This and `edit_file` do the same job by different addresses: `edit_file` names
+        lines by hash, which catches a stale read but costs a `view_file` before every
+        edit and again after each one. Prefer this for ordinary edits; prefer `edit_file`
+        when you must be certain the line you are changing is the line you read.
+        """
+        p = host.check(path)
+        try: items = _edits(edits)
+        except Exception as e: return err('could not parse edits', e)
+        if not items: return err('no edits given')
+        try: before = host.read(str(p))
+        except Exception as e: return err(f'could not read {p}', e)
+        if before is None: return err(f'no such file: {p}. Use create_file to create it')
+        try: after = _apply_edits(before, items)
+        except ValueError as e: return err(str(e))
+        if after == before: return err('the edits changed nothing; check oldText against a fresh view_file')
+        try: host.write(str(p), after)
+        except Exception as e: return err('write failed', e)
+        return clip(f'replaced {len(items)} block(s) in {p}\n' + _diff(before, after, str(p)), mx)
 
     def edit_file(path: str, commands: str) -> str:
         """Edit a file with hash-verified exhash commands, and return the diff.
@@ -1124,27 +1434,27 @@ def file_tools(host):
         from exhash import file_exhash
         p = host.check(path)
         try: cmds = _cmds(commands)
-        except Exception as e: return f'could not parse commands: {agent_err(e)}'
-        if not cmds: return 'no commands given'
-        try: return clip(str(file_exhash(str(p), *cmds)))
-        except Exception as e: return f'edit failed: {agent_err(e)}'
+        except Exception as e: return err('could not parse commands', e)
+        if not cmds: return err('no commands given')
+        try: return clip(str(file_exhash(str(p), *cmds)), mx)
+        except Exception as e: return err('edit failed', e)
 
     def create_file(path: str, text: str = '') -> str:
-        "Create (or overwrite) a whole file. For changes to an existing file prefer `edit_file`."
+        "Create (or overwrite) a whole file. For changes to an existing file prefer `replace_text`."
         try: return f'wrote {host.write(path, text)}'
-        except Exception as e: return f'write failed: {agent_err(e)}'
+        except Exception as e: return err('write failed', e)
 
-    return [view_file, edit_file, create_file]
+    return [view_file, replace_text, edit_file, create_file]
 
 # %% ../nbs/02_tools.ipynb #6c20cd07
-def notebook_tools(host):
+def notebook_tools(host, mx=MAX_TOOL_CHARS):
     "Notebooks, addressed by cell id rather than by line."
 
     def notebook_cells(path: str) -> str:
         "List a notebook's cells: id, type, and first line. Cell ids are what `edit_cell` addresses."
         try: rows = host.nb_cells(str(host.check(path)))
         except NotImplementedError: raise
-        except Exception as e: return f'could not read notebook: {agent_err(e)}'
+        except Exception as e: return err('could not read notebook', e)
         return clip('\n'.join(f'{i}  {t:8} {(s or "").strip().splitlines()[0][:100] if (s or "").strip() else ""}'
                               for i, t, s in rows) or '(empty notebook)')
 
@@ -1152,26 +1462,26 @@ def notebook_tools(host):
         "Read one notebook cell as `lineno|hash|content` lines, ready to address with `edit_cell`."
         from exhash import lnhashview_cell
         try: return clip(str(lnhashview_cell(str(host.check(path)), cell_id)))
-        except Exception as e: return f'could not read cell: {agent_err(e)}'
+        except Exception as e: return err('could not read cell', e)
 
     def edit_cell(path: str, cell_id: str, commands: str) -> str:
         "Edit one notebook cell's source with exhash commands from `view_cell`. Same format as `edit_file`."
         from exhash import cell_exhash
         try: cmds = _cmds(commands)
-        except Exception as e: return f'could not parse commands: {agent_err(e)}'
+        except Exception as e: return err('could not parse commands', e)
         try: return clip(str(cell_exhash(str(host.check(path)), cell_id, *cmds)))
-        except Exception as e: return f'edit failed: {agent_err(e)}'
+        except Exception as e: return err('edit failed', e)
 
     def add_cell(path: str, source: str, index: int = -1, cell_type: str = 'code') -> str:
         "Insert a new cell into a notebook at `index` (-1 appends). Creates the notebook if needed."
         try: return f'added cell {host.nb_add_cell(str(host.check(path)), source, int(index), cell_type)} to {path}'
         except NotImplementedError: raise
-        except Exception as e: return f'could not add cell: {agent_err(e)}'
+        except Exception as e: return err('could not add cell', e)
 
     return [notebook_cells, view_cell, edit_cell, add_cell]
 
 # %% ../nbs/02_tools.ipynb #53642256
-def web_tools(host):
+def web_tools(host, mx=MAX_TOOL_CHARS):
     "The web, for the questions whose answer depends on current documentation."
 
     def web_search(query: str) -> str:
@@ -1196,7 +1506,7 @@ def web_tools(host):
     return [web_search, read_url, research]
 
 # %% ../nbs/02_tools.ipynb #e9bae42f
-def memory_tools(host):
+def memory_tools(host, mx=MAX_TOOL_CHARS):
     "Durable pages and research recalled as document sections rather than flat snippets."
 
     def memory_search(query: str, limit: int = 8) -> str:
@@ -1206,7 +1516,7 @@ def memory_tools(host):
         this before searching the live web when the question may have been researched before.
         """
         try: return clip(json.dumps(host.memory_search(query, int(limit)), default=str), MAX_TOOL_CHARS * 2)
-        except Exception as e: return f'memory search failed: {agent_err(e)}'
+        except Exception as e: return err('memory search failed', e)
 
     def memory_tree(document: str = '') -> str:
         """Browse remembered document headings without embedding a query.
@@ -1215,17 +1525,17 @@ def memory_tools(host):
         all remembered roots, then call again with the relevant document.
         """
         try: return clip(json.dumps(host.memory_tree(document), default=str), MAX_TOOL_CHARS * 2)
-        except Exception as e: return f'memory tree failed: {agent_err(e)}'
+        except Exception as e: return err('memory tree failed', e)
 
     def memory_read(node_id: str) -> str:
         "Read one whole remembered section by the node id returned by memory_search/tree."
         try: return clip(json.dumps(host.memory_read(node_id), default=str), MAX_TOOL_CHARS * 3)
-        except Exception as e: return f'memory read failed: {agent_err(e)}'
+        except Exception as e: return err('memory read failed', e)
 
     def memory_topics(limit: int = 12) -> str:
         "Map remembered material into labelled semantic clusters and representative members."
         try: return clip(json.dumps(host.memory_topics(int(limit)), default=str), MAX_TOOL_CHARS * 2)
-        except Exception as e: return f'memory topics failed: {agent_err(e)}'
+        except Exception as e: return err('memory topics failed', e)
 
     def memory_forget(doc_id: str) -> str:
         """Purge one bad, sensitive, stale or irrelevant remembered document by id.
@@ -1234,12 +1544,12 @@ def memory_tools(host):
         do not silently curate their memory.
         """
         try: return 'forgot document' if host.memory_forget(doc_id) else 'document was not forgotten'
-        except Exception as e: return f'memory purge failed: {agent_err(e)}'
+        except Exception as e: return err('memory purge failed', e)
 
     return [memory_search, memory_tree, memory_read, memory_topics, memory_forget]
 
 # %% ../nbs/02_tools.ipynb #f91b907d
-def watch_tools(host):
+def watch_tools(host, mx=MAX_TOOL_CHARS):
     "Standing interests: what to put back on the desk later, and what has come due now."
 
     def remember(text: str, title: str = '', tags: str = '') -> str:
@@ -1252,7 +1562,7 @@ def watch_tools(host):
             d = host.remember(text, title=title or None,
                               tags=[t.strip() for t in tags.split(',') if t.strip()])
             return f"remembered {d.get('title')!r} as {d.get('doc_id')}"
-        except Exception as e: return f'could not remember: {agent_err(e)}'
+        except Exception as e: return err('could not remember', e)
 
     def set_reminder(text: str, every: str = '1w', note: str = '') -> str:
         """Come back to `text` every `every` ('30m', '6h', '1d', '1w').
@@ -1263,14 +1573,14 @@ def watch_tools(host):
         try:
             w = host.watch(text, action='remind', every=every, note=note or None)
             return f"reminder {w['id']} set, every {every}"
-        except Exception as e: return f'could not set reminder: {agent_err(e)}'
+        except Exception as e: return err('could not set reminder', e)
 
     def watch_url(url: str, every: str = '1d', note: str = '') -> str:
         "Re-read `url` every `every` and file each version in memory, so changes are visible over time."
         try:
             w = host.watch(url, action='url', every=every, note=note or None)
             return f"watching {url} as {w['id']}, every {every}"
-        except Exception as e: return f'could not watch: {agent_err(e)}'
+        except Exception as e: return err('could not watch', e)
 
     def list_watches(due_only: bool = False) -> str:
         "Every standing watch and reminder, soonest first. `due_only` shows just what has come due."
@@ -1280,14 +1590,14 @@ def watch_tools(host):
             return clip('\n'.join(
                 f"{w['id']}  {w['action']:8} every {int(w['every'])}s  runs={w['runs']}"
                 f"  {w.get('last_status') or 'never run'}  {str(w['target'])[:80]}" for w in ws))
-        except Exception as e: return f'could not list watches: {agent_err(e)}'
+        except Exception as e: return err('could not list watches', e)
 
     def cancel_watch(watch_id: str) -> str:
         "Delete one watch by id. Only when the user asks; do not silently curate their reminders."
         try:
             host.unwatch(watch_id)
             return f'cancelled {watch_id}'
-        except Exception as e: return f'could not cancel: {agent_err(e)}'
+        except Exception as e: return err('could not cancel', e)
 
     def poll_watches() -> str:
         """Run every watch that has come due, and report what fired.
@@ -1300,12 +1610,12 @@ def watch_tools(host):
             if not r.get('ran'): return f"nothing due ({r.get('checked', 0)} watched)"
             lines = [f"{x['status']:7} {x['action']:8} {str(x['target'])[:90]}" for x in r['results']]
             return clip(f"{r['ran']} of {r['checked']} fired\n" + '\n'.join(lines))
-        except Exception as e: return f'poll failed: {agent_err(e)}'
+        except Exception as e: return err('poll failed', e)
 
     return [remember, set_reminder, watch_url, list_watches, cancel_watch, poll_watches]
 
 # %% ../nbs/02_tools.ipynb #b453bc91
-def session_tools(host):
+def session_tools(host, mx=MAX_TOOL_CHARS):
     "The live kernel the user is working in, and the terminal they are looking at."
 
     def list_vars() -> str:
@@ -1321,7 +1631,7 @@ def session_tools(host):
         """
         try: return clip(host.run_python(code))
         except NotImplementedError: raise
-        except Exception as e: return f'run failed: {agent_err(e)}'
+        except Exception as e: return err('run failed', e)
 
     def scale_numeric(source: str = 'df', output: str = 'df_norm') -> str:
         """Min-max scale a DataFrame's numeric columns to 0..1 in a new live variable.
@@ -1340,7 +1650,7 @@ def session_tools(host):
                 f"{output}.head()")
         try: return clip(host.run_python(code))
         except NotImplementedError: raise
-        except Exception as e: return f'scale failed: {agent_err(e)}'
+        except Exception as e: return err('scale failed', e)
 
     def inspect_python(code: str, scope: str = 'isolated') -> str:
         """Look at the user's live variables by running Python that cannot change them.
@@ -1362,7 +1672,7 @@ def session_tools(host):
         """
         try: return clip(host.inspect_python(code, scope=scope))
         except NotImplementedError: raise
-        except Exception as e: return f'inspection failed: {agent_err(e)}'
+        except Exception as e: return err('inspection failed', e)
 
     def read_terminal(lines: int = 200) -> str:
         """Read what the IDE's terminal has printed -- a failing build, a stack trace, a test run.
@@ -1374,8 +1684,43 @@ def session_tools(host):
 
     return [list_vars, run_python, scale_numeric, inspect_python, read_terminal]
 
+# %% ../nbs/02_tools.ipynb #sh311770
+def shell_tools(host, mx=MAX_TOOL_CHARS):
+    "Running a command, which is the only way to find out whether the work is done."
+
+    def run_shell(command: str, cwd: str = '', timeout: int = 120) -> str:
+        """Run one shell command in the project and return its exit code and output.
+
+        This is how you check your work, and you are expected to use it: after an edit, run
+        the tests; after a change to a signature, run the type checker or the linter the
+        project already uses; before saying something passes, make it pass here. A claim
+        with no command behind it is a guess, and will be read as one.
+
+        - stdout and stderr come back interleaved, as a person would see them, with the
+          exit code on the first line. A non-zero exit is a *result*: read the output and
+          fix the cause, do not run it again unchanged.
+        - `cwd` defaults to the first open folder and must stay inside the open folders.
+        - `timeout` is in seconds; the command is killed when it expires. Do not start
+          servers, watchers, REPLs, or anything else that does not exit on its own.
+        - Use the project's own commands -- the ones in its README, `pyproject.toml`, or
+          `Makefile` -- rather than a global tool that may not be what it uses.
+        - This may be put to the user for approval, so send one purposeful command rather
+          than a chain of exploratory ones.
+        """
+        cmd = str(command or '').strip()
+        if not cmd: return err('no command given')
+        try: code, out = host.run_cmd(cmd, cwd=(str(cwd).strip() or None), timeout=int(timeout))
+        except NotImplementedError: raise
+        except Exception as e: return err('command could not be run', e)
+        head = f'exit {code}' + ('' if code == 0 else '  (command FAILED)')
+        body = clip((out or '').rstrip() or '(no output)', mx - 200,
+                    more='re-run narrowing the command (a single test, `| tail -50`) rather than repeating it')
+        return f'{head}\n{body}' if code == 0 else f'{ERR}{head}\n{body}'
+
+    return [run_shell]
+
 # %% ../nbs/02_tools.ipynb #cbb32215
-def skill_tools(host, get_skills):
+def skill_tools(host, get_skills, mx=MAX_TOOL_CHARS):
     "Reading discovered skills and creating project-local Agent Skills."
 
     def read_skill(name: str) -> str:
@@ -1417,29 +1762,38 @@ def skill_tools(host, get_skills):
         desc = json.dumps(' '.join(str(description).split()), ensure_ascii=False)
         text = f'---\nname: {title}\ndescription: {desc}\n---\n\n{str(instructions).strip()}\n'
         try: host.write(str(target), text)
-        except Exception as e: return f'could not create skill: {agent_err(e)}'
+        except Exception as e: return err('could not create skill', e)
         return f'created {target}; run /reload to load it into the current agent'
 
     return [read_skill, create_skill]
 
 # %% ../nbs/02_tools.ipynb #ddf75013
-def tools_for(host, get_skills=None, extra=()):
+def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS):
     """Every tool this host can actually support, plus whatever extensions registered.
 
     Each group is probed with a harmless call and dropped whole if the host does not
     implement it. Whole groups rather than individual tools because the groups are the
     real units of capability: a host with no notebook representation cannot support any of
     the four notebook tools, and one with no kernel cannot support any of the session ones.
+
+    `mx` is what one tool result may spend. It belongs here rather than in each tool
+    because it is a property of the *model* the results are going to, not of the tool: the
+    same `view_file` that should return 300 lines to a frontier model has to return 60 to
+    an on-device one, and getting that wrong is not a formatting problem -- a turn whose
+    tool results overflow a 16k window fails outright.
     """
     tools = []
-    tools += code_tools(host)
-    tools += file_tools(host)
-    if _probe(host, lambda: host.nb_cells('.')): tools += notebook_tools(host)
-    if _probe(host, lambda: host.web_search('', n=1)): tools += web_tools(host)
-    if _probe(host, lambda: host.memory_tree('')): tools += memory_tools(host)
-    if _probe(host, lambda: host.watches()): tools += watch_tools(host)
-    if _probe(host, lambda: host.list_vars(), lambda: host.terminal_text(1)): tools += session_tools(host)
-    if get_skills is not None: tools += skill_tools(host, get_skills)
+    tools += code_tools(host, mx)
+    tools += file_tools(host, mx)
+    if _probe(host, lambda: host.nb_cells('.')): tools += notebook_tools(host, mx)
+    if _probe(host, lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
+    if _probe(host, lambda: host.memory_tree('')): tools += memory_tools(host, mx)
+    if _probe(host, lambda: host.watches()): tools += watch_tools(host, mx)
+    if _probe(host, lambda: host.list_vars(), lambda: host.terminal_text(1)): tools += session_tools(host, mx)
+    # `run_cmd` is the one capability with no harmless probe, so it is answered by asking
+    # whether the host overrode the method rather than by running something.
+    if _supports(host, 'run_cmd'): tools += shell_tools(host, mx)
+    if get_skills is not None: tools += skill_tools(host, get_skills, mx)
     tools += list(extra or ())
     return tools
 
@@ -1501,7 +1855,7 @@ def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS):
         if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
         return sub.send(question)
     except Exception as e:
-        return f'delegation failed: {agent_err(e)}'
+        return err('delegation failed', e)
     finally:
         if sub is not None:
             try: sub.close()
@@ -1580,7 +1934,7 @@ def subagent_tools(get_backend, get_tools):
             if not isinstance(qs, list) or not all(isinstance(q, str) for q in qs):
                 raise ValueError('expected a JSON array of strings')
         except Exception as e:
-            return f'could not parse questions: {agent_err(e)}'
+            return err('could not parse questions', e)
         if not qs: return 'no questions given'
         answers = delegate_many(b, qs, get_tools())
         return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2)

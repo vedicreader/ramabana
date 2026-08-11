@@ -5,7 +5,7 @@ models the deliberation arrives as ordinary reply text and only the closing tag 
 once per step. These tests pin the detection, the filter and the shared one-shot cap without
 loading a model.
 """
-from ramabana.core import resolve
+from ramabana.core import ModelSpec
 from ramabana.runtime import ONESHOT_TOKENS, RishiBackend, ThinkFilter, answer_only, prefills_think
 
 
@@ -90,7 +90,7 @@ def test_a_cheap_job_cannot_leave_its_output_cap_behind():
     class Local(RishiBackend):
         def _start(self): return Chat()
 
-    b = Local(resolve('ornith-9b'))
+    b = Local(ModelSpec('test-mlx', 'mlx', 'test/model', 8192))
     b._oneshot_chat = Chat()
     b.start()
     b.oneshot('label this', 'pick one', 32)

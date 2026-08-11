@@ -44,7 +44,8 @@ pip install 'ramabana[all]'
 ```
 
 A model is not bundled. `rishi` fetches one on first use, and which one is a routing
-decision – see [core](00_core.ipynb).
+decision – see [core](00_core.ipynb). To run LiteRT models on its GPU backend, set the
+process-wide environment variable `RAMABANA_LITERT_BACKEND=gpu` before starting Ramabana.
 
 ## Use
 

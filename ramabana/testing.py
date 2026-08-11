@@ -87,10 +87,22 @@ SCRIPTED = ModelSpec('scripted', 'scripted', 'scripted/model', ctx=8000)
 class MemHost(NullHost):
     "A host whose folders live in a dict, so the file tools can be driven without touching disk."
 
-    def __init__(self, files=None, root='/proj'):
+    def __init__(self, files=None, root='/proj', commands=None):
         super().__init__([root])
         self.files, self.root = dict(files or {}), root
-        self.ran = []
+        self.ran, self.cmds = [], []
+        # What a command is scripted to return: `{command: (exit_code, output)}`. Anything
+        # not scripted exits 0 with no output, so a test that only cares *that* a command
+        # ran does not have to describe one.
+        self.commands = dict(commands or {})
+
+    def run_cmd(self, command, cwd=None, timeout=120):
+        if not str(command or '').strip(): return 0, ''      # the capability probe
+        self.cmds.append((command, cwd, timeout))
+        return self.commands.get(command, (0, ''))
+
+    @property
+    def shell_note(self): return 'scripted'
 
     def check(self, path, must_exist=False):
         p = Path(path)
@@ -272,7 +284,11 @@ class FakeBackend(Backend):
         for w in self._send(msg, **kw).split(' '): yield w + ' '
 
     def _oneshot(self, prompt, sp, max_tokens): return f'ONESHOT:{prompt[:40]}'
-    def _usage(self): return Usage(model=self.spec.model_id, input=10, output=5, total=15, turns=1)
+    def _usage(self):
+        # Cumulative, the way a real chat's counters are: `Backend.send` assigns rather than
+        # adds, so a double keeps its own running total or it cannot catch double-counting.
+        n = max(1, len(self.sent))
+        return Usage(model=self.spec.model_id, input=10*n, output=5*n, total=15*n, turns=n)
 
     @property
     def hist(self): return self.hist_

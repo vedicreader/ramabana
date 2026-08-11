@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from ramabana.tools import NullHost, WRITE_TOOLS, tools_for, watch_tools
+from ramabana.tools import ERR, NullHost, WRITE_TOOLS, failed, tools_for, watch_tools
 from ramabana.shop import CartError, Cart, FakeCart, cart_tools
 
 
@@ -24,12 +24,15 @@ def test_a_host_without_watches_is_not_offered_the_watch_tools():
 def test_watch_tools_report_a_missing_capability_instead_of_raising():
     "Every one of them is reachable on a host that supports none of it, and none of them raise."
     ts = {t.__name__: t for t in watch_tools(NullHost())}
-    assert ts['remember']('x').startswith('could not remember')
-    assert ts['set_reminder']('x').startswith('could not set reminder')
-    assert ts['watch_url']('https://x').startswith('could not watch')
-    assert ts['list_watches']().startswith('could not list')
-    assert ts['cancel_watch']('abc').startswith('could not cancel')
-    assert ts['poll_watches']().startswith('poll failed')
+    # One spelling of failure, so the activity feed and `Agent.problems` need no prefix list.
+    for call, why in [(lambda: ts['remember']('x'), 'could not remember'),
+                      (lambda: ts['set_reminder']('x'), 'could not set reminder'),
+                      (lambda: ts['watch_url']('https://x'), 'could not watch'),
+                      (lambda: ts['list_watches'](), 'could not list'),
+                      (lambda: ts['cancel_watch']('abc'), 'could not cancel'),
+                      (lambda: ts['poll_watches'](), 'poll failed')]:
+        out = call()
+        assert failed(out) and out.startswith(ERR + why), out
 
 
 def test_cancelling_a_watch_is_gated_like_a_write():
@@ -121,7 +124,8 @@ def test_moving_store_changes_what_is_stocked_but_not_the_trolley():
 
 def test_the_tools_report_a_bad_add_rather_than_ending_the_turn():
     ts = {t.__name__: t for t in cart_tools(FakeCart())}
-    assert ts['cart_add']('caviar').startswith("could not add 'caviar'")
+    out = ts['cart_add']('caviar')
+    assert failed(out) and out.startswith(ERR + "could not add 'caviar'"), out
     assert 'no products matching' in ts['cart_find']('caviar')
 
 

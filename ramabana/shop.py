@@ -31,7 +31,7 @@ __all__ = ['MAX_PRODUCTS', 'SHOP_PORT', 'SHOP_TOUT', 'CATALOGUE', 'CartError', '
 import json
 from fastcore.basics import store_attr
 from .core import AgentError, agent_err
-from .tools import clip
+from .tools import clip, err
 
 # %% ../nbs/08_shop.ipynb #aa16daf7
 MAX_PRODUCTS = 24        # products listed back per search; a supermarket page holds far more
@@ -212,12 +212,12 @@ def cart_tools(cart):
     def cart_stores() -> str:
         "The stores whose search and trolley pages are known, and anything worth knowing about each."
         try: return clip('\n'.join(f'{k}  {v}' for k, v in cart.stores().items()))
-        except Exception as e: return f'could not list stores: {agent_err(e)}'
+        except Exception as e: return err('could not list stores', e)
 
     def cart_open(url: str) -> str:
         "Point the shopping session at a store, or at one product page. Do this before searching."
         try: return f'now at {cart.open(url)}'
-        except Exception as e: return f'could not open {url}: {agent_err(e)}'
+        except Exception as e: return err(f'could not open {url}', e)
 
     def cart_find(query: str, limit: int = 10) -> str:
         """Search the store you are on. Returns numbered products; the number is what `cart_add` takes.
@@ -229,7 +229,7 @@ def cart_tools(cart):
             rows = cart.find(query, int(limit))
             if not rows: return f'no products matching {query!r} at {cart.where}'
             return clip('\n'.join(f"{r['i']:>3}  {r['price'] or '?':>8}  {r['title']}" for r in rows))
-        except Exception as e: return f'search failed: {agent_err(e)}'
+        except Exception as e: return err('search failed', e)
 
     def cart_add(item: str, qty: int = 1, variant: str = '') -> str:
         """Put a product in the trolley. `item` is a number from `cart_find`, or an exact title.
@@ -245,7 +245,7 @@ def cart_tools(cart):
             title = (r.get('item') or {}).get('title', item)
             return clip(f"{state}: {qty} x {title}\ntrolley now {json.dumps(r.get('after'))}"
                         + (f"\n{r.get('error')}" if r.get('error') else ''))
-        except Exception as e: return f'could not add {item!r}: {agent_err(e)}'
+        except Exception as e: return err(f'could not add {item!r}', e)
 
     def cart_show() -> str:
         "Read the trolley back: every line, and the count and subtotal."
@@ -253,11 +253,11 @@ def cart_tools(cart):
             ls, t = cart.lines(), cart.total()
             body = '\n'.join(f"{l.get('qty', 1)} x {l.get('title')}  {l.get('price', '')}" for l in ls)
             return clip(f"{t.get('count')} items, subtotal {t.get('subtotal')}\n{body}")
-        except Exception as e: return f'could not read the trolley: {agent_err(e)}'
+        except Exception as e: return err('could not read the trolley', e)
 
     def cart_remove(line: str) -> str:
         "Take one line out of the trolley, by its number in `cart_show` or by exact title."
         try: return clip(json.dumps(cart.remove(line), default=str))
-        except Exception as e: return f'could not remove {line!r}: {agent_err(e)}'
+        except Exception as e: return err(f'could not remove {line!r}', e)
 
     return [cart_stores, cart_open, cart_find, cart_add, cart_show, cart_remove]

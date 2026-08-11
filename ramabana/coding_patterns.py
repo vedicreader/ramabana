@@ -1,0 +1,70 @@
+"""Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
+
+Read this before writing, reviewing, refactoring, or assessing code. These are Answer.AI's coding standards adapted to Ramabana's tools and nbdev workflow.
+
+## Improve shared tooling
+
+A better tool helps every later task and every agent. When repository-owned tooling creates recurring friction, fix it or raise the problem rather than quietly building a workaround. Do not expand the current task without the user's agreement, but make the friction visible.
+
+## Read before writing
+
+Use `search_code` before writing non-trivial code: the answer or established pattern is usually already in the repository or an installed package. Read the exact source before editing it. Use `grep` for exhaustive literal audits such as call sites and renames. Match the surrounding design unless the request is specifically to change it.
+
+## Every construct must earn its place
+
+Readers assume everything present is necessary. Do not add defensive copies, redundant coercions, speculative exception handling, unused parameters, abstractions, or compatibility branches without a concrete requirement. Prefer concise readable code over verbose enterprise boilerplate.
+
+Comments state constraints the code cannot express. Do not add comments that narrate the next line, explain where a change came from, or argue that the change is correct. Add type hints, docstrings, and abstractions only when they improve the public contract or surrounding code consistently uses them.
+
+Make the requested change and no unrelated cleanup. Never discard edits already in the working tree.
+
+## Prefer the fastcore ecosystem
+
+When choosing dependencies for an Answer.AI or fastai-family project, first check whether `fastcore`, `fastai`, `fasthtml`, `fastlite`, or another existing project dependency already provides the capability. Do not add a dependency when the repository already has an adequate primitive.
+
+## Plain commands are the contract
+
+Use the command documented by the repository in its README, `pyproject.toml`, or Makefile. Prefer its plain configured form. A repeated flag belongs in project configuration rather than every invocation.
+
+Run commands and read their complete output. Do not pipe diagnostic output through `head`, `tail`, or filters that hide failures. Do not merge stderr into stdout with `2>&1`. If output genuinely must be externalized, redirect stdout and stderr separately and inspect both files.
+
+Apply formatters when formatting is the goal; reserve check-only modes for final verification and CI.
+
+## Preserve docments and delegation
+
+Docments are trailing parameter comments used as API documentation. Never remove them while refactoring. For a signature with docments or many parameters, keep the opening parenthesis on the definition line, put one parameter on each indented line, and put the closing `):` at definition indentation.
+
+When `**kwargs` passes through to a known callable with useful named parameters, use `@delegates(callee)` and name the collector `kwargs`. Do not use `@delegates` when the callee itself exposes only `**kwargs`.
+
+## Strings and regular expressions
+
+Use raw strings for non-trivial regular expressions, paths with escapes, and literals where backslashes carry meaning. Keep string construction direct and readable; avoid layers of escaping or interpolation when a simpler literal or structured operation expresses the same thing.
+
+## Tests are executable design
+
+Test observable behavior and important failure modes, not incidental implementation details. A regression test should fail for the reported bug before the fix and pass afterward. Keep tests focused enough that a failure identifies the broken contract.
+
+In nbdev projects, the notebook is source, documentation, examples, and tests. Edit the source notebook rather than generated Python, preserve docments and explanatory structure, export with the project's nbdev command, and run the documented tests. Do not add tests that merely duplicate implementation line by line.
+
+## Ramabana workflow
+
+Use Ramabana's native tools rather than instructions written for another harness:
+
+- `search_code` finds repository and installed-package behavior.
+- `view_file` or notebook cell tools read the exact source before editing.
+- `replace_text`, `edit_file`, or `edit_cell` make narrow, auditable changes.
+- `inspect_python` reads live state without mutation; `run_python` performs requested transformations in new bindings.
+- `run_shell` verifies edits with the repository's own commands.
+- `read_skill` loads specialized workflows before using them.
+
+A task is not complete because code was written. Run the relevant tests or checks, read the result, fix failures, and report exactly what was verified. Never claim a file changed or a check passed without tool evidence from the current session.
+
+Docs: https://vedicreader.github.io/ramabana/coding_patterns.html.md"""
+
+# AUTOGENERATED! DO NOT EDIT! File to edit: ../nbs/09_coding_patterns.ipynb.
+
+# %% auto #0
+__all__ = []
+
+# %% ../nbs/09_coding_patterns.ipynb #7eb8eb26
+__all__ = []

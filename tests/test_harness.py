@@ -59,11 +59,47 @@ def test_cheap_jobs_stay_local_when_the_turn_goes_to_the_cloud(monkeypatch):
     r = core.Routing(turn='gemma-e2b')
     r.set('gemma-12b')                       # stand-in for a cloud model, no network needed
     assert r.spec('turn').name == 'gemma-12b'
-    expected = {'completion': 'mini-coder-4b', 'classify': core.DFLT_LOCAL,
+    expected = {'completion': core.DFLT_LOCAL, 'classify': core.DFLT_LOCAL,
                 'summary': core.DFLT_LOCAL, 'subagent': core.DFLT_LOCAL}
     for job, name in expected.items():
         assert r.spec(job).name == name, job
         assert r.spec(job).local
+
+
+def test_turn_model_change_keeps_the_conversation(monkeypatch):
+    "A new Rishi backend starts lazily with the old backend's canonical history."
+    made = []
+
+    class SwitchBackend(FakeBackend):
+        def close(self): self.chat = None
+
+    def build(spec, **kw):
+        backend = SwitchBackend(spec, replies=['continued'], **kw)
+        made.append(backend)
+        return backend
+
+    monkeypatch.setattr(agent, 'make_backend', build)
+    a = Agent(MemHost(), model='gemma-e2b', extensions=False, subagents=False)
+    first = a.start()
+    first.hist_.extend([{'role': 'user', 'content': 'remember cedar'},
+                        {'role': 'assistant', 'content': 'I will remember cedar'}])
+
+    a.set_model('gemma-12b')
+    assert a.model.name == 'gemma-12b'
+    assert not a.ready
+    second = a.start()
+    assert second is made[-1]
+    assert second.hist == first.hist_
+    assert second.hist is not first.hist_
+
+
+def test_model_change_is_blocked_during_a_turn():
+    a, _ = fake_agent()
+    a.lock.acquire()
+    try:
+        with pytest.raises(RuntimeError, match='while the assistant is working'):
+            a.set_model('gemma-12b')
+    finally: a.lock.release()
 
 
 def test_env_overrides_a_single_job(monkeypatch):
@@ -255,6 +291,47 @@ def test_a_dead_kernel_is_not_promised():
     assert 'clean namespace' in runtime.reorient(kernel_alive=False)
 
 
+def test_ramabana_profile_does_not_mix_in_aai_prompt_notices():
+    a, be = fake_agent(replies=['done'])
+    a.ask('add a test')
+    assert runtime.ACTION_NOTICE not in str(be.sent[-1])
+
+
+def test_saved_session_can_be_listed_and_resumed():
+    a, backend = fake_agent()
+    a.history = [
+        {'session': 'agent_20260811-101010', 'at': 1, 'model': 'gemma-e4b',
+         'prompt': 'remember cedar', 'reply': 'I will remember cedar'},
+        {'session': 'agent_20260811-101010', 'at': 2, 'model': 'gemma-e4b',
+         'prompt': 'what was it?', 'reply': 'cedar'},
+    ]
+    assert 'remember cedar' in a.command('/sessions')
+    out = a.command('/resume latest')
+    assert '2 turns' in out
+    assert backend._resume_hist[-1] == {'role': 'assistant', 'content': 'cedar'}
+    assert a.session_id == 'agent_20260811-101010'
+
+
+def test_models_command_lists_local_and_cloud_choices(monkeypatch):
+    a, _ = fake_agent()
+    monkeypatch.setattr(agent, 'available_models', lambda include_legacy=False: [
+        {'value': 'gemma-e4b', 'provider': 'litert', 'source': 'on device'},
+        {'value': 'claude_code/claude-sonnet-4-6', 'provider': 'claude_code',
+         'source': 'Claude Code login'},
+    ])
+    out = a.command('/models')
+    assert 'gemma-e4b' in out
+    assert 'claude_code/claude-sonnet-4-6' in out
+    assert 'Claude Code login' in out
+    assert 'models' in a.commands()
+
+
+def test_aai_profile_remains_an_explicit_compatibility_option():
+    a, be = fake_agent(replies=['done'], instruction_style='aai')
+    a.ask('add a test')
+    assert runtime.ACTION_NOTICE in str(be.sent[-1])
+
+
 def test_prompt_notices_fire_where_they_should():
     assert runtime.prompt_notices('where is this handled?') == [runtime.Q_NOTICE]
     assert runtime.APPROVAL_NOTICE in runtime.prompt_notices('go')
@@ -275,6 +352,15 @@ def test_pyskills_are_discovered_from_installed_packages():
     assert 'exhash' in found, 'exhash ships the editing reference leela used to paste by hand'
     assert found['exhash'].source == 'pyskill'
     assert found['exhash'].text().strip()
+
+
+def test_ramabana_publishes_answer_ai_coding_patterns_as_a_pyskill():
+    found = {s.name: s for s in tools.discover()}
+    skill = found['coding_patterns']
+    assert skill.source == 'pyskill'
+    assert skill.where == 'ramabana.coding_patterns'
+    assert 'Every construct must earn its place' in skill.text()
+    assert 'Ramabana workflow' in skill.text()
 
 
 def test_skill_md_directories_win_over_packages(tmp_path):
@@ -299,7 +385,12 @@ def test_the_index_carries_names_not_bodies():
     idx = tools.skill_index(ss)
     assert 'read_skill' in idx
     for s in ss: assert s.name in idx
-    assert len(idx) < 4000
+    # The total scales with how many skills happen to be installed, so the invariant that
+    # actually holds is per row: a name and one clipped line, never a body. `hf-cli` ships a
+    # 1000-char frontmatter description, and without the clip one skill crowds out the rest.
+    rows = [l for l in idx.splitlines() if l.startswith('- `')]
+    assert len(rows) == len(ss)
+    for r in rows: assert len(r) <= tools.SKILL_DESC_MAX + max(len(s.name) for s in ss) + 8
 
 
 def test_find_refuses_to_guess_between_two_matches():
@@ -376,17 +467,37 @@ def test_a_turn_records_its_activity_and_usage():
     assert be.sent and 'hello' in str(be.sent[0])
 
 
-def test_a_question_gets_the_answer_first_notice():
+def test_a_turn_is_charged_once():
+    "A backend counts cumulatively, so adding its total every turn charges turn one twice."
+    a, be = fake_agent(replies=['one', 'two', 'three'])
+    for p in ('a', 'b', 'c'): a.ask(p)
+    assert be.use.total == 45          # the backend's running total after three sends
+    assert a.turn_use.total == 15      # this turn only
+    assert a.use.total == 45           # the session, not 15 + 30 + 45
+
+
+def test_a_failed_turn_does_not_inherit_the_last_turn_s_cost():
+    a, be = fake_agent(replies=['fine'])
+    a.ask('ok')
+    assert a.turn_use.total == 15
+    a._prepare('next')
+    assert a.turn_use.total == 0
+
+
+def test_a_question_gets_direct_routing_without_a_second_instruction_system():
     a, be = fake_agent(replies=['because x'])
     a.ask('why does this break?')
-    assert '<system-reminder>' in str(be.sent[0]) and 'question' in str(be.sent[0])
+    sent = str(be.sent[0])
+    assert 'route="direct"' in sent
+    assert '<system-reminder>' not in sent
 
 
 def test_write_tools_are_the_ones_approval_draws_its_line_around():
     # Not only the filesystem: deleting a standing reminder and spending money in a trolley are
     # both things a person should get to see before they happen.
-    assert {'edit_file', 'create_file', 'edit_cell', 'add_cell', 'run_python', 'memory_forget',
-            'create_skill', 'cancel_watch', 'cart_add', 'cart_remove'} == set(WRITE_TOOLS)
+    assert {'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell', 'run_python',
+            'run_shell', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add',
+            'cart_remove'} == set(WRITE_TOOLS)
 
 
 def test_a_subagent_never_gets_a_write_tool():

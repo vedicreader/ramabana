@@ -36,7 +36,7 @@ mcp = ["mcp>=1.2"]
 all = ["ramabana[cli,mcp]"]
 # Every notebook is executed by `nbdev-test`, including the cli and mcp pages, so the dev
 # environment needs both frontends' dependencies or CI cannot run the docs as tests.
-dev = ["ramabana[cli,mcp]", "nbdev>=3.3", "notebook>=7.6.0", "pytest>=8.0.0"]
+dev = ["ramabana[cli,mcp]", "rishi[all]>=0.1.1", "nbdev>=3.3", "notebook>=7.6.0", "pytest>=8.0.0"]
 
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
@@ -48,6 +48,9 @@ ramabana-mcp = "ramabana.mcp:main"
 
 [project.entry-points.nbdev]
 ramabana = "ramabana._modidx:d"
+
+[project.entry-points.pyskills]
+coding_patterns = "ramabana.coding_patterns"
 
 [tool.nbdev]
 # leela tags cells with `leela.context`; without this, `nbdev-clean` strips it and CI then
@@ -62,3 +65,10 @@ include = ["/ramabana", "/nbs", "/tests", "/CHANGELOG.md", "/README.md", "/pypro
 
 [tool.hatch.version]
 path = "ramabana/__init__.py"
+
+[dependency-groups]
+dev = [
+    "nbdev>=3.3.11",
+    "notebook>=7.6.1",
+    "rishi[all]>=0.1.2",
+]
