@@ -259,7 +259,9 @@ ramabana --root . --model gpt-mini
 
 A transcript of blocks, a status bar, and one line to type in. Tool calls are foldable blocks
 rather than lines, writes stop for approval, and every slash command is the agent’s own – see
-[cli](05_cli.ipynb).
+[cli](05_cli.ipynb). Drop or paste a path to attach a picture or a sound file,
+`@path` names one inline, and `/copy` or the transcript view’s `y` yields the
+model’s own Markdown rather than the terminal’s wrapping of it.
 
 The same task, without the terminal, for a pipe:
 
