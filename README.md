@@ -100,6 +100,22 @@ len(tools_for(NullHost())), len(tools_for(host))
 
     (10, 19)
 
+The sandbox has two halves, and only one of them is usually the point. Confining *writes* is
+what stops an agent damaging something nobody opened. Confining *reads* is what stops it
+answering a question whose answer is in a sibling checkout, in a library outside the venv, or
+in a log the project does not own – and that is a cost rather than a protection often enough
+to be worth a switch. `read_outside=True` separates them: a read may name any path on the
+machine, a write may not, and a short list of credential paths is refused either way.
+Enumeration stays confined whichever way it is set, so `walk`, `grep` and `list_files` never
+leave the open folders and a read outside is always a path the model already knew.
+
+``` python
+open_host = LocalHost(['..'], web=False, index=False, read_outside=True)
+open_host.roots_note
+```
+
+    '1 folder(s); reads may name any path on this machine, writes may not'
+
 With a model in place, one turn is `ask`. Here it runs against a scripted backend, so this
 page is reproducible; [testing](04_testing.ipynb) is where that comes from:
 
@@ -258,8 +274,13 @@ ramabana --root . --model gpt-mini
 ```
 
 A transcript of blocks, a status bar, and one line to type in. Tool calls are foldable blocks
-rather than lines, writes stop for approval, and every slash command is the agent’s own – see
-[cli](05_cli.ipynb).
+rather than lines, writes stop for approval, a request whose reading matters (“refactor the
+runtime”) gets a row of options before it becomes a turn, and every slash command is the
+agent’s own – see [cli](05_cli.ipynb).
+
+`--read_outside` is the switch described above, and `--vault` keeps what the session reads in
+a [vishalakshi](https://github.com/vedicreader/vishalakshi) vault, so the five `memory_*`
+tools appear and the next session can recall what this one read.
 
 The same task, without the terminal, for a pipe:
 
@@ -287,7 +308,8 @@ ramabana-mcp --root .
 
 The same tools, served to another agent: read-only by default, writes behind `--write`, and
 `--model` adds an `ask` tool that runs a whole Ramabana turn and returns just its answer –
-see [mcp](06_mcp.ipynb).
+see [mcp](06_mcp.ipynb). `--read_outside` and `--vault` mean here what they mean in the
+terminal.
 
 ## Develop
 

@@ -2,10 +2,11 @@
 
 ## The server
 
-The tools mounted here are the same objects a turn gets. `functools.wraps` in
-`Agent._record` kept their signatures and docstrings, and that is exactly what FastMCP reads
-to build a schema -- so there is no second description of any tool anywhere, and nothing to
-drift.
+With an agent, the tools mounted here are the very objects a turn gets -- the recorded
+wrappers, so a client's call lands in the same activity feed and the same `changes()` a turn
+does. `functools.wraps` in `Agent._record` kept their signatures and docstrings, and that is
+exactly what FastMCP reads to build a schema, so there is no second description of any tool
+anywhere and nothing to drift. Without an agent the tools are built straight off the host.
 
 `readonly` defaults to True because the client is another agent whose approval UI this server
 does not control. Writes are one flag away, and should be gated the usual way when they are
@@ -44,7 +45,7 @@ from fastcore.script import call_parse
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from .tools import WRITE_TOOLS, LocalHost, discover, find, skill_index, tools_for
-from .cli import mk_agent
+from .cli import mk_agent, mk_host
 
 # %% ../nbs/06_mcp.ipynb #6d6ba498
 UNSAFE = WRITE_TOOLS | {'delegate_search', 'delegate_parallel'}
@@ -80,8 +81,11 @@ def server(host=None, agent=None, name='ramabana', readonly=True, delegate=True,
     host = host if host is not None else LocalHost()
     mcp = FastMCP(name, instructions=INSTRUCTIONS, **kw)
     skills = discover(host.roots, getattr(agent, 'cfg', None)) if agent is None else agent.skills
+    # The agent's own recorded tools when there is one, so a client's call reaches the same
+    # activity feed and the same `changes()` as a call the model made for itself.
+    every = agent.tools if agent is not None else tools_for(host, get_skills=lambda: skills)
     mounted = []
-    for tool in tools_for(host, get_skills=lambda: skills):
+    for tool in every:
         nm = getattr(tool, '__name__', '')
         if readonly and nm in UNSAFE: continue
         mcp.add_tool(tool, annotations=_annotate(nm))
@@ -132,14 +136,17 @@ def main(
     model: str = None,               # the model `ask` runs on; omit to serve tools only
     write: bool = False,             # mount the write tools too
     web: bool = True,                # let the web tools reach the network through fossick
+    read_outside: bool = False,      # let reads name any path on this machine; writes stay inside
+    vault: bool = False,             # keep what is read in a vishalakshi vault, for the next session
     transport: str = 'stdio',        # stdio | sse | streamable-http
     cfg: str = None,                 # config dir, for skills and extensions
 ):
     "Serve Ramabana's tools over MCP."
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     if model:
-        agent, host = mk_agent(roots, model=model, approve='none', web=web,
+        agent, host = mk_agent(roots, model=model, approve='none', web=web, vault=vault,
+                               read_outside=read_outside,
                                cfg=Path(cfg).expanduser() if cfg else None)
     else:
-        agent, host = None, LocalHost(roots, web=web)
+        agent, host = None, mk_host(roots, web=web, vault=vault, read_outside=read_outside)
     server(host, agent, readonly=not write).run(transport=transport)

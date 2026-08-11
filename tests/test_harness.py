@@ -195,54 +195,41 @@ def test_cancelling_a_turn_releases_a_waiting_approval():
     assert not d and 'cancelled' in d.reply()
 
 
-def _fl():
-    fastllm = pytest.importorskip('fastllm.chat')
-    from ramabana import agent
-    assert agent.apply(), agent.note()
-    return fastllm
-
-
-def hello(name: str) -> str:
-    "Say hello to someone."
-    return f'hi {name}'
-
-
-def _call(approve=None):
-    fc = _fl()
-    from aidialog.msg_parts import ToolCall
-    from fastllm.chat import lite_mk_func
-    from toolslm.funccall import mk_ns
-    tc = ToolCall(id='1', name='hello', arguments={'name': 'x'})
-    return asyncio.run(fc._alite_call_func(tc, [lite_mk_func(hello)], mk_ns([hello]), approve=approve))
-
-
 def test_fastllm_patch_is_idempotent():
+    "Hosted approvals reach rishi's own remote path now, so the shim is three functions saying so."
     from ramabana import agent
     assert agent.apply() and agent.apply() and agent.applied()
 
 
-def test_fastllm_runs_the_tool_when_nothing_gates_it():
-    assert _call() == 'hi x'
+# What the four fastllm tests that used to live here were really about. They reached into
+# `fastllm.chat._alite_call_func` and `AsyncChat.tcdict` -- a third-party private API which
+# has since changed shape, so they failed against a library ramabana no longer patches. The
+# behaviour they were protecting is this package's, and it is testable without one.
+def test_the_gate_is_the_decision_a_backend_acts_on():
+    "Both engines call `approve(tc)` and branch on the result, so it has to answer as a bool."
+    ap = agent.Approvals(tools={'edit_file'}, mode='auto')
+    d = ap.gate({'function': {'name': 'edit_file', 'arguments': '{"path": "a.py"}'}})
+    assert bool(d) and d.args == {'path': 'a.py'}
+    assert bool(ap.gate({'function': {'name': 'search_code', 'arguments': {}}}))   # ungated: instant
 
 
-def test_fastllm_refuses_a_gated_tool_and_says_why():
-    out = _call(approve=agent.Approvals(tools={'hello'}, mode='off').gate)
-    assert agent.DENIED in out and 'switched off' in out
+def test_a_refusal_carries_its_reason_to_the_model():
+    "The point of the gate: 'denied' teaches a model nothing, a reason changes its approach."
+    ap = agent.Approvals(tools={'edit_file'}, mode='off')
+    d = ap.gate({'function': {'name': 'edit_file', 'arguments': {}}})
+    assert not d and agent.DENIED in d.reply() and 'switched off' in d.reply()
+    approved = agent.Ask(tool='edit_file').resolve(True, 'keep the docstring')
+    assert approved.reply().endswith('keep the docstring')
 
 
-def test_fastllm_carries_an_approval_note_back():
-    ap = agent.Approvals(tools={'hello'}, mode='auto')
-    ap.on_answer = None
-    out = _call(approve=lambda tc: agent.Ask(tool='hello').resolve(True, 'be careful'))
-    assert 'hi x' in out and 'be careful' in out
-
-
-def test_fastllm_tcdict_carries_the_policy_per_chat():
-    "Per chat, not a module global: a sub-agent must not inherit the main conversation's prompt."
-    fc = _fl()
-    c = fc.AsyncChat.__new__(fc.AsyncChat)
-    c.tool_schemas, c.ns, c.approve = [], {}, 'POLICY'
-    assert c.tcdict['approve'] == 'POLICY'
+def test_a_refusal_nobody_could_be_asked_about_still_reaches_the_recorder():
+    "Otherwise it surfaces as a tool failure with the explanation nowhere in the UI."
+    heard = []
+    off = agent.Approvals(tools={'edit_file'}, mode='off', on_answer=heard.append)
+    off.gate({'function': {'name': 'edit_file', 'arguments': {}}})
+    deaf = agent.Approvals(tools={'edit_file'}, on_answer=heard.append)   # nothing listening
+    deaf.gate({'function': {'name': 'edit_file', 'arguments': {}}})
+    assert len(heard) == 2 and all(not a and a.note for a in heard)
 
 
 def test_threshold_leaves_room_for_one_more_reply():
@@ -681,3 +668,120 @@ def test_a_narrow_host_says_why_rather_than_failing_silently():
             if scope not in self.scopes: return f'scope {scope!r} is not available here'
             return 'sandboxed ok'
     assert 'not available' in H(['/x']).inspect_python('x', 'overlay')
+
+
+# -- reading outside the open folders ----------------------------------------
+# The sandbox has two halves and only one of them was ever the point. Confining *writes* is
+# what stops an agent damaging something nobody opened; confining *reads* is what stops it
+# answering a question whose answer is in a sibling checkout. `read_outside` separates them.
+
+
+def _outside_host(tmp_path):
+    from ramabana.tools import LocalHost
+    root, sibling = tmp_path/'proj', tmp_path/'sibling'
+    (root/'pkg').mkdir(parents=True)
+    (root/'pkg'/'a.py').write_text('def a(): return 1\n')
+    sibling.mkdir()
+    (sibling/'notes.md').write_text('the answer is 42\n')
+    return LocalHost([root], web=False, index=False, read_outside=True), root, sibling
+
+
+def test_a_read_outside_the_folders_is_off_until_it_is_asked_for(tmp_path):
+    from ramabana.tools import LocalHost
+    open_host, root, sibling = _outside_host(tmp_path)
+    shut = LocalHost([root], web=False, index=False)
+    assert shut.read(sibling/'notes.md') is None
+    assert open_host.read(sibling/'notes.md').strip() == 'the answer is 42'
+
+
+def test_reading_outside_does_not_make_writing_outside(tmp_path):
+    open_host, root, sibling = _outside_host(tmp_path)
+    with pytest.raises(core.AgentError, match='outside the open folders'):
+        open_host.check(sibling/'notes.md')
+    with pytest.raises(core.AgentError, match='outside the open folders'):
+        open_host.write(sibling/'notes.md', 'no')
+    assert (sibling/'notes.md').read_text().strip() == 'the answer is 42'
+
+
+def test_reading_outside_never_opens_credentials(tmp_path):
+    "Opening the sandbox is a decision about source, not about the user's keys."
+    open_host, root, sibling = _outside_host(tmp_path)
+    (sibling/'.env').write_text('OPENAI_API_KEY=sk-real\n')
+    with pytest.raises(core.AgentError, match='credentials'):
+        open_host.check(sibling/'.env', reading=True)
+    assert open_host.read(sibling/'.env') is None
+    assert tools.denied('/home/k/.ssh/id_rsa') and not tools.denied(root/'pkg'/'a.py')
+
+
+def test_enumeration_stays_inside_even_when_reads_do_not(tmp_path):
+    "A read outside is always a path the model already knew; it can never be found by walking."
+    open_host, root, sibling = _outside_host(tmp_path)
+    assert all(str(root) in str(p) for p in open_host.walk())
+    listed = {t.__name__: t for t in tools_for(open_host)}['list_files']('notes.md')
+    assert 'sibling' not in listed
+
+
+def test_a_read_only_tool_reaches_outside_and_a_write_tool_does_not(tmp_path):
+    open_host, root, sibling = _outside_host(tmp_path)
+    ts = {t.__name__: t for t in tools_for(open_host)}
+    assert 'the answer is 42' in ts['view_file'](str(sibling/'notes.md'))
+    assert tools.failed(ts['create_file'](str(sibling/'new.py'), 'x = 1'))
+    assert not (sibling/'new.py').exists()
+
+
+def test_readable_does_not_send_the_flag_to_a_host_that_predates_it():
+    "The flag is a host capability, not a tool assumption: an older host sees its own call."
+    from pathlib import Path as _P
+    seen = []
+
+    class OldHost(NullHost):
+        def check(self, path, must_exist=False):
+            seen.append((path, must_exist))
+            return _P(path)
+
+    assert not tools._takes_reading(OldHost)
+    assert str(tools.readable(OldHost(['/proj']), '/anywhere/x.py')) == '/anywhere/x.py'
+    assert seen == [('/anywhere/x.py', False)]
+
+
+# -- what a turn actually sends ----------------------------------------------
+
+
+def test_an_attached_image_survives_the_tool_plan():
+    """`compose` returns a list of content parts when an image is attached, and `list += str`
+    extends it one character at a time -- so the plan, the preflight evidence and any
+    requested skill used to arrive as several hundred single-character parts."""
+    a, be = fake_agent(replies=['a screenshot of a traceback'])
+    a.local_multimodal = True
+    a.ask(a.compose('what is in this image?', image=b'\x89PNG-not-really'))
+    sent = be.sent[-1]
+    assert isinstance(sent, list) and len(sent) == 2
+    assert sent[0] == b'\x89PNG-not-really'
+    assert '<user-request>' in sent[1] and '<tool-plan' in sent[1]
+
+
+def test_checkpoints_do_not_grow_without_bound():
+    "Each one is a deep copy of a whole conversation, so an unbounded dict of them is a leak."
+    a, be = fake_agent(replies=['ok'] * 30)
+    for i in range(agent.MAX_CHECKPOINTS + 5): a.ask(f'turn {i}')
+    assert len(a.checkpoints) == agent.MAX_CHECKPOINTS
+    assert a.current_turn_id in a.checkpoints
+
+
+def test_the_feed_names_the_command_a_shell_call_ran():
+    "`run_shell` is the tool a person most wants to read back, and it had no summary at all."
+    assert agent.summarise('run_shell', {'command': 'pytest -q'}) == 'Run pytest -q'
+    assert agent.Act(tool='run_shell').kind == 'run'
+    assert agent.summarise('grep', {'pattern': 'RESERVE', 'path_filter': 'tests/'}) == 'Grep RESERVE in tests/'
+    assert agent.summarise('list_watches', {'due_only': False}) == 'List watches'
+
+
+def test_native_capture_follows_the_application_env_prefix():
+    "`use_env_prefix` exists so one hard-coded variable name is not wrong in every other app."
+    import os
+    from ramabana.runtime import captured
+    core.use_env_prefix('RAMABANA_', 'LEELA_')
+    os.environ['RAMABANA_NO_NATIVE_CAPTURE'] = '1'
+    try: assert captured().enabled is False
+    finally: os.environ.pop('RAMABANA_NO_NATIVE_CAPTURE', None)
+    assert captured().enabled is True

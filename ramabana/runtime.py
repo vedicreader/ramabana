@@ -195,7 +195,10 @@ class captured:
     def __init__(self, fds=(1, 2), enabled=None):
         self.fds = fds
         self.text = ''
-        self.enabled = (os.environ.get('LEELA_NO_NATIVE_CAPTURE', '') not in ('1', 'true', 'yes')
+        # Through `env`, so the switch follows whatever prefix this application named --
+        # `$RAMABANA_NO_NATIVE_CAPTURE` here, `$LEELA_NO_NATIVE_CAPTURE` inside leela, rather
+        # than one hard-coded name that is wrong in one of them.
+        self.enabled = ((env('NO_NATIVE_CAPTURE') or '').lower() not in ('1', 'true', 'yes')
                         if enabled is None else enabled)
         self._tees, self._held = [], False
     def __enter__(self):

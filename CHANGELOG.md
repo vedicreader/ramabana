@@ -1,5 +1,62 @@
 # Changelog
 
+## Unreleased
+
+Half the sandbox, a row of options, and the message a screenshot was actually sending.
+
+### Added
+
+- **`LocalHost(read_outside=True)`** — the sandbox has two halves and only one of them is
+  usually the point. Confining *writes* stops an agent damaging something nobody opened;
+  confining *reads* stops it answering a question whose answer is in a sibling checkout or a
+  library outside the venv. With this on, a read may name any path on the machine and a write
+  may not. Enumeration is unchanged either way — `walk`, and therefore `grep` and
+  `list_files`, never leave the open folders — so a read outside is always a path the model
+  already knew, never one it found by looking. `DENY` is the short list of credential paths
+  refused regardless, because opening the sandbox is a decision about source and not about
+  the user's keys. `--read_outside` on both `ramabana` and `ramabana-mcp`.
+- `Host.check` takes `reading=`, and the read-only tools resolve through the new
+  `tools.readable`, which checks the signature first — so the flag is a host capability
+  rather than a tool assumption and a host written before it sees the call it always saw.
+- **`cli.Option` / `options_for` / a reworked `ChoiceMenu`** — the two-choice refactor prompt
+  became a component. A prompt whose *reading* matters gets a titled row of options above the
+  input line, each with the instruction it appends; arrows, digits or the option's own letter
+  pick one, and cancelling hands the typed line back to the composer instead of dropping it.
+- `cli.mk_host`, and `--vault` on both frontends: durable memory through `VaultHost` was
+  reachable only by writing Python, so neither frontend could use vishalakshi at all.
+
+### Fixed
+
+- **An attached image shredded the rest of the message.** `compose` returns a list of content
+  parts when there is an image, and `_prepare` then did `list += str` — which extends a list
+  one character at a time. Every multimodal turn reached the model as the image followed by
+  several hundred single-character parts, with the tool plan and every preflight result
+  scattered among them.
+- `Approvals` refusals that nobody could be asked about (`mode='off'`, or no listener
+  registered) never reached `on_answer`, so the reason existed only in the model's context
+  and the user saw an unexplained tool failure.
+- `Agent.checkpoints` grew for the life of a session, holding a deep copy of a whole
+  conversation per turn. Capped at `MAX_CHECKPOINTS`.
+- `/skill NAME` was `return self.oneshot and clip(...)` — a bound method used as a truth
+  value, left over from an earlier shape.
+- The briefing and `tool_plan` still named leela, telling a model working on any other
+  project about an editor that is not there.
+- `captured` read `$LEELA_NO_NATIVE_CAPTURE` directly, so the switch was unreachable under
+  the prefix `use_env_prefix` exists to set. It goes through `env` now, and the old name
+  still works as the fallback.
+- The activity feed had no summary or icon for `run_shell`, `grep`, `ls`, `replace_text`,
+  `create_skill` or any of the memory, watch and cart tools — the shell call, which is the
+  one a person most wants to read back, rendered as `run_shell(command='…')` under a wrench.
+- `Ui.submit` tested for a refactor question *before* recognising a slash command, so
+  `/model refactor-thing` opened a menu instead of running.
+- `_supports` was written as a general capability probe and hard-coded `run_cmd` in its body.
+- With an agent, the MCP server now mounts the agent's own recorded tools, which is what its
+  documentation already claimed: a client's call lands in the same activity feed and the same
+  `changes()` as a call the model made for itself.
+- Four tests asserted against `fastllm.chat` privates (`_alite_call_func`, `AsyncChat.tcdict`)
+  for a shim this package no longer installs, and had been failing since that library changed
+  shape. Replaced with tests of the approval behaviour they were really protecting.
+
 ## 0.1.1
 Memory that outlives the process, and the first extension that spends money.
 
