@@ -129,8 +129,8 @@ __all__ = ['MAX_GREP_HITS', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 'SKIP_DIRS'
            'MAX_HITS', 'WRITE_TOOLS', 'ERR', 'SUB_MAX_STEPS', 'SUB_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied',
            'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs',
            'load', 'err', 'failed', 'clip', 'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools',
-           'web_tools', 'memory_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools', 'tools_for',
-           'read_only', 'delegate', 'delegate_many', 'subagent_tools']
+           'web_tools', 'memory_tools', 'api_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools',
+           'tools_for', 'read_only', 'delegate', 'delegate_many', 'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, functools, json, os, re, runpy, shutil, threading, uuid
@@ -1902,6 +1902,45 @@ def memory_tools(host, mx=MAX_TOOL_CHARS):
     if _supports(host, 'ask'): tools.insert(4, ask_memory)
     return tools
 
+# %% ../nbs/02_tools.ipynb #apitools01
+def api_tools(host, mx=MAX_TOOL_CHARS):
+    """Read an API specification, browse what it declares, and call one operation.
+
+    The signature `api_ops` reports is the one `api_call` accepts, because both are built from
+    the same `OpSpec`. A model that read the list therefore cannot invent a parameter the
+    service does not take, which is the failure mode of asking it to compose a request by hand.
+    """
+
+    def api_load(src: str, name: str = '') -> str:
+        """Load an OpenAPI or discovery document from a url or a path.
+
+        Do this before `api_ops` or `api_call`. `src` is often `<host>/openapi.json`. Returns
+        the operation count and the groups, which is what to narrow by next.
+        """
+        try: return clip(json.dumps(host.api_load(src, name), default=str), mx)
+        except Exception as e: return err('could not load the spec', e)
+
+    def api_ops(group: str = '', name: str = '', match: str = '') -> str:
+        """List the operations a loaded spec declares, with their signatures.
+
+        Narrow with `group` or `match` first: a real API has hundreds of operations, and
+        reading all of them is not how you find the one you want.
+        """
+        try: return clip(json.dumps(host.api_ops(group, name, match), default=str), mx)
+        except Exception as e: return err('could not read the operations', e)
+
+    def api_call(operation: str, name: str = '', params: dict = None) -> str:
+        """Call one operation, passing `params` under the names `api_ops` reported.
+
+        A parameter the operation does not declare is an error rather than an extra query
+        field, which is what makes a wrong call fail loudly instead of quietly.
+        """
+        try: return clip(json.dumps(host.api_call(operation, name, **(params or {})), default=str), mx)
+        except Exception as e: return err(f'{operation} failed', e)
+
+    return [api_load, api_ops, api_call]
+
+
 # %% ../nbs/02_tools.ipynb #f91b907d
 def watch_tools(host, mx=MAX_TOOL_CHARS):
     "Standing interests: what to put back on the desk later, and what has come due now."
@@ -2134,6 +2173,9 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS):
     if _has(host, 'web', lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
     if _has(host, 'memory', lambda: host.memory_tree('')): tools += memory_tools(host, mx)
     if _has(host, 'watch', lambda: host.watches()): tools += watch_tools(host, mx)
+    # Declared, never probed: the probe would be `api_ops`, and a host with no spec loaded
+    # yet answers that by raising -- which is a missing spec, not a missing capability.
+    if _declared(host, 'api'): tools += api_tools(host, mx)
     if _has(host, 'session', lambda: host.list_vars(), lambda: host.terminal_text(1)): tools += session_tools(host, mx)
     # `run_cmd` is the one capability with no harmless probe, so it is answered by asking
     # whether the host overrode the method rather than by running something.
