@@ -193,7 +193,12 @@ class DhrishtiHost(LocalHost):
     def __init__(self, roots, base, **kwargs):
         super().__init__(roots, **kwargs)
         self.base = base
-        self.agent_log = Path((_api(base, '/agent/api/info') or {}).get('log') or '')
+        # A dead or slow-to-start base must not raise here: this runs at construction, before
+        # a caller has a host to retry against, so it gets the same agent_err treatment as
+        # every other transport call below rather than an unhandled exception.
+        try: info = _api(base, '/agent/api/info')
+        except Exception: info = {}
+        self.agent_log = Path((info or {}).get('log') or '')
 
     def run_python(self, code):
         # `scope='overlay'`, always. The agent gets the sandboxed layer whatever it asks for,
