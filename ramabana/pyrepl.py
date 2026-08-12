@@ -16,7 +16,7 @@ from rich.text import Text
 from .core import agent_err
 from .tools import LocalHost, WRITE_TOOLS
 from .agent import Agent, Approvals
-from .cli import Ui, GRUVBOX, HELP
+from .cli import Ui, GRUVBOX, HELP, attach_refs, media_parts, media_note
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0006
 @dataclass
@@ -334,16 +334,21 @@ async def run_code(ui, code):
         ui.paint()
 
 async def run_agent(ui, prompt):
-    "Stream one model turn and interleave it with Dhrishti's Python tool cells."
+    """Stream one model turn and interleave it with Dhrishti's Python tool cells.
+
+    Attachments are taken here, at the start, the way `run_turn` takes them in the base `Ui`:
+    the prompt that named them is then the only one that carries them, however the turn goes.
+    """
     loop, chunks, events = asyncio.get_running_loop(), [], asyncio.Queue()
+    atts, ui.attachments = list(ui.attachments), []
+    ask, media = prompt + media_note(atts), media_parts(atts)
     ui.agent.host.log_cell('**user**\n\n' + prompt, cell_type='markdown')
     def pump():
         try:
-            for chunk in ui.agent.stream_with(prompt, image=ui.image):
+            for chunk in ui.agent.stream_with(ask, image=media or None):
                 loop.call_soon_threadsafe(events.put_nowait, chunk)
         except Exception as exc: loop.call_soon_threadsafe(events.put_nowait, agent_err(exc))
         finally:
-            ui.image = None
             loop.call_soon_threadsafe(events.put_nowait, None)
     threading.Thread(target=pump, daemon=True).start()
     block = None
@@ -363,9 +368,6 @@ class PyreplUi(Ui):
     def __init__(self, comp, agent, kernel, loop=None):
         self.kernel, self.mode, self.matches = kernel, 'python', None
         super().__init__(comp, agent, loop)
-        # `run_agent` reads `ui.image` the way `run_turn` reads it in the base `Ui`; this
-        # `Ui` predates image attachments, so the subclass carries the attribute itself.
-        self.image = None
 
     def status(self):
         out = super().status()
@@ -381,6 +383,8 @@ class PyreplUi(Ui):
     def tail(self):
         rows = [self.status()]
         if self.hint: rows.append(Text(' ' + self.hint, style=GRUVBOX['gray']))
+        chips = self.attach_row()
+        if chips is not None: rows.append(chips)
         if self.matches: rows.append(Text('  '.join(self.matches[:8]), style=GRUVBOX['gray']))
         prompt = self.prompt(); rows.append(prompt)
         prefix = self.ASKING if self.ask is not None else ('python › ' if self.mode == 'python' else 'agent  › ')
@@ -389,25 +393,41 @@ class PyreplUi(Ui):
         return rows, cursor
 
     def submit(self):
+        """Handle the typed line. Mode switches and `/help` are this surface's own; every other
+        slash command -- `/attach`, `/detach`, `/paste`, `/copy`, and whatever the agent
+        implements -- is the same command in both modes, so the base `Ui` handles it. A plain
+        line means whichever mode owns it: a Python line in python mode, or a turn (with
+        whatever `@path` names and whatever is already attached) in agent mode.
+        """
         line = self.buf.text.strip()
-        self.buf.clear(); self.matches = None
-        if not line: return None
-        if line in ('/agent', '/a'):
-            self.mode = 'agent'; self.say(Text('agent mode'), 'note', fold=None); return None
-        if line in ('/python', '/py'):
-            self.mode = 'python'; self.say(Text('python mode'), 'note', fold=None); return None
-        if line in ('/help', '/?'):
-            self.say(Text(PY_HELP), 'note', fold=None); return None
-        if line.startswith('/'):
-            out = self.agent.command(line)
-            self.say(Text(out) if out is not None else Text(f'unknown command: {line}'),
-                     'note' if out is not None else 'error', fold=None)
+        self.matches = None
+        if not line:
+            self.buf.clear()
             return None
-        if self.mode == 'agent':
+        if line in ('/agent', '/a'):
+            self.buf.clear()
+            self.mode = 'agent'; self.say(Text('agent mode'), 'note', fold=None)
+            return None
+        if line in ('/python', '/py'):
+            self.buf.clear()
+            self.mode = 'python'; self.say(Text('python mode'), 'note', fold=None)
+            return None
+        if line in ('/help', '/?'):
+            self.buf.clear()
+            self.say(Text(PY_HELP), 'note', fold=None)
+            return None
+        if line.startswith('/'): return super().submit()
+        if self.mode == 'python':
+            self.buf.clear()
             self.say(Text(line), 'user')
-            return run_agent(self, line)
+            return run_code(self, line)
+        # Agent mode: a plain line is a turn, and `@path` inside it attaches like everywhere
+        # else -- a python line stays literal text, so this parsing never runs there.
+        self.buf.clear()
+        got = [self.attach(p) for p in attach_refs(line)]
+        if got: self.note('\n'.join(got))
         self.say(Text(line), 'user')
-        return run_code(self, line)
+        return run_agent(self, line)
 
     def on_output(self, output):
         kind = output.get('output_type')
