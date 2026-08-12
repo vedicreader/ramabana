@@ -26,6 +26,8 @@ dependencies = [
     "rishi>=0.1.1",            # every model runtime, including MLX and hosted FastLLM
     "fossick>=0.1.0",           # first-party web research primitives and skill
     "koshas>=0.0.31",           # first-party repo/environment context primitives and skill
+    "litesearch>=0.1.1",        # RRF fusion shared with Vault.federate
+    "rgapi>=0.1.19",            # ripgrep / fd primitives behind LocalHost.search and grep
     "fastllm-claude-code>=0.0.7",
     "vishalakshi>=0.0.1",
 ]

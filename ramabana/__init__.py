@@ -18,13 +18,13 @@ __version__ = "0.1.1"
 from .core import AgentError, agent_err, env
 
 __all__ = ['Host', 'NullHost', 'Hit', 'Backend', 'Agent', 'Completer', 'Approvals', 'Ask',
-           'ModelSpec', 'Routing', 'AgentError', 'agent_err', 'env']
+           'Plan', 'Todo', 'ModelSpec', 'Routing', 'AgentError', 'agent_err', 'env']
 
 _lazy = {'Host': ('.tools', 'Host'), 'NullHost': ('.tools', 'NullHost'), 'Hit': ('.tools', 'Hit'),
          'Backend': ('.runtime', 'Backend'), 'Agent': ('.agent', 'Agent'),
          'Completer': ('.agent', 'Completer'), 'Approvals': ('.agent', 'Approvals'),
-         'Ask': ('.agent', 'Ask'), 'ModelSpec': ('.core', 'ModelSpec'),
-         'Routing': ('.core', 'Routing')}
+         'Ask': ('.agent', 'Ask'), 'Plan': ('.agent', 'Plan'), 'Todo': ('.agent', 'Todo'),
+         'ModelSpec': ('.core', 'ModelSpec'), 'Routing': ('.core', 'Routing')}
 
 
 def __getattr__(name):
