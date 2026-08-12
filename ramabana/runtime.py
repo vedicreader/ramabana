@@ -599,25 +599,64 @@ class Compactor:
         "Whether `backend` has crossed its threshold."
         return should_compact(backend.used_tokens, backend.spec.ctx, self.reserve)
 
-    def budget(self, ctx=0):
+    def budget(self, ctx=0, overhead=0):
         """How much recent conversation to keep, for a window of `ctx`.
         Capped at half the window for the same reason the reserve is: 20k of "recent" on a
         4k local model means the tail is the whole conversation, `older` is empty, and
         compaction reports "everything is recent; nothing to compact" right up until the
         engine refuses the turn. Half a window leaves half to summarise into.
-        """
-        return min(self.keep_recent, max(256, ctx // 2)) if ctx else self.keep_recent
 
-    def _keep(self, msgs, count=None, ctx=0):
+        `overhead` is everything in the window that is not conversation -- the briefing, and
+        the tool schemas when they travel on the wire rather than in it. It comes off first
+        because `used_tokens` counts it and `msgs` does not, so a half taken against the whole
+        window is a half of space the conversation never had. That is the same failure the cap
+        above was written for, arriving through the one term it did not subtract: on a 16k
+        model an 8k briefing leaves 4k of conversation under a 8k keep-tail, so nothing is ever
+        old enough to compact.
+        """
+        if not ctx: return self.keep_recent
+        return min(self.keep_recent, max(256, max(256, ctx - overhead) // 2))
+
+    def overhead(self, backend, msgs, count=None):
+        """What the window holds that is not this conversation.
+
+        Derived by subtraction rather than assembled from parts, because the parts differ by
+        transport: a briefing is always in the window, tool schemas are only in it when they
+        travel as text, and the framing around both belongs to whichever engine is loaded.
+        `used_tokens` already counts all of it correctly, so the honest measure is what it
+        counts minus what the messages account for.
+
+        An estimate that undercounts the messages overstates the overhead and compacts sooner,
+        which is the safe direction on the window where this matters.
+        """
+        used = getattr(backend, 'used_tokens', 0) or 0
+        if not used: return 0
+        return max(0, used - sum(estimate_tokens(_text(m), count) + 8 for m in msgs))
+
+    def _keep(self, msgs, count=None, ctx=0, overhead=0):
         """The tail to keep uncompacted, newest-first until the budget runs out.
         Kept whole-message: half a tool result is worse than none, and a kept assistant
         message whose tool result was dropped leaves a dangling call that some providers
         reject outright.
+
+        The budget is capped again here, at half of what is actually present, and that second
+        cap is what makes compaction *progress* rather than merely be due. `budget` reasons
+        about the window and this reasons about the conversation, which is the term the window
+        cannot see: compaction fires when the whole prompt crosses the threshold, so the
+        conversation at that moment holds the threshold *minus* the overhead, and a tail
+        allowed to be larger than that keeps all of it, leaves `older` empty, and reports
+        "nothing to compact" while the engine is already refusing the turn. Halving the window
+        happens to avoid that only while the overhead stays under half of it; halving what is
+        here avoids it always.
+
+        It never binds on a large window, where `keep_recent` is far smaller than half a
+        conversation, so nothing changes for the case that already worked.
         """
-        budget = self.budget(ctx)
+        sizes = [estimate_tokens(_text(m), count) + 8 for m in msgs]
+        budget = self.budget(ctx, overhead)
+        if sizes: budget = min(budget, max(256, sum(sizes)//2))
         kept, used = [], 0
-        for m in reversed(msgs):
-            n = estimate_tokens(_text(m), count) + 8
+        for m, n in zip(reversed(msgs), reversed(sizes)):
             if used + n > budget and kept: break
             kept.append(m); used += n
         kept.reverse()
@@ -642,7 +681,8 @@ class Compactor:
         if not msgs:
             self.note = 'nothing to compact'
             return ''
-        keep = self._keep(msgs, backend.count_tokens, getattr(backend.spec, 'ctx', 0))
+        keep = self._keep(msgs, backend.count_tokens, getattr(backend.spec, 'ctx', 0),
+                          self.overhead(backend, msgs, backend.count_tokens))
         older = msgs[:len(msgs) - len(keep)] if len(keep) < len(msgs) else msgs
         if not older:
             self.note = 'everything is recent; nothing to compact'

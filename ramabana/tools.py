@@ -1425,17 +1425,28 @@ def clip_lines(lines, start=1, n=MAX_TOOL_CHARS, more='', empty='(nothing)'):
     The line-oriented half of `clip`. It counts what it dropped rather than describing it
     in characters, because everything that produces lines here -- a file view, a grep, a
     directory -- is resumed by *line or offset*, not by character.
+
+    One line longer than the whole budget is cut by characters, because there is no line to
+    resume from: a minified bundle, a one-line JSON blob or a wide CSV row is a single line,
+    and returning it whole to keep the result non-empty spent the entire window of a small
+    model on one tool call. The notice says characters rather than lines, so the model is not
+    invited to resume at a line that would return the same too-long line again.
     """
     lines = list(lines)
     if not lines: return empty
     out, used = [], 0
     for i, line in enumerate(lines):
         line = str(line)
-        if used + len(line) + 1 > n and out:
-            rest = len(lines) - i
-            tail = f'\n…[{rest} more line(s) not shown'
-            hint = more.format(next=start + i) if '{next}' in more else more
-            return '\n'.join(out) + (f'{tail}. {hint}]' if hint else f'{tail}]')
+        if used + len(line) + 1 > n:
+            if out:
+                rest = len(lines) - i
+                tail = f'\n…[{rest} more line(s) not shown'
+                hint = more.format(next=start + i) if '{next}' in more else more
+                return '\n'.join(out) + (f'{tail}. {hint}]' if hint else f'{tail}]')
+            keep = max(1, n - 1)
+            rest = len(lines) - 1
+            more_lines = f', and {rest} more line(s) not shown' if rest else ''
+            return line[:keep] + f'\n…[line {start} is {len(line)} chars; {keep} shown{more_lines}]'
         out.append(line); used += len(line) + 1
     return '\n'.join(out)
 

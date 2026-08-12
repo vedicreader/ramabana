@@ -405,7 +405,7 @@ def model_note(spec):
     where = 'local' if spec.local else 'cloud'
     return f'{spec.name} · {where} · {spec.ctx//1000}k ctx' + (f' · {spec.note}' if spec.note else '')
 
-# %% ../nbs/00_core.ipynb #0da900aa
+# %% ../nbs/00_core.ipynb #4e529923
 SMALL_CTX = 24_000       # at or below this window, a model is briefed frugally
 TOOL_MAX_FLOOR = 1500    # chars; below this a file view stops being a file view
 
