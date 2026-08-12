@@ -102,9 +102,11 @@ from teleprint.buffer import Buffer
 from teleprint.compositor import Compositor
 from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
+from teleprint.widgets import CompletionMenu, Tooltip
 from .core import agent_err
 from .tools import WRITE_TOOLS, LocalHost
 from .agent import Agent, Approvals, answer_md
+
 
 # %% ../nbs/05_cli.ipynb #6e18fa31
 KAKU = {
@@ -136,6 +138,7 @@ GUTTERS = {
     'reply': (Text('  '),                                      Text('  ')),
     'tool':  (Text('│ ', style=GRUVBOX['blue']),               Text('  ')),
     'ask':   (Text('◆ ', style=f"bold {GRUVBOX['yellow']}"), Text('  ')),
+    'plan':  (Text('▸ ', style=f"bold {GRUVBOX['yellow']}"), Text('  ')),
     'note':  (Text('· ', style=GRUVBOX['gray']),               Text('  ')),
     'error': (Text('× ', style=f"bold {GRUVBOX['red']}"),  Text('  ')),
 }
@@ -150,14 +153,16 @@ NOTIFY_EVERY = 0.08
 #: the transcript view is up -- the one surface here with something to do with a click.
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 
-HELP = """normal  enter send · ctrl+p/n prompt history · ↑/↓ or ctrl+r transcript · ctrl+o fold · ctrl+c stop · ctrl+d quit
+HELP = """normal  enter send · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold · ctrl+c stop · ctrl+d quit
 transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
 edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
 media   drop or paste a path to attach · @path in a prompt · /attach PATH · /detach [N] · ctrl+v or /paste clipboard image
 copy    select with the mouse as in any scrollback · /copy the last reply · ctrl+r then y for any block
 approve y approve · n refuse · a approve all · ctrl+y approve with a note · or type a reason and press enter to refuse
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
+plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
 extra   /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload"""
+
 
 # %% ../nbs/05_cli.ipynb #bffc3eec
 #: What a prompt can carry, and what each kind is called. Images reach the model as content
@@ -434,8 +439,11 @@ class Ui:
         self.history, self.history_at, self.draft = [], 0, ''
         self.menu = None            # the open `ChoiceMenu`, or None
         self.menu_prompt = ''       # the line it is asking about
+        self.complete = None        # slash-command `CompletionMenu`, or None
+        self.show_plan = bool(agent.plan)  # plan tooltip above the tail
         self.transcript = TranscriptView(comp, self.tail)
         agent.activity.on_change = self.on_act
+        agent.on_plan = self.on_plan
         if agent.approvals is not None: agent.approvals.listen(self.on_ask, self.on_answer)
 
     def _post(self, fn, *a):
@@ -457,6 +465,7 @@ class Ui:
         out.append(f"  {s['model']}  ", style=GRUVBOX['gray'])
         out.append(f"{mark} {state.lower()}", style=color)
         bits = [f"{s['ntools']} tools", f"{s['nskills']} skills", f"{round(s['pct_full'] * 100)}% ctx"]
+        if s.get('plan_line'): bits.append(s['plan_line'])
         if s['compactions']: bits.append(f"{s['compactions']} compacted")
         if self.agent.use.total: bits.append(s['usage'])
         if s['problems']: bits.append(f"{len(s['problems'])} problems")
@@ -483,8 +492,12 @@ class Ui:
         return Text('▌ ', style=f"bold {GRUVBOX['blue']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
 
     def overlay(self):
-        "The transient rows above the tail: the options row when one is open, nothing when not."
-        return self.menu.render() if self.menu is not None else []
+        "Transient rows above the tail: options, slash completion, or the plan checklist."
+        if self.menu is not None: return self.menu.render()
+        if self.complete is not None: return [self.complete.renderable()]
+        if self.show_plan and self.agent.plan:
+            return [Tooltip(self.agent.plan.md(), max_lines=12).renderable()]
+        return []
 
     def paint(self):
         """Repaint the live tail, and the browsing view when it is the surface on screen.
@@ -647,6 +660,29 @@ class Ui:
         return f'copied {len(text)} chars of the last {tag}'
 
     # -- input ---------------------------------------------------------------
+    def on_plan(self, plan):
+        "Repaint when the model (or a slash command) mutates the checklist."
+        self.show_plan = bool(plan)
+        self._post(self._paint_plan, plan)
+
+    def _paint_plan(self, plan):
+        if plan: self.say(Text(plan.md()), 'plan', fold=None, source=plan.md())
+        self.paint()
+
+    def _slash_matches(self):
+        text = self.buf.text
+        if not text.startswith('/') or ' ' in text: return None
+        prefix = text[1:].lower()
+        hits = [f'/{n}' for n in self.agent.commands() if n.startswith(prefix)]
+        return hits or None
+
+    def _refresh_complete(self):
+        hits = self._slash_matches()
+        if not hits:
+            self.complete = None
+            return
+        self.complete = CompletionMenu(self.buf, hits, start=0, show=8)
+
     def submit(self):
         """Handle the typed line. Returns a coroutine for a turn, or None when it was handled here.
 
@@ -656,6 +692,7 @@ class Ui:
         attachments. All of them are recognised *before* the options row, or a `/model` with
         the word "refactor" in it would open a menu instead of running.
         """
+        self.complete = None
         line = self.buf.text.strip()
         self.buf.clear()
         if not line: return None
@@ -675,8 +712,11 @@ class Ui:
         if name == '/copy': return self.note(self.copy_last(arg))
         if line.startswith('/'):
             out = self.agent.command(line)
+            kind = 'plan' if name in ('/plan', '/todo', '/todos') and out is not None else (
+                'note' if out is not None else 'error')
             self.say(Text(out) if out is not None else Text(f'unknown command: {line}'),
-                     'note' if out is not None else 'error', fold=None)
+                     kind, fold=None, source=out)
+            if name in ('/plan', '/todo', '/todos'): self.show_plan = bool(self.agent.plan)
             return None
         got = [self.attach(p) for p in attach_refs(line)]   # `@path` in a prompt attaches it
         if got: self.note('\n'.join(got))
@@ -697,6 +737,16 @@ class Ui:
             self.say(Text(f'{choice.label} — {choice.note}'), 'note')
             self.paint()
             return run_turn(self, prompt + choice.suffix)
+        if self.complete is not None and k.name in ('tab', 'shift+tab', 'up', 'down'):
+            if k.name in ('tab', 'down'): self.complete.cycle(1)
+            else: self.complete.cycle(-1)
+            return self.paint()
+        if self.complete is not None and k.name == 'escape':
+            self.complete = None
+            return self.paint()
+        if k.name == 'ctrl+t':
+            self.show_plan = not self.show_plan
+            return self.paint()
         if self.ask is not None:
             bare = not self.buf.text.strip()
             if bare and k.name in ('y', 'Y'):     self.answer(True)
@@ -727,7 +777,14 @@ class Ui:
             live = [b for b in self.comp.blocks.values() if not b.committed and b.height > 1]
             if live: self.comp.toggle(live[-1])
             return self.paint()
+        if k.name == 'tab' and self.buf.text.startswith('/') and self.complete is None:
+            self._refresh_complete()
+            if self.complete is not None:
+                if not self.complete.insert_common(): self.complete.cycle(1)
+                return self.paint()
         self.buf.handle(k)
+        if self.buf.text.startswith('/'): self._refresh_complete()
+        else: self.complete = None
         self.paint()
 
     def stream(self, blk, chunk):
@@ -744,6 +801,7 @@ class Ui:
         self.comp.refresh_block(blk)
         self.touch()
         return blk
+
 
 # %% ../nbs/05_cli.ipynb #280bb985
 @patch
@@ -925,7 +983,13 @@ async def amain(agent, hint=''):
         comp.on_mouse = ui.transcript.on_mouse
         brand = Text('RAMABANA', style=f"bold {GRUVBOX['fg0']}")
         brand.append(f"  {agent.note}", style=GRUVBOX['gray'])
-        ui.say(brand + Text(f'\n\n{HELP}', style=GRUVBOX['gray']), 'note', fold=None)
+        ui.say(brand, 'note', fold=None, source='RAMABANA')
+        if agent.plan:
+            ui.say(Text(agent.plan.md()), 'plan', fold=None, source=agent.plan.md())
+            ui.show_plan = True
+        else:
+            ui.say(Text('tab completes /commands · ctrl+t toggles the plan · /help for keys',
+                        style=GRUVBOX['gray']), 'note', fold=None)
         ui.paint()
         loop = asyncio.get_running_loop()
         loop.add_reader(tty.fd, lambda: comp.on_bytes(tty.read(timeout=0)))
@@ -940,6 +1004,7 @@ async def amain(agent, hint=''):
         tty.write('\x1b[?2004l' + MOUSE_OFF + '\r\n')   # the view may have been up when this ended
         tty.restore()
         agent.close()
+
 
 # %% ../nbs/05_cli.ipynb #b6d74293
 def ask_once(agent, prompt):

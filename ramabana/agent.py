@@ -56,6 +56,15 @@ The system prompt: what the agent is, where it is, how to work, and what it know
 skill index is names and descriptions only -- bodies are a `read_skill` away -- because a
 dozen full skill texts would crowd out the code the model is meant to be looking at.
 
+## The session plan
+
+A durable checklist for stop/start and for work a sub-agent can take a bite of. The plan
+lives on `Agent`, not on the host: CLI, MCP and leela all see the same object, and a
+cancelled turn does not throw the list away.
+
+Statuses are `pending`, `active`, `done` and `cancelled`. At most one todo is `active`.
+On resume, continue from the active item rather than restarting the title.
+
 ## The agent
 
 One `Agent` owns one continuous model context, and everything else hangs off it: routing,
@@ -77,11 +86,11 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS', 'DENIED', 'DFLT_TIMEOUT',
-           'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'COMPLETE_SP',
-           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'summarise', 'Act', 'Activity',
-           'preview_for', 'Ask', 'ask_md', 'answer_md', 'Approvals', 'always', 'never', 'policy', 'applied', 'apply',
-           'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context', 'work_rules', 'system_prompt',
-           'Agent', 'Completer']
+           'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'TODO_STATUSES', 'TODO_MARK',
+           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'summarise', 'Act',
+           'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'Approvals', 'always', 'never', 'policy', 'applied',
+           'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context', 'work_rules',
+           'system_prompt', 'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, functools, json, re, threading, time, uuid
@@ -188,6 +197,10 @@ def summarise(tool, args):
     if tool == 'cart_find':      return f'Shop search: {_s(q)}'
     if tool == 'cart_add':       return f'Add to trolley: {a.get("qty", 1)} x {_s(a.get("item", ""))}'
     if tool == 'cart_remove':    return f'Remove from trolley: {_s(a.get("line", ""))}'
+    if tool == 'set_plan':       return f'Set plan: {_s(a.get("title", ""))}'
+    if tool == 'add_todo':       return f'Add todo: {_s(a.get("text", ""))}'
+    if tool == 'update_todo':    return f'Todo {a.get("id", "?")} → {a.get("status") or "update"}'
+    if tool == 'list_plan':      return 'List plan'
     if tool == 'delegate_search': return f'Delegate: {_s(a.get("question", ""), 120)}'
     if tool == 'delegate_parallel':
         try:
@@ -197,6 +210,7 @@ def summarise(tool, args):
         except Exception: return f'Delegate in parallel: {_s(a.get("questions", ""), 110)}'
     inner = ', '.join(f'{k}={_s(v, 30)!r}' for k, v in a.items())
     return f'{tool}({inner})'
+
 
 # %% ../nbs/03_agent.ipynb #9ab2cd3c
 @dataclass
@@ -826,6 +840,208 @@ How to work:
     sp += project_context(host)
     return sp + (f'\n\n{extra}' if extra else '')
 
+# %% ../nbs/03_agent.ipynb #8f32832a
+TODO_STATUSES = ('pending', 'active', 'done', 'cancelled')
+TODO_MARK = {'pending': '[ ]', 'active': '[▸]', 'done': '[x]', 'cancelled': '[-]'}
+
+@dataclass
+class Todo:
+    "One step on a session plan."
+    id: str
+    text: str
+    status: str = 'pending'   # pending | active | done | cancelled
+    note: str = ''
+    owner: str = ''           # '' = main agent; a label when a sub-agent owns it
+
+    def __post_init__(self):
+        if self.status not in TODO_STATUSES:
+            raise ValueError(f'status must be one of {TODO_STATUSES}')
+
+    def dict(self):
+        return dict(id=self.id, text=self.text, status=self.status, note=self.note, owner=self.owner)
+
+    @classmethod
+    def from_dict(cls, d):
+        if isinstance(d, Todo): return d
+        if not isinstance(d, dict): return cls(id=uuid.uuid4().hex[:8], text=str(d))
+        return cls(id=str(d.get('id') or uuid.uuid4().hex[:8]),
+                   text=str(d.get('text') or ''),
+                   status=str(d.get('status') or 'pending'),
+                   note=str(d.get('note') or ''),
+                   owner=str(d.get('owner') or ''))
+
+
+class Plan:
+    """The session's working list: what to do, what's done, what to resume after a stop.
+
+    Persisted beside history so `/resume` brings the checklist back with the conversation.
+    Frontends render `md()`; models mutate through the plan tools; leela reads `dict()`.
+    """
+    def __init__(self, title='', todos=None, updated=0.):
+        self.title = str(title or '')
+        self.todos, self.updated = [], float(updated or time.time())
+        for it in todos or ():
+            if isinstance(it, Todo): self.todos.append(it)
+            elif isinstance(it, dict): self.todos.append(Todo.from_dict(it))
+            else:
+                text = str(it).strip()
+                if text: self.todos.append(Todo(id=uuid.uuid4().hex[:8], text=text))
+
+    def __bool__(self): return bool(self.title) or bool(self.todos)
+    def __len__(self): return len(self.todos)
+
+    def dict(self):
+        return dict(title=self.title, updated=self.updated, todos=[t.dict() for t in self.todos])
+
+    @classmethod
+    def from_dict(cls, d):
+        d = dict(d or {})
+        return cls(title=d.get('title') or '', todos=d.get('todos') or [], updated=d.get('updated') or 0.)
+
+    def progress(self):
+        " `(done, total)` counting cancelled out of the total."
+        alive = [t for t in self.todos if t.status != 'cancelled']
+        return sum(t.status == 'done' for t in alive), len(alive)
+
+    def active(self):
+        return next((t for t in self.todos if t.status == 'active'), None)
+
+    def pending(self):
+        return [t for t in self.todos if t.status == 'pending']
+
+    def find(self, key):
+        "Exact id, or a unique prefix / unique text substring."
+        key = str(key or '').strip()
+        if not key: return None
+        for t in self.todos:
+            if t.id == key: return t
+        pref = [t for t in self.todos if t.id.startswith(key)]
+        if len(pref) == 1: return pref[0]
+        text = [t for t in self.todos if key.lower() in t.text.lower()]
+        return text[0] if len(text) == 1 else None
+
+    def _touch(self): self.updated = time.time(); return self
+
+    def clear(self):
+        self.title, self.todos = '', []
+        return self._touch()
+
+    def set(self, title, items=()):
+        "Replace the plan. `items` are todo texts (str) or dicts/`Todo`s."
+        self.title = str(title or '').strip()
+        out = []
+        for it in items or ():
+            if isinstance(it, Todo): out.append(it)
+            elif isinstance(it, dict): out.append(Todo.from_dict(it))
+            else:
+                text = str(it).strip()
+                if text: out.append(Todo(id=uuid.uuid4().hex[:8], text=text))
+        self.todos = out
+        return self._touch()
+
+    def add(self, text, status='pending', owner='', id=None):
+        t = Todo(id=id or uuid.uuid4().hex[:8], text=str(text).strip(), status=status, owner=owner)
+        if not t.text: raise ValueError('todo text is empty')
+        self.todos.append(t)
+        return self._touch() and t
+
+    def update(self, key, status=None, note=None, text=None, owner=None):
+        t = self.find(key)
+        if t is None: raise KeyError(f'no todo matches {key!r}')
+        if status is not None:
+            if status not in TODO_STATUSES: raise ValueError(f'status must be one of {TODO_STATUSES}')
+            if status == 'active':
+                for o in self.todos:
+                    if o is not t and o.status == 'active': o.status = 'pending'
+            t.status = status
+        if note is not None: t.note = str(note)
+        if text is not None: t.text = str(text).strip() or t.text
+        if owner is not None: t.owner = str(owner)
+        self._touch()
+        return t
+
+    def md(self):
+        "Checklist for a briefing, a status block, or a `/plan` reply."
+        if not self: return '(no plan)'
+        done, total = self.progress()
+        head = self.title or 'Plan'
+        lines = [f'**{head}**  ·  {done}/{total} done']
+        for t in self.todos:
+            mark = TODO_MARK.get(t.status, '[ ]')
+            own = f'  @{t.owner}' if t.owner else ''
+            note = f'  — {t.note}' if t.note else ''
+            lines.append(f'{mark} `{t.id}` {t.text}{own}{note}')
+        return '\n'.join(lines)
+
+    def line(self):
+        "One status-bar fragment, or '' when empty."
+        if not self: return ''
+        done, total = self.progress()
+        cur = self.active()
+        bit = f'{done}/{total}'
+        if cur: bit += f' ▸ {cur.text[:40]}'
+        elif self.pending(): bit += f' · next: {self.pending()[0].text[:36]}'
+        return bit
+
+
+def parse_plan_items(items):
+    "Newline text, a JSON list, or a Python list -> todo texts."
+    if items is None or items == '': return []
+    if isinstance(items, (list, tuple)): return [str(x).strip() for x in items if str(x).strip()]
+    s = str(items).strip()
+    if s.startswith('['):
+        try:
+            data = json.loads(s)
+            if isinstance(data, list): return [str(x).strip() for x in data if str(x).strip()]
+        except Exception: pass
+    return [ln.strip().lstrip('-* ').strip() for ln in s.splitlines() if ln.strip()]
+
+
+def plan_tools(get_plan, save=None):
+    """Model-facing plan tools. Closures over the agent's `Plan` so Host stays free of them."""
+    def _save():
+        if save:
+            try: save()
+            except Exception: pass
+
+    def set_plan(title: str, items: str = '') -> str:
+        "Replace the session plan. `items` is a newline list or a JSON list of step texts."
+        todos = parse_plan_items(items)
+        if not str(title or '').strip() and not todos:
+            get_plan().clear(); _save(); return 'plan cleared'
+        get_plan().set(title, todos); _save()
+        return get_plan().md()
+
+    def add_todo(text: str, status: str = 'pending') -> str:
+        "Append one step to the session plan."
+        try: t = get_plan().add(text, status=status or 'pending')
+        except Exception as e: return err('could not add todo', e)
+        _save()
+        return f'added `{t.id}` ({t.status}): {t.text}\n\n{get_plan().md()}'
+
+    def update_todo(id: str, status: str = '', note: str = '', text: str = '') -> str:
+        """Update a todo by id or unique prefix. Status: pending, active, done, cancelled.
+
+        Mark the step you are working on `active`, and `done` when it is finished. After a
+        stop, resume from the active step rather than rewriting the plan.
+        """
+        kw = {}
+        if status: kw['status'] = status
+        if note != '': kw['note'] = note
+        if text: kw['text'] = text
+        if not kw: return err('nothing to update; pass status, note or text')
+        try: t = get_plan().update(id, **kw)
+        except Exception as e: return err('could not update todo', e)
+        _save()
+        return f'`{t.id}` → {t.status}: {t.text}' + (f' — {t.note}' if t.note else '') + f'\n\n{get_plan().md()}'
+
+    def list_plan() -> str:
+        "The current session plan as a checklist."
+        return get_plan().md()
+
+    return [set_plan, add_todo, update_todo, list_plan]
+
+
 # %% ../nbs/03_agent.ipynb #083961a6
 class Agent:
     """The IDE's agent: a routed chat whose tools are the host's own capabilities.
@@ -875,9 +1091,12 @@ class Agent:
         self._sp = sp
         self.compactor = Compactor(auto=compact, strategy=compact_strategy, kernel_alive=kernel_alive, on_compact=on_compact)
         self.activity = Activity(on_change=on_activity)   # the live account of what it is doing
+        self.plan = Plan()       # durable checklist for stop/start and sub-agent bites
+        self.on_plan = None      # frontend hook: callable(plan) after every mutation
         self.calls = []          # (tool, args) per call this session -- what the UI shows as activity
         self.history = []        # inspectable user/assistant turns, including the chosen tool plan
         self._load_history()
+        self._load_plan()
         self.before = {}         # path -> its text just before a write tool touched it, this turn
         self._walked = False     # whether the whole tree was snapshotted for a shell command
         self._tool_calls_turn = 0 # backend-independent guard for local/native tool loops
@@ -960,6 +1179,7 @@ class Agent:
             if self.subagents:
                 extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
                                         lambda: self.skills)
+            extra += plan_tools(lambda: self.plan, save=self._save_plan)
             b = self.budget
             plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop)
             self._plain = plain
@@ -998,7 +1218,12 @@ class Agent:
         # inlined precisely because we cannot verify it was read. That insurance is cheap on a
         # frontier window and unaffordable on this one, and `read_skill` still reaches it.
         inline = self.inline_skills if self.budget.inline else ()
-        return system_prompt(self.host, self.skills, inline, tools=self._plain)
+        extra = ''
+        if self.plan:
+            extra = ('## Current plan\n\n' + self.plan.md() +
+                     '\n\nWork the active todo; mark it done when finished; after a stop, '
+                     'resume from the active item rather than rewriting the plan.')
+        return system_prompt(self.host, self.skills, inline, tools=self._plain, extra=extra)
 
     # -- recording -----------------------------------------------------------
     def _record(self, f):
@@ -1291,8 +1516,9 @@ class Agent:
             except NotImplementedError: return           # no watches here; nothing to say about it
             except Exception as e: return self.host.note(f'could not poll watches: {agent_err(e)}')
             if r.get('ran'): self.host.note(f"{r['ran']} of {r.get('checked', 0)} watches fired; see memory_search")
-        self._poll_thread = threading.Thread(target=run, name='ramabana-poll', daemon=True)
-        self._poll_thread.start()
+        from fastcore.parallel import startthread
+        self._poll_thread = startthread(run, daemon=True)
+        self._poll_thread.name = 'ramabana-poll'
         return self._poll_thread
 
     # -- turns ---------------------------------------------------------------
@@ -1360,6 +1586,29 @@ class Agent:
     def history_path(self):
         return None if self.cfg is None else self.cfg/f'{self.history_name}-history.jsonl'
 
+    @property
+    def plan_path(self):
+        "Per-session plan file beside the history log."
+        if self.cfg is None or not getattr(self, 'session_id', None): return None
+        return self.cfg/f'{self.history_name}-plans'/f'{self.session_id}.json'
+
+    def _load_plan(self):
+        p = self.plan_path
+        if p is None or not p.exists(): return
+        try: self.plan = Plan.from_dict(json.loads(p.read_text()))
+        except Exception: pass
+
+    def _save_plan(self):
+        p = self.plan_path
+        if p is None: return
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(self.plan.dict(), ensure_ascii=False, indent=2))
+        except Exception: pass
+        if self.on_plan:
+            try: self.on_plan(self.plan)
+            except Exception: pass
+
     def _load_history(self):
         p = self.history_path
         if p is None or not p.exists(): return
@@ -1397,7 +1646,10 @@ class Agent:
         if picked['model']: self.set_model(picked['model'])
         self._be('turn').resume_hist(canonical)
         self.session_id = picked['id']
-        self.note = f"resumed {picked['id']} · {picked['turns']} turns · {picked['model']}"
+        self.plan = Plan()
+        self._load_plan()
+        bit = f" · plan {self.plan.line()}" if self.plan else ''
+        self.note = f"resumed {picked['id']} · {picked['turns']} turns · {picked['model']}{bit}"
         return picked
 
     def _remember(self, prompt, text, error=''):
@@ -1638,6 +1890,7 @@ class Agent:
                 'ntools': len(self.tools), 'nskills': len(self.skills),
                 'pct_full': round(self.pct_full, 3), 'compactions': self.compactor.count,
                 'use': self.use.dict(), 'usage': repr(self.use),
+                'plan': self.plan.dict(), 'plan_line': self.plan.line(),
                 'activity': self.activity.rows(40),
                 'approval': (self.approvals.pending.dict() if self.approvals is not None
                              and self.approvals.pending is not None else None),
@@ -1686,6 +1939,31 @@ class Agent:
         if name == 'reload':
             self.reload()
             return f'reloaded: {len(self.tools)} tools, {len(self.skills)} skills'
+        if name in ('plan', 'todos'):
+            if not arg: return self.plan.md()
+            if arg.lower() in ('clear', 'reset', 'none'):
+                self.plan.clear(); self._save_plan(); return 'plan cleared'
+            if '|' in arg:
+                title, _, rest = arg.partition('|')
+                items = [x.strip() for x in rest.split('|') if x.strip()]
+            else:
+                lines = [ln.strip() for ln in arg.splitlines() if ln.strip()]
+                title, items = (lines[0], lines[1:]) if lines else (arg, [])
+            self.plan.set(title, items); self._save_plan()
+            return self.plan.md()
+        if name == 'todo':
+            if not arg: return self.plan.md()
+            head, _, rest = arg.partition(' ')
+            rest = rest.strip()
+            if self.plan.find(head) is not None and rest:
+                status, _, note = rest.partition(' ')
+                if status in TODO_STATUSES:
+                    try: self.plan.update(head, status=status, note=note.strip() or None)
+                    except Exception as e: return agent_err(e)
+                    self._save_plan(); return self.plan.md()
+            try: self.plan.add(arg)
+            except Exception as e: return agent_err(e)
+            self._save_plan(); return self.plan.md()
         if name in self.registry.commands:
             fn, _ = self.registry.commands[name]
             try: return fn(self, arg)
@@ -1695,7 +1973,8 @@ class Agent:
     def commands(self):
         "Every command name, built-in and registered, for a help line or an autocomplete."
         return sorted({'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
-                       *self.registry.commands})
+                       'plan', 'todos', 'todo', *self.registry.commands})
+
 
 # %% ../nbs/03_agent.ipynb #821de023
 def _named(f, a, kw=None):

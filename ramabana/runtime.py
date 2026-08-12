@@ -112,11 +112,10 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 # %% auto #0
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
-           'ACTION_NOTICE', 'THINK', 'MAX_STEPS', 'ONESHOT_TOKENS', 'interesting', 'captured', 'capture',
-           'estimate_tokens', 'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt',
-           'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
-           'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
-           'RishiBackend', 'make_backend']
+           'ACTION_NOTICE', 'MAX_STEPS', 'ONESHOT_TOKENS', 'interesting', 'captured', 'capture', 'estimate_tokens',
+           'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle',
+           'surgical_history', 'reorient', 'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor',
+           'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend', 'RishiBackend', 'make_backend']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import copy, os, re, sys, threading
@@ -130,7 +129,8 @@ _SIGNAL = ('error', 'fail', 'exceed', 'exceeds', 'too long', 'out of memory', 'o
 
 # %% ../nbs/01_runtime.ipynb #a4f0dada
 def interesting(text, limit=4):
-    'The lines of captured output a person should see: complaints, not chatter.Matched on words rather than on a log level'
+    "The lines of captured output a person should see: complaints, not chatter."
+    from fastcore.basics import uniqueify
     out = []
     for ln in (text or '').splitlines():
         s = ln.strip()
@@ -138,12 +138,8 @@ def interesting(text, limit=4):
         low = s.lower()
         if any(n in low for n in _NOISE): continue
         if any(g in low for g in _SIGNAL): out.append(s)
-    seen, uniq = set(), []
-    for s in out:
-        if s in seen: continue
-        seen.add(s)
-        uniq.append(s)
-    return uniq[-limit:]
+    return uniqueify(out)[-limit:]
+
 
 # %% ../nbs/01_runtime.ipynb #c5fce893
 class _Tee:
@@ -730,14 +726,18 @@ class Compactor:
         return text
 
 # %% ../nbs/01_runtime.ipynb #a3e427bf
-THINK = re.compile(r'<think>(.*?)</think>', re.S)
-
 def answer_only(text):
-    "A one-shot reply with the model's thinking removed, however the runtime left it."
-    out = THINK.sub('', text or '')
+    """A one-shot reply with the model's thinking removed, however the runtime left it.
+
+    Uses `rishi.split_think` for paired tags, then strips a template-prefilled thought that
+    only emits the closing `</think>` (rishi's splitter still leaves that case alone).
+    """
+    from rishi.core import split_think
+    out, _ = split_think(text or '')
     if '</think>' in out: out = out.partition('</think>')[2]
     if '<think>' in out: out = out.partition('<think>')[0]
     return out.strip()
+
 
 # %% ../nbs/01_runtime.ipynb #b3f10a21
 def prefills_think(chat):
@@ -752,11 +752,8 @@ def prefills_think(chat):
 class ThinkFilter:
     """Drop a template-opened thinking block out of a raw chunk stream.
 
-    Rishi's splitter looks for an *opening* `<think>` to know it is in a thought. A model
-    whose chat template writes that tag into the generation prompt never emits one, so the
-    deliberation arrives as ordinary reply text and only the closing tag comes back -- once
-    per step. Everything up to each `</think>` is dropped, and a tool call re-arms the
-    filter because the next step starts inside a fresh thought.
+    When the chat template already opened `<think>`, the model only emits `</think>`. Drop
+    everything up to each close; a tool call re-arms the filter for the next step.
     """
     TAG = '</think>'
 
@@ -777,6 +774,7 @@ class ThinkFilter:
             if (k := self.buf.find(self.TAG)) < 0: self.buf = self.buf[1 - len(self.TAG):]; continue
             self.thinking, out, self.buf = False, self.buf[k + len(self.TAG):].lstrip('\n'), ''
             if out: self.answer += len(out); yield {'content': [{'type': 'text', 'text': out}]}
+
 
 # %% ../nbs/01_runtime.ipynb #e4819aa1
 MAX_STEPS = 40

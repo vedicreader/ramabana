@@ -254,3 +254,24 @@ def test_the_code_index_builds_the_graph_it_later_queries(monkeypatch, tmp_path)
     monkeypatch.setattr(kosha, 'Kosha', FakeKosha)
     LocalHost([tmp_path], web=False).sync_index(wait=True)
     assert seen.get('graph') is True and 'sync_graph' not in seen
+
+
+def test_search_fuses_legs_with_litesearch_rrf_and_rgapi(tmp_path, monkeypatch):
+    """LocalHost.search must use litesearch.rrf_all (same as Vault.federate) and rgapi, not a
+    hand-rolled subprocess rg / fossick URL adapter."""
+    import ramabana.tools as T
+    root = tmp_path
+    (root/'a.py').write_text('def alpha(): pass\n')
+    (root/'b.py').write_text('def beta(): pass\n')
+    host = T.LocalHost([root], web=False, index=False)
+    # literal leg
+    hits = host._rg('def', limit=10)
+    assert hits and all(hasattr(h, 'path') and hasattr(h, 'line') for h in hits)
+    # fusion identity
+    left = [T.Hit(str(root/'a.py'), 1, '', 'alpha')]
+    right = [T.Hit(str(root/'a.py'), 1, '', 'alpha'), T.Hit(str(root/'b.py'), 1, '', 'beta')]
+    fused = T._fuse([left, right], 10)
+    assert fused[0].path.endswith('a.py')  # appears in both legs -> ranks first
+    # walk via rgapi.fd (or fallback) skips nothing essential
+    walked = {p.name for p in host.walk()}
+    assert walked == {'a.py', 'b.py'}

@@ -21,11 +21,26 @@ both. Putting it behind `Host` buys three things the harness cannot get any othe
 
 ## The host
 
+`VaultHost` is `LocalHost` plus a vishalakshi vault. Construction opens the vault in a
+background thread for the same reason the kosha sync does: the first touch must not block
+`tools_for` while an embedding model loads. Capabilities advertise memory and watches by
+construction rather than by probing.
+
 ## Memory
+
+The five memory tools appear once a vault is present. Search returns whole sections plus
+graph neighbours; read, tree, topics and forget are thin wrappers over the vault.
 
 ## Federated search
 
+`search` asks the vault for prose, kosha for identifiers and ripgrep for literals, then
+fuses the legs with `litesearch.rrf_all` through `Vault.federate`. A vault that will not open
+falls back to `LocalHost.search`.
+
 ## Watches and reminders
+
+Standing interests live in the vault. `poll` fires what is due without rebuilding the entity
+graph on the turn; `connect` does that rebuild in the background.
 
 ## Using it
 
@@ -40,15 +55,17 @@ __all__ = ['DFLT_VAULT', 'MEM_SECTIONS', 'TOC_DEPTH', 'VaultHost']
 import json, threading, time
 from pathlib import Path
 from fastcore.basics import AttrDict
+from fastcore.meta import delegates
+from fastcore.parallel import startthread
 from .core import AgentError, agent_err
 from .tools import Hit, LocalHost, clip
 
+
 # %% ../nbs/07_vault.ipynb #8d87918f
-#: `Vault(None)` means `~/.vishalakshi/vault.db` -- the same vault the `vishalakshi` CLI uses,
-#: which is the point: what you read at a shell prompt is what the agent can recall.
-DFLT_VAULT = None
+DFLT_VAULT = None         # Vault(None) -> ~/.vishalakshi/vault.db, same as the CLI
 MEM_SECTIONS = 6          # operative sections a memory search returns
 TOC_DEPTH = 2             # heading levels of a document's tree worth showing at once
+
 
 # %% ../nbs/07_vault.ipynb #d2ba7a3a
 def _trim(node, depth=TOC_DEPTH):
@@ -81,20 +98,11 @@ def _fed_hit(h):
 
 # %% ../nbs/07_vault.ipynb #bc5c6436
 class VaultHost(LocalHost):
-    """`LocalHost` with a vishalakshi vault behind it: durable memory, federated search, watches.
+    """`LocalHost` with a vishalakshi vault: durable memory, federated search, watches.
 
-    Everything `LocalHost` does still works the same way. What changes is that reading is no
-    longer throwaway -- a page read through `read_url` is filed, `research` answers out of the
-    file rather than out of a response body, and `search` asks the vault, the code index and
-    ripgrep the same question at once.
-
-    The vault is opened in a background thread, for the same reason the kosha sync is: it loads
-    an embedding model, and the first thing that touches it is `tools_for` working out whether
-    the memory tools should exist at all. Nobody should wait through a model load to find out
-    that the answer is yes -- which is why the answer is `capabilities` and not a probe. A
-    probe would have called `memory_tree('')`, which reaches `self.vault`, which blocks on the
-    lock the warm thread is holding: the background open, waited through in full, by the one
-    caller it was added for.
+    Reading is filed rather than throwaway; `search` fuses vault prose, kosha and ripgrep
+    through `Vault.federate`. The vault opens in a background thread so `tools_for` never
+    blocks on an embedding model load -- advertise via `capabilities`, never probe.
     """
 
     @property
@@ -102,6 +110,7 @@ class VaultHost(LocalHost):
         "Memory and watches, by construction: a `VaultHost` is the host that has a vault."
         return {**super().capabilities, 'memory': True, 'watch': True}
 
+    @delegates(LocalHost.__init__)
     def __init__(self,
                  roots=('.',),          # the folders the agent is confined to
                  vault=DFLT_VAULT,      # a `Vault`, a path to one, or None for ~/.vishalakshi/vault.db
@@ -109,9 +118,10 @@ class VaultHost(LocalHost):
                  remember_reads=True,   # file what `read_url` fetches, so the next session has it
                  warm=True,             # open the vault in the background at construction
                  mk_chat=None,          # build the vault's chats with this; None -> vishalakshi's own
-                 **kw):                 # forwarded to `LocalHost`
-        super().__init__(roots, **kw)
+                 **kwargs):             # forwarded to `LocalHost`
+        super().__init__(roots, **kwargs)
         self.mk_chat = mk_chat
+        import threading
         self._vault, self._vlock, self._vthread = vault, threading.Lock(), None
         self.federate, self.remember_reads = federate, remember_reads
         self._legs, self._cthread = None, None
@@ -121,8 +131,8 @@ class VaultHost(LocalHost):
     def open_vault(self, wait=False):
         "Open the vault in a daemon thread, once. `wait=True` for a caller that needs it now."
         if self._vthread is None or not self._vthread.is_alive():
-            self._vthread = threading.Thread(target=lambda: self._open(), name='ramabana-vault', daemon=True)
-            self._vthread.start()
+            self._vthread = startthread(lambda: self._open(), daemon=True)
+            self._vthread.name = 'ramabana-vault'
         if wait: self._vthread.join()
         return self
 
@@ -140,23 +150,13 @@ class VaultHost(LocalHost):
         return self._open()
 
     def connect(self, wait=False):
-        """Rebuild the entity graph `related` walks, in a daemon thread, once at a time.
-
-        `Vault.connect` reads the whole store. `poll`'s docstring already says that is right
-        for a nightly cron and wrong for a tool call somebody is waiting on -- and then
-        `research` ran it inline anyway, on the one path where the user is definitely
-        waiting, having just sat through five pages being fetched and filed.
-
-        So it is a background job wherever it is called from. What `related` walks is then a
-        graph that is at most one query stale, which is the cost of the thing; a turn held
-        open for a full rebuild is not.
-        """
+        "Rebuild the entity graph `related` walks, off the turn, once at a time."
         if self._cthread is None or not self._cthread.is_alive():
             def run():
                 try: self.vault.connect()
                 except Exception as e: self.note(f'could not rebuild the memory graph: {agent_err(e)}')
-            self._cthread = threading.Thread(target=run, name='ramabana-vault-connect', daemon=True)
-            self._cthread.start()
+            self._cthread = startthread(run, daemon=True)
+            self._cthread.name = 'ramabana-vault-connect'
         if wait: self._cthread.join()
         return self
 
@@ -193,13 +193,9 @@ class VaultHost(LocalHost):
 
     # -- seeing the code -----------------------------------------------------
     def search(self, query, limit=20):
-        """The code index, the files on disk, and everything ever read -- one ranking.
+        """Prose, kosha and ripgrep in one ranking via `Vault.federate` (`litesearch.rrf_all`).
 
-        Reciprocal rank fusion, not a merged distance: the vault embeds prose, kosha embeds
-        identifiers and ripgrep embeds nothing, so an ordering is the only thing the three legs
-        have in common. Each leg is tried independently and a leg that fails is reported rather
-        than raised, which is what makes this safe to put in front of `search_code` -- a vault
-        that will not open degrades to exactly what `LocalHost` already did.
+        A vault that will not open degrades to `LocalHost.search`.
         """
         if not self.federate: return super().search(query, limit)
         try:
@@ -252,19 +248,16 @@ class VaultHost(LocalHost):
     def ask(self, question, ref=None, instruction='', **kw):
         """Have the vault answer `question` with citations, on this session's model.
 
-        vishalakshi builds a chat per `ask` from `$VISHALAKSHI_MODEL`, which on a local model
-        means loading a second copy of an engine that is already in memory -- and answering on
-        a different model from the one the user is talking to. `mk_chat` is the factory that
-        lends it ours instead; without one this is vishalakshi's own behaviour, unchanged.
-
-        The one thing this host does *not* pass through is `pii='off'`. Whether the sections
-        are somebody's business is a property of what was retrieved, and a tool argument is a
-        thing a model can set -- so the switch that would send a bank statement to a hosted API
-        is not one that lives on the far end of a tool call.
+        `mk_chat` lends the session's chat factory so the vault does not load a second engine
+        from `$VISHALAKSHI_MODEL`. `pii` is stripped: a tool argument must not be able to send
+        retrieved private sections to a hosted API.
         """
         kw.pop('pii', None)
         if self.mk_chat is not None: kw.setdefault('mk_chat', self.mk_chat)
-        return self.vault.ask(question, ref=ref, instruction=instruction, **kw)   # `ask_doc` is this with `ref`
+        if instruction:
+            base = kw.get('sp') or ''
+            kw['sp'] = (base + '\n\n' if base else '') + str(instruction)
+        return self.vault.ask(question, ref=ref, **kw)
 
     @property
     def research_note(self): return f'fossick, filed in {Path(self.vault.path).name}'
@@ -297,3 +290,4 @@ class VaultHost(LocalHost):
     def watch_actions(self):
         from vishalakshi.acquire import ACTIONS
         return ACTIONS
+

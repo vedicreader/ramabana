@@ -96,11 +96,7 @@ def env(name, dflt=None):
 # %% ../nbs/00_core.ipynb #9df3b26a
 JOBS = ('turn', 'oneshot', 'inline', 'completion', 'classify', 'summary', 'subagent')
 
-#: The jobs that are one short stateless call and nothing else. They take the `oneshot`
-#: policy unless set individually, so "run the cheap jobs somewhere else" is one setting
-#: rather than three -- and so the model they run on has a *name*, which is what makes it
-#: something a person can point at and something `Routing` can find a substitute for.
-#: `subagent` is not here: it is a whole conversation. Nor is `turn`.
+#: One-shot jobs share the `oneshot` policy unless set individually. Not `turn` or `subagent`.
 ONESHOT_JOBS = ('oneshot', 'completion', 'classify', 'summary', 'inline')
 LOCAL = {'gemma-e2b': 'litert-community/gemma-4-E2B-it-litert-lm',
     'gemma-e4b': 'litert-community/gemma-4-E4B-it-litert-lm',
@@ -140,12 +136,13 @@ MODELS = {**{k: ('litert', v) for k, v in LOCAL.items()},
           **{k: ('llama', v) for k, v in LLAMA.items()},
           **{k: ('remote', v) for k, v in CLOUD.items()}}
 
+
 # %% ../nbs/00_core.ipynb #9881cc3b
 def _json_has(path, *keys):
+    "Whether nested keys in a JSON file are present and truthy."
     try:
-        value = Path(path).expanduser().read_json()
-        for key in keys: value = value[key]
-        return bool(value)
+        from fastcore.basics import nested_idx
+        return bool(nested_idx(Path(path).expanduser().read_json(), *keys))
     except Exception: return False
 
 def _claude_login():
@@ -160,11 +157,8 @@ def _claude_login():
 def _install_toolslm_funccall():
     """Expose fastcore's replacement under the module name python-fastllm 0.0.36 imports.
 
-    Called where it is needed, not at import. Writing into `sys.modules` is a process-wide
-    edit to somebody else's package, and doing it as a side effect of `import ramabana.core`
-    meant importing anything at all from this library rearranged `toolslm` for every other
-    consumer in the interpreter -- a test that imports Ramabana to read one constant, a
-    notebook that imports it beside a library with its own opinion about `toolslm`.
+    Call only where needed. Do not run at import: writing into `sys.modules` is process-wide
+    and must not rearrange `toolslm` for every other consumer in the interpreter.
 
     Only `fastllm.chat` needs the shim, and only the Claude Code transport imports that, so
     the two callers are `_load_claude_transport` and the moment a `claude_code/` model is
@@ -254,6 +248,7 @@ def auth_status():
                                  if claude_login and not claude_transport else '')},
         'gemini': {'available': bool(os.getenv('GEMINI_API_KEY')), 'source': 'GEMINI_API_KEY'},
     }
+
 
 # %% ../nbs/00_core.ipynb #56303cec
 _oai_cache = (0.0, [])
