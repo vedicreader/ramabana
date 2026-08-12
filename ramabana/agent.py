@@ -887,6 +887,7 @@ class Agent:
         self._usage_seen = {}    # backend cumulative counters already folded into `use`
         self.note = 'not started'
         self._backends, self._skills, self._reg, self._tools = {}, None, None, None
+        self._subtools = None    # built only when sub-agents run on a smaller model than the turn
         self._plain = []         # the unwrapped tools, which is what the briefing is written from
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self.lock = threading.Lock()
@@ -916,6 +917,28 @@ class Agent:
         return self._reg
 
     @property
+    def subagent_budget(self):
+        """What the sub-agent model can afford. Usually not the turn model: `DEFAULT_POLICY`
+        points `subagent` at the small local model, so the default configuration is a frontier
+        turn delegating to a 16k engine."""
+        try: return budget_for(self.routing.spec('subagent'), self.tool_max_len)
+        except Exception: return self.budget
+
+    def _sub_plain(self):
+        """The tool list a sub-agent gets, sized to the model sub-agents run on.
+
+        The turn's list when the two models can afford the same briefing, which is the common
+        case and saves building and probing a second one. Sub-agent tools are left out of it
+        either way: a sub-agent does not delegate.
+        """
+        b = self.subagent_budget
+        if b == self.budget: return self._plain
+        if self._subtools is None:
+            self._subtools = tools_for(self.host, lambda: self.skills, list(self.registry.tools),
+                                       mx=b.tool_max, drop=b.drop)
+        return self._subtools
+
+    @property
     def budget(self):
         """What the turn model can afford to be told -- see `core.budget_for`.
 
@@ -935,7 +958,8 @@ class Agent:
         if self._tools is None:
             extra = list(self.registry.tools)
             if self.subagents:
-                extra += subagent_tools(lambda: self._be_or_none('subagent'), lambda: self._plain)
+                extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
+                                        lambda: self.skills)
             b = self.budget
             plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop)
             self._plain = plain
@@ -944,7 +968,7 @@ class Agent:
 
     def reload(self):
         "Re-discover skills, extensions and tools. What a `/reload` command calls after editing them."
-        self._skills = self._reg = self._tools = None
+        self._skills = self._reg = self._tools = self._subtools = None
         for b in self._backends.values(): b.close()
         self._backends.clear()
         return self
@@ -958,7 +982,7 @@ class Agent:
         prompt and tool set are pushed to a live turn backend, so a folder opened during a chat
         costs nothing on a local model and does not interrupt the conversation.
         """
-        self._skills = self._reg = self._tools = None
+        self._skills = self._reg = self._tools = self._subtools = None
         spec = self.routing.spec('turn')
         b = self._backends.get((spec.backend, spec.model_id))
         if b is not None: b.refresh(self.system_prompt(), self.tools)
@@ -1167,6 +1191,7 @@ class Agent:
         # that changes the budget has to rebuild them -- before `_be` is asked for a backend,
         # which would otherwise brief it from the outgoing model's cache.
         if job == 'turn' and self.budget != before: self._tools = None
+        if job == 'subagent': self._subtools = None
         new = (spec.backend, spec.model_id)
         if job == 'turn' and new != old:
             self._be('turn').resume_hist(history)

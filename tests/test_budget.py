@@ -167,3 +167,68 @@ def test_a_large_window_keeps_its_old_keep_tail():
     c = runtime.Compactor()
     assert c.budget(200_000, 5_500) == c.keep_recent
     assert c.budget(0) == c.keep_recent                       # no window: unchanged
+
+
+# -- what a sub-agent is given ---------------------------------------------------------
+
+def test_a_sub_agent_is_sized_to_the_model_sub_agents_run_on(host):
+    """`DEFAULT_POLICY` points `subagent` at the small local model, so the default shape is a
+    frontier turn delegating to a 16k engine. Handing it the turn model's schemas at the turn
+    model's clip is the overflow `Budget` exists to prevent."""
+    a = Agent(host, extensions=False, subagents=True)
+    a.routing.spec = lambda job='turn', fallback=True: BIG if job == 'turn' else SMALL
+    assert a.budget.inline and not a.subagent_budget.inline
+    sub = {getattr(t, '__name__', '') for t in a._sub_plain()}
+    assert not (sub & RESEARCH)                       # the sub-agent model cannot afford them
+    assert RESEARCH <= names(a)                       # the turn model still has them
+    assert 'delegate_search' not in sub                # a sub-agent does not delegate
+
+
+def test_one_model_everywhere_reuses_the_turns_tool_list(host):
+    "No reason to build and probe a second list when both models can afford the same briefing."
+    a = Agent(host, extensions=False, subagents=True)
+    a.routing.spec = lambda job='turn', fallback=True: BIG
+    a.tools
+    assert a._sub_plain() is a._plain
+
+
+def test_a_task_can_name_the_skills_it_needs():
+    """The caller holds the skill index and the sub-agent does not, so naming a skill is how a
+    one-job sub-agent starts holding it instead of spending a step on `read_skill`."""
+    from ramabana.tools import Skill, sub_sp, named_skills
+    sk = [Skill(name='kosha', source='test', description='code answers', where='test',
+                _text='ASK KOSHA LIKE THIS'),
+          Skill(name='cfeasy', source='test', description='deploys', where='test',
+                _text='DEPLOY LIKE THIS')]
+    got, note = named_skills(lambda: sk, 'cfeasy')
+    assert [s.name for s in got] == ['cfeasy'] and not note
+    brief = sub_sp(skills=got)
+    assert 'DEPLOY LIKE THIS' in brief and 'ASK KOSHA' not in brief
+    assert sub_sp() == sub_sp(skills=())               # naming nothing changes nothing
+
+
+def test_a_skill_name_that_matched_nothing_is_reported():
+    """A sub-agent quietly briefed without the skill its caller asked for answers from general
+    knowledge and sounds exactly as confident as one that had it."""
+    from ramabana.tools import Skill, named_skills
+    sk = [Skill(name='kosha', source='test', description='d', where='test', _text='t')]
+    got, note = named_skills(lambda: sk, 'kosha, nosuchskill')
+    assert [s.name for s in got] == ['kosha']
+    assert 'nosuchskill' in note and 'kosha' in note
+
+
+def test_named_skills_reach_the_sub_agents_briefing(host):
+    "End to end: the tool the model calls puts the named body in the spawned conversation."
+    from ramabana.tools import Skill
+    a = Agent(host, extensions=False, subagents=True)
+    a.routing.spec = lambda job='turn', fallback=True: BIG
+    be = FakeBackend(BIG)
+    be.start()
+    a._be_or_none = lambda job='turn': be
+    a._skills = [Skill(name='cfeasy', source='test', description='deploys', where='test',
+                       _text='DEPLOY LIKE THIS')]
+    search = next(t for t in a.tools if getattr(t, '__name__', '') == 'delegate_search')
+    assert 'sub answer' in search('how do we deploy?', skills='cfeasy')   # what `spawn` scripts
+    assert 'DEPLOY LIKE THIS' in be.spawned[0].sp
+    # And a name that matched nothing rides back with the answer rather than vanishing.
+    assert 'nosuchskill' in search('how do we deploy?', skills='nosuchskill')

@@ -130,7 +130,7 @@ __all__ = ['MAX_GREP_HITS', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 'SKIP_DIRS'
            'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs',
            'load', 'err', 'failed', 'clip', 'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools',
            'web_tools', 'memory_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools', 'tools_for',
-           'read_only', 'delegate', 'delegate_many', 'subagent_tools']
+           'read_only', 'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, functools, json, os, re, runpy, shutil, threading, uuid
@@ -2206,7 +2206,24 @@ def read_only(tools, max_calls=None):
     return [guarded(t) for t in allowed]
 
 # %% ../nbs/02_tools.ipynb #0818dbdb
-def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS):
+def sub_sp(sp=SUB_SP, skills=()):
+    """A sub-agent's briefing: its standing instructions, then the skills its task named.
+
+    Inlining a skill body is wrong for a turn and right here, and the difference is knowing the
+    task. A conversation could need any skill, so the turn gets an index and pays for a body
+    only when it asks; a sub-agent has exactly one job, named by the caller who *does* hold the
+    index, so the body it needs can be there from the first step. On the small local model
+    sub-agents route to by default, that is the difference between spending one of a dozen steps
+    on `read_skill` and spending none.
+
+    Discovery stays with the caller on purpose. Handing the sub-agent the whole index as well
+    would put the choice back on the model with the fewest tokens to make it with.
+    """
+    if not skills: return sp
+    return sp + '\n\n' + '\n\n'.join(f'## {s.name}\n\n{s.text()}' for s in skills)
+
+
+def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, skills=()):
     """Ask `question` in a throwaway conversation on `backend`'s engine. Returns the answer text.
 
     The conversation is closed in a `finally` because the whole benefit is that it does not
@@ -2217,7 +2234,7 @@ def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS):
     try:
         # Native local engines own their internal tool loop, so the tool wrappers are the
         # backend-independent hard stop. Allow several parallel calls per logical round.
-        sub = backend.spawn(sp=sp, tools=read_only(tools, max_calls=max_steps * 4))
+        sub = backend.spawn(sp=sub_sp(sp, skills), tools=read_only(tools, max_calls=max_steps * 4))
         if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
         return sub.send(question)
     except Exception as e:
@@ -2228,7 +2245,7 @@ def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS):
             except Exception: pass
 
 # %% ../nbs/02_tools.ipynb #fe517832
-def delegate_many(backend, questions, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, n_workers=4):
+def delegate_many(backend, questions, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, n_workers=4, skills=()):
     """Ask several questions at once. Returns answers in the order the questions were given.
 
     Whether this is genuinely parallel depends on what is underneath, and it is worth being
@@ -2250,21 +2267,42 @@ def delegate_many(backend, questions, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STE
     qs = list(questions)
     if not qs: return []
     if len(qs) == 1 or getattr(backend.spec, 'local', False) or n_workers < 2:
-        return [delegate(backend, q, tools, sp, max_steps) for q in qs]
+        return [delegate(backend, q, tools, sp, max_steps, skills) for q in qs]
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(min(n_workers, len(qs))) as ex:
-        return list(ex.map(lambda q: delegate(backend, q, tools, sp, max_steps), qs))
+        return list(ex.map(lambda q: delegate(backend, q, tools, sp, max_steps, skills), qs))
 
 # %% ../nbs/02_tools.ipynb #906e7f69
-def subagent_tools(get_backend, get_tools):
+def named_skills(get_skills, names):
+    """The skills a delegated task named, and a note about any name that matched nothing.
+
+    A name that matched nothing is reported rather than dropped. A sub-agent quietly briefed
+    without the skill its caller asked for answers from general knowledge and sounds exactly as
+    confident as one that had it.
+    """
+    if not names or get_skills is None: return [], ''
+    every = list(get_skills() or [])
+    got, missing = [], []
+    for n in [x for x in str(names).replace(',', ' ').split() if x]:
+        s = find(every, n)
+        got.append(s) if s is not None else missing.append(n)
+    if not missing: return got, ''
+    return got, (f"\n\n[no skill named {', '.join(missing)}; this repository has "
+                 f"{', '.join(s.name for s in every) or 'none'}]")
+
+
+def subagent_tools(get_backend, get_tools, get_skills=None):
     """The `delegate` tool, bound to whatever backend routing says sub-agents run on.
 
-    Both arguments are callables so a model switch mid-session is picked up: the tool the
+    Every argument is a callable so a model switch mid-session is picked up: the tool the
     model is holding must not be pinned to the backend that happened to be current when
-    the tool list was built.
+    the tool list was built. `get_tools` is asked for the sub-agent model's tool list rather
+    than the turn model's, which is the same arithmetic `core.budget_for` does for a turn --
+    sub-agents route to a small local model by default, and handing it a frontier model's
+    schemas at a frontier model's clip is the overflow that budget exists to prevent.
     """
 
-    def delegate_search(question: str) -> str:
+    def delegate_search(question: str, skills: str = '') -> str:
         """Hand a broad search question to a sub-agent and get back only its conclusion.
 
         Use this when answering would take many `search_code` / `view_file` / `read_url` /
@@ -2273,13 +2311,19 @@ def subagent_tools(get_backend, get_tools):
         sub-agent has your read-only tools and none of your write tools, and its working is
         discarded, so the cost to your context is one question and one answer.
 
+        `skills` names skills from your skill index, comma separated, whose text the sub-agent
+        should start with: name the one or two its task actually needs. You hold the index and
+        it does not, so this is the only way it gets a skill without spending a step reading
+        one. Leave it empty when the task needs no particular skill.
+
         Ask one self-contained question. The sub-agent cannot see this conversation.
         """
         b = get_backend()
         if b is None: return 'no model is available to delegate to'
-        return clip(delegate(b, question, get_tools()), MAX_TOOL_CHARS)
+        sk, note = named_skills(get_skills, skills)
+        return clip(delegate(b, question, get_tools(), skills=sk), MAX_TOOL_CHARS) + note
 
-    def delegate_parallel(questions: str) -> str:
+    def delegate_parallel(questions: str, skills: str = '') -> str:
         """Hand several independent questions to sub-agents at once, and get back every answer.
 
         `questions` is a JSON array of strings, e.g.
@@ -2289,6 +2333,10 @@ def subagent_tools(get_backend, get_tools):
         run concurrently, each in its own throwaway conversation with your read-only tools,
         so three questions cost you three short answers rather than the sixty tool results
         it would take to answer them yourself.
+
+        `skills` names skills from your skill index, comma separated, given to every one of
+        them. Use it when the questions share a subject; when they do not, ask them in separate
+        `delegate_search` calls so each gets only what its own task needs.
 
         Every question must be self-contained: a sub-agent cannot see this conversation or
         the other questions.
@@ -2302,7 +2350,8 @@ def subagent_tools(get_backend, get_tools):
         except Exception as e:
             return err('could not parse questions', e)
         if not qs: return 'no questions given'
-        answers = delegate_many(b, qs, get_tools())
-        return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2)
+        sk, note = named_skills(get_skills, skills)
+        answers = delegate_many(b, qs, get_tools(), skills=sk)
+        return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2) + note
 
     return [delegate_search, delegate_parallel]
