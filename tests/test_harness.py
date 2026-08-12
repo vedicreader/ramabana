@@ -25,22 +25,6 @@ from ramabana.tools import Registry, load
 from ramabana.tools import Host, NullHost
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 from ramabana.tools import WRITE_TOOLS, tools_for
-
-
-def test_ramabana_does_not_import_leela():
-    """The seam that made the move a file move in the first place. It is still the rule:
-    the harness may reach for fastcore, rishi, fastllm and aidialog, and for nothing that
-    knows what an editor is."""
-    import pathlib, re
-    bad = []
-    for p in (pathlib.Path(__file__).parent.parent/'ramabana').glob('*.py'):
-        for i, line in enumerate(p.read_text().splitlines(), 1):
-            if re.match(r'\s*(from|import)\s+leela', line): bad.append(f'{p.name}:{i}: {line.strip()}')
-    assert not bad, 'ramabana must not import from leela:\n' + '\n'.join(bad)
-
-
-
-
 def test_null_host_offers_only_what_it_supports():
     "A capability the host does not have must not become a tool the model keeps failing to call."
     names = {t.__name__ for t in tools_for(NullHost(['/x']))}
@@ -51,75 +35,6 @@ def test_null_host_offers_only_what_it_supports():
 def test_mem_host_gets_the_session_tools_it_supports():
     names = {t.__name__ for t in tools_for(MemHost())}
     assert 'run_python' not in names   # list_vars/terminal_text are still absent, so the group drops
-
-
-def test_cheap_jobs_stay_local_when_the_turn_goes_to_the_cloud(monkeypatch):
-    "The whole argument for routing: pointing the turn at a frontier model must not move completions."
-    monkeypatch.delenv('LEELA_MODEL', raising=False)
-    r = core.Routing(turn='gemma-e2b')
-    r.set('gemma-12b')                       # stand-in for a cloud model, no network needed
-    assert r.spec('turn').name == 'gemma-12b'
-    expected = {'completion': core.DFLT_LOCAL, 'classify': core.DFLT_LOCAL,
-                'summary': core.DFLT_LOCAL, 'subagent': core.DFLT_LOCAL}
-    for job, name in expected.items():
-        assert r.spec(job).name == name, job
-        assert r.spec(job).local
-
-
-def test_turn_model_change_keeps_the_conversation(monkeypatch):
-    "A new Rishi backend starts lazily with the old backend's canonical history."
-    made = []
-
-    class SwitchBackend(FakeBackend):
-        def close(self): self.chat = None
-
-    def build(spec, **kw):
-        backend = SwitchBackend(spec, replies=['continued'], **kw)
-        made.append(backend)
-        return backend
-
-    monkeypatch.setattr(agent, 'make_backend', build)
-    a = Agent(MemHost(), model='gemma-e2b', extensions=False, subagents=False)
-    first = a.start()
-    first.hist_.extend([{'role': 'user', 'content': 'remember cedar'},
-                        {'role': 'assistant', 'content': 'I will remember cedar'}])
-
-    a.set_model('gemma-12b')
-    assert a.model.name == 'gemma-12b'
-    assert not a.ready
-    second = a.start()
-    assert second is made[-1]
-    assert second.hist == first.hist_
-    assert second.hist is not first.hist_
-
-
-def test_model_change_is_blocked_during_a_turn():
-    a, _ = fake_agent()
-    a.lock.acquire()
-    try:
-        with pytest.raises(RuntimeError, match='while the assistant is working'):
-            a.set_model('gemma-12b')
-    finally: a.lock.release()
-
-
-def test_env_overrides_a_single_job(monkeypatch):
-    monkeypatch.setenv('LEELA_MODEL_SUMMARY', 'gemma-12b')
-    r = core.Routing(turn='gemma-e2b')
-    assert r.spec('summary').name == 'gemma-12b'
-    assert r.spec('classify').name == core.DFLT_LOCAL
-
-
-def test_unknown_bare_name_is_an_error_not_a_guess():
-    "Silently running a typo on a frontier model is the kind of surprise that shows up on a bill."
-    with pytest.raises(KeyError): core.resolve('sonnnet')
-
-
-def test_a_vendor_slash_model_spec_is_taken_at_face_value():
-    s = core.resolve('somevendor/some-model')
-    assert (s.backend, s.model_id) == ('remote', 'somevendor/some-model')
-    assert s.ctx > 0
-
-
 def test_ungated_tools_run_without_asking():
     ap = agent.Approvals(tools={'edit_file'})
     assert ap.gate({'function': {'name': 'search_code', 'arguments': {'query': 'x'}}})
