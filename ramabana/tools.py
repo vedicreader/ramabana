@@ -829,7 +829,13 @@ class LocalHost(Host):
         return None if not text.strip() else AttrDict(text=text, url=str(url))
 
     def research(self, query):
-        return str(self._fossick().research(str(query)) or '')
+        """The cited digest, not the dict it arrives in.
+
+        `fossick.research` returns `{query, sources, digest, dropped}`; `str()` on that hands the
+        model a Python dict repr, which `clip` then truncates mid-literal. The digest is the part
+        that was written to be read.
+        """
+        return str((self._fossick().research(str(query)) or {}).get('digest') or '')
 
     @property
     def research_note(self): return 'fossick' if self.web else 'web access is switched off'
