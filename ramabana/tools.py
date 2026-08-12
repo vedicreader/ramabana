@@ -727,8 +727,8 @@ class LocalHost(Host):
         try: from rgapi import rg
         except Exception: return None
         pattern = query if regex else re.escape(query)
-        kw = dict(case_sensitive=not ignore_case, smart_case=False, max_filesize=MAX_FILE,
-                  timeout_ms=20_000)
+        kw = dict(case_sensitive=(False if ignore_case else None), smart_case=not ignore_case,
+                  max_filesize=MAX_FILE, timeout_ms=20_000)
         if path_filter: kw['glob'] = f'*{path_filter}*'
         if every_file:
             kw.update(hidden=True, ignore=False, skip_dir=sorted(SKIP_DIRS),
