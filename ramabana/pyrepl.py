@@ -365,17 +365,15 @@ async def run_agent(ui, prompt):
 
 #| export
 def _syntax_note(src):
-    "What `compile_command` objected to, in one line."
-    try: codeop.compile_command(str(src), '<pyrepl>', 'single')
-    except SyntaxError as e: return f'{e.msg} (line {e.lineno})'
-    except Exception as e: return agent_err(e)
-    return ''
+    "What the compile that rejected `src` objected to, in one line."
+    return _judge(src)[1]
 
 class PyreplUi(Ui):
     "The ordinary Ramabana terminal with an additional user-owned Python mode."
     #: The continuation prompt: a suite mid-buffer is neither the python nor the agent label,
-    #: and using either one here would say the wrong thing about what enter does next.
-    CONT = '...   '
+    #: and using either one here would say the wrong thing about what enter does next. Nine
+    #: cells wide, like both labels, so a body's indentation reads at its real depth.
+    CONT = '...      '
 
     def __init__(self, comp, agent, kernel, loop=None):
         self.kernel, self.mode, self.matches = kernel, 'python', None
@@ -505,18 +503,33 @@ class PyreplUi(Ui):
         return super().on_key(key)
 
 # %% ../nbs/11_pyrepl.ipynb #51d25204
-def code_state(src):
-    """Whether `src` is a finished statement, an unfinished one, or one that cannot compile.
+def _compile_state(src, symbol):
+    "`compile_command` as a (state, message) pair rather than three shapes of answer."
+    try:
+        code = codeop.compile_command(str(src), '<pyrepl>', symbol)
+        return ('complete' if code is not None else 'incomplete'), ''
+    except SyntaxError as e: return 'invalid', f'{e.msg} (line {e.lineno})'
+    except Exception as e: return 'complete', agent_err(e)   # not ours to judge; let the kernel say
 
-    `compile_command` answers with an object, `None`, or an exception, which is the same three
-    cases every Python prompt has always distinguished -- and the reason to ask it rather than
-    the kernel is that an unfinished line must not cost a round trip on every keystroke.
+def _judge(src):
+    """The prompt's verdict on `src`, and what objected when it was rejected.
 
-    `'single'` (not `'exec'`) is the symbol that makes it ask the question a REPL asks: a suite
-    is not finished until its blank line, because that is the only way it says "no more body is
-    coming". `'exec'`'s notion of complete is a whole module's, which is already true one line
-    after the colon and would submit a `for` loop with no body typed for it yet.
+    `'single'` is the primary judgement because it asks the question a REPL asks: a suite is
+    unfinished until its blank line, where `'exec'` calls it finished one line after the colon
+    and would submit a `for` with no body typed for it yet.
+
+    But `'single'` also rejects two valid statements -- "multiple statements found" -- and a
+    paste arrives here as a whole buffer rather than a line at a time. A real terminal never
+    meets that case because readline compiles each pasted line as it streams, so `'single'`
+    never sees more than one statement; this surface asks once, about everything. So a
+    `'single'` rejection is checked against `'exec'` before it is believed, and `'exec'`'s
+    verdict stands when it has one. Code that is genuinely broken is rejected by both, and then
+    it is `'exec'` that names the real reason rather than counting the statements.
     """
-    try: return 'complete' if codeop.compile_command(str(src), '<pyrepl>', 'single') is not None else 'incomplete'
-    except SyntaxError: return 'invalid'
-    except Exception: return 'complete'      # not our judgement to make; let the kernel say
+    state, note = _compile_state(src, 'single')
+    if state != 'invalid': return state, note
+    return _compile_state(src, 'exec')
+
+def code_state(src):
+    "Whether `src` is a finished statement, an unfinished one, or one that cannot compile."
+    return _judge(src)[0]
