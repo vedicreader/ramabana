@@ -114,8 +114,6 @@ open_host = LocalHost(['..'], web=False, index=False, read_outside=True)
 open_host.roots_note
 ```
 
-    '1 folder(s); reads may name any path on this machine, writes may not'
-
 With a model in place, one turn is `ask`. Here it runs against a scripted backend, so this
 page is reproducible; [testing](04_testing.ipynb) is where that comes from:
 
