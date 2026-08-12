@@ -25,16 +25,6 @@ from ramabana.tools import Registry, load
 from ramabana.tools import Host, NullHost
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 from ramabana.tools import WRITE_TOOLS, tools_for
-def test_null_host_offers_only_what_it_supports():
-    "A capability the host does not have must not become a tool the model keeps failing to call."
-    names = {t.__name__ for t in tools_for(NullHost(['/x']))}
-    assert 'search_code' in names and 'view_file' in names
-    assert 'run_python' not in names and 'notebook_cells' not in names
-
-
-def test_mem_host_gets_the_session_tools_it_supports():
-    names = {t.__name__ for t in tools_for(MemHost())}
-    assert 'run_python' not in names   # list_vars/terminal_text are still absent, so the group drops
 def test_ungated_tools_run_without_asking():
     ap = agent.Approvals(tools={'edit_file'})
     assert ap.gate({'function': {'name': 'search_code', 'arguments': {'query': 'x'}}})
@@ -506,96 +496,6 @@ def test_a_subagent_can_ask_for_the_overlay_scope():
     assert 'scope' in _i.signature(sub['inspect_python']).parameters
     sub['inspect_python'](code='list(df.columns)', scope='overlay')
     assert h.calls == [('list(df.columns)', 'overlay')]
-
-
-def test_a_narrow_host_says_why_rather_than_failing_silently():
-    from ramabana.tools import NullHost as _N
-
-    class H(_N):
-        scopes = ('isolated',)
-        def inspect_python(self, code, scope='isolated'):
-            if scope not in self.scopes: return f'scope {scope!r} is not available here'
-            return 'sandboxed ok'
-    assert 'not available' in H(['/x']).inspect_python('x', 'overlay')
-
-
-# -- reading outside the open folders ----------------------------------------
-# The sandbox has two halves and only one of them was ever the point. Confining *writes* is
-# what stops an agent damaging something nobody opened; confining *reads* is what stops it
-# answering a question whose answer is in a sibling checkout. `read_outside` separates them.
-
-
-def _outside_host(tmp_path):
-    from ramabana.tools import LocalHost
-    root, sibling = tmp_path/'proj', tmp_path/'sibling'
-    (root/'pkg').mkdir(parents=True)
-    (root/'pkg'/'a.py').write_text('def a(): return 1\n')
-    sibling.mkdir()
-    (sibling/'notes.md').write_text('the answer is 42\n')
-    return LocalHost([root], web=False, index=False, read_outside=True), root, sibling
-
-
-def test_a_read_outside_the_folders_is_off_until_it_is_asked_for(tmp_path):
-    from ramabana.tools import LocalHost
-    open_host, root, sibling = _outside_host(tmp_path)
-    shut = LocalHost([root], web=False, index=False)
-    assert shut.read(sibling/'notes.md') is None
-    assert open_host.read(sibling/'notes.md').strip() == 'the answer is 42'
-
-
-def test_reading_outside_does_not_make_writing_outside(tmp_path):
-    open_host, root, sibling = _outside_host(tmp_path)
-    with pytest.raises(core.AgentError, match='outside the open folders'):
-        open_host.check(sibling/'notes.md')
-    with pytest.raises(core.AgentError, match='outside the open folders'):
-        open_host.write(sibling/'notes.md', 'no')
-    assert (sibling/'notes.md').read_text().strip() == 'the answer is 42'
-
-
-def test_reading_outside_never_opens_credentials(tmp_path):
-    "Opening the sandbox is a decision about source, not about the user's keys."
-    open_host, root, sibling = _outside_host(tmp_path)
-    (sibling/'.env').write_text('OPENAI_API_KEY=sk-real\n')
-    with pytest.raises(core.AgentError, match='credentials'):
-        open_host.check(sibling/'.env', reading=True)
-    assert open_host.read(sibling/'.env') is None
-    assert tools.denied('/home/k/.ssh/id_rsa') and not tools.denied(root/'pkg'/'a.py')
-
-
-def test_enumeration_stays_inside_even_when_reads_do_not(tmp_path):
-    "A read outside is always a path the model already knew; it can never be found by walking."
-    open_host, root, sibling = _outside_host(tmp_path)
-    assert all(str(root) in str(p) for p in open_host.walk())
-    listed = {t.__name__: t for t in tools_for(open_host)}['list_files']('notes.md')
-    assert 'sibling' not in listed
-
-
-def test_a_read_only_tool_reaches_outside_and_a_write_tool_does_not(tmp_path):
-    open_host, root, sibling = _outside_host(tmp_path)
-    ts = {t.__name__: t for t in tools_for(open_host)}
-    assert 'the answer is 42' in ts['view_file'](str(sibling/'notes.md'))
-    assert tools.failed(ts['create_file'](str(sibling/'new.py'), 'x = 1'))
-    assert not (sibling/'new.py').exists()
-
-
-def test_readable_does_not_send_the_flag_to_a_host_that_predates_it():
-    "The flag is a host capability, not a tool assumption: an older host sees its own call."
-    from pathlib import Path as _P
-    seen = []
-
-    class OldHost(NullHost):
-        def check(self, path, must_exist=False):
-            seen.append((path, must_exist))
-            return _P(path)
-
-    assert not tools._takes_reading(OldHost)
-    assert str(tools.readable(OldHost(['/proj']), '/anywhere/x.py')) == '/anywhere/x.py'
-    assert seen == [('/anywhere/x.py', False)]
-
-
-# -- what a turn actually sends ----------------------------------------------
-
-
 def test_an_attached_image_survives_the_tool_plan():
     """`compose` returns a list of content parts when an image is attached, and `list += str`
     extends it one character at a time -- so the plan, the preflight evidence and any

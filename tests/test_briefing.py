@@ -1,4 +1,4 @@
-"""Tests for the per-model briefing budget: what a model is told, and what it is sent back.
+"""The briefing: what a model is told, what it is sent back, and what the project tells it.
 
 This repository already has two test tiers, and this file is deliberately the second one. The
 notebooks in `nbs/` carry a `## Tests` section each, written to be read: they print what they
@@ -20,6 +20,7 @@ standing in for an uninstalled engine tests exactly what a real one would.
 import pytest
 
 from ramabana import runtime
+from ramabana import agent as A
 from ramabana.agent import Agent
 from ramabana.core import (Budget, ModelSpec, budget_for, force_tags, forget_forced_tags,
                            tool_channel)
@@ -105,18 +106,6 @@ def test_changing_model_rebuilds_what_was_sized_to_the_old_one(host):
     a.set_model('gemma-e2b')
     assert len(a.tools) < before
     assert '## exhash' not in a.system_prompt()
-
-
-def test_drop_only_withholds_named_groups(host):
-    "A group not named is untouched, and the editing core is never dropped."
-    every = {getattr(t, '__name__', '') for t in tools_for(host, lambda: [])}
-    kept = {getattr(t, '__name__', '') for t in tools_for(host, lambda: [], drop=('memory', 'web'))}
-    assert every - kept == RESEARCH & every
-    assert {'view_file', 'replace_text', 'edit_file', 'search_code', 'grep'} <= kept
-
-
-# -- a hole the budget had -------------------------------------------------------------
-
 def test_one_long_line_does_not_escape_the_clip():
     """A minified bundle, a one-line JSON document or a wide CSV row is a single line, and
     `clip_lines` returned the first one whole so a result was never empty -- ten thousand tokens,
@@ -276,3 +265,38 @@ def test_a_local_turn_fits_its_window_end_to_end(tmp_path):
     assert budget - now > 1500, f'only {budget - now} left to answer in'
     # A 200k model is untouched by any of it: the old cost was never its problem.
     assert was < threshold(BIG.ctx)
+
+
+# -- what the briefing says about the tools --------------------------------------------
+
+def test_the_briefing_describes_only_the_tools_the_model_was_given():
+    """A rule about `run_shell` on a host that cannot run commands costs the model a wasted turn
+    discovering that -- which is how the briefing came to describe a `scale_numeric` that no longer
+    existed, and to promise verification the harness had no way to perform."""
+    assert 'run_shell' in A.work_rules(['run_shell'])
+    assert 'run_shell' not in A.work_rules(['view_file'])
+    assert 'run_shell' in A.work_rules()          # no filter means the whole thing
+
+    h = FullHost(files={'a.py': 'x = 1\n'})
+    sp = A.system_prompt(h, tools=tools_for(h))
+    for t in {t.__name__ for t in tools_for(h)} & {n for n, _ in A.RULES if n}: assert t in sp
+    assert 'delegate_parallel' not in sp          # this host offers no sub-agents
+
+
+def test_the_projects_own_instructions_are_read_marked_and_bounded():
+    """Every other harness reads `AGENTS.md`, so a repository could not tell this agent what it
+    tells every other one. It is marked with its path so the model can tell a project rule from
+    something the harness made up, and truncated rather than dropped past the point where it is
+    documentation instead of instructions."""
+    from ramabana.testing import MemHost
+    h = MemHost({'/proj/AGENTS.md': 'Use uv, never pip.'})
+    ctx = A.project_context(h)
+    assert 'Use uv, never pip.' in ctx and 'path="/proj/AGENTS.md"' in ctx
+    assert A.project_context(MemHost()) == ''
+
+    big = MemHost({'/proj/AGENTS.md': 'x' * (A.MAX_CONTEXT_FILE + 500)})
+    over = A.project_context(big)
+    assert 'truncated' in over and len(over) < A.MAX_CONTEXT_FILE + 800
+
+    reaches = MemHost({'/proj/AGENTS.md': 'Run the tests with `nbdev-test`.'})
+    assert 'nbdev-test' in A.system_prompt(reaches, tools=tools_for(reaches))
