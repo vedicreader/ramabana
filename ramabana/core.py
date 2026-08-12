@@ -54,9 +54,10 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLAUDE', 'CLOUD', 'CUSTOM',
-           'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'AgentError', 'agent_err',
-           'use_env_prefix', 'env', 'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx',
-           'ModelSpec', 'resolve', 'model_note', 'register_model', 'unregister_model', 'Routing']
+           'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'SMALL_CTX',
+           'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'AgentError', 'agent_err', 'use_env_prefix', 'env', 'runtime_available',
+           'claude_tags', 'auth_status', 'available_models', 'local_ctx', 'ModelSpec', 'resolve', 'model_note',
+           'Budget', 'budget_for', 'register_model', 'unregister_model', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
@@ -403,6 +404,44 @@ def model_note(spec):
     "One line about a resolved model, for a status bar."
     where = 'local' if spec.local else 'cloud'
     return f'{spec.name} · {where} · {spec.ctx//1000}k ctx' + (f' · {spec.note}' if spec.note else '')
+
+# %% ../nbs/00_core.ipynb #0da900aa
+SMALL_CTX = 24_000       # at or below this window, a model is briefed frugally
+TOOL_MAX_FLOOR = 1500    # chars; below this a file view stops being a file view
+
+#: The capability groups a small window gives up first. Research is what a 16k model cannot
+#: use even when it has it: one `read_url` at that model's own clip is most of the room the
+#: briefing leaves it, so carrying the schemas buys a route that cannot finish anyway.
+FRUGAL_DROP = ('memory', 'web')
+
+
+@dataclass(frozen=True)
+class Budget:
+    'What a model can afford to be told, and to be sent back.'
+    drop: tuple = ()         # capability groups to withhold from `tools_for`
+    inline: bool = True      # whether the briefing may inline a skill body
+    tool_max: int = 0        # chars one tool result may spend
+    note: str = ''           # why, for a status bar
+
+
+def budget_for(spec, tool_max):
+    """The briefing `spec`'s model can afford, from its context window.
+
+    `tool_max` is the caller's own default, and this only ever lowers it. Raising the clip on a
+    large window would change the case that already works, and the case that does not is the
+    only reason this exists.
+
+    A spec with no window, or one we could not read, gets the full briefing. Withholding tools
+    from a model whose size is unknown turns not knowing into a smaller agent, and `_cloud_ctx`
+    already assumes 128k when a table fails it.
+    """
+    ctx = getattr(spec, 'ctx', 0) or 0
+    if ctx <= 0 or ctx > SMALL_CTX: return Budget(tool_max=tool_max, note='full briefing')
+    mx = min(tool_max, max(TOOL_MAX_FLOOR, (ctx//16)*4))
+    return Budget(FRUGAL_DROP, False, mx,
+                  f'{ctx//1000}k window: no inlined skills, no {"/".join(FRUGAL_DROP)} tools, '
+                  f'tool results clipped to {mx} chars')
+
 
 # %% ../nbs/00_core.ipynb #3e2adbad
 def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):

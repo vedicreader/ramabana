@@ -2107,7 +2107,7 @@ def skill_tools(host, get_skills, mx=MAX_TOOL_CHARS):
     return [read_skill, create_skill]
 
 # %% ../nbs/02_tools.ipynb #ddf75013
-def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS):
+def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=()):
     """Every tool this host can actually support, plus whatever extensions registered.
 
     Each group is dropped whole if the host does not implement it. Whole groups rather than
@@ -2126,21 +2126,29 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS):
     same `view_file` that should return 300 lines to a frontier model has to return 60 to
     an on-device one, and getting that wrong is not a formatting problem -- a turn whose
     tool results overflow a 16k window fails outright.
+
+    `drop` withholds groups the host *does* support, which is the other half of the same
+    arithmetic: on a small window the schemas themselves are the cost, and a group whose
+    results cannot fit is one whose declaration should not be paid for. `core.budget_for`
+    decides which, so the decision stays beside the routing table. A dropped group is never
+    silently unavailable -- `Agent.budget` says so, and the briefing describes only the tools
+    that were actually built.
     """
+    drop = set(drop or ())
     tools = []
-    tools += code_tools(host, mx)
-    tools += file_tools(host, mx)
-    if _has(host, 'notebook', lambda: host.nb_cells('.')): tools += notebook_tools(host, mx)
-    if _has(host, 'web', lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
-    if _has(host, 'memory', lambda: host.memory_tree('')): tools += memory_tools(host, mx)
-    if _has(host, 'watch', lambda: host.watches()): tools += watch_tools(host, mx)
-    if _has(host, 'session', lambda: host.list_vars(), lambda: host.terminal_text(1)): tools += session_tools(host, mx)
+    if 'code' not in drop: tools += code_tools(host, mx)
+    if 'file' not in drop: tools += file_tools(host, mx)
+    if 'notebook' not in drop and _has(host, 'notebook', lambda: host.nb_cells('.')): tools += notebook_tools(host, mx)
+    if 'web' not in drop and _has(host, 'web', lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
+    if 'memory' not in drop and _has(host, 'memory', lambda: host.memory_tree('')): tools += memory_tools(host, mx)
+    if 'watch' not in drop and _has(host, 'watch', lambda: host.watches()): tools += watch_tools(host, mx)
+    if 'session' not in drop and _has(host, 'session', lambda: host.list_vars(), lambda: host.terminal_text(1)): tools += session_tools(host, mx)
     # `run_cmd` is the one capability with no harmless probe, so it is answered by asking
     # whether the host overrode the method rather than by running something.
     shell = _declared(host, 'shell')
-    if _supports(host, 'run_cmd', lambda: host.run_cmd('')) if shell is None else shell:
+    if 'shell' not in drop and (_supports(host, 'run_cmd', lambda: host.run_cmd('')) if shell is None else shell):
         tools += shell_tools(host, mx)
-    if get_skills is not None: tools += skill_tools(host, get_skills, mx)
+    if get_skills is not None and 'skill' not in drop: tools += skill_tools(host, get_skills, mx)
     tools += list(extra or ())
     return tools
 

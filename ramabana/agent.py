@@ -86,7 +86,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNA
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, functools, json, re, threading, time, uuid
 from dataclasses import dataclass, field
-from .core import agent_err, available_models, JOBS, Routing, model_note
+from .core import agent_err, available_models, budget_for, JOBS, Routing, model_note
 from .runtime import Usage, make_backend, Compactor, compact_notebook_context, notices_block
 from .tools import (MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
                             find, load, skill_index, subagent_tools, tools_for)
@@ -916,13 +916,28 @@ class Agent:
         return self._reg
 
     @property
+    def budget(self):
+        """What the turn model can afford to be told -- see `core.budget_for`.
+
+        The turn model, not the job's own, because there is one tool list and one briefing per
+        conversation. `spec('turn')` raises when the chosen model is not installed here, and
+        that must not cost the caller their tools: a host with no model still has a tool list,
+        and reporting a smaller agent because we could not resolve a name would be a worse
+        answer than reporting the full one.
+        """
+        try: spec = self.routing.spec('turn')
+        except Exception: return budget_for(None, self.tool_max_len)
+        return budget_for(spec, self.tool_max_len)
+
+    @property
     def tools(self):
-        "Every tool, built once and recorded. Rebuilt by `reload`."
+        "Every tool the turn model can afford, built once and recorded. Rebuilt by `reload`."
         if self._tools is None:
             extra = list(self.registry.tools)
             if self.subagents:
                 extra += subagent_tools(lambda: self._be_or_none('subagent'), lambda: self._plain)
-            plain = tools_for(self.host, lambda: self.skills, extra)
+            b = self.budget
+            plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop)
             self._plain = plain
             self._tools = [self._record(t) for t in plain]
         return self._tools
@@ -955,7 +970,11 @@ class Agent:
         # as a side effect of describing it.
         if self._sp: return self._sp
         if self._tools is None: self.tools
-        return system_prompt(self.host, self.skills, self.inline_skills, tools=self._plain)
+        # A skill body is 3k tokens of a 12k budget on the smallest local model, and it is
+        # inlined precisely because we cannot verify it was read. That insurance is cheap on a
+        # frontier window and unaffordable on this one, and `read_skill` still reaches it.
+        inline = self.inline_skills if self.budget.inline else ()
+        return system_prompt(self.host, self.skills, inline, tools=self._plain)
 
     # -- recording -----------------------------------------------------------
     def _record(self, f):
@@ -1142,7 +1161,12 @@ class Agent:
         previous = self.routing.spec(job)
         old = (previous.backend, previous.model_id)
         history = self._backends[old].snapshot_hist() if job == 'turn' and old in self._backends else []
+        before = self.budget
         spec = self.routing.set(name, job)
+        # The tool list and the briefing are both sized to the turn model, so a change of model
+        # that changes the budget has to rebuild them -- before `_be` is asked for a backend,
+        # which would otherwise brief it from the outgoing model's cache.
+        if job == 'turn' and self.budget != before: self._tools = None
         new = (spec.backend, spec.model_id)
         if job == 'turn' and new != old:
             self._be('turn').resume_hist(history)
@@ -1582,6 +1606,10 @@ class Agent:
         return {'ready': self.ready, 'busy': self.busy, 'note': self.note,
                 'problems': self.problems,
                 'model': self.model.name, 'model_note': model_note(self.model),
+                # A tool withheld for a small window is invisible otherwise: the briefing
+                # describes only what was built, so nothing else would say a group is missing
+                # by choice rather than because the host cannot do it.
+                'budget': self.budget.note,
                 'ntools': len(self.tools), 'nskills': len(self.skills),
                 'pct_full': round(self.pct_full, 3), 'compactions': self.compactor.count,
                 'use': self.use.dict(), 'usage': repr(self.use),
