@@ -877,7 +877,7 @@ def ask_once(agent, prompt):
 # %% ../nbs/05_cli.ipynb #ce629efa
 @call_parse
 def main(
-    prompt: str = '',                    # run one turn and exit; omit for the interactive session
+    prompt: str = '',                    # run one turn and exit, or 'pyrepl'; omit for the interactive session
     root: str = '.',                     # folders the agent may touch, comma separated
     model: str = None,                   # the turn model; the routing default when omitted
     approve: str = 'ask',                # ask | auto | off | none (gate nothing at all)
@@ -888,6 +888,13 @@ def main(
     resume: str = '',                    # saved session id/prefix, or 'latest'
 ):
     "Ramabana in a terminal: a coding agent over the folders you name."
+    # A subcommand rather than a flag, because it is a different program: its own surface, its
+    # own kernel, its own module. The import is here so `ramabana` starts without jupyter_client
+    # installed, and so a test can monkeypatch `pyrepl.main`.
+    if prompt == 'pyrepl':
+        from ramabana.pyrepl import main as pyrepl_main
+        return pyrepl_main(root=root, model=model, approve=approve, web=web,
+                           read_outside=read_outside, vault=vault, cfg=cfg, resume=resume)
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault,
                            read_outside=read_outside,
