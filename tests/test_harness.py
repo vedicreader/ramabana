@@ -145,54 +145,6 @@ def test_a_refusal_nobody_could_be_asked_about_still_reaches_the_recorder():
     deaf = agent.Approvals(tools={'edit_file'}, on_answer=heard.append)   # nothing listening
     deaf.gate({'function': {'name': 'edit_file', 'arguments': {}}})
     assert len(heard) == 2 and all(not a and a.note for a in heard)
-
-
-def test_threshold_leaves_room_for_one_more_reply():
-    assert runtime.threshold(200_000, 16_384) == 200_000 - 16_384
-    assert runtime.threshold(0) is None
-    assert runtime.should_compact(190_000, 200_000)
-    assert not runtime.should_compact(100_000, 200_000)
-
-
-def test_an_existing_summary_is_updated_not_re_summarised():
-    "Summarising a summary loses a little every time; tau's second prompt exists to stop that."
-    msgs = [{'role': 'user', 'content': runtime.SUMMARY_PREFIX + 'old summary'},
-            {'role': 'assistant', 'content': 'later work'}]
-    prev, rest = runtime.split_previous(msgs)
-    assert prev == 'old summary' and len(rest) == 1
-    p = runtime.summarise_prompt(msgs)
-    assert '<previous-summary>' in p and 'PRESERVE' in p
-
-
-def test_the_kept_tail_starts_at_a_user_turn():
-    "A tail starting at an orphaned tool result is a dangling call some providers reject outright."
-    c = runtime.Compactor(keep_recent=50)
-    msgs = [{'role': 'user', 'content': 'a' * 400}, {'role': 'assistant', 'content': 'b'},
-            {'role': 'tool', 'content': 'c'}, {'role': 'user', 'content': 'd'},
-            {'role': 'assistant', 'content': 'e'}]
-    kept = c._keep(msgs)
-    assert kept and kept[0]['role'] == 'user'
-
-
-def test_compaction_replaces_history_and_reorients(spec):
-    be = FakeBackend(spec)
-    be.start()
-    be.hist_ = [{'role': 'user', 'content': 'x' * 4000}, {'role': 'assistant', 'content': 'y' * 4000},
-                {'role': 'user', 'content': 'recent'}]
-    c = runtime.Compactor(keep_recent=40)
-    out = c.compact(be, lambda p, sp: 'GOAL: ship it')
-    assert out == 'GOAL: ship it'
-    head = be.hist[0]['content']
-    assert head.startswith(runtime.SUMMARY_PREFIX) and 'GOAL: ship it' in head
-    # the reorientation note is the aai-coding idea, and its value is in being specific
-    assert 'kernel process was not touched' in head
-    assert 'do not re-import' in head
-
-
-def test_a_dead_kernel_is_not_promised():
-    assert 'clean namespace' in runtime.reorient(kernel_alive=False)
-
-
 def test_ramabana_profile_does_not_mix_in_aai_prompt_notices():
     a, be = fake_agent(replies=['done'])
     a.ask('add a test')
@@ -517,24 +469,6 @@ def test_remote_reasoning_effort_is_applied_to_chat_not_passed_to_chat_call():
     backend.chat = Chat()
     assert backend._send('hello', reasoning_effort='high') == 'ok'
     assert backend.chat.reasoning_effort == 'high'
-
-
-def test_surgical_compaction_keeps_questions_calls_results_and_both_text_ends():
-    from ramabana.runtime import surgical_history, truncate_middle
-    msgs = [
-        {'role': 'user', 'content': 'first ' + 'middle ' * 100 + 'last'},
-        {'role': 'assistant', 'content': 'I will inspect.', 'tool_calls': [
-            {'function': {'name': 'view_file', 'arguments': {'path': 'a.py'}}}]},
-        {'role': 'tool', 'content': 'line one\nline two'},
-    ]
-    text = surgical_history(msgs, {'user': 20, 'assistant': 20, 'call': 30, 'result': 20})
-    assert text.startswith('§ first ') and 'last §' in text
-    assert "▶ view_file(path='a.py')" in text
-    assert '> line one ¶ line two' in text
-    clipped = truncate_middle('begin ' + 'x ' * 200 + 'end', 12)
-    assert clipped.startswith('begin ') and clipped.endswith('end')
-
-
 def test_turns_have_stable_ids_and_model_context_can_fork_and_revise():
     a, be = fake_agent(replies=['first answer', 'branch answer'])
     assert a.ask('first question') == 'first answer'
@@ -689,22 +623,6 @@ def test_the_feed_names_the_command_a_shell_call_ran():
     assert agent.Act(tool='run_shell').kind == 'run'
     assert agent.summarise('grep', {'pattern': 'RESERVE', 'path_filter': 'tests/'}) == 'Grep RESERVE in tests/'
     assert agent.summarise('list_watches', {'due_only': False}) == 'List watches'
-
-
-def test_native_capture_follows_the_application_env_prefix():
-    "`use_env_prefix` exists so one hard-coded variable name is not wrong in every other app."
-    import os
-    from ramabana.runtime import captured
-    core.use_env_prefix('RAMABANA_', 'LEELA_')
-    os.environ['RAMABANA_NO_NATIVE_CAPTURE'] = '1'
-    try: assert captured().enabled is False
-    finally: os.environ.pop('RAMABANA_NO_NATIVE_CAPTURE', None)
-    assert captured().enabled is True
-
-
-# -- the fossick binding ------------------------------------------------------
-
-
 def test_web_search_asks_fossick_for_as_many_results_as_it_wants(monkeypatch):
     "fossick's own default is 10, so slicing twenty down to twenty quietly returned ten."
     from ramabana.tools import LocalHost

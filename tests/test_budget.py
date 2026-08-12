@@ -10,6 +10,9 @@ So the arithmetic is not repeated here. Each test below names one contract, and 
 the end-to-end property all of it exists for: that a turn on a small local model fits in its
 window. That one would have caught every bug the others were written for.
 
+Compaction under a full briefing belongs to the window rather than to the briefing, and lives in
+`test_context.py` with the rest of that block.
+
 Nothing here loads a model. A `ModelSpec` is the whole input the budget takes, so a spec
 standing in for an uninstalled engine tests exactly what a real one would.
 """
@@ -112,7 +115,7 @@ def test_drop_only_withholds_named_groups(host):
     assert {'view_file', 'replace_text', 'edit_file', 'search_code', 'grep'} <= kept
 
 
-# -- the two holes the budget had ------------------------------------------------------
+# -- a hole the budget had -------------------------------------------------------------
 
 def test_one_long_line_does_not_escape_the_clip():
     """A minified bundle, a one-line JSON document or a wide CSV row is a single line, and
@@ -124,34 +127,6 @@ def test_one_long_line_does_not_escape_the_clip():
     out2 = clip_lines(['short', 'y' * 40_000], n=4096, more='call again from {next}')
     assert 'more line(s) not shown' in out2 and 'call again from 2' in out2
     assert clip_lines(['a', 'b'], n=4096) == 'a\nb'                # and short lines are untouched
-
-
-def test_compaction_progresses_under_a_briefing_that_fills_the_window():
-    """Compaction fires on the whole prompt, so on a small window the conversation is only a few
-    thousand tokens -- smaller than a keep-tail measured against the window, so everything was
-    'recent' and `compact` returned 'nothing to compact' while the engine refused the turn.
-
-    Subtracting the overhead is necessary and not sufficient: halving the window only progresses
-    while the overhead stays under half of it, so `_keep` caps against the conversation as well.
-    """
-    class Briefed(runtime.Compactor):
-        "Told the overhead directly, so the test does not depend on a live engine."
-        def __init__(self, overhead, **kw): super().__init__(**kw); self.oh = overhead
-        def overhead(self, backend, msgs, count=None): return self.oh
-
-    be = FakeBackend(SMALL)
-    be.start()
-    be.hist_ = [{'role': 'user', 'content': 'a' * 14_000}, {'role': 'assistant', 'content': 'b' * 14_000},
-                {'role': 'user', 'content': 'recent question'}]
-    assert Briefed(5_214).compact(be, lambda p, sp: 'GOAL: keep going') == 'GOAL: keep going'
-    assert be.hist[0]['content'].startswith(runtime.SUMMARY_PREFIX)
-
-    c = runtime.Compactor()
-    msgs = [{'role': 'user', 'content': 'a' * 4000}, {'role': 'assistant', 'content': 'b' * 4000},
-            {'role': 'user', 'content': 'c' * 4000}, {'role': 'assistant', 'content': 'd' * 4000}]
-    assert 0 < len(c._keep(msgs, ctx=16_384, overhead=9_000)) < len(msgs)   # overhead over half
-    assert c.budget(200_000, 5_500) == c.keep_recent                       # large window: as before
-    assert c.budget(0) == c.keep_recent                                    # no window: as before
 
 
 # -- what a sub-agent is given ---------------------------------------------------------
