@@ -101,9 +101,14 @@ recorded problem, because the alternative is a traceback in a chat window.
 Rishi runs every model, local or hosted, so there is one subclass. It translates a
 `ModelSpec` into rishi's `Chat`, adapts per-runtime quirks (litert wants its token ceiling
 and constrained decoding; MLX wants a separate completion-only conversation so a suggestion
-never sees prior suggestions), and converts rishi's usage into `Usage`. Set
-`RAMABANA_LITERT_BACKEND=gpu` to select LiteRT's GPU backend process-wide; `cpu` is also
-accepted, and an explicit `eng_kw={'backend': ...}` still takes precedence.
+never sees prior suggestions), and converts rishi's usage into `Usage`.
+
+LiteRT models run on the GPU without being asked for it: rishi requests that backend by
+default and warns its way down to the CPU on a machine whose build has no delegate. So
+`RAMABANA_LITERT_BACKEND` is the way to *overrule* that -- `cpu` pins a model to the CPU,
+`gpu` asks for what rishi would have asked for anyway -- and an explicit `backend=` (or
+`eng_kw={'backend': ...}`) still takes precedence over both. `RISHI_LITERT_GPU=0` turns the
+default off at the layer that owns it.
 
 Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 
@@ -116,10 +121,11 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
            'estimate_tokens', 'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt',
            'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
            'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
-           'RishiBackend', 'make_backend']
+           'use_chat', 'RishiBackend', 'make_backend']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import copy, os, re, sys, threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from .core import agent_err, claude_tags, env
 
@@ -900,6 +906,31 @@ class Backend:
     def _refresh(self):raise NotImplementedError
 
 # %% ../nbs/01_runtime.ipynb #4c988345
+#: What builds a model conversation, and the one seam a recording replaces. `None` is rishi's
+#: own `Chat`, which is what every application gets.
+_MK_CHAT = None
+
+@contextmanager
+def use_chat(f):
+    """Build model conversations with `f` for the duration, instead of rishi's `Chat`.
+
+    Rishi's `CachedChat` goes in here, and the docs pages then replay a real model's answers
+    with no weights and no network. There is nowhere else to put it: a notebook asks `Agent`
+    for a turn and the chat is built three layers below that, so a factory passed as an
+    argument would have to be threaded through `Agent` and `make_backend` to reach the single
+    call that uses it.
+
+    Process-global, which is why it is a block and not a setting -- right for a notebook or a
+    script, wrong for anything long-lived or threaded. Replay covers the asks that have an
+    answer to record: a blocking turn, a one-shot, a classification. A streamed turn is a
+    generator and is not recorded, so `stream` still reaches whatever `f` built.
+    """
+    global _MK_CHAT
+    old, _MK_CHAT = _MK_CHAT, f
+    try: yield f
+    finally: _MK_CHAT = old
+
+
 class RishiBackend(Backend):
     kind='rishi'
     def __init__(self,*a,max_steps=MAX_STEPS,**kw):
@@ -920,12 +951,15 @@ class RishiBackend(Backend):
         if self.spec.runtime=='remote' and claude_tags(self.spec.model_id): kw.setdefault('tool_mode','tags')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
-            if 'backend' not in eng and (backend := env('LITERT_BACKEND')):
+            # `backend` goes to rishi as its own argument rather than inside `eng_kw`. Rishi builds
+            # the engine from a parameter of that name, so a chosen accelerator buried in the
+            # engine kwargs arrived as a second value for it and every litert model failed to load.
+            if 'backend' not in eng and 'backend' not in kw and (backend := env('LITERT_BACKEND')):
                 from litert_lm import Backend as LB
                 backends = {'cpu': LB.CPU, 'gpu': LB.GPU}
                 if backend.lower() not in backends:
                     raise ValueError(f'unknown LiteRT backend {backend!r}; use cpu or gpu')
-                eng['backend'] = backends[backend.lower()]()
+                kw['backend'] = backends[backend.lower()]()
             eng.setdefault('max_num_tokens',self.spec.ctx)
             kw['eng_kw']=eng
             conv=dict(kw.pop('conv_kw',{}) or {})
@@ -941,7 +975,7 @@ class RishiBackend(Backend):
         if self.spec.model_id.startswith('claude_code/'):
             from .core import _install_toolslm_funccall
             _install_toolslm_funccall()
-        return Chat(self.spec.model_id,runtime=self.spec.runtime,sp=self.sp,tools=self.tools,
+        return (_MK_CHAT or Chat)(self.spec.model_id,runtime=self.spec.runtime,sp=self.sp,tools=self.tools,
                     approve=self.approve,tool_max_len=self.tool_max_len,max_steps=self.max_steps,
                     ctx_limit=self.spec.ctx,**self._runtime_kw())
     def spawn(self,sp='',tools=(),**kw):
@@ -990,6 +1024,11 @@ class RishiBackend(Backend):
         # Rishi trim to the common token prefix and reuse the KV cache without teaching a
         # suggestion about prior suggestions.
         if getattr(self,'_oneshot_chat',None) is None:
+            # There has to be an engine to share for the trick below to be worth anything, and a
+            # replayed chat has none. Ask the conversation we already have instead of building a
+            # second one around an engine that does not exist.
+            if not hasattr(self.chat,'engine'):
+                return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
             from rishi import Chat
             self._oneshot_chat=Chat(self.spec.model_id,runtime='mlx',engine=self.chat.engine,think=False,
                                     sp=sp,ctx_limit=self.spec.ctx,max_output_tokens=ONESHOT_TOKENS)
@@ -1004,7 +1043,10 @@ class RishiBackend(Backend):
     def _replace_hist(self,summary,keep):
         self.chat.hist[:]=self.chat.mk_msgs([summary,*keep]); self.chat._recreate_conv()
     def _usage(self):
-        u=self.chat.use
+        # A replay spent no tokens and a recording keeps no counters, so there is no `use` on a
+        # `CachedChat`. Zeros are the truthful answer; inventing the recorded turn's numbers
+        # would put a cost on a session that never made a call.
+        if (u:=getattr(self.chat,'use',None)) is None: return Usage(model=self.spec.model_id)
         return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
                      total=u.total_tokens,cached=u.cached_tokens,cost=u.cost,turns=u.n)
     def _refresh(self):

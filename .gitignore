@@ -157,3 +157,12 @@ checklink/cookies.txt
 
 # per-machine session key; never publish
 .sesskey
+
+# a pyrepl session's own state: the dhrishti server's log notebooks and the vault it filled
+.ramabana/
+
+# recorded model answers for the docs pages; committed deliberately, per recording, not wholesale
+chatcache/
+
+# the sdd workspace: briefs, reports and review packages for an in-flight plan
+.superpowers/

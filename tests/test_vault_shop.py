@@ -265,7 +265,7 @@ def test_ask_memory_tells_the_model_what_it_can_ask_for_next(tmp_path):
     assert 'answered on a local model' in out and 'instruction=' in out
 
 
-def test_a_lent_factory_honours_the_model_it_is_asked_for(tmp_path):
+def test_a_lent_factory_honours_the_model_it_is_asked_for(tmp_path, hide_runtime):
     """The vault names its local model and then checks what came back really runs here, so a
     factory that ignored the name would be handing a statement to a hosted API."""
     from ramabana.agent import Agent
@@ -274,4 +274,5 @@ def test_a_lent_factory_honours_the_model_it_is_asked_for(tmp_path):
     assert agent.lend_model() is True
     spec = agent._spec_for('gemma-e4b')
     assert spec is not None and spec.runtime == 'litert' and spec.local is True
+    hide_runtime('mlx')
     assert agent._spec_for('mlx/not-installed-here') is None

@@ -30,9 +30,10 @@ def test_pointing_the_one_shot_model_somewhere_moves_every_cheap_job():
     assert r.name_for('classify') == 'gpt-sol'
 
 
-def test_a_cheap_job_whose_model_is_not_installed_runs_somewhere_else():
+def test_a_cheap_job_whose_model_is_not_installed_runs_somewhere_else(hide_runtime):
     """`resolve` raises for a runtime whose dependency is missing, and the caller swallowed it --
     so on a machine without LiteRT every one-shot silently returned ''."""
+    hide_runtime('mlx')
     r = Routing(turn='gpt-mini')
     r.policy['oneshot'] = 'mlx/not-installed-here'
     with pytest.raises(Exception): r.spec('oneshot', fallback=False)
@@ -40,8 +41,9 @@ def test_a_cheap_job_whose_model_is_not_installed_runs_somewhere_else():
     assert 'unavailable' in r.notes['classify']
 
 
-def test_the_turn_model_never_falls_back():
+def test_the_turn_model_never_falls_back(hide_runtime):
     "The user chose it. Running something else without saying so is worse than failing."
+    hide_runtime('mlx')
     r = Routing(turn='mlx/not-installed-here')
     with pytest.raises(Exception): r.spec('turn')
 
@@ -126,10 +128,15 @@ def test_saved_remote_runtime_options_reach_rishi(monkeypatch):
 
 
 def test_litert_gpu_backend_can_be_selected_globally(monkeypatch):
+    """The accelerator goes to rishi as `backend=`, the parameter it builds the engine from.
+    Inside `eng_kw` it reached that engine twice and no litert model loaded at all."""
     from litert_lm import Backend as LB
     monkeypatch.setenv('RAMABANA_LITERT_BACKEND', 'gpu')
-    backend = RishiBackend(resolve('gemma-e4b'))._runtime_kw()['eng_kw']['backend']
-    assert isinstance(backend, LB.GPU)
+    kw = RishiBackend(resolve('gemma-e4b'))._runtime_kw()
+    assert isinstance(kw['backend'], LB.GPU) and 'backend' not in kw['eng_kw']
+
+    kw = RishiBackend(resolve('gemma-e4b'), eng_kw=dict(backend=LB.CPU()))._runtime_kw()
+    assert isinstance(kw['eng_kw']['backend'], LB.CPU) and 'backend' not in kw  # explicit wins
 
 
 def test_unknown_litert_backend_is_rejected(monkeypatch):
@@ -180,6 +187,9 @@ def test_managed_mcp_sends_the_tools_in_the_system_prompt_instead(monkeypatch):
         return ''
 
     spec = ModelSpec('claude', 'remote', 'claude_code/claude-sonnet-5', 200_000)
+    # Both halves are stated, because whether this machine carries a managed config is not the
+    # harness's business: on one that does, the unmanaged half read as a failure of the code.
+    monkeypatch.setattr(core, '_managed_claude_mcp', lambda: False)
     assert core.claude_tags(spec.model_id) is False           # unmanaged: the native path
     assert RishiBackend(spec)._runtime_kw().get('tool_mode') is None
 

@@ -5,7 +5,6 @@
 ## Modules
 
 - [ramabana.agent](https://vedicreader.github.io/ramabana/agent.html.md): The turn: what the model is told, what it is allowed to do, what it did, and what that cost.
-- [ramabana.cli](https://vedicreader.github.io/ramabana/cli.html.md): Ramabana in a terminal: a transcript of blocks, a status bar, and one line to type in.
 - [ramabana.coding_patterns](https://vedicreader.github.io/ramabana/coding_patterns.html.md): Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
 - [ramabana.core](https://vedicreader.github.io/ramabana/core.html.md): The error type, the environment convention, and the one place that decides which model runs what.
 - [ramabana.mcp](https://vedicreader.github.io/ramabana/mcp.html.md): Ramabana's tools, and Ramabana's whole agent, as an MCP server.

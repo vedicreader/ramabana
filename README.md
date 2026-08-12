@@ -44,8 +44,9 @@ pip install 'ramabana[all]'
 ```
 
 A model is not bundled. `rishi` fetches one on first use, and which one is a routing
-decision – see [core](00_core.ipynb). To run LiteRT models on its GPU backend, set the
-process-wide environment variable `RAMABANA_LITERT_BACKEND=gpu` before starting Ramabana.
+decision – see [core](00_core.ipynb). LiteRT models run on the GPU by default, and fall back
+to the CPU with a warning where there is no delegate for it; set
+`RAMABANA_LITERT_BACKEND=cpu` to pin them to the CPU instead.
 
 ## Use
 
@@ -113,8 +114,6 @@ leave the open folders and a read outside is always a path the model already kne
 open_host = LocalHost(['..'], web=False, index=False, read_outside=True)
 open_host.roots_note
 ```
-
-    '1 folder(s); reads may name any path on this machine, writes may not'
 
 With a model in place, one turn is `ask`. Here it runs against a scripted backend, so this
 page is reproducible; [testing](04_testing.ipynb) is where that comes from:

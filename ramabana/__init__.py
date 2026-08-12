@@ -3,7 +3,6 @@
 Modules:
 
 - `ramabana.agent`: The turn: what the model is told, what it is allowed to do, what it did, and what that cost.
-- `ramabana.cli`: Ramabana in a terminal: a transcript of blocks, a status bar, and one line to type in.
 - `ramabana.coding_patterns`: Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
 - `ramabana.core`: The error type, the environment convention, and the one place that decides which model runs what.
 - `ramabana.mcp`: Ramabana's tools, and Ramabana's whole agent, as an MCP server.
