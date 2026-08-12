@@ -38,10 +38,10 @@ dependencies = [
 # testable, since the whole UI is asserted against a headless emulator in 05_cli.ipynb.
 cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0"]
 mcp = ["mcp>=1.2"]
-all = ["ramabana[cli,mcp]"]
+all = ["ramabana[cli,mcp,pyrepl]"]
 # Every notebook is executed by `nbdev-test`, including the cli and mcp pages, so the dev
 # environment needs both frontends' dependencies or CI cannot run the docs as tests.
-dev = ["ramabana[cli,mcp]", "rishi[all]>=0.1.1", "nbdev>=3.3", "notebook>=7.6.0", "pytest>=8.0.0"]
+dev = ["ramabana[cli,mcp,pyrepl]", "rishi[all]>=0.1.1", "nbdev>=3.3", "notebook>=7.6.0", "pytest>=8.0.0"]
 pyrepl = [
     "dhrishti>=0.1.2",
     "jupyter-client>=8.9.1",
@@ -80,7 +80,7 @@ dev = [
     "nbdev>=3.3.11",
     "notebook>=7.6.1",
     "rishi[all]>=0.1.2",
-    "ramabana[cli,mcp]",
+    "ramabana[cli,mcp,pyrepl]",
     "rishi[all]>=0.1.1",
     "pytest>=8.0.0",
     "dhrishti>=0.1.2",

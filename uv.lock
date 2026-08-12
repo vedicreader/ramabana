@@ -3818,6 +3818,8 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "dhrishti" },
+    { name = "jupyter-client" },
     { name = "mcp" },
     { name = "pyghostty" },
     { name = "teleprint" },
@@ -3827,6 +3829,8 @@ cli = [
     { name = "teleprint" },
 ]
 dev = [
+    { name = "dhrishti" },
+    { name = "jupyter-client" },
     { name = "mcp" },
     { name = "nbdev" },
     { name = "notebook" },
@@ -3849,17 +3853,21 @@ dev = [
     { name = "nbdev" },
     { name = "notebook" },
     { name = "pytest" },
-    { name = "ramabana", extra = ["cli", "mcp"] },
+    { name = "ramabana", extra = ["cli", "mcp", "pyrepl"] },
     { name = "rishi", extra = ["all"] },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "dhrishti", marker = "extra == 'all'", specifier = ">=0.1.2" },
+    { name = "dhrishti", marker = "extra == 'dev'", specifier = ">=0.1.2" },
     { name = "dhrishti", marker = "extra == 'pyrepl'", specifier = ">=0.1.2" },
     { name = "exhash", specifier = ">=0.4.9" },
     { name = "fastcore", specifier = ">=2.1.16" },
     { name = "fastllm-claude-code", specifier = ">=0.0.7" },
     { name = "fossick", specifier = ">=0.1.0" },
+    { name = "jupyter-client", marker = "extra == 'all'", specifier = ">=8.9.1" },
+    { name = "jupyter-client", marker = "extra == 'dev'", specifier = ">=8.9.1" },
     { name = "jupyter-client", marker = "extra == 'pyrepl'", specifier = ">=8.9.1" },
     { name = "koshas", specifier = ">=0.0.31" },
     { name = "mcp", marker = "extra == 'all'", specifier = ">=1.2" },
@@ -3886,7 +3894,7 @@ dev = [
     { name = "nbdev", specifier = ">=3.3.11" },
     { name = "notebook", specifier = ">=7.6.1" },
     { name = "pytest", specifier = ">=8.0.0" },
-    { name = "ramabana", extras = ["cli", "mcp"] },
+    { name = "ramabana", extras = ["cli", "mcp", "pyrepl"] },
     { name = "rishi", extras = ["all"], specifier = ">=0.1.1" },
     { name = "rishi", extras = ["all"], specifier = ">=0.1.2" },
 ]
