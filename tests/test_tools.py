@@ -212,3 +212,45 @@ def test_the_read_flag_is_a_host_capability_not_a_tool_assumption():
     assert not tools._takes_reading(OldHost)
     assert str(tools.readable(OldHost(['/proj']), '/anywhere/x.py')) == '/anywhere/x.py'
     assert seen == [('/anywhere/x.py', False)]
+
+
+# -- reaching outward ------------------------------------------------------------------
+
+def test_the_web_tools_ask_for_what_they_want_and_hand_back_only_the_digest(monkeypatch):
+    """fossick's own default is ten results, so slicing twenty down to twenty quietly returned ten.
+    And `research` returns a record; stringifying the whole `{query, sources, digest, dropped}` sent
+    the same markdown twice, once in dict syntax."""
+    import fossick
+    asked = {}
+
+    def search(q, **kw):
+        asked.update(q=q, **kw)
+        return [{'title': f'r{i}', 'href': f'https://x/{i}'} for i in range(kw.get('n', 10))]
+
+    monkeypatch.setattr(fossick, 'search', search)
+    host = LocalHost(['.'], web=True, index=False)
+    assert len(host.web_search('nbdev export', n=20)) == 20 and asked['n'] == 20
+
+    monkeypatch.setattr(fossick, 'research', lambda q, **kw: {
+        'query': q, 'sources': [{'title': 't', 'href': 'https://x', 'md': 'body'}],
+        'digest': '## t\nhttps://x\n\nbody', 'dropped': []})
+    out = LocalHost(['.'], web=True, index=False).research('what is nbdev')
+    assert out == '## t\nhttps://x\n\nbody' and 'dropped' not in out
+
+
+def test_the_code_index_builds_the_graph_it_later_queries(monkeypatch, tmp_path):
+    """`_semantic` asks `Kosha.context` for graph expansion, so the sync has to have built one. The
+    call passed `sync_graph=force` -- kosha's deprecated name for `graph` -- so with `force` at its
+    default the graph was switched off on every ordinary sync."""
+    import kosha
+    seen = {}
+
+    class FakeKosha:
+        def __init__(self, dir=None): pass
+        def sync(self, **kw):
+            seen.update(kw)
+            return self
+
+    monkeypatch.setattr(kosha, 'Kosha', FakeKosha)
+    LocalHost([tmp_path], web=False).sync_index(wait=True)
+    assert seen.get('graph') is True and 'sync_graph' not in seen

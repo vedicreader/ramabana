@@ -25,7 +25,7 @@ from ramabana.agent import Agent
 from ramabana.core import (Budget, ModelSpec, budget_for, force_tags, forget_forced_tags,
                            tool_channel)
 from ramabana.runtime import estimate_tokens, threshold
-from ramabana.testing import FakeBackend, FullHost, ScriptedBackend, Step
+from ramabana.testing import FakeBackend, FullHost, ScriptedBackend, Step, fake_agent
 from ramabana.tools import LocalHost, Skill, clip_lines, named_skills, sub_sp, tools_for
 
 SMALL = ModelSpec('gemma-e2b', 'litert', 'litert-community/x', 16_384)   # the local default
@@ -300,3 +300,64 @@ def test_the_projects_own_instructions_are_read_marked_and_bounded():
 
     reaches = MemHost({'/proj/AGENTS.md': 'Run the tests with `nbdev-test`.'})
     assert 'nbdev-test' in A.system_prompt(reaches, tools=tools_for(reaches))
+
+
+# -- what rides along with a prompt ----------------------------------------------------
+
+def test_the_ramabana_profile_does_not_mix_in_the_aai_notices():
+    """Two instruction systems in one prompt is how a model ends up told to do opposite things.
+    The aai profile stays available as an explicit compatibility option, chosen at construction."""
+    from ramabana import runtime
+    plain, be = fake_agent(replies=['done'])
+    plain.ask('add a test')
+    assert runtime.ACTION_NOTICE not in str(be.sent[-1])
+
+    aai, abe = fake_agent(replies=['done'], instruction_style='aai')
+    aai.ask('add a test')
+    assert runtime.ACTION_NOTICE in str(abe.sent[-1])
+
+
+def test_a_notice_fires_on_the_shape_of_the_prompt_not_on_a_model_call():
+    "Deterministic, so the routing is inspectable in the conversation history afterwards."
+    from ramabana import runtime
+    assert runtime.prompt_notices('where is this handled?') == [runtime.Q_NOTICE]
+    assert runtime.APPROVAL_NOTICE in runtime.prompt_notices('go')
+    assert runtime.APPROVAL_NOTICE in runtime.prompt_notices('ok.')
+    assert runtime.BTW_NOTICE in runtime.prompt_notices('BTW can you also check the tests')
+    assert runtime.prompt_notices('add a test for this') == [runtime.ACTION_NOTICE]
+    assert '<system-reminder>' in runtime.notices_block('what does this do?')
+    assert runtime.ACTION_NOTICE in runtime.notices_block('add a test')
+
+    a, be = fake_agent(replies=['because x'])
+    a.ask('why does this break?')
+    sent = str(be.sent[0])
+    assert 'route="direct"' in sent and '<system-reminder>' not in sent
+
+
+def test_a_delegated_question_runs_on_a_thrown_away_conversation_with_the_scope_it_needs(spec):
+    """Nothing leaks back into the parent -- a sub-agent whose context returns is a slower way of
+    doing the work inline. It keeps the scope choice, because the sandbox limits the Python available
+    and not what may be seen: the overlay is protected by the AST policy rather than an allowlist,
+    so it is no more dangerous to delegate than to run.
+    """
+    import inspect
+    from ramabana.tools import NullHost, delegate, read_only
+    be = FakeBackend(spec)
+    be.start()
+    assert delegate(be, 'where do we do X?', tools=[]) == 'sub answer'
+    assert len(be.spawned) == 1 and be.hist == []
+
+    class H(NullHost):
+        def __init__(self, *a, **kw): super().__init__(*a, **kw); self.calls = []
+        def inspect_python(self, code, scope='isolated'):
+            self.calls.append((code, scope)); return 'ok'
+        def list_vars(self): return 'df: DataFrame'
+        def terminal_text(self, lines=200): return ''
+        def run_python(self, code): return 'ok'
+
+    h = H(['/x'])
+    sub = {t.__name__: t for t in read_only(tools_for(h))}
+    assert 'inspect_python' in sub
+    assert 'scope' in inspect.signature(sub['inspect_python']).parameters
+    sub['inspect_python'](code='list(df.columns)', scope='overlay')
+    assert h.calls == [('list(df.columns)', 'overlay')]
