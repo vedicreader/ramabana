@@ -80,13 +80,62 @@ session, and it is the file the earlier run produced.
 The existing terminal surface — blocks, gutters, folding, the status bar, approvals, `/copy`,
 transcript navigation — with a `mode` of `python` or `agent`. **Python is the default**, because
 this is a REPL that has an agent in it rather than an agent that has a REPL in it. `/python` and
-`/agent` switch; the prompt label and status colour say which is live. Two keys change meaning in
-python mode: `tab` completes through the kernel, and `ctrl-c` interrupts the running cell rather
-than the model.
+`/agent` switch; the prompt label and status colour say which is live. Three keys change meaning in
+python mode: `tab` completes through the kernel, `ctrl-c` interrupts the running cell rather than the
+model, and `enter` submits only a statement that compiles (see *The Python surface* below).
 
 Two drivers sit under it. `run_code` executes an owner cell, streams outputs into blocks through
 `on_output`, and logs the cell. `run_agent` streams a model turn on a worker thread, pumping chunks
 back over a queue onto the loop, and logs the user prompt and the reply as markdown.
+
+Agent mode is the ordinary Ramabana surface with nothing removed: the same blocks and gutters,
+folding, approvals, slash commands, attachments, transcript navigation and status bar. Switching to
+python mode changes what a line *means*, not what the terminal can do.
+
+## The Python surface
+
+This is where the terminal has to feel like leela rather than like a pipe, and it is three things.
+
+### Multi-line input
+
+`Ui.on_key` submits unconditionally on `enter`, and the reference sends a single line — so a typed
+`for i in range(3):` submits an incomplete statement and returns a SyntaxError. Pasted blocks
+survive, because bracketed paste arrives through `on_paste` rather than per-key.
+
+In python mode, `enter` runs the buffer through `codeop.compile_command`. Three outcomes: it
+compiles, so submit; it is *incomplete*, so insert a newline and show a `... ` continuation prompt;
+it is *invalid*, so say so at the prompt without paying for a round trip to the kernel. The buffer
+already holds newlines and the compositor already places a cursor within a wrapped multi-row prompt
+(`05_cli.ipynb` asserts both), so this is a decision about `enter`, not new buffer machinery.
+
+An empty line submits a pending block, which is what every Python REPL does and what muscle memory
+expects.
+
+### Colour
+
+`rich.syntax.Syntax` highlights the input line as it is typed and code cells in the transcript,
+with the existing `GRUVBOX` palette. `rich` and `pygments` are already present through the `cli`
+extra, so this costs no dependency. Highlighting is applied to the *rendering* only — `log_cell`
+and the transcript's `block_text` keep the plain source, so what `/copy` and the session notebook
+carry is still code you can paste.
+
+### Completion, with the namespace described
+
+Two sources, and the split matters:
+
+- **The kernel completes.** `complete_request` is IPython's completer with jedi behind it, so it
+  knows imports, attribute chains, dict keys and paths. Nothing built on dhrishti could match it:
+  dhrishti has no completion endpoint — its API is `rows`, `expand`, `grid`, `result`, `history`,
+  `sessions` — and `rows` only knows top-level bindings.
+- **Dhrishti describes.** Each candidate that names something live is annotated from
+  `/agent/api/rows` (or `/agent/api/expand` for an attribute chain) with its type and shape, so the
+  candidate row reads `df → DataFrame [1200×8]` rather than `df`. That is the inspector experience,
+  and it is the reason the annotation comes from the agent half of the API: describing a namespace
+  needs no token.
+
+The annotation is best-effort. A completion list must never wait on HTTP, so candidates paint
+immediately and gain their descriptions when the lookup returns; a failed or slow lookup leaves
+bare names rather than an empty list.
 
 ### Entry points
 
@@ -153,9 +202,15 @@ present via `cli`.
   notebook, then rebinds `owner_value` from the agent layer and asserts the owner still sees `40`.
 
 That last one needs a live kernel and dhrishti, so it skips when the `pyrepl` extra is absent.
-The notebook adds surface tests in the established style: `PyreplUi` driven against a `pyghostty`
-emulator with a `FakeBackend`, covering mode switching, the prompt label, python-mode `tab` and
-`ctrl-c`, and `on_output` rendering each output kind into the right block.
+
+The notebook adds surface tests in the established style — `PyreplUi` driven against a `pyghostty`
+emulator with a `FakeBackend` — covering mode switching, the prompt label, python-mode `ctrl-c`, and
+`on_output` rendering each output kind into the right block. The Python surface is testable without
+a kernel where it matters most: `enter` on `for i in range(3):` must leave the buffer holding a
+newline and paint `... ` rather than submit; `enter` on `x = (` likewise; `enter` on `x = )` must
+report the error at the prompt; a blank line must submit the pending block; and the transcript's
+`block_text` for a highlighted code cell must equal the plain source. Completion needs the kernel,
+so its test asserts the annotation merge against a stubbed rows response rather than a live one.
 
 ## Reconciliation notes
 
@@ -165,6 +220,9 @@ notebook becomes `11_pyrepl.ipynb`; and its `main` lacks `read_outside` and `vau
 current `cli.main` has and the dispatch must forward.
 
 ## Out of scope
+
+Linting. `codeop` reports what will not compile, and everything semantic waits for execution — no
+pyflakes dependency and no shelling out to a `ruff` that may or may not be on the machine.
 
 Promotion from attach mode. A request-and-confirm protocol between ramabana and leela. Any UI in
 dhrishti. Replacing leela's Python surface.
