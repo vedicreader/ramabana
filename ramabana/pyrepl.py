@@ -6,7 +6,7 @@ Docs: https://vedicreader.github.io/ramabana/pyrepl.html.md"""
 
 # %% auto #0
 __all__ = ['PY_HELP', 'ExecOutcome', 'output_text', 'Kernel', 'DhrishtiHost', 'mk_pyagent', 'amain', 'main', 'run_code',
-           'run_agent', 'PyreplUi']
+           'run_agent', 'PyreplUi', 'code_state']
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0004
 import asyncio, codeop, json, os, queue, shutil, sys, tempfile, threading, urllib.parse, urllib.request
@@ -363,8 +363,20 @@ async def run_agent(ui, prompt):
         ui.agent.clear_problems(); ui.paint()
     return block
 
+#| export
+def _syntax_note(src):
+    "What `compile_command` objected to, in one line."
+    try: codeop.compile_command(str(src), '<pyrepl>', 'single')
+    except SyntaxError as e: return f'{e.msg} (line {e.lineno})'
+    except Exception as e: return agent_err(e)
+    return ''
+
 class PyreplUi(Ui):
     "The ordinary Ramabana terminal with an additional user-owned Python mode."
+    #: The continuation prompt: a suite mid-buffer is neither the python nor the agent label,
+    #: and using either one here would say the wrong thing about what enter does next.
+    CONT = '...   '
+
     def __init__(self, comp, agent, kernel, loop=None):
         self.kernel, self.mode, self.matches = kernel, 'python', None
         super().__init__(comp, agent, loop)
@@ -374,11 +386,27 @@ class PyreplUi(Ui):
         out.append(f'  · {self.mode}', style=GRUVBOX['aqua'] if self.mode == 'python' else GRUVBOX['blue'])
         return out
 
+    def _label(self):
+        "The label ahead of the buffer's first line."
+        return 'python › ' if self.mode == 'python' else 'agent  › '
+
+    def _prefixed(self, text):
+        """`text` with the mode label on its first line and `CONT` on every line after it.
+
+        The one place either prefix is decided: `prompt` renders it over the whole buffer and
+        `tail` over the buffer up to the cursor, so the two cannot disagree about what precedes
+        a column. They would have to agree by inspection otherwise, and a continuation row drawn
+        with `CONT` but measured without it puts the cursor in the wrong place silently.
+        """
+        if self.ask is not None: return self.ASKING + text
+        return self._label() + text.replace('\n', '\n' + self.CONT)
+
     def prompt(self):
         if self.ask is not None: return super().prompt()
-        label = 'python › ' if self.mode == 'python' else 'agent  › '
         color = GRUVBOX['aqua'] if self.mode == 'python' else GRUVBOX['blue']
-        return Text(label, style=f'bold {color}') + Text(self.buf.text, style=GRUVBOX['fg0'])
+        label = self._label()
+        body = self._prefixed(self.buf.text)[len(label):]
+        return Text(label, style=f'bold {color}') + Text(body, style=GRUVBOX['fg0'])
 
     def tail(self):
         rows = [self.status()]
@@ -386,9 +414,11 @@ class PyreplUi(Ui):
         chips = self.attach_row()
         if chips is not None: rows.append(chips)
         if self.matches: rows.append(Text('  '.join(self.matches[:8]), style=GRUVBOX['gray']))
-        prompt = self.prompt(); rows.append(prompt)
-        prefix = self.ASKING if self.ask is not None else ('python › ' if self.mode == 'python' else 'agent  › ')
-        rendered = self.comp.console.render_lines(Text(prefix + self.buf.text[:self.buf.cursor]), pad=False)
+        rows.append(self.prompt())
+        # `render_lines` already does the newlines and the wrapping; the only thing left to get
+        # right is prefixing what precedes the cursor exactly as `prompt` prefixed it.
+        before = Text(self._prefixed(self.buf.text[:self.buf.cursor]))
+        rendered = self.comp.console.render_lines(before, pad=False)
         cursor = (len(rows) - 1, len(rendered) - 1, sum(span.cell_length for span in rendered[-1]))
         return rows, cursor
 
@@ -444,9 +474,49 @@ class PyreplUi(Ui):
             self.say(Text.from_ansi(body or f"{output.get('ename')}: {output.get('evalue')}"), 'error')
 
     def on_key(self, key):
+        # A typed suite grows the buffer instead of submitting it: `codeop` is asked once per
+        # keystroke rather than the kernel, so an unfinished `for` costs nothing to try. This
+        # sits before the ctrl-c branch and is guarded the same way the transcript-priority
+        # patch on `Ui.on_key` guards its own use of `enter` -- not while an approval, a menu
+        # or the transcript view already owns the key.
+        if (key.name == 'enter' and self.mode == 'python' and self.ask is None
+                and self.menu is None and not self.transcript.active):
+            src = self.buf.text
+            # A blank line submits what is pending, which is the only way to close a suite and
+            # what fingers already do: the trailing newline is what makes `code_state` say
+            # complete. `endswith('\n\n')` is the way out of a buffer that never will -- an
+            # empty suite body, an unclosed bracket -- which would otherwise grow forever; a
+            # second blank line submits it and lets the kernel name the error. An empty buffer
+            # falls through untouched, so a bare enter still just clears the line.
+            if src.strip() and not src.endswith('\n\n'):
+                state = code_state(src)
+                if state == 'incomplete':
+                    self.buf.insert('\n'); return self.paint()
+                if state == 'invalid':
+                    # Said here rather than by the kernel: a syntax error costs no execution,
+                    # and a prompt that answers instantly is the difference this makes.
+                    self.say(Text(f'incomplete or invalid: {_syntax_note(src)}'), 'error', fold=None)
+                    return self.paint()
         # ctrl-c means "stop what is running", and in python mode what is running is a cell.
         if key.name == 'ctrl+c' and self.turn is not None and self.mode == 'python':
             self.comp.spawn(self.kernel.interrupt(), name='interrupt')
             self.buf.clear(); return self.paint()
         self.matches = None
         return super().on_key(key)
+
+# %% ../nbs/11_pyrepl.ipynb #51d25204
+def code_state(src):
+    """Whether `src` is a finished statement, an unfinished one, or one that cannot compile.
+
+    `compile_command` answers with an object, `None`, or an exception, which is the same three
+    cases every Python prompt has always distinguished -- and the reason to ask it rather than
+    the kernel is that an unfinished line must not cost a round trip on every keystroke.
+
+    `'single'` (not `'exec'`) is the symbol that makes it ask the question a REPL asks: a suite
+    is not finished until its blank line, because that is the only way it says "no more body is
+    coming". `'exec'`'s notion of complete is a whole module's, which is already true one line
+    after the colon and would submit a `for` loop with no body typed for it yet.
+    """
+    try: return 'complete' if codeop.compile_command(str(src), '<pyrepl>', 'single') is not None else 'incomplete'
+    except SyntaxError: return 'invalid'
+    except Exception: return 'complete'      # not our judgement to make; let the kernel say
