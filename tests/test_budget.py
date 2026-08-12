@@ -232,3 +232,69 @@ def test_named_skills_reach_the_sub_agents_briefing(host):
     assert 'DEPLOY LIKE THIS' in be.spawned[0].sp
     # And a name that matched nothing rides back with the answer rather than vanishing.
     assert 'nosuchskill' in search('how do we deploy?', skills='nosuchskill')
+
+
+# -- where the tool schemas travel -----------------------------------------------------
+
+def test_native_is_the_default_channel():
+    "The wire is better wherever it is open: validated schemas, structured calls."
+    from ramabana.core import tool_channel
+    assert tool_channel(BIG) == 'native'
+    assert tool_channel(ModelSpec('cc', 'remote', 'claude_code/claude-sonnet-5', 200_000)) == 'native'
+
+
+def test_a_refused_wire_channel_is_remembered_per_model():
+    """A managed configuration is detectable up front; a transport that refuses MCP for any other
+    reason is only learned from a failure, and remembering it keeps the cost at one turn."""
+    from ramabana.core import force_tags, forget_forced_tags, tool_channel
+    cc = ModelSpec('cc', 'remote', 'claude_code/claude-sonnet-5', 200_000)
+    try:
+        force_tags(cc.model_id, 'MCP refused by policy')
+        assert tool_channel(cc) == 'tags'
+        assert tool_channel(BIG) == 'native'          # per model, not a global switch
+    finally:
+        forget_forced_tags()
+    assert tool_channel(cc) == 'native'               # a fixed configuration is tried again
+
+
+def test_the_channel_can_be_forced_for_any_model(monkeypatch):
+    "The escape hatch for a machine whose MCP is broken in a way nothing here detects."
+    from ramabana.core import tool_channel
+    monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'tags')
+    assert tool_channel(ModelSpec('g', 'remote', 'gpt-5.1', 400_000)) == 'tags'
+    monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'native')
+    assert tool_channel(ModelSpec('cc', 'remote', 'claude_code/x', 200_000)) == 'native'
+
+
+def test_a_tag_call_that_came_back_as_prose_is_reported(monkeypatch):
+    """What the tags channel costs. On the wire a malformed call raises; in the prompt it is just
+    text, and the user reads it as the model discussing a call it never made."""
+    monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'tags')
+
+    class Tagged(runtime.RishiBackend):
+        "A rishi backend whose engine replies with a broken tag, on both paths."
+        def _start(self): return self
+        def _send(self, msg, **kw): return '<tool_call>{"name": "view_file"'
+        def _stream(self, msg, **kw): yield '<tool_call>{"name": '; yield '"view_file"'
+        def _usage(self): return runtime.Usage(model=self.spec.model_id)
+
+    be = Tagged(ModelSpec('cc', 'remote', 'claude_code/x', 200_000))
+    be.send('go')
+    assert any('came back as prose' in p for p in be.problems), be.problems
+
+    streamed = Tagged(ModelSpec('cc', 'remote', 'claude_code/x', 200_000))
+    ''.join(streamed.stream('go'))                    # the CLI's path, not `send`'s
+    assert any('came back as prose' in p for p in streamed.problems), streamed.problems
+
+
+def test_a_clean_reply_reports_nothing(monkeypatch):
+    monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'tags')
+
+    class Clean(runtime.RishiBackend):
+        def _start(self): return self
+        def _send(self, msg, **kw): return 'the answer, with no tags in it'
+        def _usage(self): return runtime.Usage(model=self.spec.model_id)
+
+    be = Clean(ModelSpec('cc', 'remote', 'claude_code/x', 200_000))
+    be.send('go')
+    assert not be.problems

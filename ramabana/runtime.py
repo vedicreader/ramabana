@@ -121,7 +121,7 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
 # %% ../nbs/01_runtime.ipynb #835f4984
 import copy, os, re, sys, threading
 from dataclasses import dataclass
-from .core import agent_err, claude_tags, env
+from .core import agent_err, env, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # tail kept per call; an engine that logs a lot must not eat memory
@@ -867,17 +867,22 @@ class Backend:
         with self.lock:
             try:
                 out=self._send(msg,**kw); self.use=self._usage()
+                self._check_reply(out)
                 return out or self._empty()
             except Exception as e:return self._failed('failed',e)
     def stream(self,msg,**kw):
         if self.start() is None:yield self.note; return
         with self.lock:
-            n=0
+            n,buf=0,[]
             try:
-                for c in self._stream(msg,**kw): n+=len(c or ''); yield c
+                for c in self._stream(msg,**kw): n+=len(c or ''); buf.append(c or ''); yield c
                 self.use=self._usage()
+                self._check_reply(''.join(buf))
                 if not n:yield self._empty(True)
             except Exception as e:yield f'\n\n{self._failed("failed",e)}'
+    def _check_reply(self,text):
+        "Look at a finished reply for a failure the transport could not raise. Nothing by default."
+        return text
     def _empty(self,strict=False):
         why=f'{self.spec.name} returned nothing'+(f' — {self.last_native}' if self.last_native else '')
         return self.problem(why) if strict else (f'({why})' if self.last_native else '(no reply)')
@@ -953,11 +958,10 @@ class RishiBackend(Backend):
         import os
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
-        # An enterprise-managed Claude Code forbids every dynamic MCP server, and an MCP server
-        # is how that transport declares tools -- so the tools were stripped out of the payload
-        # and the model ran blind. `tool_mode='tags'` sends the schemas in the system prompt and
-        # reads the calls back out of the reply text, a channel no MCP policy can close.
-        if self.spec.runtime=='remote' and claude_tags(self.spec.model_id): kw.setdefault('tool_mode','tags')
+        # Where the schemas travel is one decision, made in `core.tool_channel`. Only `remote`
+        # takes the keyword: the local engines have always read tag calls, so for them this is
+        # not a mode but the protocol.
+        if self.spec.runtime=='remote' and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
             if 'backend' not in eng and (backend := env('LITERT_BACKEND')):
@@ -1003,6 +1007,23 @@ class RishiBackend(Backend):
         from rishi.core import resp_text
         # A blocking turn is read as prose by whoever asked for it, so the thinking comes off here too.
         return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
+    def _check_reply(self,text):
+        """Report a tag call that came back as prose, which is what the tags channel costs.
+
+        On the wire a malformed call is a transport error and something raises. In the prompt it is
+        just text, and the failure is silent: `parse_tool_tags` matches complete blocks, so an
+        unclosed or misspelled tag stays in the reply and reads to the user as the model discussing
+        a call it never made.
+
+        This is a floor on how often the channel fails rather than a count of it. A well-formed
+        block holding bad JSON is dropped by `mk_tag_tc` and leaves nothing behind to find, and
+        counting those needs a hook rishi does not have yet. A number that is too low is still the
+        difference between knowing this channel is costing calls and guessing.
+        """
+        if tool_channel(self.spec)=='tags' and '<tool_call' in (text or ''):
+            self.problem(f'{self.spec.name}: a <tool_call> block came back as prose rather than a '
+                         'call, so this model is not punctuating the tags channel reliably')
+        return text
     def _stream(self,msg,**kw):
         kw=self._turn_kw(kw)
         if not self.prefilled_think:yield from self.chat(msg,stream=True,**kw); return

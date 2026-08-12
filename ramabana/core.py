@@ -55,9 +55,10 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLAUDE', 'CLOUD', 'CUSTOM',
            'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'SMALL_CTX',
-           'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'AgentError', 'agent_err', 'use_env_prefix', 'env', 'runtime_available',
-           'claude_tags', 'auth_status', 'available_models', 'local_ctx', 'ModelSpec', 'resolve', 'model_note',
-           'Budget', 'budget_for', 'register_model', 'unregister_model', 'Routing']
+           'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env',
+           'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx', 'ModelSpec', 'resolve',
+           'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model', 'force_tags',
+           'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
@@ -466,6 +467,48 @@ def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model
 def unregister_model(name):
     "Remove one process-local configurable model alias."
     CUSTOM.pop(name, None); MODELS.pop(name, None); _LOCAL_CTX.pop(name, None)
+
+# %% ../nbs/00_core.ipynb #1e5cd7ee
+TOOL_CHANNELS = ('native', 'tags')
+
+_forced_tags = {}   # model_id -> why its wire tool channel is closed on this machine
+
+
+def force_tags(model_id, why=''):
+    """Record that this model's tools cannot travel on the wire here, so later turns stop trying.
+
+    A managed configuration is detectable before the first request and `claude_tags` detects it.
+    A transport that refuses MCP for any other reason -- a policy at a path nobody documented, a
+    plugin that failed to register, a version that dropped the field -- is only learned from a
+    failure, and learning it is what keeps the cost at one turn instead of every turn.
+    """
+    why = why or 'the wire tool channel was refused'
+    _forced_tags[str(model_id)] = why
+    return why
+
+
+def forget_forced_tags():
+    "Forget what was learned about wire channels, so a fixed configuration is tried again."
+    _forced_tags.clear()
+
+
+def tool_channel(spec):
+    """Which channel a model's tool schemas travel on: `'native'` on the wire, `'tags'` in the
+    system prompt. Takes a `ModelSpec` or a bare model id.
+
+    `native` is the default and stays the better channel wherever the wire is open. `tags` is
+    for where it is not, and the cost is worth stating: the schemas are no longer validated and
+    a call arrives as text the model had to punctuate correctly. That is a real downgrade, taken
+    to keep an agent that has tools rather than one that has none.
+
+    `$RAMABANA_TOOL_CHANNEL` forces either, for any model, which is also how a machine whose MCP
+    is broken in a way nothing here detects gets a working agent without waiting for a release.
+    """
+    mid = str(getattr(spec, 'model_id', spec) or '')
+    if (v := (env('TOOL_CHANNEL') or '').strip().lower()) in TOOL_CHANNELS: return v
+    if mid in _forced_tags: return 'tags'
+    return 'tags' if claude_tags(mid) else 'native'
+
 
 # %% ../nbs/00_core.ipynb #e81acb32
 @dataclass
