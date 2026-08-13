@@ -25,6 +25,7 @@ def test_cli_offers_python_mode_as_flags_on_the_one_command():
     p = anno_parser(cli.main.__wrapped__, pos=['prompt'])
     assert p.parse_args(['--python']).python is True
     assert p.parse_args(['--attach', 'proj']).attach == 'proj'
+    assert p.parse_args(['--spec']).spec is True
     assert p.parse_args([]).python is False
     assert p.parse_args(['one question']).prompt == 'one question'
 

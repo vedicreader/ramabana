@@ -6,10 +6,11 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 
 # %% auto #0
 __all__ = ['KAKU', 'GRUVBOX', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'NOTIFY_EVERY', 'MOUSE_ON', 'MOUSE_OFF', 'HELP', 'BUILD',
-           'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'REFACTOR',
-           'MENUS', 'PYREPL_MODULES', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
-           'clipboard_png', 'Attachment', 'media_parts', 'media_note', 'Option', 'options_for', 'ChoiceMenu',
-           'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
+           'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING',
+           'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'PYREPL_MODULES', 'key_card', 'guide_text', 'media_path', 'is_media',
+           'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'media_parts', 'media_note', 'file_refs',
+           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'mk_host',
+           'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -89,7 +90,8 @@ approve y approve · n refuse · a approve all · ctrl+y approve with a note · 
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · enter runs what compiles · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
-extra   /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload"""
+extra   /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
+api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
 
 # %% ../nbs/05_cli.ipynb #buildstamp
@@ -152,6 +154,19 @@ SENDING FILES
   /attach PATH   /detach [N]   ctrl+v for a clipboard image
 
   They ride along with the next prompt and are cleared when it goes.
+
+API SPECIFICATIONS
+
+  ramabana --spec             enable OpenAPI, Azure and Google Discovery
+                              tools
+  api_load URL-or-path        load one JSON or YAML specification
+  api_ops                     list operations; group/name/match narrow
+                              the result
+  api_call OPERATION           call a listed operation with documented
+                              parameters
+
+  Start with `--spec`, then ask the agent to call `api_load` with the URL or
+  file path. It can inspect with `api_ops` before it calls `api_call`.
 
 APPROVALS
 
@@ -336,6 +351,39 @@ def media_note(atts):
     if any(a.kind == 'audio' for a in atts):
         note += '\nAudio is attached by path only; read it from the path above if you need its contents.'
     return f'\n\n<attachments>\n{rows}\n</attachments>{note}'
+
+# %% ../nbs/05_cli.ipynb #2a893877
+MAX_FILE_ATTACH = 120_000  # characters; enough source to be useful without consuming a whole turn
+
+
+def file_refs(text):
+    "Relative paths named as `@path` in a prompt, with sentence punctuation removed."
+    out = []
+    for m in ATTACH_REF.finditer(str(text or '')):
+        tok = m.group(1)
+        while tok and tok[-1] in TRAILING: tok = tok[:-1]
+        if tok: out.append(tok)
+    return out
+
+
+class FileAttachment:
+    "One text or notebook source attachment, captured when the prompt is submitted."
+    kind = 'file'
+    def __init__(self, path, text): self.path, self.data = Path(path), str(text)
+    @property
+    def name(self): return self.path.name
+    def __len__(self): return len(self.data)
+    def label(self): return f'{self.name} ({_human(len(self))})'
+    def line(self): return f'file  {self.path}  text/plain  {_human(len(self))}'
+
+
+def file_note(atts):
+    "The grounded text from selected workspace files, with their exact paths."
+    files = [a for a in atts if a.kind == 'file']
+    if not files: return ''
+    return '\n\n<attached-files>\n' + '\n\n'.join(
+        f'<file path="{a.path}">\n{a.data}\n</file>' for a in files) + '\n</attached-files>'
+
 
 # %% ../nbs/05_cli.ipynb #07ecef35
 @dataclass
@@ -1214,11 +1262,12 @@ def mk_agent(roots=('.',),
              approve='ask',           # ask | auto | off | none (gate nothing at all)
              web=True,                # wire the web tools to fossick
              vault=False,             # keep what is read in a vishalakshi vault, for the next session
+             spec=False,              # let the agent load OpenAPI/Azure/GCP specifications
              read_outside=False,      # let the read-only tools name any path on this machine
              **kw):                   # forwarded to `Agent`
     "A host over the named folders and an `Agent` over that, gated the way `approve` says."
     approvals = None if approve == 'none' else Approvals(tools=WRITE_TOOLS, mode=approve)
-    host = mk_host(roots, approvals=approvals, web=web, vault=vault, read_outside=read_outside)
+    host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec, read_outside=read_outside)
     if approvals is not None: approvals.host = host   # the gate previews `create_file` via the host
     agent = Agent(host, model=model, approvals=approvals, **kw)
     agent.lend_model()   # or a `--vault` session loads a second runtime for vishalakshi
@@ -1299,6 +1348,7 @@ def main(
     web: bool = True,                    # let the web tools reach the network through fossick
     read_outside: bool = False,          # let reads name any path on this machine; writes stay inside
     vault: bool = False,                 # vishalakshi vault for what is read; not offered in python mode
+    spec: bool = False,                 # enable OpenAPI, Azure and Google Discovery tools
     cfg: str = '~/.config/ramabana',     # config dir, for skills, extensions and resumable history
     resume: str = '',                    # saved session id/prefix, or 'latest'
     python: bool = False,                # start in python mode, on a kernel of your own
@@ -1324,7 +1374,7 @@ def main(
             print(e, file=sys.stderr)
             return 2
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
-    agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault,
+    agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault, spec=spec,
                            read_outside=read_outside,
                            cfg=Path(cfg).expanduser() if cfg else None)
     if resume:
@@ -1338,3 +1388,77 @@ def main(
     hint = f"{', '.join(host.roots)} · /python · /help"
     try: asyncio.run(amain(agent, hint, python=python, attach=attach))
     except KeyboardInterrupt: pass
+
+# %% ../nbs/05_cli.ipynb #240c918c
+@patch
+def attach_file(self:Ui, path):
+    "Attach one readable text/notebook file under the host's file policy."
+    try: p = self.agent.host.check(path, must_exist=True, reading=True)
+    except TypeError as e:
+        if 'reading' not in str(e): return f'cannot attach {path}: {agent_err(e)}'
+        try: p = self.agent.host.check(path, must_exist=True)
+        except Exception as e: return f'cannot attach {path}: {agent_err(e)}'
+    except Exception as e: return f'cannot attach {path}: {agent_err(e)}'
+    p = Path(p).resolve()
+    roots = [Path(r).resolve() for r in self.agent.host.roots]
+    if not any(p == r or r in p.parents for r in roots): return f'cannot attach {p}: outside the open folders'
+    if p.is_dir(): return f'cannot attach {p.name}: it is a folder'
+    if p.suffix.lower() in MEDIA: return self.attach(p)
+    text = self.agent.host.text_at(p)
+    if text is None: return f'cannot attach {p.name}: not readable text'
+    if len(text) > MAX_FILE_ATTACH: return f'cannot attach {p.name}: {_human(len(text))} is over the {_human(MAX_FILE_ATTACH)} limit'
+    if len(self.attachments) >= MAX_ATTACH: return f'cannot attach {p.name}: {MAX_ATTACH} is the limit'
+    a = FileAttachment(p, text)
+    if any(x.path == a.path for x in self.attachments): return f'{a.name} is already attached'
+    self.attachments.append(a)
+    return f'attached file {a.label()}'
+
+@patch
+def _file_matches(self:Ui):
+    "Root-scoped completion candidates for the final `@query` in the prompt."
+    m = re.search(r'(?<!\S)@([^\s]*)$', self.buf.text[:self.buf.cursor])
+    if m is None: return None
+    query = m.group(1).lower()
+    roots = [Path(r) for r in self.agent.host.roots]
+    rows = []
+    for p in map(Path, self.agent.host.walk()):
+        try:
+            root = next(r for r in roots if p == r or r in p.parents)
+            rel = str(p.relative_to(root))
+        except (StopIteration, ValueError): continue
+        if query in rel.lower(): rows.append(rel)
+    return (m.start(1), sorted(rows))
+
+
+@patch
+def _refresh_complete(self:Ui):
+    "Refresh slash-command or root-scoped `@` file completion."
+    hit = self._file_matches()
+    if hit is not None:
+        start, matches = hit
+        self.complete = CompletionMenu(self.buf, matches, start=start, show=8) if matches else None
+        return
+    hits = self._slash_matches()
+    self.complete = CompletionMenu(self.buf, hits, start=0, show=8) if hits else None
+
+
+_core_on_key_files = Ui.on_key
+@patch
+def on_key(self:Ui, k):
+    "Offer `@` completion with the same Tab menu used for slash commands."
+    if self.ask is None and k.name == 'tab' and self.complete is None and self._file_matches() is not None:
+        self._refresh_complete()
+        if self.complete is not None:
+            if not self.complete.insert_common(): self.complete.cycle(1)
+            return self.paint()
+    out = _core_on_key_files(self, k)
+    if self.ask is None and self.complete is None and self._file_matches() is not None: self._refresh_complete()
+    return out
+
+
+_core_run_turn_files = run_turn
+async def run_turn(ui, prompt):
+    "Run a turn after capturing its readable `@` file references."
+    for ref in file_refs(prompt): ui.attach_file(ref)
+    return await _core_run_turn_files(ui, prompt)
+
