@@ -172,8 +172,7 @@ class _Tee:
             try: os.write(self.saved, b)              # still goes where it was going
             except OSError: pass
     def stop(self):
-        # Order matters: put the real descriptor back *first*, so anything written while
-        # the pipe is being torn down goes somewhere real rather than to a closed fd.
+        # the real descriptor goes back first, so a write during teardown lands somewhere real
         if self.saved is not None:
             try: os.dup2(self.saved, self.fd)
             except OSError: pass
@@ -188,19 +187,12 @@ class _Tee:
 
 # %% ../nbs/01_runtime.ipynb #821d64c1
 class captured:
-    """Context manager: `with captured() as cap: ...`, then read `cap.text`.
-
-    Serialised on a lock, because two threads redirecting the same descriptor at once would
-    restore each other's copies. Model calls already hold a per-backend lock; this is the
-    guard for the case where two different backends are called at once.
-    """
-    _lock = threading.Lock()
+    "Context manager: `with captured() as cap: ...`, then read `cap.text`."
+    _lock = threading.Lock()   # two threads redirecting one descriptor would restore each other's copies
     def __init__(self, fds=(1, 2), enabled=None):
         self.fds = fds
         self.text = ''
-        # Through `env`, so the switch follows whatever prefix this application named --
-        # `$RAMABANA_NO_NATIVE_CAPTURE` here, `$LEELA_NO_NATIVE_CAPTURE` inside leela, rather
-        # than one hard-coded name that is wrong in one of them.
+        # through `env`, so the switch follows whatever prefix this application named
         self.enabled = ((env('NO_NATIVE_CAPTURE') or '').lower() not in ('1', 'true', 'yes')
                         if enabled is None else enabled)
         self._tees, self._held = [], False
@@ -236,16 +228,12 @@ class captured:
 
 # %% ../nbs/01_runtime.ipynb #1b16a11e
 def capture(fn, *a, **kw):
-    """Call `fn`, returning `(result, captured_problem_text)`. Exceptions carry the text out too.
-    The re-raise happens *after* the context manager exits, because the text does not exist
-    until the pipe has been drained -- reading it from inside the block would attach an
-    empty string to every exception, which is the failure this module exists to prevent.
-    """
+    "Call `fn`, returning `(result, captured_problem_text)`. Exceptions carry the text out too."
     cap, err, out = captured(), None, None
     with cap:
         try: out = fn(*a, **kw)
         except Exception as e: err = e
-    if err is not None:
+    if err is not None:   # after the block: the text does not exist until the pipe is drained
         err.native_output = cap.problems
         raise err
     return out, cap.problems
@@ -267,16 +255,9 @@ def estimate_tokens(text, count=None):
     return max(1, (len(text) + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN)
 
 def threshold(ctx, reserve=RESERVE):
-    """The token count at which a conversation should be compacted, or None when there is no window.
-
-    The reserve is capped at a quarter of the window, which matters entirely for small
-    local models: a 4k window against the 16k reserve gives `max(1, 4096-16384) == 1`, so
-    every turn is "due" and the agent compacts a two-message conversation forever. A
-    fraction is the right shape anyway -- what is being reserved is room for one reply and
-    its tool results, and on a small model both are smaller.
-    """
+    "The token count at which a conversation should be compacted, or None when there is no window."
     if not ctx or ctx <= 0: return None
-    return max(1, ctx - min(reserve, max(1, ctx // 4)))
+    return max(1, ctx - min(reserve, max(1, ctx // 4)))   # a quarter of the window, for small models
 
 def should_compact(used, ctx, reserve=RESERVE):
     "Whether `used` tokens against a `ctx` window has crossed the line."
@@ -468,15 +449,7 @@ def surgical_history(msgs, policy=None, count=None):
 
 # %% ../nbs/01_runtime.ipynb #83afe271
 def reorient(kernel_alive=True, skills=()):
-    """What the model is told immediately after its context is rewritten.
-
-    Specific, because a vague note ("some context was lost") produces a model that either
-    ignores it or re-does everything. Each clause is here because omitting it causes a
-    concrete failure: without the kernel sentence the model re-imports and reloads data
-    that is still in memory; without the skills sentence it works from a half-remembered
-    skill it can no longer see; without the last sentence it re-answers a question it
-    already answered, because the summary reads like an instruction to resume.
-    """
+    "What the model is told immediately after its context is rewritten."
     live = ("**Your context was rewritten to fit the window, but the kernel process was not touched.** "
             "The user's namespace, imports and variables are all still live exactly as they were -- do "
             "not re-import anything, do not rebuild data, and do not re-run setup. Call `list_vars` if "
@@ -515,13 +488,7 @@ _APPROVALS = ('go', 'ok', 'okay', 'yes', 'yep', 'sure', 'do it', 'go ahead', 'pr
 
 
 def prompt_notices(prompt):
-    """Notices a submitted prompt earns, from aai-coding's `UserPromptSubmit` hook.
-
-    Cheap, and each one fixes a failure people actually hit. The approval notice matters
-    most in a harness that asks for approval: a person who types "go" after a long
-    exchange is approving the thing under discussion, not the four other things the model
-    listed on the way there.
-    """
+    "Notices a submitted prompt earns, from aai-coding's `UserPromptSubmit` hook."
     p = (prompt or '').strip()
     out = []
     if p.endswith('?'): out.append(Q_NOTICE)
@@ -542,13 +509,7 @@ def notices_block(prompt):
 
 # %% ../nbs/01_runtime.ipynb #45fad4d6
 def compact_notebook_context(prompt, fits):
-    """Reduce a tagged notebook only when ``prompt`` does not fit.
-
-    Cells marked ``compact=\"discard\"`` go first, then the oldest automatic cells. A
-    ``keep`` cell is never removed. This is deliberately a last-mile operation: in the
-    normal case every byte above the prompt is sent, and the user's cell policy only takes
-    effect when the selected model's real context window requires it.
-    """
+    "Reduce a tagged notebook only when `prompt` does not fit; a `keep` cell is never removed."
     if not isinstance(prompt, str) or fits(prompt): return prompt
     match = re.search(r'<notebook(?P<attrs>[^>]*)>\n?(?P<body>.*?)\n?</notebook>', prompt, re.S)
     if not match: return prompt
@@ -575,14 +536,7 @@ def compact_notebook_context(prompt, fits):
 
 # %% ../nbs/01_runtime.ipynb #4ee869b3
 class Compactor:
-    """Decides when to compact, and does it.
-
-    Deliberately not a callback on either engine. Compaction needs a *second* model call
-    on a *different* (cheap) model, and then it has to replace the first model's history --
-    which is two things neither backend's callback system is shaped for. Keeping it out
-    here also means the summary is available to write into the notebook, which is the
-    point.
-    """
+    "Decides when to compact, and does it. Not a callback on either engine."
 
     def __init__(self,
                  reserve=RESERVE,
@@ -603,39 +557,18 @@ class Compactor:
         return should_compact(backend.used_tokens, backend.spec.ctx, self.reserve)
 
     def budget(self, ctx=0, overhead=0):
-        """How much recent conversation to keep, for a window of `ctx` holding `overhead` besides.
-
-        Half of what the conversation actually has, so there is always a half left to summarise
-        into: a keep-tail larger than that keeps everything, leaves nothing old, and reports
-        "nothing to compact" while the engine is already refusing the turn.
-        """
+        "How much recent conversation to keep, for a window of `ctx` holding `overhead` besides."
         if not ctx: return self.keep_recent
         return min(self.keep_recent, max(256, max(256, ctx - overhead) // 2))
 
     def overhead(self, backend, msgs, count=None):
-        """What the window holds that is not this conversation.
-
-        Derived by subtraction rather than assembled from parts, because the parts differ by
-        transport: a briefing is always in the window, tool schemas are only in it when they
-        travel as text, and the framing around both belongs to whichever engine is loaded.
-        `used_tokens` already counts all of it correctly, so the honest measure is what it
-        counts minus what the messages account for.
-
-        An estimate that undercounts the messages overstates the overhead and compacts sooner,
-        which is the safe direction on the window where this matters.
-        """
+        "What the window holds that is not this conversation, by subtraction from `used_tokens`."
         used = getattr(backend, 'used_tokens', 0) or 0
         if not used: return 0
         return max(0, used - sum(estimate_tokens(_text(m), count) + 8 for m in msgs))
 
     def _keep(self, msgs, count=None, ctx=0, overhead=0):
-        """The tail to keep uncompacted, newest-first until the budget runs out.
-
-        Whole messages: half a tool result is worse than none, and an assistant message whose
-        tool result was dropped leaves a dangling call that some providers reject. `budget`
-        reasons about the window and this caps it again against what the conversation actually
-        holds, which is the term the window cannot see.
-        """
+        "The tail to keep uncompacted, newest-first until the budget runs out. Whole messages only."
         sizes = [estimate_tokens(_text(m), count) + 8 for m in msgs]
         budget = self.budget(ctx, overhead)
         if sizes: budget = min(budget, max(256, sum(sizes)//2))
@@ -644,23 +577,13 @@ class Compactor:
             if used + n > budget and kept: break
             kept.append(m); used += n
         kept.reverse()
-        # Then cut back to a clean boundary. A tail that starts at a tool result whose
-        # assistant call was just summarised away is a dangling tool call, which some
-        # providers reject outright and all of them find confusing, so the tail always
-        # starts at a user turn.
+        # the tail starts at a user turn: a dangling tool call is rejected by some providers
         while kept and _role(kept[0]) != 'user': kept.pop(0)
         return kept
 
     def compact(self, backend, summariser, extra='', summary_ctx=0, summary_output=1024,
                 summary_count=None):
-        """Summarise `backend`'s conversation and replace it. Returns the summary, or `''`.
-
-        `summariser` is a callable taking `(prompt, sp)` and returning text -- normally
-        the cheap local backend's `oneshot`. The summary is produced by one model and
-        installed in another's history on purpose: it is a mechanical transformation of a
-        transcript, and paying frontier prices to compress a frontier conversation is the
-        exact sort of spending routing exists to stop.
-        """
+        "Summarise `backend`'s conversation with `summariser(prompt, sp)` and replace it; the summary, or `''`."
         msgs = list(backend.hist or [])
         if not msgs:
             self.note = 'nothing to compact'
@@ -684,9 +607,7 @@ class Compactor:
                 try: self.on_compact(text)
                 except Exception: pass
             return text
-        # The system prompt and output share the local KV cache with this request. Leave a
-        # small template cushion too; overflowing while trying to recover is worse than a
-        # slightly less detailed checkpoint.
+        # the system prompt and the output share the window with this request
         input_budget = None
         if summary_ctx:
             sp_tokens = estimate_tokens(SUMMARISE_SP, summary_count)
@@ -715,11 +636,7 @@ class Compactor:
 
 # %% ../nbs/01_runtime.ipynb #a3e427bf
 def answer_only(text):
-    """A one-shot reply with the model's thinking removed, however the runtime left it.
-
-    Uses `rishi.split_think` for paired tags, then strips a template-prefilled thought that
-    only emits the closing `</think>` (rishi's splitter still leaves that case alone).
-    """
+    "A one-shot reply with the model's thinking removed, however the runtime left it."
     from rishi.core import split_think
     out, _ = split_think(text or '')
     if '</think>' in out: out = out.partition('</think>')[2]
@@ -738,11 +655,7 @@ def prefills_think(chat):
 
 
 class ThinkFilter:
-    """Drop a template-opened thinking block out of a raw chunk stream.
-
-    When the chat template already opened `<think>`, the model only emits `</think>`. Drop
-    everything up to each close; a tool call re-arms the filter for the next step.
-    """
+    "Drop a template-opened thinking block out of a raw chunk stream; a tool call re-arms it."
     TAG = '</think>'
 
     def __init__(self): self.thinking, self.buf, self.thought, self.answer = True, '', 0, 0
@@ -937,17 +850,8 @@ _MK_CHAT = None
 
 @contextmanager
 def use_chat(f):
-    """Build model conversations with `f` for the duration, instead of rishi's `Chat`.
-
-    `f` is called with rishi's own `Chat` arguments and must answer to `hist`, `oneshot`,
-    `close` and `reconfigure`, which is what `RishiBackend` reaches for. Anything beyond that
-    -- `mk_msgs` and `_recreate_conv` for compaction, `engine` for MLX's KV-cache reuse, `use`
-    for token counts -- is optional, and the backend states what it does without each.
-
-    Process-global, which is why it is a block and not a setting: right for a notebook or a
-    script, wrong for anything long-lived or threaded.
-    """
-    global _MK_CHAT
+    "Build model conversations with `f` for the duration, instead of rishi's `Chat`."
+    global _MK_CHAT   # process-global, which is why this is a block and not a setting
     old, _MK_CHAT = _MK_CHAT, f
     try: yield f
     finally: _MK_CHAT = old
@@ -966,9 +870,7 @@ class RishiBackend(Backend):
         import os
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
-        # Where the schemas travel is one decision, made in `core.tool_channel`. Only `remote`
-        # takes the keyword: the local engines have always read tag calls, so for them this is
-        # not a mode but the protocol.
+        # only `remote` takes the keyword; for the local engines tag calls are the protocol
         if self.spec.runtime=='remote' and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
@@ -990,10 +892,7 @@ class RishiBackend(Backend):
         return kw
     def _start(self):
         from rishi import Chat
-        # The Claude Code transport imports `fastllm.chat`, which imports `toolslm.funccall`.
-        # `resolve` installs that shim for every model that came through it -- but a caller
-        # holding a hand-built `ModelSpec` never went through `resolve`, and the missing module
-        # would surface here as an unexplained "unavailable".
+        # a hand-built `ModelSpec` never passed through `resolve`, which installs this shim
         if self.spec.model_id.startswith('claude_code/'):
             from .core import _install_toolslm_funccall
             _install_toolslm_funccall()
@@ -1013,11 +912,9 @@ class RishiBackend(Backend):
             self.chat.reasoning_effort = effort
         return kw
     def _send(self,msg,**kw):
-        # FastLLM's Claude Code transport is stream-only. Consume that same Rishi stream for
-        # blocking Agent.ask callers; the CLI already takes the streaming path directly.
+        # FastLLM's Claude Code transport is stream-only
         if self.spec.model_id.startswith('claude_code/'): return answer_only(''.join(self._stream(msg, **kw)))
         from rishi.core import resp_text
-        # A blocking turn is read as prose by whoever asked for it, so the thinking comes off here too.
         return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
     def _check_reply(self,text):
         """Report a tag call that came back as prose, which is what the tags channel costs.
@@ -1039,61 +936,45 @@ class RishiBackend(Backend):
     def _stream(self,msg,**kw):
         kw=self._turn_kw(kw)
         if not self.prefilled_think:yield from self.chat(msg,stream=True,**kw); return
-        # This model's thinking is indistinguishable from its reply until the closing tag, so
-        # take the structured chunks, drop the thought, and hand the rest to Rishi's own
-        # renderer rather than re-implementing it.
+        # the thought is indistinguishable from the reply until the close, so filter the raw
+        # chunks and hand the rest to rishi's own renderer
         from rishi.core import StreamFormatter
         f=ThinkFilter()
         yield from StreamFormatter().format_stream(f(self.chat(msg,stream='raw',**kw)))
-        # A small model given a large tool list routinely deliberates and then ends the turn
-        # without answering at all. "returned nothing" is true but useless; say what happened.
+        # "returned nothing" is true but useless, so say what happened instead
         if f.thought and not f.answer:
             self.problem(f'{self.spec.name} spent the whole turn thinking ({f.thought} characters) '
                          'and never answered; route `turn` to a larger model, or raise its output cap')
     def _oneshot(self,prompt,sp,max_tokens):
-        # `think=False` on every runtime: a cheap job's whole budget can be 32 tokens, and a
-        # reasoning model will spend all of them deliberating and leave no answer behind.
+        # `think=False` everywhere: a cheap job's whole budget can be 32 tokens
         if self.spec.runtime!='mlx':
             return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
-        # Keep a completion-only MLX conversation: rewriting its single user message lets
-        # Rishi trim to the common token prefix and reuse the KV cache without teaching a
-        # suggestion about prior suggestions.
+        # a completion-only MLX conversation, rewritten in place so rishi can reuse the KV cache
         if getattr(self,'_oneshot_chat',None) is None:
-            # There has to be an engine to share for the trick below to be worth anything, and a
-            # replayed chat has none. Ask the conversation we already have instead of building a
-            # second one around an engine that does not exist.
-            if not hasattr(self.chat,'engine'):
+            if not hasattr(self.chat,'engine'):   # nothing to share: a replayed chat has no engine
                 return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
             from rishi import Chat
             self._oneshot_chat=Chat(self.spec.model_id,runtime='mlx',engine=self.chat.engine,think=False,
                                     sp=sp,ctx_limit=self.spec.ctx,max_output_tokens=ONESHOT_TOKENS)
-        # `c.sp=`, not `reconfigure`: this conversation exists to be rewritten in place so MLX
-        # can trim to the common token prefix and keep its KV cache, and `reconfigure` rebuilds
-        # backend state -- which for MLX means throwing that cache away every cheap job.
+        # `c.sp=`, not `reconfigure`, which rebuilds backend state and drops MLX's cache
         c=self._oneshot_chat; c.sp=sp; c.hist[:]=[c.mk_msg(prompt)]
         from rishi.core import resp_text
-        # Always an explicit cap: this conversation is reused across jobs, so a 32-token
-        # `classify` must not leave a 32-token ceiling behind for the next summary.
+        # always an explicit cap: this conversation is reused across jobs
         return resp_text(c._model_step(max_tokens or ONESHOT_TOKENS))
     def _replace_hist(self,summary,keep):
-        # A replayed conversation has neither of these, and `Compactor` catches the refusal and
-        # says so in its note. Silently writing a checkpoint and keeping the whole history is
-        # the one outcome worth ruling out: it reports success and compacts nothing.
+        # a replayed conversation has neither; `Compactor` catches the refusal and says so
         if not hasattr(self.chat,'_recreate_conv'):
             raise RuntimeError(f'{type(self.chat).__name__} cannot have its history replaced')
         self.chat.hist[:]=self.chat.mk_msgs([summary,*keep]); self.chat._recreate_conv()
     def _usage(self):
-        # A replay spent no tokens and a recording keeps no counters, so there is no `use` on a
-        # `CachedChat`. Zeros are the truthful answer; inventing the recorded turn's numbers
-        # would put a cost on a session that never made a call.
+        # a replay spent no tokens, so zeros are the truthful answer
         if (u:=getattr(self.chat,'use',None)) is None: return Usage(model=self.spec.model_id)
         return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
                      total=u.total_tokens,cached=u.cached_tokens,cost=u.cost,turns=u.n)
     def _refresh(self):
         self.chat.reconfigure(sp=self.sp,tools=self.tools)
 
-# Dead names from when llama.cpp and FastLLM were separate backends, kept so an extension
-# pinned to one keeps importing.
+# Dead names from when llama.cpp and FastLLM were separate backends.
 def __getattr__(name):
     if name in ('LlamaBackend','FastllmBackend'):
         import warnings
