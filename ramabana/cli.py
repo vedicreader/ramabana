@@ -97,6 +97,8 @@ join    every live dhrishti session has an agent session, and that is what --att
         a leela window, a training script, another ramabana. --kernels or /kernels lists them
         a name shared by two live sessions cannot resolve, so the list shows their URLs instead
         /join NAME-or-URL joins one from the prompt; /attach is for files, not sessions
+        /python leaves a joined session for a kernel of your own, and /join closes yours to
+        go the other way, asking first when it holds names
 leave   /quit or /exit any time · ctrl+d on an empty line · ctrl+c stops the turn, not the session
 ask     type and press enter · tab after / lists commands · /help keys · /guide this
 read    blocks stack, one per event · taller than 12 rows arrives folded · ctrl+o unfolds the last
@@ -398,7 +400,8 @@ class Ui:
         self.hint = ''
         self.mode = 'agent'        # 'python' once `enter_python` has a kernel
         self.kernel = None         # the owner's `pyrepl.Kernel`, or None
-        self.attached = ''         # the base of a session someone else owns, when we joined one
+        self.attached = ''
+        self._join_ask = ''   # the session /join asked about, so the second try means yes         # the base of a session someone else owns, when we joined one
         self.matches = None        # kernel completion candidates on screen, or None
         self.attachments = []      # `Attachment`s the next prompt carries
         self.frame = 0             # animated status frame; advanced only while a turn runs
@@ -714,9 +717,6 @@ class Ui:
                 from ramabana.pyrepl import sessions
                 self.note(sessions())
                 return self.note('usage: /join NAME-or-URL')
-            if self.kernel is not None:
-                return self.note('this session owns a kernel already; /quit and start a fresh '
-                                 'ramabana to join someone else\'s', 'error')
             return self._join(bits[1])
         if line in ('/help', '/?'): self.say(key_card(HELP), 'note', fold=None, source=HELP); return None
         if line == '/guide': self.say(key_card(self.guide()), 'note', fold=None, source=self.guide()); return None
@@ -985,7 +985,8 @@ async def enter_python(self:Ui):
     try:
         if self.kernel is None:
             if self.attached:
-                return self.note(f'attached to {self.attached}: that Python prompt belongs to whoever started it')
+                self.attached = ''   # leaving it: their kernel keeps running, we just stop pointing at it
+                self.note('left the attached session; starting a kernel of your own')
             if missing := [m for m in PYREPL_MODULES if find_spec(m) is None]:
                 return self.note(f"python mode needs {' and '.join(missing)}: pip install 'ramabana[pyrepl]'", 'error')
             from ramabana.pyrepl import DhrishtiHost, Kernel
@@ -1083,7 +1084,17 @@ async def _promote(self:Ui, name):
 
 @patch
 async def _join(self:Ui, which):
-    "Join a live session from the prompt, and say what happened either way."
+    "Join a live session from the prompt. Closing our own kernel loses its names, so ask once."
+    if self.kernel is not None:
+        held = [x for x in (self.agent.host.list_vars() or '').splitlines() if x.strip()]
+        if held and self._join_ask != which:
+            self._join_ask = which
+            return self.note(f'your kernel holds {len(held)} name(s); joining closes it and loses '
+                             f'them. /join {which} again to go ahead.')
+        await self.kernel.shutdown()
+        self.kernel, self.mode = None, 'agent'
+        self.note('closed your kernel')
+    self._join_ask = ''
     try: base = await self.attach_session(which)
     except Exception as e: self.say(Text(agent_err(e)), 'error', fold=None)
     else: self.say(Text(f'attached to {base}; the agent reads that namespace and writes into its '
