@@ -6,7 +6,7 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLAUDE', 'CLOUD', 'CURSOR',
-           'DFLT_CURSOR_CTX', 'CUSTOM', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY',
+           'DFLT_CURSOR_CTX', 'RUNTIMES', 'CUSTOM', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY',
            'DFLT_LOCAL_CTX', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TOOL_CHANNELS', 'AgentError', 'agent_err',
            'use_env_prefix', 'env', 'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx',
            'ModelSpec', 'resolve', 'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model',
@@ -84,6 +84,10 @@ CURSOR = {f'cursor/{mid}': mid for mid in (
 #: Cursor does not report a window, and roughly 16k of every turn is its own prompt. 128k is the
 #: `ModelSpec` default rather than the 32k local one, which would brief a frontier model frugally.
 DFLT_CURSOR_CTX = 128_000
+
+#: Every runtime `register_model` accepts, as one name a host can read. leela mirrored this
+#: list in its own module and drifted from it twice; there is nothing to mirror now.
+RUNTIMES = ('litert', 'mlx', 'llama', 'cursor', 'remote')
 
 CUSTOM = {}
 _RUNTIME_DEPS = {'litert': 'litert_lm', 'mlx': 'mlx_lm', 'llama': 'llama_cpp'}
@@ -437,10 +441,9 @@ def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model
     if runtime is None:
         from rishi.core import resolve_runtime
         runtime, model_id = resolve_runtime(model_id)
-    # `cursor` included, or `register_model('grok', 'grok-4.5')` fails after `resolve_runtime`
-    # correctly infers it -- rejecting the runtime this function asked rishi to name.
-    if runtime not in ('litert', 'mlx', 'llama', 'cursor', 'remote'):
-        raise ValueError(f'unknown runtime {runtime!r}')
+    # `RUNTIMES`, not a literal: `cursor` has to be here or `register_model('grok', 'grok-4.5')`
+    # fails after `resolve_runtime` correctly infers it -- rejecting the answer it just asked for.
+    if runtime not in RUNTIMES: raise ValueError(f'unknown runtime {runtime!r}')
     if runtime != 'remote' and not runtime_available(runtime):
         raise RuntimeError(f'{runtime} runtime is unavailable; install rishi[{runtime}]')
     MODELS[name] = (runtime, model_id); _LOCAL_CTX[name] = int(ctx or 128_000)
