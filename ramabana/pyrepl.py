@@ -385,7 +385,7 @@ def hl(src):
 
 # %% ../nbs/11_pyrepl.ipynb #6491d734
 PY_HELP = """pyrepl  /agent ask Ramabana · /python run Python · tab complete · ctrl-c interrupt/stop
-/promote <name> adopt an agent variable · /guide how this works
+/vars what the session holds · /promote <name> adopt an agent variable · /guide how this works
 """ + HELP
 
 async def run_code(ui, code):
@@ -492,6 +492,9 @@ class PyreplUi(Ui):
         if line in ('/help', '/?'):
             self.buf.clear()
             return self.say(key_card(PY_HELP), 'note', fold=None, source=PY_HELP)
+        if line in ('/vars', '/v'):
+            self.buf.clear()
+            return self.note(self.agent.host.list_vars() or '(nothing bound yet)')
         if (parts := line.split())[0] in ('/promote', '/adopt'):
             self.buf.clear()
             if len(parts) != 2: return self.note('usage: /promote NAME')
@@ -568,7 +571,9 @@ an unfinished one grows the buffer and shows a `...` continuation, so a `for` lo
 you would type it anywhere, and a blank line closes the suite. Something that will never compile is
 said at the prompt rather than costing a round trip. tab completes through the kernel, which is
 IPython's completer, and names the session is holding come back with their type and shape. ctrl+c
-interrupts the running cell rather than the model.
+interrupts the running cell rather than the model. `/vars` lists what the session is holding, which is
+the same view the agent gets when it calls `list_vars` -- that name is a tool it has and not a
+builtin in your kernel, so ask for it with `/vars` rather than calling it.
 
 ## What the agent may do to your namespace
 

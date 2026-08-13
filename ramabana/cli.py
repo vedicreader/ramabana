@@ -999,9 +999,9 @@ def ask_once(agent, prompt):
     return 0 if ok else 1
 
 # %% ../nbs/05_cli.ipynb #ce629efa
-@call_parse
+@call_parse(pos=['prompt'])
 def main(
-    prompt: str = '',                    # run one turn and exit, or 'pyrepl'; omit for the interactive session
+    prompt: str = '',                    # one turn and exit, or `pyrepl`; omit for the interactive session
     root: str = '.',                     # folders the agent may touch, comma separated
     model: str = None,                   # the turn model; the routing default when omitted
     approve: str = 'ask',                # ask | auto | off | none (gate nothing at all)
