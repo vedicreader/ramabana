@@ -83,9 +83,7 @@ class Kernel:
 
     async def _bootstrap(self):
         root = self.cwd/'.ramabana'/'pyrepl'
-        # '<project>-pyrepl-<pid>': a bare literal name made two live sessions indistinguishable
-        # in the registry, and a by-name attach could resolve to the wrong one. Sanitised because
-        # --attach is where a human types it.
+        # '<project>-pyrepl-<pid>', sanitised because --attach is where a human types it
         proj = re.sub(r'[^a-z0-9]+', '-', (self.cwd.name or 'ramabana').lower()).strip('-') or 'ramabana'
         source = (
             'def _ramabana_bootstrap():\n'
@@ -180,8 +178,7 @@ class Kernel:
             try: self.kc.stop_channels()
             except Exception: pass
         if self.km and self.km.has_kernel:
-            # A kernel serving dhrishti on a background thread does not reliably agree to
-            # `now=False`, so the polite ask has a deadline and the kill is the fallback.
+            # a dhrishti kernel may never agree to `now=False`, so the ask has a deadline
             try: await asyncio.wait_for(self.km.shutdown_kernel(now=False), timeout)
             except Exception:
                 try: await self.km.shutdown_kernel(now=True)
@@ -203,19 +200,13 @@ class DhrishtiHost(LocalHost):
     def __init__(self, roots, base, **kwargs):
         super().__init__(roots, **kwargs)
         self.base = base
-        # Construction must not raise on a dead or slow base: there is no host to retry against
-        # yet, so it gets the same treatment as every transport call below.
         try: info = _api(base, '/agent/api/info')
         except Exception: info = {}
-        # `None`, not `Path('')`, which is `PosixPath('.')` and truthy: a server with no log path
-        # is a documented answer, and the guard in `log_cell` has to be able to see it.
         log = (info or {}).get('log')
-        self.agent_log = Path(log) if log else None
+        self.agent_log = Path(log) if log else None   # None, not `Path('')`, which is truthy
 
     def run_python(self, code):
-        # The overlay, whatever is asked for: a scope is a tool argument, and a tool argument is
-        # a thing a model can set.
-        return self.inspect_python(code, 'overlay')
+        return self.inspect_python(code, 'overlay')   # always the overlay; scope is model-settable
 
     def inspect_python(self, code, scope='isolated'):
         if scope not in self.scopes: return f'this host only honours {self.scopes}'
@@ -242,8 +233,7 @@ class DhrishtiHost(LocalHost):
 
     def log_cell(self, source, outputs=None, cell_type='code'):
         "Append a human Python or model markdown turn to Dhrishti's session notebook."
-        # Read/append/write per cell rather than a held handle: the owner's kernel writes this
-        # file too, and a session that survives a crash is worth more than the syscalls.
+        # read/append/write per cell: the owner's kernel writes this file too
         if self.agent_log is None: return
         from fastcore.nbio import read_nb, write_nb, new_nb, mk_cell
         self.agent_log.parent.mkdir(parents=True, exist_ok=True)
@@ -262,31 +252,22 @@ class DhrishtiHost(LocalHost):
         for group in result.get('groups', []):
             for node in group.get('nodes', []):
                 if name := node.get('name'):
-                    # A present-but-falsy value (`0`, `''`) is still the value; only a missing
-                    # key falls back to the type.
-                    value = node.get('value')
+                    value = node.get('value')   # falsy is still a value; only a missing key is not
                     out[name] = str(value if value is not None else (node.get('type') or ''))
         return out
 
 # %% ../nbs/11_pyrepl.ipynb #619771e3
 def annotate(matches, described):
     "Candidate names with their type and shape where the session knows one."
-    # Exact names only. `df.copy` is a method on a binding rather than a binding, and labelling
-    # it with the frame's shape would say something untrue about it.
+    # exact names only: `df.copy` is a method on a binding, not a binding
     return [f'{m} → {described[m]}' if m in described else m for m in matches]
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0017
 def mk_pyagent(roots, base, model=None, approve='ask', web=True, read_outside=False, cfg=None):
-    """Build an agent whose Python tools target the Dhrishti session at `base`.
-
-    `cli.mk_agent` with two differences: the host is a `DhrishtiHost`, and there is no
-    `lend_model`, because pyrepl offers no `--vault` and so has nothing to lend a model to.
-    """
+    "Build an agent whose Python tools target the Dhrishti session at `base`."
     approvals = None if approve == 'none' else Approvals(tools=WRITE_TOOLS, mode=approve)
     host = DhrishtiHost(roots, base, approvals=approvals, web=web, read_outside=read_outside)
-    # The gate previews `create_file` by asking the host whether the path exists, so "new file"
-    # and "OVERWRITES an existing file" are different sentences to approve.
-    if approvals is not None: approvals.host = host
+    if approvals is not None: approvals.host = host   # the gate previews `create_file` via the host
     agent = Agent(host, model=model, approvals=approvals, cfg=cfg)
     return agent, host
 
@@ -297,27 +278,15 @@ def _ambiguous(attach, cands):
     return f'{attach!r} matches more than one live dhrishti session, refusing to guess which: {rows}'
 
 def find_session(attach):
-    """The base URL of a live Dhrishti session named `attach`, or `attach` itself if it is a URL.
-
-    Through the registry rather than by re-serving. `serve_in_kernel` would return the right
-    port for a kernel that is already serving -- and on the way there it reassigns the profile,
-    the environment name and the agent mode, and repoints the session log directories. Attaching
-    to somebody's session must not quietly widen it from `readonly` to `restricted`.
-
-    Every match is refused rather than guessed at each stage: attach exists for exactly the case
-    where another session is already running, so resolving to the wrong live namespace -- a
-    different cwd, a different agent mode, someone else's data -- is worse than raising.
-    """
+    "The base URL of a live Dhrishti session named `attach`, or `attach` itself if it is a URL."
     attach = str(attach).strip()
     if '://' in attach: return attach
-    from dhrishti.serving import active
+    from dhrishti.serving import active   # the registry, not `serve_in_kernel`, which would re-serve
     entries = active()
     exact = [e for e in entries if e.get('name') == attach]
     if len(exact) > 1: raise RuntimeError(_ambiguous(attach, exact))
     hit = exact[0] if exact else None
-    # The pid keeps the registered name unique and unwieldy, so a name that is not an exact
-    # match is tried as a project prefix. Anchored at '-pyrepl-': 'ramabana' must find
-    # 'ramabana-pyrepl-1' and not 'ramabana-extra-pyrepl-2'.
+    # a name that is not an exact match is tried as a project prefix, anchored at '-pyrepl-'
     if hit is None and attach:
         prefixed = [e for e in entries if str(e.get('name') or '').startswith(attach + '-pyrepl-')]
         if len(prefixed) > 1: raise RuntimeError(_ambiguous(attach, prefixed))
@@ -338,17 +307,11 @@ async def amain(roots=('.',), model=None, approve='ask', web=True, read_outside=
     "Run the combined Ramabana Python and agent session, or attach to a session someone else owns."
     from teleprint.compositor import Compositor
     from teleprint.tty import RealTty
-    # Bracketed paste on, mouse reporting off, the same choice `cli.amain` makes and for the
-    # reason its docstring gives.
-    tty = RealTty(); tty.write('\x1b[?2004h')
+    tty = RealTty(); tty.write('\x1b[?2004h')   # bracketed paste on, mouse off, as in `cli.amain`
     done = asyncio.Event()
     kernel = agent = None
-    # Inside the `try`, so a failure anywhere below this line still shuts the kernel down: it
-    # holds a port and nothing else would be left with a reference to it.
     try:
-        # Attaching starts nothing and owns nothing: no kernel, no server, no token. The human's
-        # Python prompt belongs to whoever started the session; Ramabana is the agent beside it.
-        kernel = None if attach else await Kernel(roots[0]).start()
+        kernel = None if attach else await Kernel(roots[0]).start()   # attaching starts nothing
         base = find_session(attach) if attach else kernel.base
         agent, host = mk_pyagent(roots, base, model, approve, web, read_outside, cfg)
         if resume: agent.resume_session(resume)
@@ -403,25 +366,18 @@ def main(root:str='.',                     # folders the agent may touch, comma 
     config = Path(cfg).expanduser() if cfg else None
     try: return asyncio.run(amain(roots, model, approve, web, read_outside, config, resume, attach))
     except KeyboardInterrupt: return None
-    # `find_session` refuses in a sentence written for a human; a traceback is not that sentence.
-    except RuntimeError as exc:
+    except RuntimeError as exc:   # `find_session` refuses in a sentence written for a human
         print(exc, file=sys.stderr)
         return 2
 
 # %% ../nbs/11_pyrepl.ipynb #ab902e2b
 def hl(src):
-    """`src` as highlighted `Text`, or plain `Text` if pygments cannot lex it.
-
-    Never raises, and never returns anything whose `.plain` differs from `src`: the transcript
-    copies out of `.plain`, so a highlighter that rewrote its input would hand back code that
-    does not run.
-    """
+    "`src` as highlighted `Text` with `.plain == src`, or plain `Text` if pygments cannot lex it."
     src = str(src)
     if not src: return Text('')
     try:
         from rich.syntax import Syntax
-        # `highlight` appends a newline -- it is built for whole files. Trimming it back is the
-        # difference between a coloured prompt and a prompt one row taller than its line.
+        # `highlight` appends a newline; it is built for whole files
         out = Syntax(src, 'python', theme='gruvbox-dark').highlight(src)
         while out.plain.endswith('\n'): out.right_crop(1)
         return out if out.plain == src else Text(src)
@@ -441,8 +397,7 @@ async def run_code(ui, code):
     finally:
         ui.turn = None
         ui.paint()
-    # After the cleanup rather than inside it: a log that raised used to leave the spinner
-    # spinning, tab completion dead and ctrl-c interrupting an idle kernel for the whole session.
+    # after the cleanup, not inside it: a log that raises must not wedge the prompt
     if result is not None: ui.agent.host.log_cell(code, result.outputs)
 
 async def run_agent(ui, prompt):
@@ -455,9 +410,7 @@ async def run_agent(ui, prompt):
 
 class PyreplUi(Ui):
     "The ordinary Ramabana terminal with an additional user-owned Python mode."
-    # Nine cells wide, like both mode labels, so a body's indentation reads at its real depth.
-    # Neither label would be true of a row mid-buffer.
-    CONT = '...      '
+    CONT = '...      '   # nine cells, like both mode labels, so indentation reads at its real depth
 
     def __init__(self, comp, agent, kernel, loop=None):
         self.kernel, self.mode, self.matches = kernel, 'python', None
@@ -473,11 +426,7 @@ class PyreplUi(Ui):
         return 'python › ' if self.mode == 'python' else 'agent  › '
 
     def _prefixed(self, text):
-        """`text` with the mode label on its first line and `CONT` on every line after it.
-
-        `prompt` renders it over the whole buffer and `tail` measures the cursor against it, so a
-        row drawn with `CONT` cannot be measured without it.
-        """
+        "`text` with the mode label on its first line and `CONT` on every line after it."
         if self.ask is not None: return self.ASKING + text
         return self._label() + text.replace('\n', '\n' + self.CONT)
 
@@ -485,9 +434,7 @@ class PyreplUi(Ui):
         if self.ask is not None: return super().prompt()
         color = GRUVBOX['aqua'] if self.mode == 'python' else GRUVBOX['blue']
         label = self._label()
-        # Splitting the highlighted buffer and rejoining with `CONT` leaves every span where `hl`
-        # put it, so `prompt().plain` still matches `_prefixed`, which is what `tail` measures.
-        # `allow_blank=True` keeps the trailing empty row of a buffer awaiting its blank line.
+        # `allow_blank=True` keeps the trailing empty row of a buffer awaiting its blank line
         if self.mode == 'python':
             body = Text('\n' + self.CONT, style=GRUVBOX['fg0']).join(
                 hl(self.buf.text).split('\n', allow_blank=True))
@@ -504,8 +451,7 @@ class PyreplUi(Ui):
 
     async def complete_python(self):
         "Kernel completion for the buffer, with the displayed list annotated from the namespace."
-        # Typing is not gated while either await below is outstanding, so the candidates are
-        # checked against the buffer they were computed for after each one.
+        # typing is not gated during the awaits, so the candidates are rechecked after each
         identity = (self.buf.text, self.buf.cursor)
         def stale(): return (self.buf.text, self.buf.cursor) != identity
         try:
@@ -519,8 +465,7 @@ class PyreplUi(Ui):
             if len(matches) <= 1:
                 self.matches = None
                 return
-            # The bare names paint first: `describe` is synchronous HTTP, and up to 2s of it on
-            # the loop thread freezes the spinner, the status bar and every other keystroke.
+            # bare names paint first: `describe` is synchronous HTTP
             self.matches = list(matches)
             self.paint()
             described = await asyncio.to_thread(self.agent.host.describe)
@@ -531,13 +476,7 @@ class PyreplUi(Ui):
             self.paint()
 
     def submit(self):
-        """Handle the typed line.
-
-        The mode switches, `/help` and `/promote` are this surface's own. Every other slash
-        command is the same command in both modes, and an agent-mode prompt is an ordinary
-        prompt, so both go to the base `Ui` -- which is also where recall and the completion
-        menu are handled.
-        """
+        "The mode switches, `/help` and `/promote` are ours; every other line goes to the base `Ui`."
         src, line = self.buf.text, self.buf.text.strip()
         self.complete = self.matches = None
         self.remember(line)
@@ -557,13 +496,11 @@ class PyreplUi(Ui):
             return self._promote(parts[1])
         if line.startswith('/'): return super().submit()
         if self.mode == 'python':
-            # The raw buffer, not the stripped line: a uniformly indented paste would otherwise
-            # be dedented on its first row only.
+            # the raw buffer, not the stripped line, so an indented paste keeps its first row
             self.buf.clear()
             self.say(hl(src), 'user', source=src)
             return run_code(self, src)
-        # `@path` attaches in an agent prompt, and a python line never reaches this, which is
-        # what keeps `@` Python's own operator.
+        # `@path` attaches in an agent prompt only, which keeps `@` Python's own operator
         self.buf.clear()
         got = [self.attach(p) for p in attach_refs(line)]
         if got: self.note('\n'.join(got))
@@ -592,20 +529,15 @@ class PyreplUi(Ui):
             self.say(Text.from_ansi(body or f"{output.get('ename')}: {output.get('evalue')}"), 'error')
 
     def on_key(self, key):
-        # A slash line is a command, not code, so neither branch below claims it: tab keeps the
-        # base `Ui`'s command completion and enter reaches `submit`, which is the only way out
-        # of python mode.
+        # a slash line is a command, not code, so neither branch below claims it
         pycode = (self.mode == 'python' and self.ask is None
                   and not self.buf.text.lstrip().startswith('/'))
         if key.name == 'tab' and pycode and self.turn is None and self.buf.text:
             return self.complete_python()
-        # A typed suite grows the buffer instead of submitting it: `codeop` is asked once per
-        # keystroke rather than the kernel, so an unfinished `for` costs nothing to try. Guarded
-        # the way the transcript patch on `Ui.on_key` guards its own use of `enter`.
+        # a typed suite grows the buffer instead of submitting it; `codeop` asks, not the kernel
         if key.name == 'enter' and pycode and self.menu is None and not self.transcript.active:
             src = self.buf.text
-            # A blank line submits what is pending, which is how a suite closes at any Python
-            # prompt; `endswith('\n\n')` is the way out of a buffer that never will compile.
+            # a blank line submits what is pending, as at any Python prompt
             if src.strip() and not src.endswith('\n\n'):
                 state = code_state(src)
                 if state == 'incomplete':
@@ -632,16 +564,10 @@ def _compile_state(src, symbol):
     except Exception as e: return 'complete', agent_err(e)   # not ours to judge; let the kernel say
 
 def _judge(src):
-    """The prompt's verdict on `src`, and what objected when it was rejected.
-
-    `'single'` asks the question a REPL asks: a suite is unfinished until its blank line, where
-    `'exec'` calls it finished one line after the colon. But `'single'` also rejects two valid
-    statements, and a paste arrives here as a whole buffer rather than a line at a time, so its
-    rejection is checked against `'exec'` before it is believed.
-    """
-    state, note = _compile_state(src, 'single')
+    "The prompt's verdict on `src`, and what objected when it was rejected."
+    state, note = _compile_state(src, 'single')   # `'single'` is the question a REPL asks
     if state != 'invalid': return state, note
-    return _compile_state(src, 'exec')
+    return _compile_state(src, 'exec')            # ...but it also rejects two valid statements
 
 def code_state(src):
     "Whether `src` is a finished statement, an unfinished one, or one that cannot compile."
@@ -653,13 +579,7 @@ def _syntax_note(src):
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0952
 def promote(base, name):
-    """Adopt an agent-layer variable into the owner namespace. Own-kernel mode only.
-
-    The one call here that needs the owner token, and the reason it is a slash command rather
-    than a tool: the token exists so that adopting an agent's work is a decision a person makes.
-    In attach mode there is no token to read -- the session belongs to whoever started it, and
-    they promote from their own surface.
-    """
+    "Adopt an agent-layer variable into the owner namespace; own-kernel mode only."
     if not base: return 'no kernel of our own; promote from the surface that started the session'
     from dhrishti.serving import owner_token
     port = int(str(base).rsplit(':', 1)[-1])
