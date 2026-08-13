@@ -483,13 +483,25 @@ class PyreplUi(Ui):
 
     async def complete_python(self):
         "Kernel completion for the buffer, with the displayed list annotated from the namespace."
+        # The identity a completion is computed *for*: buffer text and cursor together, since
+        # either changing means the candidates no longer describe what is on screen. Checked
+        # after every `await` below -- the kernel round trip and the off-thread `describe` lookup
+        # are both places ordinary typing can run underneath this coroutine: `Compositor` only
+        # awaits a key handler that *returns* a coroutine, and a plain character key does not, so
+        # nothing gates the buffer while either await is outstanding. Two checks, not one: the
+        # two awaits are independent gaps -- the buffer can move on during either without moving
+        # on during the other -- so a single check before both assignments would miss whichever
+        # gap it wasn't next to.
+        identity = (self.buf.text, self.buf.cursor)
+        def stale(): return (self.buf.text, self.buf.cursor) != identity
         try:
             matches, start = await self.kernel.complete(self.buf.text, self.buf.cursor)
-            if not matches: return
+            if not matches or stale(): return
             common = os.path.commonprefix(matches)
             if len(matches) == 1 or len(common) > self.buf.cursor - start:
                 self.buf.text = self.buf.text[:start] + common + self.buf.text[self.buf.cursor:]
                 self.buf.cursor = start + len(common)
+                identity = (self.buf.text, self.buf.cursor)   # our own edit, not the user moving on
             if len(matches) <= 1:
                 self.matches = None
                 return
@@ -503,6 +515,7 @@ class PyreplUi(Ui):
             self.matches = list(matches)
             self.paint()
             described = await asyncio.to_thread(getattr(self.agent.host, 'describe', dict))
+            if stale(): return   # the buffer moved on while `describe` was in flight; drop it
             self.matches = annotate(matches, described)
         finally:
             self.turn = None
