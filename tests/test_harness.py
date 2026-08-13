@@ -479,6 +479,12 @@ def test_a_question_gets_direct_routing_without_a_second_instruction_system():
     assert '<system-reminder>' not in sent
 
 
+def test_work_rules_require_response_first_and_memory_lookup():
+    rules = agent.work_rules()
+    assert 'Lead every user-facing response with the answer, result, or next action.' in rules
+    assert 'Before acting on a request, search Vishalakshi durable memory with `memory_search`' in rules
+
+
 def test_write_tools_are_the_ones_approval_draws_its_line_around():
     # Not only the filesystem: deleting a standing reminder and spending money in a trolley are
     # both things a person should get to see before they happen.

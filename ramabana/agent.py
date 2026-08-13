@@ -725,6 +725,8 @@ RULES = (
     (None, 'Act on the user’s verb. “Create”, “run”, “fix”, “add” and “as NAME” request a\n'
            '  result, not a plan: use the tool that produces it, verify it, then report what exists.\n'
            '  Never stop at “I will…”.'),
+    (None, 'Lead every user-facing response with the answer, result, or next action. Never leave a\n'
+           '  turn without a response: if work cannot proceed, say what failed and what is needed.'),
     (None, 'Never claim a file changed, a command passed, or a test went green unless a tool\n'
            '  result in this conversation says so. If you did not run it, say you did not run it.'),
     (None, 'A tool result starting with ERROR: is a failure. Read it, fix the cause, and try a\n'
@@ -757,8 +759,8 @@ RULES = (
                    '  names. You cannot rebind or delete the user’s variables, so do not try.'),
     ('web_search', 'Use `web_search`/`read_url` only when the answer depends on current external\n'
                    '  documentation — not for questions about this repository.'),
-    ('memory_search', 'Search remembered research with `memory_search` before paying to search the live web\n'
-                      '  again.'),
+    ('memory_search', 'Before acting on a request, search Vishalakshi durable memory with `memory_search` when\n'
+                      '  that tool is available; use stored preferences and relevant prior context.'),
     ('delegate_parallel', 'When two or more questions are independent and each would take several tool calls,\n'
                           '  send them together with `delegate_parallel` rather than working through them yourself.'),
     (None, 'Make the change the user asked for and no other. Do not reformat, reorganise, or\n'
