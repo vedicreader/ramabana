@@ -16,8 +16,8 @@ import pytest
 
 from ramabana import agent, core
 from ramabana.agent import Agent
-from ramabana.core import (DEFAULT_POLICY, LOCAL, ONESHOT_JOBS, ModelSpec, Routing,
-                           available_models, register_model, resolve, runtime_available)
+from ramabana.core import (DEFAULT_POLICY, LOCAL, MODELS, ONESHOT_JOBS, ModelSpec, Routing,
+                           available_models, register_model, resolve)
 from ramabana.runtime import RishiBackend, make_backend
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 
@@ -59,7 +59,7 @@ def test_the_one_shot_model_is_named_once_and_moves_every_cheap_job(monkeypatch)
         assert r2.spec(job).name == core.DFLT_LOCAL and r2.spec(job).local, job
 
 
-def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(monkeypatch, hide_runtime):
+def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runtime):
     """`resolve` raises for a runtime whose dependency is missing and the caller swallowed it, so
     on a machine without LiteRT every one-shot silently returned ''. A cheap job goes elsewhere
     and records why; the turn model the user chose fails loudly instead."""
@@ -74,24 +74,23 @@ def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(monkeypat
 
     with pytest.raises(Exception): Routing(turn='mlx/not-installed-here').spec('turn')
 
-    real = core.importlib.util.find_spec
-    monkeypatch.setattr(core.importlib.util, 'find_spec',
-                        lambda name: None if name == 'mlx_lm' else real(name))
-    assert not runtime_available('mlx')
+    assert not core.runtime_available('mlx')
     assert all(row['provider'] != 'mlx' for row in available_models())
     with pytest.raises(RuntimeError, match=r'install rishi\[mlx\]'):
         resolve('mlx/mlx-community/example')
 
 
-def test_a_short_name_is_checked_for_its_runtime_like_a_long_one():
+def test_a_short_name_is_checked_for_its_runtime_like_a_long_one(hide_runtime):
     """`resolve('mlx/...')` always refused a runtime that is not installed; `resolve('qwen-4b')`
-    did not, so a job routed to it got a spec, built a backend, and failed at `start()`."""
+    did not, so a job routed to it got a spec, built a backend, and failed at `start()`.
+
+    The absence is stated rather than read off the venv: with `rishi[all]` installed this test
+    used to take its early-return branch for both names and assert nothing at all."""
     for short, long in (('qwen-4b', 'mlx/mlx-community/Qwen3.5-4B-MLX-4bit'),
                         ('gemma-e4b', 'litert/litert-community/gemma-4-E4B-it-litert-lm')):
-        runtime = resolve.__globals__['MODELS'][short][0]
-        if runtime_available(runtime):
-            assert resolve(short).runtime == runtime
-            continue
+        runtime = MODELS[short][0]
+        assert resolve(short).runtime == runtime
+        hide_runtime(runtime)
         with pytest.raises(RuntimeError, match='unavailable'): resolve(short)
         with pytest.raises(RuntimeError, match='unavailable'): resolve(long)
 
