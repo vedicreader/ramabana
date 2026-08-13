@@ -6,15 +6,16 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 
 # %% auto #0
 __all__ = ['KAKU', 'GRUVBOX', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'NOTIFY_EVERY', 'MOUSE_ON', 'MOUSE_OFF', 'HELP', 'GUIDE',
-           'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'REFACTOR', 'MENUS', 'key_card',
-           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'media_parts',
-           'media_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain',
-           'ask_once', 'main']
+           'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'REFACTOR', 'MENUS',
+           'PYREPL_MODULES', 'key_card', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
+           'Attachment', 'media_parts', 'media_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui',
+           'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
 from base64 import b64encode
 from dataclasses import dataclass
+from importlib.util import find_spec
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 from rich.text import Text
@@ -85,12 +86,13 @@ media   drop or paste a path to attach · @path in a prompt · /attach PATH · /
 copy    select with the mouse as in any scrollback · /copy the last reply · ctrl+r then y for any block
 approve y approve · n refuse · a approve all · ctrl+y approve with a note · or type a reason and press enter to refuse
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
+python  /python takes the line · /agent hands it back · enter runs what compiles · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
 extra   /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload"""
 
 
 # %% ../nbs/05_cli.ipynb #guide01
-GUIDE = """start   ramabana · ramabana pyrepl · ramabana pyrepl --attach NAME · ramabana "one question"
+GUIDE = """start   ramabana · ramabana --python · ramabana --attach NAME · ramabana "one question"
 leave   /quit or /exit any time · ctrl+d on an empty line · ctrl+c stops the turn, not the session
 ask     type and press enter · tab after / lists commands · /help keys · /guide this
 read    blocks stack, one per event · taller than 12 rows arrives folded · ctrl+o unfolds the last
@@ -99,6 +101,10 @@ copy    y a block · i compose about it · esc back · /copy the last reply · m
 attach  drop a file · paste a path · @path in a prompt · /attach PATH · /detach [N] · ctrl+v image
 approve y yes · n no · a all session · ctrl+y yes with a note · a typed reason then enter refuses
 route   /model what runs where · /model NAME move the turn · /model JOB NAME move one job · /models
+python  /python takes the line, /agent hands it back · enter runs what compiles, ... continues an unfinished line
+        tab completes through the kernel · ctrl+c interrupts the cell · /vars · /promote NAME adopts one
+layers  the agent reads your namespace and writes into its own, and cannot rebind a name you made
+attach  ramabana --attach NAME joins a kernel already serving, as inside leela: no prompt of your own
 keep    /plan · /todo · /sessions · /resume ID · all of it survives a restart"""
 
 # %% ../nbs/05_cli.ipynb #keycard01
@@ -340,6 +346,7 @@ async def run_turn(ui, prompt):
     that named them is then the only one that carries them, however the turn goes.
     """
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
+    ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
     atts, ui.attachments = list(ui.attachments), []
     ask, media = prompt + media_note(atts), media_parts(atts)
     def pump():
@@ -358,6 +365,8 @@ async def run_turn(ui, prompt):
         ui.agent.clear_problems()
         ui.touch(now=True)
         ui.paint()
+    # after the cleanup, not inside it: a log that raises must not wedge the prompt
+    if blk is not None and ui._reply: ui.log_cell('**assistant**\n\n' + ui._reply, cell_type='markdown')
     return blk
 
 # %% ../nbs/05_cli.ipynb #2874a64d
@@ -382,6 +391,10 @@ class Ui:
         self.turn = None           # the running turn's task, or None
         self.acts = {}             # act id -> its block
         self.hint = ''
+        self.mode = 'agent'        # 'python' once `enter_python` has a kernel
+        self.kernel = None         # the owner's `pyrepl.Kernel`, or None
+        self.attached = ''         # the base of a session someone else owns, when we joined one
+        self.matches = None        # kernel completion candidates on screen, or None
         self.attachments = []      # `Attachment`s the next prompt carries
         self.frame = 0             # animated status frame; advanced only while a turn runs
         self._reply = ''           # the reply text so far, so a streamed block repaints whole
@@ -420,6 +433,8 @@ class Ui:
         if self.agent.use.total: bits.append(s['usage'])
         if s['problems']: bits.append(f"{len(s['problems'])} problems")
         out.append('  ' + ' · '.join(bits), style=GRUVBOX['gray'])
+        if self.kernel is not None:
+            out.append(f'  · {self.mode}', style=GRUVBOX['aqua'] if self.mode == 'python' else GRUVBOX['blue'])
         return out
 
     async def animate(self):
@@ -435,15 +450,27 @@ class Ui:
     #: letters are text and `enter` is the answer.
     ASKING = 'approve? [y/n/a, or a reason + enter] '
 
+    #: Python mode's label and the continuation under it, the same nine cells wide, so a suite's
+    #: indentation reads at its real depth.
+    PY_LABEL, CONT = 'python › ', '...      '
+
     def prompt(self):
         "The input line: an approval question when one is pending, otherwise the prompt."
         if self.ask is not None:
             return Text(self.ASKING, style=f"bold {GRUVBOX['yellow']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
+        if self.mode == 'python':
+            from ramabana.pyrepl import hl
+            # `allow_blank=True` keeps the trailing empty row of a buffer awaiting its blank line
+            body = Text('\n' + self.CONT, style=GRUVBOX['fg0']).join(
+                hl(self.buf.text).split('\n', allow_blank=True))
+            return Text(self.PY_LABEL, style=f"bold {GRUVBOX['aqua']}") + body
         return Text('▌ ', style=f"bold {GRUVBOX['blue']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
 
     def _prefixed(self, text):
         "`text` with whatever precedes it on screen, which is what `tail` measures against."
-        return (self.ASKING if self.ask is not None else '▌ ') + text
+        if self.ask is not None: return self.ASKING + text
+        if self.mode == 'python': return self.PY_LABEL + text.replace('\n', '\n' + self.CONT)
+        return '▌ ' + text
 
     def overlay(self):
         "Transient rows above the tail: options, slash completion, or the plan checklist."
@@ -642,18 +669,33 @@ class Ui:
         return GUIDE
 
     def submit(self):
-        """Handle the typed line. Returns a coroutine for a turn, or None when it was handled here.
+        """Handle the typed line. Returns a coroutine for a turn, `'quit'`, or None when it was handled here.
 
         Most slash commands are answered by the agent, so every command the IDE has works
         here too -- there is one implementation of `/model`, and it is not in a frontend. The
         ones kept here are the ones about this surface: its keys, its clipboard, its
-        attachments. All of them are recognised *before* the options row, or a `/model` with
-        the word "refactor" in it would open a menu instead of running.
+        attachments, its mode. All of them are recognised *before* the options row, or a
+        `/model` with the word "refactor" in it would open a menu instead of running.
         """
-        self.complete = None
-        line = self.buf.text.strip()
+        src, line = self.buf.text, self.buf.text.strip()
+        self.complete = self.matches = None
         self.buf.clear()
         if not line: return None
+        if line in ('/python', '/py'): return self.enter_python()
+        if line in ('/agent', '/a'):
+            self.mode = 'agent'
+            return self.note('agent mode' if self.kernel is not None else 'agent mode; no kernel is running')
+        if line in ('/vars', '/v'):
+            try: return self.note(self.agent.host.list_vars() or '(nothing bound yet)')
+            except Exception as e: return self.note(agent_err(e), 'error')   # not every host has a session
+        if (parts := line.split())[0] in ('/promote', '/adopt'):
+            if len(parts) != 2: return self.note('usage: /promote NAME')
+            return self._promote(parts[1])
+        if self.mode == 'python' and not line.startswith('/'):
+            from ramabana.pyrepl import hl
+            # the raw buffer, not the stripped line, so an indented paste keeps its first row
+            self.say(hl(src), 'user', source=src)
+            return self.run_code(src)
         if not line.startswith('/') and (opts := options_for(line)) is not None:
             self.menu_prompt, self.menu = line, ChoiceMenu(*opts)
             return None
@@ -684,6 +726,28 @@ class Ui:
 
     def on_key(self, k):
         "One keystroke. Returns a coroutine to spawn, `'quit'`, or None."
+        # a slash line is a command, not code, so no branch here claims it: `/agent` is invalid
+        # Python, and without this python mode -- the default once you are in it -- has no exit
+        if self.mode == 'python' and self.ask is None and not self.buf.text.lstrip().startswith('/'):
+            if k.name == 'tab' and self.turn is None and self.buf.text: return self.complete_python()
+            # a typed suite grows the buffer instead of submitting it; `codeop` asks, not the kernel.
+            # A blank line submits what is pending, as at any Python prompt.
+            if (k.name == 'enter' and self.menu is None and self.buf.text.strip()
+                    and not self.buf.text.endswith('\n\n')):
+                from ramabana.pyrepl import _syntax_note, code_state
+                state = code_state(self.buf.text)
+                if state == 'incomplete':
+                    self.buf.insert('\n')
+                    return self.paint()
+                if state == 'invalid':   # a syntax error costs no execution, so it is answered here
+                    self.say(Text(f'incomplete or invalid: {_syntax_note(self.buf.text)}'), 'error', fold=None)
+                    return self.paint()
+            # ctrl-c means "stop what is running", and in python mode that is a cell
+            if k.name == 'ctrl+c' and self.turn is not None:
+                self.comp.spawn(self.kernel.interrupt(), name='interrupt')
+                self.buf.clear()
+                return self.paint()
+        self.matches = None
         if self.menu is not None:
             done, choice = self.menu.choose(k.name)
             if not done: return self.paint()
@@ -770,6 +834,7 @@ def tail(self:Ui):
     if self.hint: rows.append(Text(' ' + self.hint, style=GRUVBOX['gray']))
     chips = self.attach_row()
     if chips is not None: rows.append(chips)
+    if self.matches: rows.append(Text('  '.join(self.matches[:8]), style=GRUVBOX['gray']))
     rows.append(self.prompt())
     before = Text(self._prefixed(self.buf.text[:self.buf.cursor]))
     rendered = self.comp.console.render_lines(before, pad=False)
@@ -879,6 +944,123 @@ def stream(self:Ui, blk, chunk):
     self.touch()
     return blk
 
+# %% ../nbs/05_cli.ipynb #pymode01
+#: What python mode needs installed. `Kernel` imports `jupyter_client` and its bootstrap imports
+#: `dhrishti`; both failures arrive too late to be answered with the name of what is missing.
+PYREPL_MODULES = ('jupyter_client', 'dhrishti')
+
+@patch
+def log_cell(self:Ui, source, outputs=None, cell_type='code'):
+    "Write one cell to the session notebook, when the host keeps one."
+    log = getattr(self.agent.host, 'log_cell', None)   # only a `DhrishtiHost` has one
+    if log is not None: log(source, outputs, cell_type)
+
+@patch
+def use_host(self:Ui, host):
+    "Move the agent onto `host`, re-briefing the running turn backend with its tools."
+    self.agent.host = host
+    if self.agent.approvals is not None: self.agent.approvals.host = host   # `create_file` previews through it
+    self.agent.refresh()
+
+@patch
+async def enter_python(self:Ui):
+    "Take the line for Python, starting the kernel the first time and pointing the agent at its overlay."
+    try:
+        if self.kernel is None:
+            if self.attached:
+                return self.note(f'attached to {self.attached}: that Python prompt belongs to whoever started it')
+            if missing := [m for m in PYREPL_MODULES if find_spec(m) is None]:
+                return self.note(f"python mode needs {' and '.join(missing)}: pip install 'ramabana[pyrepl]'", 'error')
+            from ramabana.pyrepl import DhrishtiHost, Kernel
+            self.note('starting a kernel')
+            try: self.kernel = await Kernel(self.agent.host.roots[0]).start()
+            except Exception as e:
+                self.kernel = None
+                return self.note(f'no kernel: {agent_err(e)}', 'error')
+            old = self.agent.host
+            self.use_host(DhrishtiHost(old.roots, self.kernel.base, approvals=old.approvals,
+                                       web=old.web, read_outside=old.read_outside))
+        self.mode = 'python'
+        return self.note('python mode · /agent hands the line back')
+    finally:
+        self.turn = None
+        self.paint()
+
+@patch
+async def attach_session(self:Ui, name):
+    "Point the agent's Python at a dhrishti session someone else owns; we start nothing and own no prompt."
+    from ramabana.pyrepl import DhrishtiHost, find_session
+    old, base = self.agent.host, find_session(name)
+    self.use_host(DhrishtiHost(old.roots, base, approvals=old.approvals, web=old.web,
+                               read_outside=old.read_outside))
+    self.attached = base
+    return base
+
+@patch
+async def run_code(self:Ui, code):
+    "Run one owner-typed Python cell, streaming its outputs into blocks."
+    result = None
+    try:
+        result = await self.kernel.execute(code, on_output=self.on_output)
+        if not result.ok and not result.outputs: self.say(Text(result.error or 'execution failed'), 'error')
+    finally:
+        self.turn = None
+        self.paint()
+    # after the cleanup, not inside it: a log that raises must not wedge the prompt
+    if result is not None: self.log_cell(code, result.outputs)
+
+@patch
+def on_output(self:Ui, output):
+    "One nbformat output in the block that means it, as the cell produces it."
+    from ramabana.pyrepl import _text
+    kind = output.get('output_type')
+    if kind == 'stream':
+        if text := _text(output.get('text')).rstrip('\n'): self.say(Text(text), 'note')
+    elif kind in ('execute_result', 'display_data'):
+        data = output.get('data') or {}
+        if 'text/plain' in data: self.say(Text(_text(data['text/plain'])), 'reply')
+        elif 'text/markdown' in data: self.say(Text(_text(data['text/markdown'])), 'reply')
+        elif data: self.say(Text('display: ' + ', '.join(data)), 'note')
+    elif kind == 'error':
+        body = '\n'.join(output.get('traceback') or [])
+        self.say(Text.from_ansi(body or f"{output.get('ename')}: {output.get('evalue')}"), 'error')
+
+@patch
+async def complete_python(self:Ui):
+    "Kernel completion for the buffer, with the displayed list annotated from the namespace."
+    from ramabana.pyrepl import annotate
+    # typing is not gated during the awaits, so the candidates are rechecked after each
+    identity = (self.buf.text, self.buf.cursor)
+    def stale(): return (self.buf.text, self.buf.cursor) != identity
+    try:
+        matches, start = await self.kernel.complete(self.buf.text, self.buf.cursor)
+        if not matches or stale(): return
+        common = os.path.commonprefix(matches)
+        if len(matches) == 1 or len(common) > self.buf.cursor - start:
+            self.buf.text = self.buf.text[:start] + common + self.buf.text[self.buf.cursor:]
+            self.buf.cursor = start + len(common)
+            identity = (self.buf.text, self.buf.cursor)   # our own edit, not the user moving on
+        if len(matches) <= 1:
+            self.matches = None
+            return
+        self.matches = list(matches)   # bare names paint first: `describe` is synchronous HTTP
+        self.paint()
+        described = await asyncio.to_thread(self.agent.host.describe)
+        if stale(): return
+        self.matches = annotate(matches, described)
+    finally:
+        self.turn = None
+        self.paint()
+
+@patch
+async def _promote(self:Ui, name):
+    "Adopt one agent variable, off the loop thread: the owner-token call can take a minute."
+    from ramabana.pyrepl import promote
+    base = self.kernel.base if self.kernel else ''
+    self.say(Text(await asyncio.to_thread(promote, base, name)), 'note', fold=None)
+    self.turn = None
+    self.paint()
+
 # %% ../nbs/05_cli.ipynb #79b1ca2e
 def mk_host(roots=('.',),
             approvals=None,          # an `Approvals` for the host to put writes in front of
@@ -908,7 +1090,7 @@ def mk_agent(roots=('.',),
     return agent, host
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
-async def amain(agent, hint=''):
+async def amain(agent, hint='', python=False, attach=''):
     """The tty loop: one terminal, one event loop, one place that owns the keyboard.
 
     Bracketed paste on, mouse reporting off: the main screen is the terminal's to select from.
@@ -917,6 +1099,7 @@ async def amain(agent, hint=''):
     tty = RealTty()
     tty.write('\x1b[?2004h')  # bracketed paste
     done = asyncio.Event()
+    ui = None
     try:
         comp = await Compositor(tty).start()
         ui = Ui(comp, agent, loop=asyncio.get_running_loop())
@@ -942,6 +1125,9 @@ async def amain(agent, hint=''):
         else:
             ui.say(Text('tab completes /commands · ctrl+t toggles the plan · /help for keys',
                         style=GRUVBOX['gray']), 'note', fold=None)
+        if attach:
+            ui.hint = f'{hint} · attached to {await ui.attach_session(attach)}'
+        elif python: await ui.enter_python()
         ui.paint()
         loop = asyncio.get_running_loop()
         loop.add_reader(tty.fd, lambda: comp.on_bytes(tty.read(timeout=0)))
@@ -956,6 +1142,7 @@ async def amain(agent, hint=''):
         tty.write('\x1b[?2004l' + MOUSE_OFF + '\r\n')   # the view may have been up when this ended
         tty.restore()
         agent.close()
+        if ui is not None and ui.kernel is not None: await ui.kernel.shutdown()
 
 
 # %% ../nbs/05_cli.ipynb #b6d74293
@@ -970,26 +1157,32 @@ def ask_once(agent, prompt):
 # %% ../nbs/05_cli.ipynb #ce629efa
 @call_parse(pos=['prompt'])
 def main(
-    prompt: str = '',                    # one turn and exit, or `pyrepl`; omit for the interactive session
+    prompt: str = '',                    # one turn and exit; omit for the interactive session
     root: str = '.',                     # folders the agent may touch, comma separated
     model: str = None,                   # the turn model; the routing default when omitted
     approve: str = 'ask',                # ask | auto | off | none (gate nothing at all)
     web: bool = True,                    # let the web tools reach the network through fossick
     read_outside: bool = False,          # let reads name any path on this machine; writes stay inside
-    vault: bool = False,                 # vishalakshi vault for what is read; not offered by pyrepl
+    vault: bool = False,                 # vishalakshi vault for what is read; not offered in python mode
     cfg: str = '~/.config/ramabana',     # config dir, for skills, extensions and resumable history
     resume: str = '',                    # saved session id/prefix, or 'latest'
+    python: bool = False,                # start in python mode, on a kernel of your own
+    attach: str = '',                    # a live dhrishti session by name or base URL; agent only
 ):
-    "Ramabana in a terminal: a coding agent over the folders you name."
-    # a subcommand, not a flag: a different program. Imported late, so `ramabana` starts
-    # without jupyter_client and a test can monkeypatch `pyrepl.main`.
-    if prompt == 'pyrepl':
-        if vault:
-            print('pyrepl has no vault-backed host; run it without --vault', file=sys.stderr)
+    "Ramabana in a terminal: a coding agent over the folders you name, and a Python prompt in it."
+    if vault and (python or attach):
+        print('there is no vault-backed host for a dhrishti session; drop --vault', file=sys.stderr)
+        return 2
+    if attach:
+        from ramabana.pyrepl import find_session
+        # resolved before any terminal exists, so a name that does not resolve is just a message
+        try: attach = find_session(attach)
+        except ModuleNotFoundError:
+            print("--attach needs the pyrepl extra: pip install 'ramabana[pyrepl]'", file=sys.stderr)
             return 2
-        from ramabana.pyrepl import main as pyrepl_main
-        return pyrepl_main(root=root, model=model, approve=approve, web=web,
-                           read_outside=read_outside, cfg=cfg, resume=resume)
+        except RuntimeError as e:   # `find_session` refuses in a sentence written for a human
+            print(e, file=sys.stderr)
+            return 2
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault,
                            read_outside=read_outside,
@@ -1002,6 +1195,6 @@ def main(
     if agent.start() is None and not prompt:
         print(f'no model available: {agent.note}', file=sys.stderr)
     if prompt: return sys.exit(ask_once(agent, prompt))
-    hint = f"{', '.join(host.roots)} · /help"
-    try: asyncio.run(amain(agent, hint))
+    hint = f"{', '.join(host.roots)} · /python · /help"
+    try: asyncio.run(amain(agent, hint, python=python, attach=attach))
     except KeyboardInterrupt: pass
