@@ -491,7 +491,8 @@ class PyreplUi(Ui):
             return self.note(f'{self.mode} mode')
         if line in ('/help', '/?'):
             self.buf.clear()
-            return self.say(key_card(PY_HELP), 'note', fold=None, source=PY_HELP)
+            self.say(key_card(PY_HELP), 'note', fold=None, source=PY_HELP)
+            return None
         if line in ('/vars', '/v'):
             self.buf.clear()
             return self.note(self.agent.host.list_vars() or '(nothing bound yet)')
@@ -560,40 +561,15 @@ class PyreplUi(Ui):
 
 
 # %% ../nbs/11_pyrepl.ipynb #pyguide01
-PY_GUIDE = """## Two prompts, one line
-
-The line is Python by default. `/agent` hands it to Ramabana, `/python` hands it back, and the
-label and its colour say which is live. Agent mode is the whole terminal described below, nothing
-removed: the same blocks, folding, attachments, approvals and slash commands.
-
-In python mode the code runs in a kernel that is yours. Enter submits a statement that compiles;
-an unfinished one grows the buffer and shows a `...` continuation, so a `for` loop is typed the way
-you would type it anywhere, and a blank line closes the suite. Something that will never compile is
-said at the prompt rather than costing a round trip. tab completes through the kernel, which is
-IPython's completer, and names the session is holding come back with their type and shape. ctrl+c
-interrupts the running cell rather than the model. `/vars` lists what the session is holding, which is
-the same view the agent gets when it calls `list_vars` -- that name is a tool it has and not a
-builtin in your kernel, so ask for it with `/vars` rather than calling it.
-
-## What the agent may do to your namespace
-
-It reads freely and writes into a layer of its own. It cannot rebind or delete a name you made, and
-that is enforced by Dhrishti, which serves the kernel, rather than by asking the model nicely. So
-`df` stays yours; the agent's work shows up alongside it. `/promote NAME` adopts one of its
-variables into your namespace, and it is a command rather than a tool because that decision is
-yours.
-
-Your cells and its turns are logged to one notebook as they happen, so a session is a single
-artifact you can reopen.
-
-## Attaching to a session you did not start
-
-`ramabana pyrepl --attach NAME` joins a kernel that is already serving, which is what running
-inside leela looks like. It starts nothing, offers no python mode, and never reads the owner token:
-that surface belongs to whoever started the kernel. A name is `<project>-pyrepl-<pid>`, and the
-project on its own is enough when only one such session is live. A base URL works too. When more
-than one session could match it refuses and lists them rather than guessing.
-
+PY_GUIDE = """pyrepl  the line is Python · /agent hands it to Ramabana · /python hands it back
+python  enter runs what compiles · an unfinished line grows, ... continues it · a blank line closes a suite
+        tab completes through the kernel, with the type and shape of what it holds
+        ctrl+c interrupts the cell · /vars what the session holds · /promote NAME adopt an agent variable
+agent   the whole terminal below, nothing removed
+layers  it reads your namespace and writes into its own · it cannot rebind a name you made
+        dhrishti enforces that, not the model · your cells and its turns log to one notebook
+attach  ramabana pyrepl --attach NAME joins a kernel already serving, as inside leela
+        no python mode, no owner token · names are <project>-pyrepl-<pid>, the project alone will do
 """
 
 # %% ../nbs/11_pyrepl.ipynb #51d25204

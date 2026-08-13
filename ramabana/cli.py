@@ -90,48 +90,16 @@ extra   /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /
 
 
 # %% ../nbs/05_cli.ipynb #guide01
-GUIDE = """Ramabana is an agent you talk to at a prompt. Type a question or an instruction and press
-enter. Everything else here is about getting more out of that.
-
-Slash commands are answered by the agent, not by the terminal, so `/model` means the same thing here
-as it does anywhere else Ramabana runs. Press tab after a `/` to see them all. `/help` is the key
-card, `/guide` is this.
-
-## Reading what came back
-
-The screen is a stack of blocks, one per thing that happened: what you typed, what a tool was asked,
-what it answered, what the model said. A block taller than twelve rows arrives folded, and ctrl+o
-opens the last one.
-
-Press up, or ctrl+r, to leave the prompt and browse. There you move by block with up and down, by
-page with pgup and pgdn, jump to either end with g and G, search with /, and step through matches
-with n and N. y copies the block you are on, i starts a prompt about it, esc comes back.
-
-Selecting text with the mouse works as it does in any other scrollback, because the main screen is
-left to the terminal. `/copy` puts the last reply on the clipboard over OSC 52, which survives ssh
-and tmux.
-
-## Giving it something to look at
-
-Drop a file on the window, or paste a path, and it attaches. So does `@path` written inside a prompt,
-and `/attach PATH`. `/detach` drops the last one, `/detach 2` drops the second. ctrl+v attaches a
-picture from the clipboard. Attachments ride along with the next prompt and are cleared when it goes.
-
-## When it wants to change something
-
-A tool that writes asks first. y approves, n refuses, a approves everything for the rest of the
-session. ctrl+y approves and passes a note along with it. Typing a reason and pressing enter refuses
-with that reason attached, which is usually more useful than a bare no.
-
-## Keeping and resuming work
-
-`/plan` shows what it is working through and `/todo` edits it, both surviving a restart. `/sessions`
-lists what you have done before and `/resume` picks one up. `/model` on its own says what is routed
-where, `/model NAME` moves the conversation, `/model JOB NAME` moves one job.
-
-## Stopping
-
-ctrl+c stops the turn in flight and keeps the session. ctrl+d on an empty line quits."""
+GUIDE = """start   ramabana · ramabana pyrepl · ramabana pyrepl --attach NAME · ramabana "one question"
+leave   /quit or /exit any time · ctrl+d on an empty line · ctrl+c stops the turn, not the session
+ask     type and press enter · tab after / lists commands · /help keys · /guide this
+read    blocks stack, one per event · taller than 12 rows arrives folded · ctrl+o unfolds the last
+browse  ↑ or ctrl+r leaves the prompt · ↑/↓ blocks · pgup/pgdn · g/G ends · / search · n/N matches
+copy    y a block · i compose about it · esc back · /copy the last reply · mouse selects as usual
+attach  drop a file · paste a path · @path in a prompt · /attach PATH · /detach [N] · ctrl+v image
+approve y yes · n no · a all session · ctrl+y yes with a note · a typed reason then enter refuses
+route   /model what runs where · /model NAME move the turn · /model JOB NAME move one job · /models
+keep    /plan · /todo · /sessions · /resume ID · all of it survives a restart"""
 
 # %% ../nbs/05_cli.ipynb #keycard01
 def key_card(text):
@@ -690,8 +658,9 @@ class Ui:
             self.menu_prompt, self.menu = line, ChoiceMenu(*opts)
             return None
         self.say(Text(line), 'user')
-        if line in ('/help', '/?'): return self.say(key_card(HELP), 'note', fold=None, source=HELP)
-        if line == '/guide': return self.say(self.reply(g := self.guide()), 'note', fold=None, source=g)
+        if line in ('/quit', '/exit', '/q'): return 'quit'
+        if line in ('/help', '/?'): self.say(key_card(HELP), 'note', fold=None, source=HELP); return None
+        if line == '/guide': self.say(key_card(self.guide()), 'note', fold=None, source=self.guide()); return None
         name, _, arg = line.partition(' ')
         arg = arg.strip()
         if name in ('/attach', '/add'):
