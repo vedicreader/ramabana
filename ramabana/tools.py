@@ -1216,9 +1216,9 @@ def _clip_desc(s, n=SKILL_DESC_MAX):
 def skill_index(skills):
     "The block that goes in the system prompt: names and clipped descriptions, never bodies."
     if not skills: return ''
-    rows = '\n'.join(f'- `{s.name}` \u2014 {_clip_desc(s.description)}' for s in skills)
+    rows = '\n'.join(f'- `{s.name}` -- {_clip_desc(s.description)}' for s in skills)
     return ('\n\n## Skills\n\nKnow-how available to you. Read one with `read_skill(name)` when its '
-            'description matches what you are about to do, *before* you do it \u2014 several of these '
+            'description matches what you are about to do, *before* you do it -- several of these '
             'describe tools already installed in this environment, so the code they discuss is '
             'also searchable with `search_code`.\n\n' + rows)
 
@@ -1510,9 +1510,9 @@ def code_tools(host, mx=MAX_TOOL_CHARS):
         if not hits: return f'no matches ({host.search_note})'
         rows = []
         for h in hits:
-            target = ('NOTEBOOK — use this exact path with notebook_cells, then view_cell/edit_cell'
+            target = ('NOTEBOOK -- use this exact path with notebook_cells, then view_cell/edit_cell'
                       if str(h.path).lower().endswith('.ipynb')
-                      else 'FILE — use this exact path with view_file/edit_file')
+                      else 'FILE -- use this exact path with view_file/edit_file')
             rows.append(f'{h.path}:{h.line}  {h.symbol or ""}  {h.text}\n  {target}')
         return clip(f'[{host.search_note}]\n' + '\n'.join(rows), mx)
 
@@ -2014,12 +2014,12 @@ def session_tools(host, mx=MAX_TOOL_CHARS):
         how much Python you get, so pick by what the question needs:
 
         - `scope='isolated'` (default) runs in an allowlist sandbox on a copy. Attribute
-          reads and builtins work — `df.shape`, `len(df)`, `type(x).__name__` — and most
+          reads and builtins work -- `df.shape`, `len(df)`, `type(x).__name__` -- and most
           library method calls are refused. Costs nothing to be wrong about.
         - `scope='overlay'` runs the real interpreter against the real namespace. Library
           calls work: `list(df.columns)`, `df.head(3).to_dict()`, `model.summary()`. Names
           you bind persist into your own layer for later calls. You still cannot delete,
-          rebind or mutate anything the user made — that is refused, with an explanation.
+          rebind or mutate anything the user made -- that is refused, with an explanation.
 
         Start isolated; move to overlay when the sandbox refuses something you need. Neither
         needs approval, and both run while one of the user's cells is still going. For work

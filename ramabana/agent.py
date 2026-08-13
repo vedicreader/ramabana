@@ -472,13 +472,13 @@ def ask_md(ask):
     "An approval request as markdown -- what a person reads, and what is saved in the notebook."
     body = ask.preview.strip()
     fence = '```\n' + body + '\n```\n\n' if body else ''
-    return (f'**🔐 approval needed — `{ask.tool}`**\n\n{ask.summary}\n\n{fence}'
-            'Approve, or refuse with a reason — the reason goes back to the model.')
+    return (f'**🔐 approval needed -- `{ask.tool}`**\n\n{ask.summary}\n\n{fence}'
+            'Approve, or refuse with a reason -- the reason goes back to the model.')
 
 def answer_md(ask):
     "The person's half of the exchange, in the same voice."
     head = '**✅ approved**' if ask.answer else '**⛔ refused**'
-    return f'{head} — `{ask.tool}`' + (f'\n\n{ask.note}' if ask.note else '')
+    return f'{head} -- `{ask.tool}`' + (f'\n\n{ask.note}' if ask.note else '')
 
 # %% ../nbs/03_agent.ipynb #ca1437e3
 class Approvals:
@@ -746,7 +746,7 @@ RULES = (
     (None, 'A tool result starting with ERROR: is a failure. Read it, fix the cause, and try a\n'
            '  different approach. Calling the same tool again unchanged is never the fix.'),
     ('search_code', 'Use `search_code` for project behaviour, unfamiliar APIs, or uncertainty about an\n'
-                    '  installed library — the index covers this repo *and* every installed package. Do not\n'
+                    '  installed library -- the index covers this repo *and* every installed package. Do not\n'
                     '  search for routine Python you already know.'),
     ('grep', 'Use `grep` when you know the exact string: a symbol you are renaming, an error\n'
              '  message, an import. `search_code` finds what is *like* the query; `grep` finds every\n'
@@ -764,7 +764,7 @@ RULES = (
            '  already visible; use that path with the notebook tools and never reconstruct it.'),
     ('run_shell', 'Check your work with `run_shell`: after an edit run the project’s tests, after a\n'
                   '  signature change run its linter or type checker. Use the commands the project itself\n'
-                  '  documents (README, pyproject, Makefile). Never start a server, watcher or REPL —\n'
+                  '  documents (README, pyproject, Makefile). Never start a server, watcher or REPL --\n'
                   '  only commands that exit on their own.'),
     ('run_python', 'Code cells inside `<notebook>` have already executed. Their printed `<output>` is not\n'
                    '  Python and must never be copied into `run_python`. For a request about `df`, call\n'
@@ -772,14 +772,14 @@ RULES = (
     ('run_python', '`run_python` shares the user’s kernel namespace. Read anything; bind results to NEW\n'
                    '  names. You cannot rebind or delete the user’s variables, so do not try.'),
     ('web_search', 'Use `web_search`/`read_url` only when the answer depends on current external\n'
-                   '  documentation — not for questions about this repository.'),
+                   '  documentation -- not for questions about this repository.'),
     ('memory_search', 'Before acting on a request, search Vishalakshi durable memory with `memory_search` when\n'
                       '  that tool is available; use stored preferences and relevant prior context.'),
     ('delegate_parallel', 'When two or more questions are independent and each would take several tool calls,\n'
                           '  send them together with `delegate_parallel` rather than working through them yourself.'),
     (None, 'Make the change the user asked for and no other. Do not reformat, reorganise, or\n'
            '  “improve” code you were not asked to touch, and never discard their edits.'),
-    (None, 'Writes may be put to the user for approval. A refusal comes back with their reason —\n'
+    (None, 'Writes may be put to the user for approval. A refusal comes back with their reason --\n'
            '  read it and change the approach, do not retry the same call.'),
     (None, 'Write, edit and run only inside the folders above. Anything else is refused.'),
     (None, 'Be concise. Report what you did and what it cost, not what you intend to do.'),
@@ -971,7 +971,7 @@ class Plan:
         for t in self.todos:
             mark = TODO_MARK.get(t.status, '[ ]')
             own = f'  @{t.owner}' if t.owner else ''
-            note = f'  — {t.note}' if t.note else ''
+            note = f'  -- {t.note}' if t.note else ''
             lines.append(f'{mark} `{t.id}` {t.text}{own}{note}')
         return '\n'.join(lines)
 
@@ -1035,7 +1035,7 @@ def plan_tools(get_plan, save=None):
         try: t = get_plan().update(id, **kw)
         except Exception as e: return err('could not update todo', e)
         _save()
-        return f'`{t.id}` → {t.status}: {t.text}' + (f' — {t.note}' if t.note else '') + f'\n\n{get_plan().md()}'
+        return f'`{t.id}` → {t.status}: {t.text}' + (f' -- {t.note}' if t.note else '') + f'\n\n{get_plan().md()}'
 
     def list_plan() -> str:
         "The current session plan as a checklist."
@@ -2129,7 +2129,7 @@ class Completer:
             # One engine means one generation at a time. Declining beats queueing behind a
             # tool loop the user is watching: "the model is thinking" is a better answer
             # than an editor that has stopped taking keys.
-            self.note = 'model busy — it is mid-turn'
+            self.note = 'model busy -- it is mid-turn'
             return ''
         text = b.oneshot(self._prompt(code, pos, lang, context), COMPLETE_SP, self.max_tokens)
         if not text:
