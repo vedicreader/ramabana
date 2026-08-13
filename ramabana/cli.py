@@ -6,7 +6,7 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 
 # %% auto #0
 __all__ = ['KAKU', 'GRUVBOX', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'NOTIFY_EVERY', 'MOUSE_ON', 'MOUSE_OFF', 'HELP', 'GUIDE',
-           'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'REFACTOR', 'MENUS',
+           'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'REFACTOR', 'MENUS', 'key_card',
            'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'media_parts',
            'media_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain',
            'ask_once', 'main']
@@ -132,6 +132,19 @@ where, `/model NAME` moves the conversation, `/model JOB NAME` moves one job.
 ## Stopping
 
 ctrl+c stops the turn in flight and keeps the session. ctrl+d on an empty line quits."""
+
+# %% ../nbs/05_cli.ipynb #keycard01
+def key_card(text):
+    "The key list, with its labels and separators styled."
+    out = Text()
+    for line in text.splitlines():
+        label, _, rest = line.partition('  ')
+        out.append(f'{label:<11}', style=f"bold {GRUVBOX['yellow']}")
+        for i, seg in enumerate(rest.split('·')):
+            if i: out.append('· ', style=GRUVBOX['gray'])
+            out.append(seg.strip() + ' ', style=GRUVBOX['fg1'])
+        out.append('\n')
+    return out
 
 # %% ../nbs/05_cli.ipynb #bffc3eec
 #: What a prompt can carry, and what each kind is called. Images reach the model as content
@@ -677,8 +690,8 @@ class Ui:
             self.menu_prompt, self.menu = line, ChoiceMenu(*opts)
             return None
         self.say(Text(line), 'user')
-        if line in ('/help', '/?'): return self.note(HELP)
-        if line == '/guide': return self.note(self.guide())
+        if line in ('/help', '/?'): return self.say(key_card(HELP), 'note', fold=None, source=HELP)
+        if line == '/guide': return self.say(self.reply(g := self.guide()), 'note', fold=None, source=g)
         name, _, arg = line.partition(' ')
         arg = arg.strip()
         if name in ('/attach', '/add'):

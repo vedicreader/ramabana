@@ -16,7 +16,7 @@ from rich.text import Text
 from .core import agent_err
 from .tools import LocalHost, WRITE_TOOLS
 from .agent import Agent, Approvals
-from .cli import Ui, GRUVBOX, HELP, attach_refs, run_turn
+from .cli import Ui, GRUVBOX, HELP, attach_refs, key_card, run_turn
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0006
 @dataclass
@@ -491,7 +491,7 @@ class PyreplUi(Ui):
             return self.note(f'{self.mode} mode')
         if line in ('/help', '/?'):
             self.buf.clear()
-            return self.note(PY_HELP)
+            return self.say(key_card(PY_HELP), 'note', fold=None, source=PY_HELP)
         if (parts := line.split())[0] in ('/promote', '/adopt'):
             self.buf.clear()
             if len(parts) != 2: return self.note('usage: /promote NAME')
