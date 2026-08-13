@@ -9,7 +9,7 @@ __all__ = ['PY_HELP', 'ExecOutcome', 'output_text', 'Kernel', 'DhrishtiHost', 'a
            'main', 'hl', 'run_code', 'run_agent', 'PyreplUi', 'code_state']
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0004
-import asyncio, codeop, json, os, queue, shutil, sys, tempfile, threading, urllib.parse, urllib.request
+import asyncio, codeop, json, os, queue, re, shutil, sys, tempfile, threading, urllib.parse, urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from rich.text import Text
@@ -89,7 +89,15 @@ class Kernel:
         # registry and a by-name attach could silently resolve to the wrong one. The pid makes
         # it unique; `find_session`'s project-prefix match is what keeps a human from having to
         # type the pid to use it.
-        proj = self.cwd.name or 'ramabana'
+        #
+        # The basename is sanitised, not taken verbatim: a name is a UI a human types at
+        # --attach, so 'My Project' becomes 'my-project' rather than something that needs
+        # careful quoting. `self.cwd.name` is only empty when cwd resolves to a filesystem
+        # root (a container rooted at '/') -- rare, and the pid still keeps the full name
+        # unique there, so every such session sharing the 'ramabana' fallback segment just
+        # means prefix matching degrades to needing the exact name in that one case. Left as
+        # is rather than handled further.
+        proj = re.sub(r'[^a-z0-9]+', '-', (self.cwd.name or 'ramabana').lower()).strip('-') or 'ramabana'
         source = (
             'def _ramabana_bootstrap():\n'
             ' import dhrishti.serving as ds, os\n'
@@ -323,7 +331,10 @@ def find_session(attach):
     # type -- so a name that isn't an exact match is tried as a project prefix next, and only
     # resolves if it picks out exactly one.
     if hit is None and attach:
-        prefixed = [e for e in entries if str(e.get('name') or '').startswith(attach)]
+        # Anchored to the project boundary, not a raw string prefix: 'ramabana' must find
+        # 'ramabana-pyrepl-1' but not also 'ramabana-extra-pyrepl-2' -- a session from an
+        # unrelated project that merely starts with the same letters is not a match at all.
+        prefixed = [e for e in entries if str(e.get('name') or '').startswith(attach + '-pyrepl-')]
         if len(prefixed) > 1: raise RuntimeError(_ambiguous(attach, prefixed))
         hit = prefixed[0] if prefixed else None
     if hit is None and attach:
