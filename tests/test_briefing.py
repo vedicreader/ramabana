@@ -281,10 +281,10 @@ def test_the_briefing_describes_only_the_tools_the_model_was_given():
     assert 'run_shell' not in A.work_rules(['view_file'])
     assert 'run_shell' in A.work_rules()          # no filter means the whole thing
 
-    # Two rules that were added by hand and had their own test in the file this suite replaced:
+    # The response-order rule and durable-memory rule are both included in the briefing.
     # lead with the answer, and look in durable memory before acting.
     rules = A.work_rules()
-    assert 'Lead every user-facing response with the answer, result, or next action.' in rules
+    assert 'Start every user-facing response with what you plan to do or the next action.' in rules
     assert 'Before acting on a request, search Vishalakshi durable memory with `memory_search`' in rules
 
     h = FullHost(files={'a.py': 'x = 1\n'})

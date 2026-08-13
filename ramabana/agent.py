@@ -629,8 +629,8 @@ RULES = (
     (None, 'Act on the user’s verb. “Create”, “run”, “fix”, “add” and “as NAME” request a\n'
            '  result, not a plan: use the tool that produces it, verify it, then report what exists.\n'
            '  Never stop at “I will…”.'),
-    (None, 'Lead every user-facing response with the answer, result, or next action. Never leave a\n'
-           '  turn without a response: if work cannot proceed, say what failed and what is needed.'),
+    (None, 'Start every user-facing response with what you plan to do or the next action. Keep the user\n'
+           '  informed during ongoing work, and end the response with the result, conclusion, or what is needed.'),
     (None, 'Never claim a file changed, a command passed, or a test went green unless a tool\n'
            '  result in this conversation says so. If you did not run it, say you did not run it.'),
     (None, 'A tool result starting with ERROR: is a failure. Read it, fix the cause, and try a\n'
