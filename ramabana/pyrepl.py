@@ -258,7 +258,14 @@ class DhrishtiHost(LocalHost):
         for group in result.get('groups', []):
             for node in group.get('nodes', []):
                 if name := node.get('name'):
-                    out[name] = str(node.get('value') if node.get('value') else node.get('type') or '')
+                    # `is not None` rather than truthy: a present-but-falsy value (`0`, `''`, an
+                    # empty container) is still the value, and only a genuinely missing key
+                    # falls back to the type. In practice dhrishti's own `value_str` always
+                    # reprs a live binding to a non-empty string, so this exact mislabelling
+                    # cannot happen against the real API today -- but the check should say what
+                    # it means rather than lean on that staying true forever.
+                    value = node.get('value')
+                    out[name] = str(value if value is not None else (node.get('type') or ''))
         return out
 
 # %% ../nbs/11_pyrepl.ipynb #619771e3
@@ -483,9 +490,20 @@ class PyreplUi(Ui):
             if len(matches) == 1 or len(common) > self.buf.cursor - start:
                 self.buf.text = self.buf.text[:start] + common + self.buf.text[self.buf.cursor:]
                 self.buf.cursor = start + len(common)
-            # The names go into the buffer; the descriptions only ever go on the screen.
-            described = getattr(self.agent.host, 'describe', dict)()
-            self.matches = annotate(matches, described) if len(matches) > 1 else None
+            if len(matches) <= 1:
+                self.matches = None
+                return
+            # Bare names paint first, before the namespace is ever asked about them: `describe`
+            # is a synchronous HTTP call, and running it inline here -- even with its own 2s
+            # timeout -- would freeze the whole event loop for up to 2s on every tab press, not
+            # just the completion list: the spinner, the status bar and every other keystroke
+            # queue up behind it. `to_thread` moves the blocking call off the loop, and the
+            # names go up immediately so "best effort" means what it says: a list that is never
+            # empty and never waits on the network to appear at all.
+            self.matches = list(matches)
+            self.paint()
+            described = await asyncio.to_thread(getattr(self.agent.host, 'describe', dict))
+            self.matches = annotate(matches, described)
         finally:
             self.turn = None
             self.paint()
