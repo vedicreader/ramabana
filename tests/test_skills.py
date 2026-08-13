@@ -13,6 +13,7 @@ def test_skills_discover_override_index_and_extensions(tmp_path):
     patterns = found['coding_patterns']
     assert patterns.source == 'pyskill' and patterns.where == 'ramabana.coding_patterns'
     assert 'Every construct must earn its place' in patterns.text()
+    assert 'Ramabana workflow' in patterns.text()
 
     d = tmp_path/'skills'/'exhash'
     d.mkdir(parents=True)
@@ -28,6 +29,7 @@ def test_skills_discover_override_index_and_extensions(tmp_path):
     ss = tools.discover()
     idx = tools.skill_index(ss)
     assert 'read_skill' in idx
+    for s in ss: assert s.name in idx
     rows = [l for l in idx.splitlines() if l.startswith('- `')]
     assert len(rows) == len(ss)
     for r in rows: assert len(r) <= tools.SKILL_DESC_MAX + max(len(s.name) for s in ss) + 8

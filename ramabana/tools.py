@@ -141,7 +141,6 @@ from fastcore.basics import AttrDict, ifnone
 from fastcore.docments import frontmatter
 from fastcore.foundation import L
 from fastcore.parallel import parallel, startthread
-from litesearch import rrf_all
 from .core import AgentError, agent_err
 
 
@@ -468,9 +467,10 @@ def _md_doc(d):
 
 def _fuse(legs, limit):
     "Merge ranked `Hit` lists with `litesearch.rrf_all`; identity is `path:line`."
-    legs = L(L(l) for l in legs if l)
-    if not legs: return L()
-    if len(legs) == 1: return L(legs[0][:limit])
+    legs = [list(l) for l in legs if l]
+    if not legs: return []
+    if len(legs) == 1: return legs[0][:limit]
+    from litesearch import rrf_all   # imported here: it pulls pandas, and only fusion needs it
     by_key, lists = {}, []
     for leg in legs:
         rows = []
@@ -480,7 +480,7 @@ def _fuse(legs, limit):
             rows.append({'_fid': key})
         lists.append(rows)
     fused = rrf_all(lists, id_key='_fid', limit=limit)
-    return L(by_key[r['_fid']] for r in fused if r.get('_fid') in by_key)
+    return [by_key[r['_fid']] for r in fused if r.get('_fid') in by_key]
 
 def ld_json(html):
     "The `schema.org` JSON-LD blocks in `html` -- where a page states its price, author or rating."
@@ -1995,7 +1995,7 @@ def delegate_many(backend, questions, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STE
     run = lambda q: delegate(backend, q, tools, sp, max_steps, skills)
     if len(qs) == 1 or getattr(backend.spec, 'local', False) or n_workers < 2:
         return L(run(q) for q in qs)
-    return L(parallel(run, qs, n_workers=min(n_workers, len(qs)), threadpool=True))
+    return parallel(run, qs, n_workers=min(n_workers, len(qs)), threadpool=True)
 
 # %% ../nbs/02_tools.ipynb #906e7f69
 def named_skills(get_skills, names):

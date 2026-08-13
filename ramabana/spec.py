@@ -110,8 +110,13 @@ class SpecHost(LocalHost):
         return {**super().capabilities, 'api': True}
 
     @delegates(LocalHost.__init__)
-    def __init__(self, *a, specs=None, headers=None, timeout=60.0, **kw):
-        super().__init__(*a, **kw)
+    def __init__(self,
+                 roots=('.',),          # the folders the agent is confined to
+                 specs=None,            # name -> parsed spec, for a host that starts loaded
+                 headers=None,          # sent with every API call, for auth
+                 timeout=60.0,          # per-call timeout, in seconds
+                 **kwargs):             # forwarded to `LocalHost`
+        super().__init__(roots, **kwargs)
         self.specs, self.headers, self.timeout = dict(specs or {}), dict(headers or {}), timeout
         self._clients = {}
 
