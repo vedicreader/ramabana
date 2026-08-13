@@ -93,18 +93,21 @@ extra   /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /
 
 # %% ../nbs/05_cli.ipynb #guide01
 GUIDE = """start   ramabana · ramabana --python · ramabana --attach NAME · ramabana "one question"
+join    every live dhrishti session has an agent session, and that is what --attach hooks into:
+        a leela window, a training script, another ramabana. --kernels or /kernels lists them
+        a name shared by two live sessions cannot resolve, so the list shows their URLs instead
 leave   /quit or /exit any time · ctrl+d on an empty line · ctrl+c stops the turn, not the session
 ask     type and press enter · tab after / lists commands · /help keys · /guide this
 read    blocks stack, one per event · taller than 12 rows arrives folded · ctrl+o unfolds the last
-browse  ↑ or ctrl+r leaves the prompt · ↑/↓ blocks · pgup/pgdn · g/G ends · / search · n/N matches
+browse  up or ctrl+r leaves the prompt · up/down blocks · pgup/pgdn · g/G ends · / search · n/N
 copy    y a block · i compose about it · esc back · /copy the last reply · mouse selects as usual
-attach  drop a file · paste a path · @path in a prompt · /attach PATH · /detach [N] · ctrl+v image
+media   drop a file · paste a path · @path in a prompt · /attach PATH · /detach [N] · ctrl+v image
 approve y yes · n no · a all session · ctrl+y yes with a note · a typed reason then enter refuses
 route   /model what runs where · /model NAME move the turn · /model JOB NAME move one job · /models
-python  /python takes the line, /agent hands it back · enter runs what compiles, ... continues an unfinished line
-        tab completes through the kernel · ctrl+c interrupts the cell · /vars · /promote NAME adopts one
+python  /python takes the line, /agent hands it back · enter runs what compiles, ... continues one
+        tab completes through the kernel · ctrl+c interrupts the cell · /vars what the session holds
+        /promote NAME adopts one of the agent's variables into yours
 layers  the agent reads your namespace and writes into its own, and cannot rebind a name you made
-attach  ramabana --attach NAME joins a kernel already serving, as inside leela: no prompt of your own
 keep    /plan · /todo · /sessions · /resume ID · all of it survives a restart"""
 
 # %% ../nbs/05_cli.ipynb #keycard01
@@ -701,6 +704,9 @@ class Ui:
             return None
         self.say(Text(line), 'user')
         if line in ('/quit', '/exit', '/q'): return 'quit'
+        if line == '/kernels':
+            from ramabana.pyrepl import sessions
+            return self.note(sessions())
         if line in ('/help', '/?'): self.say(key_card(HELP), 'note', fold=None, source=HELP); return None
         if line == '/guide': self.say(key_card(self.guide()), 'note', fold=None, source=self.guide()); return None
         name, _, arg = line.partition(' ')
@@ -1167,9 +1173,14 @@ def main(
     cfg: str = '~/.config/ramabana',     # config dir, for skills, extensions and resumable history
     resume: str = '',                    # saved session id/prefix, or 'latest'
     python: bool = False,                # start in python mode, on a kernel of your own
-    attach: str = '',                    # a live dhrishti session by name or base URL; agent only
+    attach: str = '',                  # join a live session; --kernels lists them
+    kernels: bool = False,               # list live sessions and exit                    # a live dhrishti session by name or base URL; agent only
 ):
     "Ramabana in a terminal: a coding agent over the folders you name, and a Python prompt in it."
+    if kernels:
+        from ramabana.pyrepl import sessions
+        print(sessions())
+        return 0
     if vault and (python or attach):
         print('there is no vault-backed host for a dhrishti session; drop --vault', file=sys.stderr)
         return 2
