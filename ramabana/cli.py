@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 # %% auto #0
 __all__ = ['KAKU', 'GRUVBOX', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'NOTIFY_EVERY', 'MOUSE_ON', 'MOUSE_OFF', 'HELP', 'BUILD',
            'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'REFACTOR',
-           'MENUS', 'PYREPL_MODULES', 'key_card', 'media_path', 'is_media', 'media_paths', 'attach_refs',
+           'MENUS', 'PYREPL_MODULES', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
            'clipboard_png', 'Attachment', 'media_parts', 'media_note', 'Option', 'options_for', 'ChoiceMenu',
            'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
 
@@ -99,27 +99,77 @@ BUILD = datetime.fromtimestamp(Path(__file__).stat().st_mtime).strftime('%H:%M')
 VERSION = f'{__version__}+{BUILD}' if BUILD else __version__
 
 # %% ../nbs/05_cli.ipynb #guide01
-GUIDE = """start   ramabana · ramabana --python · ramabana --attach NAME · ramabana "one question"
-join    every live dhrishti session has an agent session, and that is what --attach hooks into:
-        a leela window, a training script, another ramabana. --kernels or /kernels lists them
-        a name shared by two live sessions cannot resolve, so the list shows their URLs instead
-        /join NAME-or-URL joins one from the prompt; /attach is for files, not sessions
-        /python leaves a joined session for a kernel of your own, and /join closes yours to
-        go the other way, asking first when it holds names
-leave   /quit or /exit any time · ctrl+d on an empty line · ctrl+c stops the turn, not the session
-ask     type and press enter · tab after / lists commands · /help keys · /guide this
-read    blocks stack, one per event · taller than 12 rows arrives folded · ctrl+o unfolds the last
-browse  up or ctrl+r leaves the prompt · up/down blocks · pgup/pgdn · g/G ends · / search · n/N
-copy    y a block · i compose about it · esc back · /copy the last reply · mouse selects as usual
-media   drop a file · paste a path · @path in a prompt · /attach PATH · /detach [N] · ctrl+v image
-approve y yes · n no · a all session · ctrl+y yes with a note · a typed reason then enter refuses
-route   /model what runs where · /model NAME move the turn · /model JOB NAME move one job · /models
-python  /python takes the line, /agent hands it back · enter runs what compiles, ... continues one
-        tab completes through the kernel · ctrl+c interrupts the cell · /vars what the session holds
-        /promote NAME adopts one of the agent's variables into yours
-layers  the agent reads your namespace and writes into its own, and cannot rebind a name you made
-        attached, that is all it can do: the kernel is someone else's, so /promote is theirs
-keep    /plan · /todo · /sessions · /resume ID · all of it survives a restart"""
+GUIDE = """START
+
+  ramabana                    the agent, at a prompt
+  ramabana --python           and a Python prompt with it
+  ramabana --attach NAME      join a session someone else is running
+  ramabana --kernels          list what is running
+  ramabana "one question"     one turn, then exit
+
+TWO PROMPTS, ONE LINE
+
+  /python        the line becomes Python
+  /agent         and back again. the kernel keeps running either way
+  /vars          what the session holds
+  /promote NAME  adopt one of the agent's variables into yours
+
+  In Python, enter runs what compiles. An unfinished line grows instead, with
+  ... to continue it, and a blank line closes a suite. Typing lists what the
+  kernel could complete; tab takes it, tab again cycles, shift+tab goes back.
+  ctrl+c interrupts the cell rather than the model.
+
+  The agent reads your namespace and writes into its own. It cannot rebind a
+  name you made: dhrishti enforces that, not the model.
+
+JOINING SOMEONE ELSE'S SESSION
+
+  /kernels       list the live ones
+  /join NAME     move onto it. /attach is for files, not sessions
+
+  Every dhrishti session has an agent session, so this works on a leela
+  window, a training script, another ramabana. Two sessions can share a name,
+  and then only the URL resolves, which is what the list shows.
+
+  Attached, the kernel is theirs: no Python prompt, and /promote is theirs
+  too. /python leaves and starts one of your own. /join closes yours to go
+  the other way, and asks first when it holds names.
+
+READING THE SCREEN
+
+  Blocks stack, one per thing that happened. Over 12 rows they arrive folded;
+  ctrl+o unfolds the last.
+
+  up or ctrl+r   leave the prompt to browse
+  up/down        by block, pgup/pgdn by page, g and G to the ends
+  / then n/N     search, and step through matches
+  y              copy the block. i starts a prompt about it. esc comes back
+  /copy          the last reply. the mouse selects as in any scrollback
+
+SENDING FILES
+
+  drop one on the window, or paste a path, or write @path in a prompt
+  /attach PATH   /detach [N]   ctrl+v for a clipboard image
+
+  They ride along with the next prompt and are cleared when it goes.
+
+APPROVALS
+
+  y   yes        n   no        a   yes to everything this session
+  ctrl+y         yes, with a note for the model
+  a typed reason then enter refuses with that reason
+
+MODELS AND WORK KEPT
+
+  /model         what runs where. /model NAME moves the turn
+  /model JOB NAME moves one job. /models lists them
+  /plan  /todo   what it is working through
+  /sessions      what you did before. /resume ID picks one up
+
+LEAVING
+
+  /quit or /exit, any time. ctrl+d on an empty line.
+  ctrl+c stops the turn and keeps the session."""
 
 # %% ../nbs/05_cli.ipynb #keycard01
 def key_card(text):
@@ -132,6 +182,19 @@ def key_card(text):
             if i: out.append('· ', style=GRUVBOX['gray'])
             out.append(seg.strip() + ' ', style=GRUVBOX['fg1'])
         out.append('\n')
+    return out
+
+def guide_text(text):
+    "The guide, with its section headers picked out and the commands in the key colour."
+    out = Text()
+    for line in text.splitlines():
+        if line and not line[0].isspace():
+            out.append(line + '\n', style=f"bold {GRUVBOX['yellow']}")
+        elif line.startswith('  ') and (s := line.strip()) and (s[0] in '/-' or s.startswith('ramabana')):
+            head, sep, rest = line.partition('   ')
+            out.append(head, style=GRUVBOX['aqua'])
+            out.append(sep + rest + '\n', style=GRUVBOX['fg1'])
+        else: out.append(line + '\n', style=GRUVBOX['fg1'])
     return out
 
 # %% ../nbs/05_cli.ipynb #bffc3eec
@@ -409,6 +472,7 @@ class Ui:
         self.kernel = None         # the owner's `pyrepl.Kernel`, or None
         self.attached = ''
         self._join_ask = ''        # the session /join asked about; the same one again means yes
+        self._suggesting = False   # one completion in flight at a time
         self.desc = []             # 'name -> type' for the live names among the candidates
         self.attachments = []      # `Attachment`s the next prompt carries
         self.frame = 0             # animated status frame; advanced only while a turn runs
@@ -487,6 +551,15 @@ class Ui:
         if self.ask is not None: return self.ASKING + text
         if self.mode == 'python': return self.PY_LABEL + text.replace('\n', '\n' + self.CONT)
         return '▌ ' + text
+
+    def _suggest_soon(self):
+        "Ask the kernel what the token could be, as a slash line lists while you type."
+        if self.mode != 'python' or self.kernel is None or self._suggesting: return
+        if self.turn is not None or self.ask is not None: return
+        tok = re.split(r'[^\w.]', self.buf.text[:self.buf.cursor])[-1]
+        if len(tok) < 2 or tok.endswith('..'): return
+        self._suggesting = True
+        self.comp.spawn(self._suggest(), name='suggest')
 
     def overlay(self):
         "Transient rows above the tail: options, slash completion, or the plan checklist."
@@ -730,7 +803,9 @@ class Ui:
                 return self.note('usage: /join NAME-or-URL')
             return self._join(bits[1])
         if line in ('/help', '/?'): self.say(key_card(HELP), 'note', fold=None, source=HELP); return None
-        if line == '/guide': self.say(key_card(self.guide()), 'note', fold=None, source=self.guide()); return None
+        if line == '/guide':
+            self.say(guide_text(g := self.guide()), 'note', fold=None, source=g)
+            return None
         name, _, arg = line.partition(' ')
         arg = arg.strip()
         if name in ('/attach', '/add'):
@@ -838,7 +913,9 @@ class Ui:
                 return self.paint()
         self.buf.handle(k)
         if self.buf.text.startswith('/'): self._refresh_complete()
-        else: self.complete = None
+        else:
+            self.complete, self.desc = None, []
+            self._suggest_soon()
         self.paint()
 
     def stream(self, blk, chunk):
@@ -1057,29 +1134,43 @@ def on_output(self:Ui, output):
         self.say(Text.from_ansi(body or f"{output.get('ename')}: {output.get('evalue')}"), 'error')
 
 @patch
-async def complete_python(self:Ui):
-    """Kernel completion, through the same menu the slash commands use.
+async def _complete(self:Ui, insert):
+    """List what the kernel would complete. `insert` is tab: typing must not rewrite the buffer.
 
-    `CompletionMenu` owns the buffer span, so tab cycles and shift+tab goes back; `desc` is a
-    separate line because cycling writes the highlighted match into the buffer and a type would
-    go in with it.
+    `CompletionMenu` owns the span, so tab cycles and shift+tab goes back. `desc` is a separate
+    line because cycling writes the highlighted match into the buffer and a type would go in too.
     """
     from ramabana.pyrepl import annotate
     identity = (self.buf.text, self.buf.cursor)   # typing is not gated during the awaits
     def stale(): return (self.buf.text, self.buf.cursor) != identity
-    try:
-        matches, start = await self.kernel.complete(self.buf.text, self.buf.cursor)
-        if not matches or stale(): return
-        m = CompletionMenu(self.buf, list(matches), start=start, show=8)
-        if m.insert_common(): identity = (self.buf.text, self.buf.cursor)   # our edit, not theirs
-        if len(matches) == 1: return
-        self.complete = m
-        self.paint()
-        described = await asyncio.to_thread(self.agent.host.describe)
-        if stale() or self.complete is not m: return
-        self.desc = [x for x in annotate(matches, described) if ' -> ' in x][:4]
+    matches, start = await self.kernel.complete(self.buf.text, self.buf.cursor)
+    if not matches or stale():
+        if not stale(): self.complete, self.desc = None, []
+        return
+    m = CompletionMenu(self.buf, list(matches), start=start, show=8)
+    if insert and m.insert_common(): identity = (self.buf.text, self.buf.cursor)   # ours, not theirs
+    if insert and len(matches) == 1: return
+    self.complete, self.desc = m, []
+    self.paint()
+    described = await asyncio.to_thread(self.agent.host.describe)
+    if stale() or self.complete is not m: return
+    self.desc = [x for x in annotate(matches, described) if ' -> ' in x][:4]
+
+@patch
+async def complete_python(self:Ui):
+    "Tab: complete as far as the candidates agree, and leave the menu up to cycle."
+    try: await self._complete(insert=True)
     finally:
         self.turn = None
+        self.paint()
+
+@patch
+async def _suggest(self:Ui):
+    "The same list, kicked off by typing. Never touches the buffer and never owns `turn`."
+    try: await self._complete(insert=False)
+    except Exception: self.complete, self.desc = None, []   # a dead kernel must not kill a keystroke
+    finally:
+        self._suggesting = False
         self.paint()
 
 @patch
@@ -1099,11 +1190,22 @@ def mk_host(roots=('.',),
             approvals=None,          # an `Approvals` for the host to put writes in front of
             web=True,                # wire the web tools to fossick
             vault=False,             # keep what is read in a vishalakshi vault, for the next session
+            spec=False,              # let the agent read an API specification and call it
             read_outside=False):     # let the read-only tools name any path on this machine
-    "The host both frontends run on: `LocalHost`, or `VaultHost` when memory should outlive it."
+    """The host both frontends run on: `LocalHost`, plus a vault and an API spec when asked.
+
+    `SpecHost` had no way of being built before this -- nothing constructed one, so `api_load`
+    and `api_call` were unreachable from either frontend. Both mixins cooperate through `super()`,
+    in `__init__` and in `capabilities`, so asking for both is one class with both capability
+    sets rather than a choice between them.
+    """
+    bases = []
     if vault:
-        from .vault import VaultHost as Host
-    else: Host = LocalHost
+        from .vault import VaultHost; bases.append(VaultHost)
+    if spec:
+        from .spec import SpecHost; bases.append(SpecHost)
+    Host = (LocalHost if not bases else
+            bases[0] if len(bases) == 1 else type('VaultSpecHost', tuple(bases), {}))
     return Host(roots, approvals=approvals, web=web, read_outside=read_outside)
 
 
