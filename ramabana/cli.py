@@ -96,6 +96,7 @@ GUIDE = """start   ramabana · ramabana --python · ramabana --attach NAME · ra
 join    every live dhrishti session has an agent session, and that is what --attach hooks into:
         a leela window, a training script, another ramabana. --kernels or /kernels lists them
         a name shared by two live sessions cannot resolve, so the list shows their URLs instead
+        /join NAME-or-URL joins one from the prompt; /attach is for files, not sessions
 leave   /quit or /exit any time · ctrl+d on an empty line · ctrl+c stops the turn, not the session
 ask     type and press enter · tab after / lists commands · /help keys · /guide this
 read    blocks stack, one per event · taller than 12 rows arrives folded · ctrl+o unfolds the last
@@ -708,6 +709,15 @@ class Ui:
         if line == '/kernels':
             from ramabana.pyrepl import sessions
             return self.note(sessions())
+        if (bits := line.split())[0] == '/join':
+            if len(bits) != 2:
+                from ramabana.pyrepl import sessions
+                self.note(sessions())
+                return self.note('usage: /join NAME-or-URL')
+            if self.kernel is not None:
+                return self.note('this session owns a kernel already; /quit and start a fresh '
+                                 'ramabana to join someone else\'s', 'error')
+            return self._join(bits[1])
         if line in ('/help', '/?'): self.say(key_card(HELP), 'note', fold=None, source=HELP); return None
         if line == '/guide': self.say(key_card(self.guide()), 'note', fold=None, source=self.guide()); return None
         name, _, arg = line.partition(' ')
@@ -1068,6 +1078,16 @@ async def _promote(self:Ui, name):
                          'do. The agent works in its own layer here and cannot write into the kernel.')
     base = self.kernel.base if self.kernel else ''
     self.say(Text(await asyncio.to_thread(promote, base, name)), 'note', fold=None)
+    self.turn = None
+    self.paint()
+
+@patch
+async def _join(self:Ui, which):
+    "Join a live session from the prompt, and say what happened either way."
+    try: base = await self.attach_session(which)
+    except Exception as e: self.say(Text(agent_err(e)), 'error', fold=None)
+    else: self.say(Text(f'attached to {base}; the agent reads that namespace and writes into its '
+                        'own layer there. /vars lists it.'), 'note', fold=None)
     self.turn = None
     self.paint()
 
