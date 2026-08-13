@@ -959,7 +959,7 @@ def main(
     if prompt == 'pyrepl':
         from ramabana.pyrepl import main as pyrepl_main
         return pyrepl_main(root=root, model=model, approve=approve, web=web,
-                           read_outside=read_outside, vault=vault, cfg=cfg, resume=resume)
+                           read_outside=read_outside, cfg=cfg, resume=resume)
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault,
                            read_outside=read_outside,

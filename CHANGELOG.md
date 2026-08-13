@@ -5,6 +5,12 @@
 Half the sandbox, a row of options, and the terminal app's hands back — plus a pass over
 everything the harness was leaving on the table in the four libraries underneath it.
 
+### New
+
+- `ramabana pyrepl`: a Python prompt whose namespace is yours, with the agent reading it through
+  Dhrishti's sandboxed overlay and unable to rebind anything it did not create. `--attach` locks
+  into a kernel that is already serving, which is how it runs inside leela.
+
 ### Added
 
 - **`ask_memory`**, and `Host.ask` behind it — ask remembered research a question and get a

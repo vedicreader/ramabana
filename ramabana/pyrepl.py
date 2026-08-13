@@ -6,7 +6,7 @@ Docs: https://vedicreader.github.io/ramabana/pyrepl.html.md"""
 
 # %% auto #0
 __all__ = ['PY_HELP', 'ExecOutcome', 'output_text', 'Kernel', 'DhrishtiHost', 'annotate', 'mk_pyagent', 'find_session', 'amain',
-           'main', 'hl', 'run_code', 'run_agent', 'PyreplUi', 'code_state']
+           'main', 'hl', 'run_code', 'run_agent', 'PyreplUi', 'code_state', 'promote']
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0004
 import asyncio, codeop, json, os, queue, re, shutil, sys, tempfile, threading, urllib.parse, urllib.request
@@ -291,12 +291,9 @@ def annotate(matches, described):
     return [f'{m} → {described[m]}' if m in described else m for m in matches]
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0017
-def mk_pyagent(roots, base, model=None, approve='ask', web=True, read_outside=False, vault=False, cfg=None):
+def mk_pyagent(roots, base, model=None, approve='ask', web=True, read_outside=False, cfg=None):
     "Build an agent whose Python tools target the Dhrishti session at `base`."
     approvals = None if approve == 'none' else Approvals(tools=WRITE_TOOLS, mode=approve)
-    # `cli.mk_host` swaps in a `VaultHost` for `vault`, by choosing the host class; `DhrishtiHost`
-    # is a fixed `LocalHost` subclass with no such swap, so `vault` is accepted here for
-    # signature parity with `main` and `cli.mk_agent` but is not wired to the host yet.
     host = DhrishtiHost(roots, base, approvals=approvals, web=web, read_outside=read_outside)
     agent = Agent(host, model=model, approvals=approvals, cfg=cfg)
     return agent, host
@@ -350,7 +347,7 @@ def find_session(attach):
     return hit.get('base') or f'http://127.0.0.1:{hit["port"]}'
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0018
-async def amain(roots=('.',), model=None, approve='ask', web=True, read_outside=False, vault=False,
+async def amain(roots=('.',), model=None, approve='ask', web=True, read_outside=False,
                  cfg=None, resume='', attach=''):
     "Run the combined Ramabana Python and agent session, or attach to a session someone else owns."
     from teleprint.compositor import Compositor
@@ -359,7 +356,7 @@ async def amain(roots=('.',), model=None, approve='ask', web=True, read_outside=
     # Python prompt belongs to whoever started the session; Ramabana is only the agent beside it.
     kernel = None if attach else await Kernel(roots[0]).start()
     base = find_session(attach) if attach else kernel.base
-    agent, host = mk_pyagent(roots, base, model, approve, web, read_outside, vault, cfg)
+    agent, host = mk_pyagent(roots, base, model, approve, web, read_outside, cfg)
     if resume: agent.resume_session(resume)
     # Bracketed paste on, mouse reporting off -- the same choice `cli.amain` makes, and for the
     # same reason: the main screen belongs to the terminal, so selecting and copying there work
@@ -413,14 +410,13 @@ def main(root:str='.',                     # folders the agent may touch, comma 
          approve:str='ask',                # ask | auto | off | none
          web:bool=True,                    # let the web tools reach the network
          read_outside:bool=False,          # let reads name any path; writes stay inside
-         vault:bool=False,                 # keep what is read in a vishalakshi vault
          cfg:str='~/.config/ramabana',     # config dir for skills, extensions and history
          resume:str='',                    # saved session id/prefix, or 'latest'
          attach:str=''):                   # a live dhrishti session by name or base URL
     "Start `ramabana pyrepl` with the normal Ramabana model and project options."
     roots = [item.strip() for item in str(root).split(',') if item.strip()]
     config = Path(cfg).expanduser() if cfg else None
-    try: return asyncio.run(amain(roots, model, approve, web, read_outside, vault, config, resume, attach))
+    try: return asyncio.run(amain(roots, model, approve, web, read_outside, config, resume, attach))
     except KeyboardInterrupt: return None
 
 # %% ../nbs/11_pyrepl.ipynb #ab902e2b
@@ -444,6 +440,7 @@ def hl(src):
 
 # %% ../nbs/11_pyrepl.ipynb #6491d734
 PY_HELP = """pyrepl  /agent ask Ramabana · /python run Python · tab complete · ctrl-c interrupt/stop
+/promote <name> adopt an agent variable
 """ + HELP
 
 async def run_code(ui, code):
@@ -619,6 +616,11 @@ class PyreplUi(Ui):
             self.buf.clear()
             self.say(Text(PY_HELP), 'note', fold=None)
             return None
+        if line.split()[0] in ('/promote', '/adopt') and len(line.split()) == 2:
+            base = self.kernel.base if self.kernel else ''
+            self.buf.clear()
+            self.say(Text(promote(base, line.split()[1])), 'note', fold=None)
+            return None
         if line.startswith('/'): return super().submit()
         if self.mode == 'python':
             self.buf.clear()
@@ -719,3 +721,20 @@ def _judge(src):
 def code_state(src):
     "Whether `src` is a finished statement, an unfinished one, or one that cannot compile."
     return _judge(src)[0]
+
+# %% ../nbs/11_pyrepl.ipynb #pyr0952
+def promote(base, name):
+    """Adopt an agent-layer variable into the owner namespace. Own-kernel mode only.
+
+    The one call here that needs the owner token, and the reason it is a slash command rather
+    than a tool: the token exists so that adopting an agent's work is a decision a person makes.
+    In attach mode there is no token to read -- the session belongs to whoever started it, and
+    they promote from their own surface.
+    """
+    if not base: return 'not attached to a session'
+    from dhrishti.serving import owner_token
+    port = int(str(base).rsplit(':', 1)[-1])
+    if (tok := owner_token(port)) is None: return f'no owner token for {base}; this session is not ours to change'
+    try: result = _api(base, '/api/promote', {'accessor': json.dumps([str(name)]), 'token': tok})
+    except Exception as exc: return agent_err(exc)
+    return str(result.get('error') or f'promoted {name}')
