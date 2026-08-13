@@ -270,7 +270,13 @@ async def amain(roots=('.',), model=None, approve='ask', web=True, read_outside=
     kernel = await Kernel(roots[0]).start()
     agent, host = mk_pyagent(roots, kernel.base, model, approve, web, read_outside, vault, cfg)
     if resume: agent.resume_session(resume)
-    tty = RealTty(); tty.write('\x1b[?1000;1006h\x1b[?2004h')
+    # Bracketed paste on, mouse reporting off -- the same choice `cli.amain` makes, and for the
+    # same reason: the main screen belongs to the terminal, so selecting and copying there work
+    # as they do in any other scrollback. `Ui.enter_transcript` borrows the mouse for the
+    # browsing view and gives it straight back. Holding it for the whole session both stole
+    # that selection and streamed every mouse move in as input, which redrew the transcript
+    # over and over -- the banner printed once per event.
+    tty = RealTty(); tty.write('\x1b[?2004h')
     done = asyncio.Event()
     try:
         comp = await Compositor(tty).start()
@@ -507,8 +513,13 @@ class PyreplUi(Ui):
         # sits before the ctrl-c branch and is guarded the same way the transcript-priority
         # patch on `Ui.on_key` guards its own use of `enter` -- not while an approval, a menu
         # or the transcript view already owns the key.
+        # `startswith('/')` is why this is not just a python-mode check: a slash line is a
+        # command, not code, and `/agent` is invalid Python -- so this branch reported "invalid
+        # syntax" and returned before `submit` ever saw it, which left no way out of python mode
+        # at all. Commands belong to `submit`; only code is compiled here.
         if (key.name == 'enter' and self.mode == 'python' and self.ask is None
-                and self.menu is None and not self.transcript.active):
+                and self.menu is None and not self.transcript.active
+                and not self.buf.text.lstrip().startswith('/')):
             src = self.buf.text
             # A blank line submits what is pending, which is the only way to close a suite and
             # what fingers already do: the trailing newline is what makes `code_state` say
