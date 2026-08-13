@@ -108,6 +108,7 @@ python  /python takes the line, /agent hands it back · enter runs what compiles
         tab completes through the kernel · ctrl+c interrupts the cell · /vars what the session holds
         /promote NAME adopts one of the agent's variables into yours
 layers  the agent reads your namespace and writes into its own, and cannot rebind a name you made
+        attached, that is all it can do: the kernel is someone else's, so /promote is theirs
 keep    /plan · /todo · /sessions · /resume ID · all of it survives a restart"""
 
 # %% ../nbs/05_cli.ipynb #keycard01
@@ -1062,6 +1063,9 @@ async def complete_python(self:Ui):
 async def _promote(self:Ui, name):
     "Adopt one agent variable, off the loop thread: the owner-token call can take a minute."
     from ramabana.pyrepl import promote
+    if self.attached:   # their token, their namespace, their surface to adopt from
+        return self.note(f'{self.attached} belongs to whoever started it, so promoting is theirs to '
+                         'do. The agent works in its own layer here and cannot write into the kernel.')
     base = self.kernel.base if self.kernel else ''
     self.say(Text(await asyncio.to_thread(promote, base, name)), 'note', fold=None)
     self.turn = None
