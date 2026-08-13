@@ -117,17 +117,17 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 # %% auto #0
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
-           'ACTION_NOTICE', 'THINK', 'MAX_STEPS', 'ONESHOT_TOKENS', 'interesting', 'captured', 'capture',
-           'estimate_tokens', 'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt',
-           'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
-           'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
-           'use_chat', 'RishiBackend', 'make_backend']
+           'ACTION_NOTICE', 'MAX_STEPS', 'ONESHOT_TOKENS', 'interesting', 'captured', 'capture', 'estimate_tokens',
+           'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle',
+           'surgical_history', 'reorient', 'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor',
+           'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend', 'use_chat', 'RishiBackend',
+           'make_backend']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import copy, os, re, sys, threading
 from contextlib import contextmanager
 from dataclasses import dataclass
-from .core import agent_err, claude_tags, env
+from .core import agent_err, env, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # tail kept per call; an engine that logs a lot must not eat memory
@@ -136,7 +136,8 @@ _SIGNAL = ('error', 'fail', 'exceed', 'exceeds', 'too long', 'out of memory', 'o
 
 # %% ../nbs/01_runtime.ipynb #a4f0dada
 def interesting(text, limit=4):
-    'The lines of captured output a person should see: complaints, not chatter.Matched on words rather than on a log level'
+    "The lines of captured output a person should see: complaints, not chatter."
+    from fastcore.basics import uniqueify
     out = []
     for ln in (text or '').splitlines():
         s = ln.strip()
@@ -144,12 +145,8 @@ def interesting(text, limit=4):
         low = s.lower()
         if any(n in low for n in _NOISE): continue
         if any(g in low for g in _SIGNAL): out.append(s)
-    seen, uniq = set(), []
-    for s in out:
-        if s in seen: continue
-        seen.add(s)
-        uniq.append(s)
-    return uniq[-limit:]
+    return uniqueify(out)[-limit:]
+
 
 # %% ../nbs/01_runtime.ipynb #c5fce893
 class _Tee:
@@ -605,25 +602,64 @@ class Compactor:
         "Whether `backend` has crossed its threshold."
         return should_compact(backend.used_tokens, backend.spec.ctx, self.reserve)
 
-    def budget(self, ctx=0):
+    def budget(self, ctx=0, overhead=0):
         """How much recent conversation to keep, for a window of `ctx`.
         Capped at half the window for the same reason the reserve is: 20k of "recent" on a
         4k local model means the tail is the whole conversation, `older` is empty, and
         compaction reports "everything is recent; nothing to compact" right up until the
         engine refuses the turn. Half a window leaves half to summarise into.
-        """
-        return min(self.keep_recent, max(256, ctx // 2)) if ctx else self.keep_recent
 
-    def _keep(self, msgs, count=None, ctx=0):
+        `overhead` is everything in the window that is not conversation -- the briefing, and
+        the tool schemas when they travel on the wire rather than in it. It comes off first
+        because `used_tokens` counts it and `msgs` does not, so a half taken against the whole
+        window is a half of space the conversation never had. That is the same failure the cap
+        above was written for, arriving through the one term it did not subtract: on a 16k
+        model an 8k briefing leaves 4k of conversation under a 8k keep-tail, so nothing is ever
+        old enough to compact.
+        """
+        if not ctx: return self.keep_recent
+        return min(self.keep_recent, max(256, max(256, ctx - overhead) // 2))
+
+    def overhead(self, backend, msgs, count=None):
+        """What the window holds that is not this conversation.
+
+        Derived by subtraction rather than assembled from parts, because the parts differ by
+        transport: a briefing is always in the window, tool schemas are only in it when they
+        travel as text, and the framing around both belongs to whichever engine is loaded.
+        `used_tokens` already counts all of it correctly, so the honest measure is what it
+        counts minus what the messages account for.
+
+        An estimate that undercounts the messages overstates the overhead and compacts sooner,
+        which is the safe direction on the window where this matters.
+        """
+        used = getattr(backend, 'used_tokens', 0) or 0
+        if not used: return 0
+        return max(0, used - sum(estimate_tokens(_text(m), count) + 8 for m in msgs))
+
+    def _keep(self, msgs, count=None, ctx=0, overhead=0):
         """The tail to keep uncompacted, newest-first until the budget runs out.
         Kept whole-message: half a tool result is worse than none, and a kept assistant
         message whose tool result was dropped leaves a dangling call that some providers
         reject outright.
+
+        The budget is capped again here, at half of what is actually present, and that second
+        cap is what makes compaction *progress* rather than merely be due. `budget` reasons
+        about the window and this reasons about the conversation, which is the term the window
+        cannot see: compaction fires when the whole prompt crosses the threshold, so the
+        conversation at that moment holds the threshold *minus* the overhead, and a tail
+        allowed to be larger than that keeps all of it, leaves `older` empty, and reports
+        "nothing to compact" while the engine is already refusing the turn. Halving the window
+        happens to avoid that only while the overhead stays under half of it; halving what is
+        here avoids it always.
+
+        It never binds on a large window, where `keep_recent` is far smaller than half a
+        conversation, so nothing changes for the case that already worked.
         """
-        budget = self.budget(ctx)
+        sizes = [estimate_tokens(_text(m), count) + 8 for m in msgs]
+        budget = self.budget(ctx, overhead)
+        if sizes: budget = min(budget, max(256, sum(sizes)//2))
         kept, used = [], 0
-        for m in reversed(msgs):
-            n = estimate_tokens(_text(m), count) + 8
+        for m, n in zip(reversed(msgs), reversed(sizes)):
             if used + n > budget and kept: break
             kept.append(m); used += n
         kept.reverse()
@@ -648,7 +684,8 @@ class Compactor:
         if not msgs:
             self.note = 'nothing to compact'
             return ''
-        keep = self._keep(msgs, backend.count_tokens, getattr(backend.spec, 'ctx', 0))
+        keep = self._keep(msgs, backend.count_tokens, getattr(backend.spec, 'ctx', 0),
+                          self.overhead(backend, msgs, backend.count_tokens))
         older = msgs[:len(msgs) - len(keep)] if len(keep) < len(msgs) else msgs
         if not older:
             self.note = 'everything is recent; nothing to compact'
@@ -696,14 +733,18 @@ class Compactor:
         return text
 
 # %% ../nbs/01_runtime.ipynb #a3e427bf
-THINK = re.compile(r'<think>(.*?)</think>', re.S)
-
 def answer_only(text):
-    "A one-shot reply with the model's thinking removed, however the runtime left it."
-    out = THINK.sub('', text or '')
+    """A one-shot reply with the model's thinking removed, however the runtime left it.
+
+    Uses `rishi.split_think` for paired tags, then strips a template-prefilled thought that
+    only emits the closing `</think>` (rishi's splitter still leaves that case alone).
+    """
+    from rishi.core import split_think
+    out, _ = split_think(text or '')
     if '</think>' in out: out = out.partition('</think>')[2]
     if '<think>' in out: out = out.partition('<think>')[0]
     return out.strip()
+
 
 # %% ../nbs/01_runtime.ipynb #b3f10a21
 def prefills_think(chat):
@@ -718,11 +759,8 @@ def prefills_think(chat):
 class ThinkFilter:
     """Drop a template-opened thinking block out of a raw chunk stream.
 
-    Rishi's splitter looks for an *opening* `<think>` to know it is in a thought. A model
-    whose chat template writes that tag into the generation prompt never emits one, so the
-    deliberation arrives as ordinary reply text and only the closing tag comes back -- once
-    per step. Everything up to each `</think>` is dropped, and a tool call re-arms the
-    filter because the next step starts inside a fresh thought.
+    When the chat template already opened `<think>`, the model only emits `</think>`. Drop
+    everything up to each close; a tool call re-arms the filter for the next step.
     """
     TAG = '</think>'
 
@@ -743,6 +781,7 @@ class ThinkFilter:
             if (k := self.buf.find(self.TAG)) < 0: self.buf = self.buf[1 - len(self.TAG):]; continue
             self.thinking, out, self.buf = False, self.buf[k + len(self.TAG):].lstrip('\n'), ''
             if out: self.answer += len(out); yield {'content': [{'type': 'text', 'text': out}]}
+
 
 # %% ../nbs/01_runtime.ipynb #e4819aa1
 MAX_STEPS = 40
@@ -833,17 +872,22 @@ class Backend:
         with self.lock:
             try:
                 out=self._send(msg,**kw); self.use=self._usage()
+                self._check_reply(out)
                 return out or self._empty()
             except Exception as e:return self._failed('failed',e)
     def stream(self,msg,**kw):
         if self.start() is None:yield self.note; return
         with self.lock:
-            n=0
+            n,buf=0,[]
             try:
-                for c in self._stream(msg,**kw): n+=len(c or ''); yield c
+                for c in self._stream(msg,**kw): n+=len(c or ''); buf.append(c or ''); yield c
                 self.use=self._usage()
+                self._check_reply(''.join(buf))
                 if not n:yield self._empty(True)
             except Exception as e:yield f'\n\n{self._failed("failed",e)}'
+    def _check_reply(self,text):
+        "Look at a finished reply for a failure the transport could not raise. Nothing by default."
+        return text
     def _empty(self,strict=False):
         why=f'{self.spec.name} returned nothing'+(f' — {self.last_native}' if self.last_native else '')
         return self.problem(why) if strict else (f'({why})' if self.last_native else '(no reply)')
@@ -944,11 +988,10 @@ class RishiBackend(Backend):
         import os
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
-        # An enterprise-managed Claude Code forbids every dynamic MCP server, and an MCP server
-        # is how that transport declares tools -- so the tools were stripped out of the payload
-        # and the model ran blind. `tool_mode='tags'` sends the schemas in the system prompt and
-        # reads the calls back out of the reply text, a channel no MCP policy can close.
-        if self.spec.runtime=='remote' and claude_tags(self.spec.model_id): kw.setdefault('tool_mode','tags')
+        # Where the schemas travel is one decision, made in `core.tool_channel`. Only `remote`
+        # takes the keyword: the local engines have always read tag calls, so for them this is
+        # not a mode but the protocol.
+        if self.spec.runtime=='remote' and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
             # `backend` goes to rishi as its own argument rather than inside `eng_kw`. Rishi builds
@@ -997,6 +1040,23 @@ class RishiBackend(Backend):
         from rishi.core import resp_text
         # A blocking turn is read as prose by whoever asked for it, so the thinking comes off here too.
         return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
+    def _check_reply(self,text):
+        """Report a tag call that came back as prose, which is what the tags channel costs.
+
+        On the wire a malformed call is a transport error and something raises. In the prompt it is
+        just text, and the failure is silent: `parse_tool_tags` matches complete blocks, so an
+        unclosed or misspelled tag stays in the reply and reads to the user as the model discussing
+        a call it never made.
+
+        This is a floor on how often the channel fails rather than a count of it. A well-formed
+        block holding bad JSON is dropped by `mk_tag_tc` and leaves nothing behind to find, and
+        counting those needs a hook rishi does not have yet. A number that is too low is still the
+        difference between knowing this channel is costing calls and guessing.
+        """
+        if tool_channel(self.spec)=='tags' and '<tool_call' in (text or ''):
+            self.problem(f'{self.spec.name}: a <tool_call> block came back as prose rather than a '
+                         'call, so this model is not punctuating the tags channel reliably')
+        return text
     def _stream(self,msg,**kw):
         kw=self._turn_kw(kw)
         if not self.prefilled_think:yield from self.chat(msg,stream=True,**kw); return

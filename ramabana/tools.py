@@ -130,25 +130,27 @@ __all__ = ['MAX_GREP_HITS', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 'SKIP_DIRS'
            'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs',
            'load', 'err', 'failed', 'clip', 'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools',
            'web_tools', 'memory_tools', 'api_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools',
-           'tools_for', 'read_only', 'delegate', 'delegate_many', 'subagent_tools']
+           'tools_for', 'read_only', 'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, functools, json, os, re, runpy, shutil, threading, uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from fastcore.basics import AttrDict
+from fastcore.basics import AttrDict, ifnone
 from fastcore.docments import frontmatter
+from fastcore.parallel import startthread
 from .core import AgentError, agent_err
 
-# %% ../nbs/02_tools.ipynb #561c4516
-#: Exact matches one `grep` returns. Part of the `Host` contract rather than a tool budget:
-#: a host that answers `grep` itself has to cap where the tool would have.
-MAX_GREP_HITS = 60
 
-class Hit:
+# %% ../nbs/02_tools.ipynb #561c4516
+MAX_GREP_HITS = 60  # exact matches one `grep` returns; part of the Host contract
+
+class Hit(AttrDict):
     "One search result, in the shape every backend of `Host.search` returns."
-    def __init__(self, path, line=1, symbol='', text=''): self.path, self.line, self.symbol, self.text = path, line, symbol, text
+    def __init__(self, path, line=1, symbol='', text=''):
+        super().__init__(path=path, line=line, symbol=symbol, text=text)
     def __repr__(self): return f'{self.path}:{self.line}  {self.symbol}  {self.text}'
+
 
 # %% ../nbs/02_tools.ipynb #4c397f68
 class Host:
@@ -528,17 +530,10 @@ def _md_doc(d):
     return '\n'.join(head + [''] + [body]).strip() if head else body.strip()
 
 def _fuse(legs, limit):
-    """Merge ranked `Hit` lists into one ranking, by rank, through `fossick.rrf`.
+    """Merge ranked `Hit` lists by reciprocal rank fusion via `litesearch.rrf_all`.
 
-    The legs share no score: Kosha returns embedding distances and ripgrep returns nothing at
-    all, so there is no scale to average and rank is the only thing they have in common.
-    fossick's `rrf` is that fusion, already written and already relied on -- `VaultHost.search`
-    reaches the same function through the vault -- so it is imported rather than written twice.
-    It keys on a `url`, and `path:line` is the address a code hit is identified by.
-
-    fossick is an optional dependency of a host that may have `web=False`, so the leg that is
-    already ranked is the answer when it is not importable. One leg is never fused: RRF over a
-    single list only reorders it into itself, more slowly.
+    Same primitive `Vault.federate` uses. Legs share no score scale, so rank is the only
+    common currency; identity is `path:line`. One leg is returned as-is.
     """
     legs = [list(l) for l in legs if l]
     if not legs: return []
@@ -549,13 +544,13 @@ def _fuse(legs, limit):
         for h in leg:
             key = f'{h.path}:{h.line}'
             by_key.setdefault(key, h)
-            rows.append({'url': key, 'body': h.text or ''})
+            rows.append({'_fid': key})
         lists.append(rows)
     try:
-        from fossick.search import rrf
-        fused = rrf(lists)
+        from litesearch import rrf_all
+        fused = rrf_all(lists, id_key='_fid', limit=limit)
     except Exception: return legs[0][:limit]
-    return [by_key[r['url']] for r in fused if r.get('url') in by_key][:limit]
+    return [by_key[r['_fid']] for r in fused if r.get('_fid') in by_key]
 
 def ld_json(html):
     "The `schema.org` JSON-LD blocks in `html` -- where a page states its price, author or rating."
@@ -586,7 +581,7 @@ class LocalHost(Host):
                  read_outside=False,    # let read-only tools name any path on this machine
                  deny=DENY):            # what `read_outside` still refuses to open
         self._roots = [str(Path(r).expanduser().resolve()) for r in roots]
-        self.ns = {'__name__': '__main__'} if ns is None else ns
+        self.ns = ifnone(ns, {'__name__': '__main__'})
         self._approvals, self._note, self.web = approvals, note, web
         self.read_outside, self.deny = bool(read_outside), tuple(deny or ())
         self.transcript = []           # what this process has printed, for `read_terminal`
@@ -598,49 +593,30 @@ class LocalHost(Host):
     def sync_index(self, wait=False, force=False):
         """Run `Kosha.sync` for every open root, once, in a daemon thread.
 
-        Indexing starts when the host does, rather than on the first search: by then the
-        model is already waiting. Kosha's sync is incremental, so an existing `.kosha`
-        usually becomes ready immediately; the first run parses, embeds and graphs the repo.
-        `wait=True` is for a command or test that needs semantic results now.
-
-        Each root is published the moment *its own* sync returns, rather than the whole list
-        when the last one does. Readiness was one flag for every folder, so opening a small
-        repo alongside a large one meant the small one answered literally for as long as the
-        large one took -- on `search_code`, which is the most-called tool there is.
+        Starts at construction so indexing overlaps model startup. Each root is published as
+        soon as *its* sync returns, so a small folder next to a large one is searchable
+        without waiting for the large one. Pass `graph=True` and `in_parallel=True`: `_semantic`
+        asks `context` for graph expansion, and the three SQLite stores are safe to fill together.
         """
         if self._index_thread is None or not self._index_thread.is_alive():
             def run():
                 try:
-                    # Kosha uses tqdm internally even with `verbose=False`; suppress it before
-                    # import so a background sync never writes through teleprint's live tail.
-                    os.environ.setdefault('TQDM_DISABLE', '1')
+                    os.environ.setdefault('TQDM_DISABLE', '1')  # kosha's tqdm even with verbose=False
                     from kosha import Kosha
                 except Exception as e:
                     self._index_errors.append(agent_err(e)); self._pending = []; return
                 for root in list(self._roots):
                     try:
                         k = Kosha(dir=Path(root))
-                        # `sync`, not a private subset: code store, environment metadata and
-                        # graph stay mutually consistent. It is incremental after first use.
-                        # `graph=True` because `_semantic` asks `context` for graph expansion:
-                        # this used to pass Kosha's deprecated `sync_graph=force`, which is the
-                        # old name for `graph` and therefore switched the call graph *off* on
-                        # every ordinary sync, leaving that expansion nothing to walk.
-                        # `in_parallel` is Kosha's own default, and was being overridden to
-                        # `False` here for no reason anyone wrote down. It fans the repo, the
-                        # environment and the graph across threads, and the environment's
-                        # packages across more; they write three different SQLite files, and
-                        # this whole call already runs off the turn. Serialising it only ever
-                        # made `index_ready` take minutes and every search until then literal.
                         k.sync(dir=Path(root), verbose=False, force=force, pyproject=True,
                                in_parallel=True, graph=True)
-                        self._koshas.append(k)   # published only once its own sync has returned
+                        self._koshas.append(k)
                     except Exception as e: self._index_errors.append(agent_err(e))
                     finally:
                         try: self._pending.remove(root)
                         except ValueError: pass
-            self._index_thread = threading.Thread(target=run, name='ramabana-kosha-sync', daemon=True)
-            self._index_thread.start()
+            self._index_thread = startthread(run, daemon=True)
+            self._index_thread.name = 'ramabana-kosha-sync'
         if wait: self._index_thread.join()
         return self
 
@@ -673,13 +649,9 @@ class LocalHost(Host):
         outside is always by a path the model had to already know.
         """
         p = Path(path).expanduser()
-        # `LocalHost(roots=())` is a legal host -- `tools_for` builds a tool list for it, and
-        # `NullHost` is the same shape -- so it has to refuse a path rather than raise
-        # `IndexError: list index out of range` from resolving one against nothing.
-        if not self._roots: raise AgentError(f'{NO_ROOTS}: {p}')
+        if not self._roots: raise AgentError(f'{NO_ROOTS}: {p}')  # empty roots must refuse, not IndexError
         if not p.is_absolute(): p = Path(self._roots[0])/p
-        # `resolve` before comparing, so `a/../../etc/passwd` and a symlink out both fail here.
-        p = p.resolve()
+        p = p.resolve()  # collapse `..` and out-of-root symlinks before comparing
         if not any(p == Path(r) or Path(r) in p.parents for r in self._roots):
             if not (reading and self.read_outside): raise AgentError(f'{SANDBOX}: {p}')
             if denied(p, self.deny): raise AgentError(f'{SECRET}: {p}')
@@ -694,6 +666,18 @@ class LocalHost(Host):
                 if self.read_outside else f'{n} folder(s); nothing outside them is readable')
 
     def _walk(self, root):
+        "Files under `root`, skipping the same generated dirs/suffixes `grep` covers."
+        try:
+            from rgapi import fd
+            rows = fd(root=root, skip_dir=sorted(SKIP_DIRS), max_filesize=MAX_FILE,
+                      exclude=[f'*{s}' for s in sorted(SKIP_SUFFIXES)])
+            for p in rows:
+                p = Path(p)
+                if not p.is_absolute(): p = Path(root)/p
+                if p.is_symlink() or not p.is_file(): continue
+                yield p
+            return
+        except Exception: pass
         for p in sorted(Path(root).rglob('*')):
             if any(part in SKIP_DIRS for part in p.parts): continue
             if not p.is_file() or p.is_symlink(): continue
@@ -735,38 +719,41 @@ class LocalHost(Host):
 
     # -- seeing the code -----------------------------------------------------
     def _rg(self, query, limit, regex=False, ignore_case=False, path_filter='', per_file=5, every_file=False):
-        """Search through ripgrep, when it is installed: an order of magnitude faster than reading.
+        """Search through `rgapi.rg` -- the same engine `Vault.grep` uses.
 
-        `every_file=True` matches what `walk` yields -- hidden files included, `.gitignore`
-        ignored, generated directories excluded by name -- because that is the set `grep`
-        promises to have covered. `search`'s literal leg leaves ripgrep's defaults alone: a
-        semantic query is a question about the code somebody wrote, and the answer being
-        inside a build directory is a worse answer, not a missing one.
+        `every_file=True` matches what `walk` yields (hidden files, ignore `.gitignore`, skip
+        generated dirs). `search`'s literal leg keeps ripgrep defaults so build trees stay out.
         """
-        import subprocess
-        if not shutil.which('rg'): return None
-        cmd = ['rg', '--line-number', '--no-heading', '--max-filesize', str(MAX_FILE)]
-        if not regex: cmd.append('--fixed-strings')
-        if ignore_case: cmd.append('--ignore-case')
-        if per_file: cmd += ['--max-count', str(per_file)]
-        if path_filter: cmd += ['--glob', f'*{path_filter}*']
-        if every_file:
-            cmd += ['--hidden', '--no-ignore']
-            for d in sorted(SKIP_DIRS): cmd += ['--glob', f'!**/{d}/**']
-            for s in sorted(SKIP_SUFFIXES): cmd += ['--glob', f'!*{s}']
-        cmd += ['-e', query, *self._roots]
-        try: out = subprocess.run(cmd, capture_output=True, text=True, timeout=20).stdout
+        try: from rgapi import rg
         except Exception: return None
-        hits = []
-        for line in out.splitlines()[:limit]:
-            path, _, rest = line.partition(':')
-            num, _, text = rest.partition(':')
-            if not num.isdigit(): continue
-            hits.append(Hit(path, int(num), '', text.strip()[:200]))
+        pattern = query if regex else re.escape(query)
+        kw = dict(case_sensitive=(False if ignore_case else None), smart_case=not ignore_case,
+                  max_filesize=MAX_FILE, timeout_ms=20_000)
+        if path_filter: kw['glob'] = f'*{path_filter}*'
+        if every_file:
+            kw.update(hidden=True, ignore=False, skip_dir=sorted(SKIP_DIRS),
+                      exclude=[f'*{s}' for s in sorted(SKIP_SUFFIXES)])
+        hits, counts = [], {}
+        try:
+            for root in self._roots:
+                # pull enough rows to honour per-file caps, then trim to `limit`
+                pull = None if not per_file else max(limit * 8, limit)
+                for m in rg(pattern, root=root, max_results=pull, **kw):
+                    if getattr(m, 'kind', 'match') != 'match': continue
+                    path = Path(m.path)
+                    if not path.is_absolute(): path = Path(root)/path
+                    path_s = str(path)
+                    if per_file:
+                        n = counts.get(path_s, 0)
+                        if n >= per_file: continue
+                        counts[path_s] = n + 1
+                    hits.append(Hit(path_s, int(m.line_number), '', (m.line or '').strip()[:200]))
+                    if len(hits) >= limit: return hits
+        except Exception: return None
         return hits
 
     def grep(self, pattern, path_filter='', regex=True, ignore_case=False, limit=MAX_GREP_HITS):
-        "Exact matching through ripgrep. None when it is not installed, and the tool reads the files itself."
+        "Exact matching through ripgrep. None when `rgapi` is unavailable; the tool then reads files itself."
         return self._rg(pattern, limit, regex=regex, ignore_case=ignore_case,
                         path_filter=path_filter, per_file=None, every_file=True)
 
@@ -790,12 +777,16 @@ class LocalHost(Host):
         return call(**kw)
 
     def _semantic(self, query, limit):
-        "Kosha's repo-first hybrid results as the Host's stable `Hit` shape, from whatever is indexed."
+        "Kosha hybrid results (repo + env + graph) as the Host's stable `Hit` shape."
         koshas = list(self._koshas)
         if not koshas: return []
         out, seen = [], set()
-
-        def add(rows):
+        for k in koshas:
+            try:
+                rows = self._ranked(k.context, q=query, limit=limit, repo=True, env=True,
+                                    graph=True, columns='content,metadata')
+            except Exception as e:
+                self._index_errors.append(agent_err(e)); continue
             for row in rows:
                 row = dict(row)
                 meta = row.get('metadata') or {}
@@ -810,20 +801,7 @@ class LocalHost(Host):
                 symbol = meta.get('mod_name') or meta.get('name') or ''
                 text = ' '.join(str(row.get('content') or '').split())[:240]
                 out.append(Hit(path, line, str(symbol), text))
-                if len(out) >= limit: return True
-            return False
-
-        # The open repository comes first. Fill any room from Kosha's environment index,
-        # which is how `search_code` can find an installed library's implementation too.
-        for k in koshas:
-            try:
-                if add(self._ranked(k.repo_context, q=query, columns='content,path,metadata')): return out
-            except Exception as e: self._index_errors.append(agent_err(e))
-        for k in koshas:
-            try:
-                if add(self._ranked(k.context, q=query, limit=limit, repo=False, env=True,
-                                    graph=True, columns='content,metadata')): return out
-            except Exception as e: self._index_errors.append(agent_err(e))
+                if len(out) >= limit: return out
         return out
 
     def _scan(self, query, limit):
@@ -842,22 +820,14 @@ class LocalHost(Host):
     def search(self, query, limit=20):
         """The code index and the literal scan, fused by rank rather than tried in order.
 
-        "Semantic, else literal" threw away whichever leg it did not reach, and the two are
-        good at different questions: Kosha answers "what is this like", ripgrep answers "where
-        is this exact string". A rename whose query happened to embed well lost its own call
-        sites that way. So both run, and `fossick.rrf` merges them -- reciprocal rank fusion,
-        because an ordering is all two engines with no shared vector space have in common, and
-        it is the fusion `VaultHost.search` already uses through the vault for three legs.
-
-        The old behaviour survives inside the new one: while the index is still syncing the
-        literal leg is simply the only one with results, arrived at by fusion rather than by
-        fallback.
+        Kosha answers "what is this like"; ripgrep answers "where is this exact string". Both
+        run, and `litesearch.rrf_all` merges them -- the same RRF `Vault.federate` uses.
+        While the index is still syncing, the literal leg is usually the only one with hits.
         """
         if not (query or '').strip(): return []
         rg = self._rg(query, limit)
         if (hits := _fuse([self._semantic(query, limit), rg or []], limit)): return hits
-        # `_rg` answers None when ripgrep is not installed, and `[]` when it ran and found
-        # nothing. Only the first of those leaves anything worth reading every file for.
+        # `_rg` is None when rgapi is unavailable; `[]` when it ran and found nothing.
         return [] if rg is not None else self._scan(query, limit)
 
     @property
@@ -865,10 +835,9 @@ class LocalHost(Host):
         n, tot = len(self._koshas), len(self._roots)
         if n:
             where = f'{n} of {tot} folder(s)' if self._pending else f'{tot} folder(s)'
-            fused = ' fused with ripgrep' if shutil.which('rg') else ''
-            return f'Kosha semantic + keyword index over {where} and environment{fused}{self._rerank_note}'
+            return f'Kosha semantic + keyword index over {where} and environment fused with ripgrep{self._rerank_note}'
         if self._index_errors: return f'Kosha unavailable ({self._index_errors[-1]}); literal fallback'
-        return 'Kosha sync in progress; literal fallback' + (' via ripgrep' if shutil.which('rg') else '')
+        return 'Kosha sync in progress; literal fallback via ripgrep'
 
     def _defs(self, path):
         "Every def/class in one file as `(line, qualified_name, depth)`, by parsing rather than grepping."
@@ -1117,6 +1086,7 @@ class LocalHost(Host):
         if self._note:
             try: self._note(str(text))
             except Exception: pass
+
 
 # %% ../nbs/02_tools.ipynb #7fe5525c
 GROUP,EXTRA_MODULES,MAX_SKILL_CHARS = 'pyskills',('exhash.skill',),20_000
@@ -1425,17 +1395,28 @@ def clip_lines(lines, start=1, n=MAX_TOOL_CHARS, more='', empty='(nothing)'):
     The line-oriented half of `clip`. It counts what it dropped rather than describing it
     in characters, because everything that produces lines here -- a file view, a grep, a
     directory -- is resumed by *line or offset*, not by character.
+
+    One line longer than the whole budget is cut by characters, because there is no line to
+    resume from: a minified bundle, a one-line JSON blob or a wide CSV row is a single line,
+    and returning it whole to keep the result non-empty spent the entire window of a small
+    model on one tool call. The notice says characters rather than lines, so the model is not
+    invited to resume at a line that would return the same too-long line again.
     """
     lines = list(lines)
     if not lines: return empty
     out, used = [], 0
     for i, line in enumerate(lines):
         line = str(line)
-        if used + len(line) + 1 > n and out:
-            rest = len(lines) - i
-            tail = f'\n…[{rest} more line(s) not shown'
-            hint = more.format(next=start + i) if '{next}' in more else more
-            return '\n'.join(out) + (f'{tail}. {hint}]' if hint else f'{tail}]')
+        if used + len(line) + 1 > n:
+            if out:
+                rest = len(lines) - i
+                tail = f'\n…[{rest} more line(s) not shown'
+                hint = more.format(next=start + i) if '{next}' in more else more
+                return '\n'.join(out) + (f'{tail}. {hint}]' if hint else f'{tail}]')
+            keep = max(1, n - 1)
+            rest = len(lines) - 1
+            more_lines = f', and {rest} more line(s) not shown' if rest else ''
+            return line[:keep] + f'\n…[line {start} is {len(line)} chars; {keep} shown{more_lines}]'
         out.append(line); used += len(line) + 1
     return '\n'.join(out)
 
@@ -2146,7 +2127,7 @@ def skill_tools(host, get_skills, mx=MAX_TOOL_CHARS):
     return [read_skill, create_skill]
 
 # %% ../nbs/02_tools.ipynb #ddf75013
-def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS):
+def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=()):
     """Every tool this host can actually support, plus whatever extensions registered.
 
     Each group is dropped whole if the host does not implement it. Whole groups rather than
@@ -2165,24 +2146,32 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS):
     same `view_file` that should return 300 lines to a frontier model has to return 60 to
     an on-device one, and getting that wrong is not a formatting problem -- a turn whose
     tool results overflow a 16k window fails outright.
+
+    `drop` withholds groups the host *does* support, which is the other half of the same
+    arithmetic: on a small window the schemas themselves are the cost, and a group whose
+    results cannot fit is one whose declaration should not be paid for. `core.budget_for`
+    decides which, so the decision stays beside the routing table. A dropped group is never
+    silently unavailable -- `Agent.budget` says so, and the briefing describes only the tools
+    that were actually built.
     """
+    drop = set(drop or ())
     tools = []
-    tools += code_tools(host, mx)
-    tools += file_tools(host, mx)
-    if _has(host, 'notebook', lambda: host.nb_cells('.')): tools += notebook_tools(host, mx)
-    if _has(host, 'web', lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
-    if _has(host, 'memory', lambda: host.memory_tree('')): tools += memory_tools(host, mx)
-    if _has(host, 'watch', lambda: host.watches()): tools += watch_tools(host, mx)
+    if 'code' not in drop: tools += code_tools(host, mx)
+    if 'file' not in drop: tools += file_tools(host, mx)
+    if 'notebook' not in drop and _has(host, 'notebook', lambda: host.nb_cells('.')): tools += notebook_tools(host, mx)
+    if 'web' not in drop and _has(host, 'web', lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
+    if 'memory' not in drop and _has(host, 'memory', lambda: host.memory_tree('')): tools += memory_tools(host, mx)
+    if 'watch' not in drop and _has(host, 'watch', lambda: host.watches()): tools += watch_tools(host, mx)
     # Declared, never probed: the probe would be `api_ops`, and a host with no spec loaded
     # yet answers that by raising -- which is a missing spec, not a missing capability.
-    if _declared(host, 'api'): tools += api_tools(host, mx)
-    if _has(host, 'session', lambda: host.list_vars(), lambda: host.terminal_text(1)): tools += session_tools(host, mx)
+    if 'api' not in drop and _declared(host, 'api'): tools += api_tools(host, mx)
+    if 'session' not in drop and _has(host, 'session', lambda: host.list_vars(), lambda: host.terminal_text(1)): tools += session_tools(host, mx)
     # `run_cmd` is the one capability with no harmless probe, so it is answered by asking
     # whether the host overrode the method rather than by running something.
     shell = _declared(host, 'shell')
-    if _supports(host, 'run_cmd', lambda: host.run_cmd('')) if shell is None else shell:
+    if 'shell' not in drop and (_supports(host, 'run_cmd', lambda: host.run_cmd('')) if shell is None else shell):
         tools += shell_tools(host, mx)
-    if get_skills is not None: tools += skill_tools(host, get_skills, mx)
+    if get_skills is not None and 'skill' not in drop: tools += skill_tools(host, get_skills, mx)
     tools += list(extra or ())
     return tools
 
@@ -2229,7 +2218,24 @@ def read_only(tools, max_calls=None):
     return [guarded(t) for t in allowed]
 
 # %% ../nbs/02_tools.ipynb #0818dbdb
-def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS):
+def sub_sp(sp=SUB_SP, skills=()):
+    """A sub-agent's briefing: its standing instructions, then the skills its task named.
+
+    Inlining a skill body is wrong for a turn and right here, and the difference is knowing the
+    task. A conversation could need any skill, so the turn gets an index and pays for a body
+    only when it asks; a sub-agent has exactly one job, named by the caller who *does* hold the
+    index, so the body it needs can be there from the first step. On the small local model
+    sub-agents route to by default, that is the difference between spending one of a dozen steps
+    on `read_skill` and spending none.
+
+    Discovery stays with the caller on purpose. Handing the sub-agent the whole index as well
+    would put the choice back on the model with the fewest tokens to make it with.
+    """
+    if not skills: return sp
+    return sp + '\n\n' + '\n\n'.join(f'## {s.name}\n\n{s.text()}' for s in skills)
+
+
+def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, skills=()):
     """Ask `question` in a throwaway conversation on `backend`'s engine. Returns the answer text.
 
     The conversation is closed in a `finally` because the whole benefit is that it does not
@@ -2240,7 +2246,7 @@ def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS):
     try:
         # Native local engines own their internal tool loop, so the tool wrappers are the
         # backend-independent hard stop. Allow several parallel calls per logical round.
-        sub = backend.spawn(sp=sp, tools=read_only(tools, max_calls=max_steps * 4))
+        sub = backend.spawn(sp=sub_sp(sp, skills), tools=read_only(tools, max_calls=max_steps * 4))
         if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
         return sub.send(question)
     except Exception as e:
@@ -2251,7 +2257,7 @@ def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS):
             except Exception: pass
 
 # %% ../nbs/02_tools.ipynb #fe517832
-def delegate_many(backend, questions, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, n_workers=4):
+def delegate_many(backend, questions, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, n_workers=4, skills=()):
     """Ask several questions at once. Returns answers in the order the questions were given.
 
     Whether this is genuinely parallel depends on what is underneath, and it is worth being
@@ -2273,21 +2279,42 @@ def delegate_many(backend, questions, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STE
     qs = list(questions)
     if not qs: return []
     if len(qs) == 1 or getattr(backend.spec, 'local', False) or n_workers < 2:
-        return [delegate(backend, q, tools, sp, max_steps) for q in qs]
+        return [delegate(backend, q, tools, sp, max_steps, skills) for q in qs]
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(min(n_workers, len(qs))) as ex:
-        return list(ex.map(lambda q: delegate(backend, q, tools, sp, max_steps), qs))
+        return list(ex.map(lambda q: delegate(backend, q, tools, sp, max_steps, skills), qs))
 
 # %% ../nbs/02_tools.ipynb #906e7f69
-def subagent_tools(get_backend, get_tools):
+def named_skills(get_skills, names):
+    """The skills a delegated task named, and a note about any name that matched nothing.
+
+    A name that matched nothing is reported rather than dropped. A sub-agent quietly briefed
+    without the skill its caller asked for answers from general knowledge and sounds exactly as
+    confident as one that had it.
+    """
+    if not names or get_skills is None: return [], ''
+    every = list(get_skills() or [])
+    got, missing = [], []
+    for n in [x for x in str(names).replace(',', ' ').split() if x]:
+        s = find(every, n)
+        got.append(s) if s is not None else missing.append(n)
+    if not missing: return got, ''
+    return got, (f"\n\n[no skill named {', '.join(missing)}; this repository has "
+                 f"{', '.join(s.name for s in every) or 'none'}]")
+
+
+def subagent_tools(get_backend, get_tools, get_skills=None):
     """The `delegate` tool, bound to whatever backend routing says sub-agents run on.
 
-    Both arguments are callables so a model switch mid-session is picked up: the tool the
+    Every argument is a callable so a model switch mid-session is picked up: the tool the
     model is holding must not be pinned to the backend that happened to be current when
-    the tool list was built.
+    the tool list was built. `get_tools` is asked for the sub-agent model's tool list rather
+    than the turn model's, which is the same arithmetic `core.budget_for` does for a turn --
+    sub-agents route to a small local model by default, and handing it a frontier model's
+    schemas at a frontier model's clip is the overflow that budget exists to prevent.
     """
 
-    def delegate_search(question: str) -> str:
+    def delegate_search(question: str, skills: str = '') -> str:
         """Hand a broad search question to a sub-agent and get back only its conclusion.
 
         Use this when answering would take many `search_code` / `view_file` / `read_url` /
@@ -2296,13 +2323,19 @@ def subagent_tools(get_backend, get_tools):
         sub-agent has your read-only tools and none of your write tools, and its working is
         discarded, so the cost to your context is one question and one answer.
 
+        `skills` names skills from your skill index, comma separated, whose text the sub-agent
+        should start with: name the one or two its task actually needs. You hold the index and
+        it does not, so this is the only way it gets a skill without spending a step reading
+        one. Leave it empty when the task needs no particular skill.
+
         Ask one self-contained question. The sub-agent cannot see this conversation.
         """
         b = get_backend()
         if b is None: return 'no model is available to delegate to'
-        return clip(delegate(b, question, get_tools()), MAX_TOOL_CHARS)
+        sk, note = named_skills(get_skills, skills)
+        return clip(delegate(b, question, get_tools(), skills=sk), MAX_TOOL_CHARS) + note
 
-    def delegate_parallel(questions: str) -> str:
+    def delegate_parallel(questions: str, skills: str = '') -> str:
         """Hand several independent questions to sub-agents at once, and get back every answer.
 
         `questions` is a JSON array of strings, e.g.
@@ -2312,6 +2345,10 @@ def subagent_tools(get_backend, get_tools):
         run concurrently, each in its own throwaway conversation with your read-only tools,
         so three questions cost you three short answers rather than the sixty tool results
         it would take to answer them yourself.
+
+        `skills` names skills from your skill index, comma separated, given to every one of
+        them. Use it when the questions share a subject; when they do not, ask them in separate
+        `delegate_search` calls so each gets only what its own task needs.
 
         Every question must be self-contained: a sub-agent cannot see this conversation or
         the other questions.
@@ -2325,7 +2362,8 @@ def subagent_tools(get_backend, get_tools):
         except Exception as e:
             return err('could not parse questions', e)
         if not qs: return 'no questions given'
-        answers = delegate_many(b, qs, get_tools())
-        return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2)
+        sk, note = named_skills(get_skills, skills)
+        answers = delegate_many(b, qs, get_tools(), skills=sk)
+        return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2) + note
 
     return [delegate_search, delegate_parallel]

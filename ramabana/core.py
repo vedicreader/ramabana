@@ -54,9 +54,11 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLAUDE', 'CLOUD', 'CUSTOM',
-           'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'AgentError', 'agent_err',
-           'use_env_prefix', 'env', 'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx',
-           'ModelSpec', 'resolve', 'model_note', 'register_model', 'unregister_model', 'Routing']
+           'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'SMALL_CTX',
+           'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env',
+           'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx', 'ModelSpec', 'resolve',
+           'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model', 'force_tags',
+           'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
@@ -94,11 +96,7 @@ def env(name, dflt=None):
 # %% ../nbs/00_core.ipynb #9df3b26a
 JOBS = ('turn', 'oneshot', 'inline', 'completion', 'classify', 'summary', 'subagent')
 
-#: The jobs that are one short stateless call and nothing else. They take the `oneshot`
-#: policy unless set individually, so "run the cheap jobs somewhere else" is one setting
-#: rather than three -- and so the model they run on has a *name*, which is what makes it
-#: something a person can point at and something `Routing` can find a substitute for.
-#: `subagent` is not here: it is a whole conversation. Nor is `turn`.
+#: One-shot jobs share the `oneshot` policy unless set individually. Not `turn` or `subagent`.
 ONESHOT_JOBS = ('oneshot', 'completion', 'classify', 'summary', 'inline')
 LOCAL = {'gemma-e2b': 'litert-community/gemma-4-E2B-it-litert-lm',
     'gemma-e4b': 'litert-community/gemma-4-E4B-it-litert-lm',
@@ -138,12 +136,13 @@ MODELS = {**{k: ('litert', v) for k, v in LOCAL.items()},
           **{k: ('llama', v) for k, v in LLAMA.items()},
           **{k: ('remote', v) for k, v in CLOUD.items()}}
 
+
 # %% ../nbs/00_core.ipynb #9881cc3b
 def _json_has(path, *keys):
+    "Whether nested keys in a JSON file are present and truthy."
     try:
-        value = Path(path).expanduser().read_json()
-        for key in keys: value = value[key]
-        return bool(value)
+        from fastcore.basics import nested_idx
+        return bool(nested_idx(Path(path).expanduser().read_json(), *keys))
     except Exception: return False
 
 def _claude_login():
@@ -158,11 +157,8 @@ def _claude_login():
 def _install_toolslm_funccall():
     """Expose fastcore's replacement under the module name python-fastllm 0.0.36 imports.
 
-    Called where it is needed, not at import. Writing into `sys.modules` is a process-wide
-    edit to somebody else's package, and doing it as a side effect of `import ramabana.core`
-    meant importing anything at all from this library rearranged `toolslm` for every other
-    consumer in the interpreter -- a test that imports Ramabana to read one constant, a
-    notebook that imports it beside a library with its own opinion about `toolslm`.
+    Call only where needed. Do not run at import: writing into `sys.modules` is process-wide
+    and must not rearrange `toolslm` for every other consumer in the interpreter.
 
     Only `fastllm.chat` needs the shim, and only the Claude Code transport imports that, so
     the two callers are `_load_claude_transport` and the moment a `claude_code/` model is
@@ -252,6 +248,7 @@ def auth_status():
                                  if claude_login and not claude_transport else '')},
         'gemini': {'available': bool(os.getenv('GEMINI_API_KEY')), 'source': 'GEMINI_API_KEY'},
     }
+
 
 # %% ../nbs/00_core.ipynb #56303cec
 _oai_cache = (0.0, [])
@@ -404,6 +401,44 @@ def model_note(spec):
     where = 'local' if spec.local else 'cloud'
     return f'{spec.name} · {where} · {spec.ctx//1000}k ctx' + (f' · {spec.note}' if spec.note else '')
 
+# %% ../nbs/00_core.ipynb #4e529923
+SMALL_CTX = 24_000       # at or below this window, a model is briefed frugally
+TOOL_MAX_FLOOR = 1500    # chars; below this a file view stops being a file view
+
+#: The capability groups a small window gives up first. Research is what a 16k model cannot
+#: use even when it has it: one `read_url` at that model's own clip is most of the room the
+#: briefing leaves it, so carrying the schemas buys a route that cannot finish anyway.
+FRUGAL_DROP = ('memory', 'web')
+
+
+@dataclass(frozen=True)
+class Budget:
+    'What a model can afford to be told, and to be sent back.'
+    drop: tuple = ()         # capability groups to withhold from `tools_for`
+    inline: bool = True      # whether the briefing may inline a skill body
+    tool_max: int = 0        # chars one tool result may spend
+    note: str = ''           # why, for a status bar
+
+
+def budget_for(spec, tool_max):
+    """The briefing `spec`'s model can afford, from its context window.
+
+    `tool_max` is the caller's own default, and this only ever lowers it. Raising the clip on a
+    large window would change the case that already works, and the case that does not is the
+    only reason this exists.
+
+    A spec with no window, or one we could not read, gets the full briefing. Withholding tools
+    from a model whose size is unknown turns not knowing into a smaller agent, and `_cloud_ctx`
+    already assumes 128k when a table fails it.
+    """
+    ctx = getattr(spec, 'ctx', 0) or 0
+    if ctx <= 0 or ctx > SMALL_CTX: return Budget(tool_max=tool_max, note='full briefing')
+    mx = min(tool_max, max(TOOL_MAX_FLOOR, (ctx//16)*4))
+    return Budget(FRUGAL_DROP, False, mx,
+                  f'{ctx//1000}k window: no inlined skills, no {"/".join(FRUGAL_DROP)} tools, '
+                  f'tool results clipped to {mx} chars')
+
+
 # %% ../nbs/00_core.ipynb #3e2adbad
 def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):
     "Register a configurable model alias for this process; persistence belongs to the host app."
@@ -427,6 +462,48 @@ def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model
 def unregister_model(name):
     "Remove one process-local configurable model alias."
     CUSTOM.pop(name, None); MODELS.pop(name, None); _LOCAL_CTX.pop(name, None)
+
+# %% ../nbs/00_core.ipynb #1e5cd7ee
+TOOL_CHANNELS = ('native', 'tags')
+
+_forced_tags = {}   # model_id -> why its wire tool channel is closed on this machine
+
+
+def force_tags(model_id, why=''):
+    """Record that this model's tools cannot travel on the wire here, so later turns stop trying.
+
+    A managed configuration is detectable before the first request and `claude_tags` detects it.
+    A transport that refuses MCP for any other reason -- a policy at a path nobody documented, a
+    plugin that failed to register, a version that dropped the field -- is only learned from a
+    failure, and learning it is what keeps the cost at one turn instead of every turn.
+    """
+    why = why or 'the wire tool channel was refused'
+    _forced_tags[str(model_id)] = why
+    return why
+
+
+def forget_forced_tags():
+    "Forget what was learned about wire channels, so a fixed configuration is tried again."
+    _forced_tags.clear()
+
+
+def tool_channel(spec):
+    """Which channel a model's tool schemas travel on: `'native'` on the wire, `'tags'` in the
+    system prompt. Takes a `ModelSpec` or a bare model id.
+
+    `native` is the default and stays the better channel wherever the wire is open. `tags` is
+    for where it is not, and the cost is worth stating: the schemas are no longer validated and
+    a call arrives as text the model had to punctuate correctly. That is a real downgrade, taken
+    to keep an agent that has tools rather than one that has none.
+
+    `$RAMABANA_TOOL_CHANNEL` forces either, for any model, which is also how a machine whose MCP
+    is broken in a way nothing here detects gets a working agent without waiting for a release.
+    """
+    mid = str(getattr(spec, 'model_id', spec) or '')
+    if (v := (env('TOOL_CHANNEL') or '').strip().lower()) in TOOL_CHANNELS: return v
+    if mid in _forced_tags: return 'tags'
+    return 'tags' if claude_tags(mid) else 'native'
+
 
 # %% ../nbs/00_core.ipynb #e81acb32
 @dataclass

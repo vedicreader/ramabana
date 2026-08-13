@@ -166,3 +166,6 @@ chatcache/
 
 # the sdd workspace: briefs, reports and review packages for an in-flight plan
 .superpowers/
+
+# screenshots pasted into a session
+clipboard-image.png
