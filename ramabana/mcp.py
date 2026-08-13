@@ -70,19 +70,13 @@ def _annotate(name):
 def server(host=None, agent=None, name='ramabana', readonly=True, delegate=True, **kw):
     """An MCP server over one host's tools, and optionally over Ramabana's own agent.
 
-    The tools are the same objects the model gets in a turn: `functools.wraps` kept their
-    signatures and docstrings, which is exactly what FastMCP reads to build a schema, so
-    there is no second description of any tool to drift.
-
-    `readonly` is the default because the client is another agent whose approval UI this
-    server does not control. With writes mounted, gate them the usual way -- pass a host
-    whose `approvals` has a listener -- rather than trusting the client to ask.
+    The tools are the same objects the model gets in a turn, so FastMCP reads their own
+    signatures. `readonly` by default: the client is an agent whose approval UI is not ours.
     """
     host = host if host is not None else LocalHost()
     mcp = FastMCP(name, instructions=INSTRUCTIONS, **kw)
     skills = discover(host.roots, getattr(agent, 'cfg', None)) if agent is None else agent.skills
-    # The agent's own recorded tools when there is one, so a client's call reaches the same
-    # activity feed and the same `changes()` as a call the model made for itself.
+    # the agent's own recorded tools when there is one, so a client's call reaches its feed
     every = agent.tools if agent is not None else tools_for(host, get_skills=lambda: skills)
     mounted = []
     for tool in every:

@@ -366,11 +366,7 @@ def resolve(name, default_local=DFLT_LOCAL):
         backend, mid = MODELS[name]
         config = CUSTOM.get(name, {}).get('config', {})
         if backend != 'remote':
-            # The same check the `vendor/model` branch below has always made, and the reason
-            # this one lacking it mattered: a short MLX name resolved cleanly on a machine
-            # with no MLX, so a job routed to it got a `ModelSpec`, built a backend, failed at
-            # `start()`, and reported nothing -- while `Routing`, told the model was fine,
-            # never looked for one that was.
+            # the same check the `vendor/model` branch makes: an absent runtime is not a model
             if not runtime_available(backend):
                 raise RuntimeError(f'{backend} runtime is unavailable; install rishi[{backend}]')
             return ModelSpec(name, backend, mid, local_ctx(name), config=config)

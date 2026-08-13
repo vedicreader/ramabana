@@ -255,8 +255,7 @@ class VaultHost(LocalHost):
         """
         kw.pop('pii', None)
         if self.mk_chat is not None: kw.setdefault('mk_chat', self.mk_chat)
-        # `instruction=`, not `sp=`: the private path hardcodes `sp=PII_SP` and drops the
-        # instruction, and on the ordinary path `sp` replaces the briefing that asks for citations.
+        # `instruction=`, not `sp=`: `sp` replaces the briefing that asks for citations
         return self.vault.ask(question, ref=ref, instruction=str(instruction or ''), **kw)
 
     @property

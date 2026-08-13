@@ -657,8 +657,7 @@ class Ui:
             if not done: return self.paint()
             prompt, self.menu_prompt, self.menu = self.menu_prompt, '', None
             if choice is None or choice.suffix is None:
-                # Cancelling hands the line back rather than throwing it away: the user typed
-                # it, and the menu was the harness's question, not theirs.
+                # cancelling hands the line back: the menu was the harness's question, not theirs
                 self.buf.text, self.buf.cursor = prompt, len(prompt)
                 return self.paint()
             self.say(Text(prompt), 'user')
@@ -854,11 +853,7 @@ def mk_host(roots=('.',),
             web=True,                # wire the web tools to fossick
             vault=False,             # keep what is read in a vishalakshi vault, for the next session
             read_outside=False):     # let the read-only tools name any path on this machine
-    """The host both frontends run on: `LocalHost`, or `VaultHost` when memory should outlive it.
-
-    `vishalakshi` is imported only when it is asked for, so a terminal session that does not
-    want durable memory does not pay for an embedding model to find that out.
-    """
+    "The host both frontends run on: `LocalHost`, or `VaultHost` when memory should outlive it."
     if vault:
         from .vault import VaultHost as Host
     else: Host = LocalHost
@@ -875,22 +870,17 @@ def mk_agent(roots=('.',),
     "A host over the named folders and an `Agent` over that, gated the way `approve` says."
     approvals = None if approve == 'none' else Approvals(tools=WRITE_TOOLS, mode=approve)
     host = mk_host(roots, approvals=approvals, web=web, vault=vault, read_outside=read_outside)
-    # The gate previews `create_file` by asking the host whether the path already exists, so
-    # "new file" and "OVERWRITES an existing file" are different sentences to approve.
-    if approvals is not None: approvals.host = host
+    if approvals is not None: approvals.host = host   # the gate previews `create_file` via the host
     agent = Agent(host, model=model, approvals=approvals, **kw)
-    # A `--vault` session has two model runtimes in it otherwise: ours, and the one
-    # vishalakshi builds for itself the first time the vault is asked anything.
-    agent.lend_model()
+    agent.lend_model()   # or a `--vault` session loads a second runtime for vishalakshi
     return agent, host
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
 async def amain(agent, hint=''):
     """The tty loop: one terminal, one event loop, one place that owns the keyboard.
 
-    Bracketed paste is enabled and mouse reporting is not: the main screen is the terminal's
-    to select from, which is how a person copies anything out of it. `Ui.enter_transcript`
-    borrows the mouse for the browsing view and gives it straight back.
+    Bracketed paste on, mouse reporting off: the main screen is the terminal's to select from.
+    `Ui.enter_transcript` borrows the mouse for the browsing view and gives it straight back.
     """
     tty = RealTty()
     tty.write('\x1b[?2004h')  # bracketed paste
@@ -959,9 +949,8 @@ def main(
     resume: str = '',                    # saved session id/prefix, or 'latest'
 ):
     "Ramabana in a terminal: a coding agent over the folders you name."
-    # A subcommand rather than a flag, because it is a different program: its own surface, its
-    # own kernel, its own module. The import is here so `ramabana` starts without jupyter_client
-    # installed, and so a test can monkeypatch `pyrepl.main`.
+    # a subcommand, not a flag: a different program. Imported late, so `ramabana` starts
+    # without jupyter_client and a test can monkeypatch `pyrepl.main`.
     if prompt == 'pyrepl':
         if vault:
             print('pyrepl has no vault-backed host; run it without --vault', file=sys.stderr)

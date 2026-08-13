@@ -24,12 +24,7 @@ class SpecError(AgentError): "A specification could not be read, or an operation
 
 
 def load_spec(src, timeout=30):
-    """A spec from a URL, a path, or an already-parsed dict.
-
-    Routed on what `src` is, the way `Vault.add` routes: the caller has a spec somewhere and
-    should not have to say which kind of somewhere. A URL is fetched with the same client the
-    rest of the stack uses rather than a second one.
-    """
+    "A spec from a URL, a path, or an already-parsed dict, routed on what `src` is."
     if isinstance(src, dict): return src
     s = str(src or '').strip()
     if not s: raise SpecError('a spec url, path or dict is required')
@@ -49,8 +44,7 @@ def spec_ops(spec):
     "Every operation in `spec` as `OpSpec` records, whatever flavour of spec it is."
     from fastcore.basics import AttrDict
     from fastspec.spec import openapi_to_ops
-    # `openapi_to_ops` reads the document by attribute (`spec.paths`), so a plain dict
-    # from `json.load` is not what it wants.
+    # `openapi_to_ops` reads the document by attribute (`spec.paths`), not as a dict
     try: ops = list(openapi_to_ops(AttrDict(spec)))
     except Exception as e: raise SpecError(f'could not read the operations: {agent_err(e)}') from e
     if not ops: raise SpecError('the spec declares no operations')
@@ -58,11 +52,7 @@ def spec_ops(spec):
 
 
 def op_row(op):
-    """One operation as the shape a person or a model reads: what it is called, and how.
-
-    The signature comes from `fastcore.apisurface`, which is what `fastspec` builds its own
-    client from -- so what is shown here and what is callable cannot drift apart.
-    """
+    "One operation as the shape a person or a model reads, signed by `fastcore.apisurface`."
     from fastcore.apisurface import mk_sig, sanitized_params
     try: sig = str(mk_sig(op, sanitized_params(_op_params(op)), op.param_defaults))
     except Exception: sig = '(...)'

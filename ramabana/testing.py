@@ -98,9 +98,7 @@ class MemHost(NullHost):
         super().__init__([root])
         self.files, self.root = dict(files or {}), root
         self.ran, self.cmds = [], []
-        # What a command is scripted to return: `{command: (exit_code, output)}`. Anything
-        # not scripted exits 0 with no output, so a test that only cares *that* a command
-        # ran does not have to describe one.
+        # `{command: (exit_code, output)}`; anything not scripted exits 0 with no output
         self.commands = dict(commands or {})
 
     def run_cmd(self, command, cwd=None, timeout=120):
@@ -137,15 +135,8 @@ class MemHost(NullHost):
 class FullHost(LocalHost):
     """A host with *every* capability present, over a throwaway folder.
 
-    `LocalHost` is honest about what a terminal cannot do: it has no research memory, no
-    IDE terminal and no overlay scope, so `tools_for` drops those tools. That makes it a
-    poor place to test the tools it drops. `FullHost` fills each gap with a small real
-    implementation over in-process state -- a remembered-pages index that genuinely
-    searches, a web that genuinely returns the pages it was given -- so the whole tool
-    surface can be driven, and every group's contract has somewhere to be checked.
-
-    Nothing here reaches the network, and the folder is a fresh temporary one unless a root
-    is given, so a test can write freely.
+    Each gap `LocalHost` leaves is filled with a small real implementation over in-process
+    state, so the whole tool surface can be driven. Nothing here reaches the network.
     """
 
     def __init__(self, files=None, pages=None, root=None, terminal='', **kw):
@@ -292,8 +283,7 @@ class FakeBackend(Backend):
 
     def _oneshot(self, prompt, sp, max_tokens): return f'ONESHOT:{prompt[:40]}'
     def _usage(self):
-        # Cumulative, the way a real chat's counters are: `Backend.send` assigns rather than
-        # adds, so a double keeps its own running total or it cannot catch double-counting.
+        # cumulative, the way a real chat's counters are: `Backend.send` assigns rather than adds
         n = max(1, len(self.sent))
         return Usage(model=self.spec.model_id, input=10*n, output=5*n, total=15*n, turns=n)
 
@@ -310,13 +300,7 @@ class FakeBackend(Backend):
 
 # %% ../nbs/04_testing.ipynb #10360a7c
 def fake_agent(host=None, replies=(), **kw):
-    """An `Agent` whose every job routes to one `FakeBackend`. Returns `(agent, backend)`.
-
-    The routing table is pointed at `SPEC` as well, not only the backends. `Agent.compose`
-    asks what runtime the turn is on -- a text-only LiteRT engine cannot be handed an image
-    content part -- so a double that left routing on the real default local model composed a
-    different message depending on whether the machine running the tests had LiteRT installed.
-    """
+    "An `Agent` whose every job routes to one `FakeBackend`, `SPEC` included. Returns `(agent, backend)`."
     a = Agent(host or MemHost({'/proj/a.py': 'def a(): pass\n'}), extensions=False, **kw)
     be = FakeBackend(SPEC, replies=replies)
     if 'model' not in kw and 'routing' not in kw:
@@ -340,14 +324,8 @@ CHATS = Path(ramabana.__file__).parent.parent/'chatcache'
 def recorded(path=None, record=None):
     """Replay recorded model answers for the duration, instead of calling a model.
 
-    `record=True` -- or `$RISHI_RECORD_CHAT` -- lets a miss reach a real model, which is how a
-    recording gets made. Without it a miss *raises*, which is the point: a page that has drifted
-    away from what was recorded fails, rather than quietly loading weights or spending money on
-    somebody's API in the middle of a test run.
-
-    Replay covers the asks that have an answer to keep: a blocking turn, a one-shot, a
-    classification. A streamed turn is a generator, so nothing records it and `stream` still
-    reaches whatever was built.
+    `record=True` -- or `$RISHI_RECORD_CHAT` -- lets a miss reach a real model; without it a miss
+    raises. A streamed turn is a generator, so nothing records it and `stream` reaches the model.
     """
     from rishi.core import CachedChat
     from ramabana.runtime import use_chat
@@ -391,24 +369,14 @@ class MutteringBackend(Backend):
 
 # %% ../nbs/04_testing.ipynb #51f402c1
 class Step:
-    """One thing a scripted model does: call a tool, or say something.
-
-    `tool` is a `(name, kwargs)` pair and is called through the agent's real tool list, so
-    the activity feed, the approval gate and the file snapshots all run for real -- the only
-    fiction is which tool the model decided to call.
-    """
+    "One thing a scripted model does: call a tool -- through the real tool list -- or say something."
 
     def __init__(self, text='', tool=None, pause=0.0):
         self.text, self.tool, self.pause = text, tool, pause
 
 
 class ScriptedBackend(Backend):
-    """Plays a list of `Step`s, streaming its words one at a time.
-
-    `token_delay` is what makes a screenshot possible: at zero the turn finishes before the
-    first repaint and every capture shows a completed answer, which is the one thing a
-    streaming screenshot must not show.
-    """
+    "Plays a list of `Step`s, streaming its words one at a time; `token_delay` is what a screenshot needs."
 
     kind = 'scripted'
 
