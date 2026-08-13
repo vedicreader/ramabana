@@ -250,17 +250,13 @@ class VaultHost(LocalHost):
 
         `mk_chat` lends the session's chat factory so the vault does not load a second engine
         from `$VISHALAKSHI_MODEL`. `pii` is stripped: a tool argument must not be able to send
-        retrieved private sections to a hosted API.
+        retrieved private sections to a hosted API. `instruction` is what a second turn carries,
+        and it travels as itself rather than as `sp`; the comment below says why.
         """
         kw.pop('pii', None)
         if self.mk_chat is not None: kw.setdefault('mk_chat', self.mk_chat)
-        # `instruction=`, not `sp=`. Vishalakshi has a parameter for this and it appends
-        # "Instruction from the questioner:" to the question, which is what `PII_SP` tells the
-        # model to expect -- it says the questioner will send an instruction back and it will get
-        # another turn. Carrying it as a system prompt broke that in both directions: the private
-        # path builds its chat with `sp=PII_SP` hardcoded, so the instruction was silently
-        # dropped and the second turn asked exactly the same question and refused again; and the
-        # ordinary path took `sp` at its word, replacing the briefing that asks for citations.
+        # `instruction=`, not `sp=`: the private path hardcodes `sp=PII_SP` and drops the
+        # instruction, and on the ordinary path `sp` replaces the briefing that asks for citations.
         return self.vault.ask(question, ref=ref, instruction=str(instruction or ''), **kw)
 
     @property

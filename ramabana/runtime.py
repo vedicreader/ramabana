@@ -603,19 +603,11 @@ class Compactor:
         return should_compact(backend.used_tokens, backend.spec.ctx, self.reserve)
 
     def budget(self, ctx=0, overhead=0):
-        """How much recent conversation to keep, for a window of `ctx`.
-        Capped at half the window for the same reason the reserve is: 20k of "recent" on a
-        4k local model means the tail is the whole conversation, `older` is empty, and
-        compaction reports "everything is recent; nothing to compact" right up until the
-        engine refuses the turn. Half a window leaves half to summarise into.
+        """How much recent conversation to keep, for a window of `ctx` holding `overhead` besides.
 
-        `overhead` is everything in the window that is not conversation -- the briefing, and
-        the tool schemas when they travel on the wire rather than in it. It comes off first
-        because `used_tokens` counts it and `msgs` does not, so a half taken against the whole
-        window is a half of space the conversation never had. That is the same failure the cap
-        above was written for, arriving through the one term it did not subtract: on a 16k
-        model an 8k briefing leaves 4k of conversation under a 8k keep-tail, so nothing is ever
-        old enough to compact.
+        Half of what the conversation actually has, so there is always a half left to summarise
+        into: a keep-tail larger than that keeps everything, leaves nothing old, and reports
+        "nothing to compact" while the engine is already refusing the turn.
         """
         if not ctx: return self.keep_recent
         return min(self.keep_recent, max(256, max(256, ctx - overhead) // 2))
@@ -638,22 +630,11 @@ class Compactor:
 
     def _keep(self, msgs, count=None, ctx=0, overhead=0):
         """The tail to keep uncompacted, newest-first until the budget runs out.
-        Kept whole-message: half a tool result is worse than none, and a kept assistant
-        message whose tool result was dropped leaves a dangling call that some providers
-        reject outright.
 
-        The budget is capped again here, at half of what is actually present, and that second
-        cap is what makes compaction *progress* rather than merely be due. `budget` reasons
-        about the window and this reasons about the conversation, which is the term the window
-        cannot see: compaction fires when the whole prompt crosses the threshold, so the
-        conversation at that moment holds the threshold *minus* the overhead, and a tail
-        allowed to be larger than that keeps all of it, leaves `older` empty, and reports
-        "nothing to compact" while the engine is already refusing the turn. Halving the window
-        happens to avoid that only while the overhead stays under half of it; halving what is
-        here avoids it always.
-
-        It never binds on a large window, where `keep_recent` is far smaller than half a
-        conversation, so nothing changes for the case that already worked.
+        Whole messages: half a tool result is worse than none, and an assistant message whose
+        tool result was dropped leaves a dangling call that some providers reject. `budget`
+        reasons about the window and this caps it again against what the conversation actually
+        holds, which is the term the window cannot see.
         """
         sizes = [estimate_tokens(_text(m), count) + 8 for m in msgs]
         budget = self.budget(ctx, overhead)
@@ -833,7 +814,7 @@ class Backend:
         return text
     def _failed(self,what,e):
         native=getattr(e,'native_output','') or ''
-        self.note=f'{self.spec.name} {what} ({agent_err(e)})'+(f' — {native}' if native else '')
+        self.note=f'{self.spec.name} {what} ({agent_err(e)})'+(f' -- {native}' if native else '')
         return self.problem(self.note)
     def start(self):
         if self._tried:return self.chat
@@ -889,7 +870,7 @@ class Backend:
         "Look at a finished reply for a failure the transport could not raise. Nothing by default."
         return text
     def _empty(self,strict=False):
-        why=f'{self.spec.name} returned nothing'+(f' — {self.last_native}' if self.last_native else '')
+        why=f'{self.spec.name} returned nothing'+(f' -- {self.last_native}' if self.last_native else '')
         return self.problem(why) if strict else (f'({why})' if self.last_native else '(no reply)')
     def oneshot(self,prompt,sp='',max_tokens=None):
         if self.start() is None or not self.lock.acquire(False):return ''
@@ -958,16 +939,13 @@ _MK_CHAT = None
 def use_chat(f):
     """Build model conversations with `f` for the duration, instead of rishi's `Chat`.
 
-    Rishi's `CachedChat` goes in here, and the docs pages then replay a real model's answers
-    with no weights and no network. There is nowhere else to put it: a notebook asks `Agent`
-    for a turn and the chat is built three layers below that, so a factory passed as an
-    argument would have to be threaded through `Agent` and `make_backend` to reach the single
-    call that uses it.
+    `f` is called with rishi's own `Chat` arguments and must answer to `hist`, `oneshot`,
+    `close` and `reconfigure`, which is what `RishiBackend` reaches for. Anything beyond that
+    -- `mk_msgs` and `_recreate_conv` for compaction, `engine` for MLX's KV-cache reuse, `use`
+    for token counts -- is optional, and the backend states what it does without each.
 
-    Process-global, which is why it is a block and not a setting -- right for a notebook or a
-    script, wrong for anything long-lived or threaded. Replay covers the asks that have an
-    answer to record: a blocking turn, a one-shot, a classification. A streamed turn is a
-    generator and is not recorded, so `stream` still reaches whatever `f` built.
+    Process-global, which is why it is a block and not a setting: right for a notebook or a
+    script, wrong for anything long-lived or threaded.
     """
     global _MK_CHAT
     old, _MK_CHAT = _MK_CHAT, f
@@ -994,9 +972,7 @@ class RishiBackend(Backend):
         if self.spec.runtime=='remote' and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
-            # `backend` goes to rishi as its own argument rather than inside `eng_kw`. Rishi builds
-            # the engine from a parameter of that name, so a chosen accelerator buried in the
-            # engine kwargs arrived as a second value for it and every litert model failed to load.
+            # rishi takes backend itself; inside eng_kw it arrives twice and no litert model loads.
             if 'backend' not in eng and 'backend' not in kw and (backend := env('LITERT_BACKEND')):
                 from litert_lm import Backend as LB
                 backends = {'cpu': LB.CPU, 'gpu': LB.GPU}
@@ -1006,9 +982,7 @@ class RishiBackend(Backend):
             eng.setdefault('max_num_tokens',self.spec.ctx)
             kw['eng_kw']=eng
             conv=dict(kw.pop('conv_kw',{}) or {})
-            # litert takes a config object here now, not a flag: `enable_constrained_decoding`
-            # was accepted by `create_conversation` once and is not any more, so every litert
-            # model with tools failed to load with a TypeError naming this argument.
+            # litert takes a config object here now, not a flag.
             if self.tools and 'constrained_decoding_config' not in conv:
                 from litert_lm.interfaces import ConstrainedDecodingConfig
                 conv['constrained_decoding_config']=ConstrainedDecodingConfig(enable=True)
@@ -1077,12 +1051,8 @@ class RishiBackend(Backend):
             self.problem(f'{self.spec.name} spent the whole turn thinking ({f.thought} characters) '
                          'and never answered; route `turn` to a larger model, or raise its output cap')
     def _oneshot(self,prompt,sp,max_tokens):
-        # `think=False` on every runtime, not only the local ones. A cheap job's whole budget
-        # can be 32 tokens and a reasoning model will spend all of them deliberating, leaving
-        # no answer for `answer_only` to strip the thinking off of. Cleaning up afterwards is
-        # not the fix; asking not to think is, and Rishi now knows how to ask each runtime --
-        # a `/no_think` line, `enable_thinking=False`, a conversation with no thinking
-        # channel, the lowest reasoning effort the API takes.
+        # `think=False` on every runtime: a cheap job's whole budget can be 32 tokens, and a
+        # reasoning model will spend all of them deliberating and leave no answer behind.
         if self.spec.runtime!='mlx':
             return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
         # Keep a completion-only MLX conversation: rewriting its single user message lets
@@ -1106,6 +1076,11 @@ class RishiBackend(Backend):
         # `classify` must not leave a 32-token ceiling behind for the next summary.
         return resp_text(c._model_step(max_tokens or ONESHOT_TOKENS))
     def _replace_hist(self,summary,keep):
+        # A replayed conversation has neither of these, and `Compactor` catches the refusal and
+        # says so in its note. Silently writing a checkpoint and keeping the whole history is
+        # the one outcome worth ruling out: it reports success and compacts nothing.
+        if not hasattr(self.chat,'_recreate_conv'):
+            raise RuntimeError(f'{type(self.chat).__name__} cannot have its history replaced')
         self.chat.hist[:]=self.chat.mk_msgs([summary,*keep]); self.chat._recreate_conv()
     def _usage(self):
         # A replay spent no tokens and a recording keeps no counters, so there is no `use` on a
@@ -1115,16 +1090,10 @@ class RishiBackend(Backend):
         return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
                      total=u.total_tokens,cached=u.cached_tokens,cost=u.cost,turns=u.n)
     def _refresh(self):
-        # One public call, where this used to set `sp`, `tools`, `_sys_pre`, `toolspecs` and
-        # `ns` by hand and then call `_recreate_conv` -- five attributes, four of them private
-        # and three of them only present on some backends, which is why each was behind a
-        # `hasattr`. `Chat.reconfigure` is that operation, owned by the library that owns the
-        # state, so a backend changing shape is Rishi's business rather than a silent no-op here.
         self.chat.reconfigure(sp=self.sp,tools=self.tools)
 
-# Compatibility names from when llama.cpp and FastLLM were separate backends. Model execution
-# has gone through Rishi for both since, so these are the same class under two dead names, kept
-# only so an extension pinned to one keeps importing. Deprecated: use `RishiBackend`.
+# Dead names from when llama.cpp and FastLLM were separate backends, kept so an extension
+# pinned to one keeps importing.
 def __getattr__(name):
     if name in ('LlamaBackend','FastllmBackend'):
         import warnings

@@ -157,12 +157,8 @@ def _claude_login():
 def _install_toolslm_funccall():
     """Expose fastcore's replacement under the module name python-fastllm 0.0.36 imports.
 
-    Call only where needed. Do not run at import: writing into `sys.modules` is process-wide
-    and must not rearrange `toolslm` for every other consumer in the interpreter.
-
-    Only `fastllm.chat` needs the shim, and only the Claude Code transport imports that, so
-    the two callers are `_load_claude_transport` and the moment a `claude_code/` model is
-    resolved -- both of which already run before anything can reach the transport.
+    Never at import: writing into `sys.modules` is process-wide, so it happens when the Claude
+    Code transport is about to be reached and not before.
     """
     try: return importlib.import_module('toolslm.funccall')
     except ModuleNotFoundError as e:

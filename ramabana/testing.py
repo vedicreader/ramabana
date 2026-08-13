@@ -54,11 +54,15 @@ approval gate and the file snapshots all run for real.
 
 ## A real model with every tool
 
-The doubles above prove control flow. This final check proves the assembled product: an
-actual MLX model loaded through rishi, a `FullHost` with every capability, and every tool
-installed in the model conversation. It runs from the recordings, so CI needs neither Apple
-silicon nor a multi-gigabyte cache -- and because it *runs*, a tool added to the surface since
-the last recording is caught here rather than going unnoticed in a stored output.
+The doubles above prove control flow. This last check proves the assembled product: a `FullHost`
+with every capability, an `Agent` over it, and every tool the surface offers installed in the
+model conversation.
+
+It runs under `recorded()`, which is what makes it safe in CI: no engine is built, nothing reaches
+the network, and a miss fails the page rather than downloading a model. Nothing on this page asks
+a model anything yet, so there is nothing recorded and `chatcache/` stays out of the repository
+until there is. What it does prove, and a stored output could not, is that a tool added to the
+surface since this was last read is still here to be found.
 
 Docs: https://vedicreader.github.io/ramabana/testing.html.md"""
 
@@ -345,7 +349,7 @@ def recorded(path=None, record=None):
     classification. A streamed turn is a generator, so nothing records it and `stream` still
     reaches whatever was built.
     """
-    from rishi.litert import CachedChat
+    from rishi.core import CachedChat
     from ramabana.runtime import use_chat
     p = Path(path or CHATS)
     with use_chat(partial(CachedChat, path=str(p), record=record)): yield p
