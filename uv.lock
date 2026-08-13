@@ -3893,9 +3893,11 @@ dependencies = [
     { name = "exhash" },
     { name = "fastcore" },
     { name = "fastllm-claude-code" },
+    { name = "fastspec" },
     { name = "fossick" },
     { name = "koshas" },
     { name = "litesearch" },
+    { name = "pyyaml" },
     { name = "rgapi" },
     { name = "rishi" },
     { name = "vishalakshi" },
@@ -3952,7 +3954,8 @@ requires-dist = [
     { name = "exhash", specifier = ">=0.4.9" },
     { name = "fastcore", specifier = ">=2.1.16" },
     { name = "fastllm-claude-code", specifier = ">=0.0.7" },
-    { name = "fossick", specifier = ">=0.1.0" },
+    { name = "fastspec", specifier = ">=0.2.1" },
+    { name = "fossick", specifier = ">=0.1.11" },
     { name = "jupyter-client", marker = "extra == 'all'", specifier = ">=8.9.1" },
     { name = "jupyter-client", marker = "extra == 'dev'", specifier = ">=8.9.1" },
     { name = "jupyter-client", marker = "extra == 'pyrepl'", specifier = ">=8.9.1" },
@@ -3968,6 +3971,7 @@ requires-dist = [
     { name = "pyghostty", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "pyghostty", marker = "extra == 'pyrepl'", specifier = ">=0.1.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "rgapi", specifier = ">=0.1.19" },
     { name = "rishi", specifier = ">=0.1.8" },
     { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.8" },
@@ -3975,7 +3979,7 @@ requires-dist = [
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'pyrepl'", specifier = ">=0.1.1" },
-    { name = "vishalakshi", specifier = ">=0.0.1" },
+    { name = "vishalakshi", specifier = ">=0.1.7" },
 ]
 provides-extras = ["all", "cli", "dev", "mcp", "pyrepl"]
 
@@ -4966,7 +4970,7 @@ wheels = [
 
 [[package]]
 name = "vishalakshi"
-version = "0.1.6"
+version = "0.1.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastcore" },
@@ -4979,9 +4983,9 @@ dependencies = [
     { name = "rgapi" },
     { name = "rishi", extra = ["litert", "remote"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/27/1c/2fe27994e32d4ac669376639130a491e3c28a4538894375dbdd66f1d2912/vishalakshi-0.1.6.tar.gz", hash = "sha256:3aa0d4dbbbfd4ad1aacd262cabd24a5ed5d37ce4c00f194da9761c56970bff70", size = 78730, upload-time = "2026-08-12T23:47:24.533Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/7a/9555d46ef4a29f974a8b8bbb2e122fdf88c5f7e06c8b85f79782edde1155/vishalakshi-0.1.7.tar.gz", hash = "sha256:4b94d7ae9bb6224102fb113dceafa392ea01ef502ea4d6b2b6d958884d39cd41", size = 76758, upload-time = "2026-08-13T08:58:22.699Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/2c/200d80f1296cf8e43509d68aa4de96e786c7e4933dbdb0e4cfb7be17e3a2/vishalakshi-0.1.6-py3-none-any.whl", hash = "sha256:24dd277344744e132023abe6b6b77ca6b0608f351f33189382bf8f49ecfdd4d5", size = 85480, upload-time = "2026-08-12T23:47:22.997Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/41/a1ecbb8b6ee39ef4f966c5bb47b5aad88a09b580550102824de6d44c11e1/vishalakshi-0.1.7-py3-none-any.whl", hash = "sha256:9475d035e3f0fce8fe30255343159ce56b9cecae37e8623c12573593166e5c4a", size = 83398, upload-time = "2026-08-13T08:58:21.577Z" },
 ]
 
 [[package]]
