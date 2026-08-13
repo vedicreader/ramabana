@@ -83,10 +83,17 @@ class Kernel:
 
     async def _bootstrap(self):
         root = self.cwd/'.ramabana'/'pyrepl'
+        # Named '<project>-pyrepl-<pid>', not a bare "ramabana pyrepl": every kernel used to
+        # register under that same literal string, so two live sessions (this project run
+        # twice, or a stale process from an earlier run) were indistinguishable in the
+        # registry and a by-name attach could silently resolve to the wrong one. The pid makes
+        # it unique; `find_session`'s project-prefix match is what keeps a human from having to
+        # type the pid to use it.
+        proj = self.cwd.name or 'ramabana'
         source = (
             'def _ramabana_bootstrap():\n'
-            ' import dhrishti.serving as ds\n'
-            f' p = ds.serve_in_kernel(name="ramabana pyrepl", agent="restricted", token=True, '
+            ' import dhrishti.serving as ds, os\n'
+            f' p = ds.serve_in_kernel(name={proj!r} + "-pyrepl-" + str(os.getpid()), agent="restricted", token=True, '
             f'session_dir={str(root/"sessions")!r}, agent_session_dir={str(root/"agents")!r})\n'
             ' print("__RAMABANA_DHRISHTI__" + str(p))\n'
             '_ramabana_bootstrap()\n'
@@ -287,6 +294,11 @@ def mk_pyagent(roots, base, model=None, approve='ask', web=True, read_outside=Fa
     return agent, host
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0901
+def _ambiguous(attach, cands):
+    "Error text for a name that matches more than one live session -- list them, do not pick."
+    rows = '; '.join(f"{e.get('name')} (cwd={e.get('cwd')}, port={e.get('port')})" for e in cands)
+    return f'{attach!r} matches more than one live dhrishti session, refusing to guess which: {rows}'
+
 def find_session(attach):
     """The base URL of a live Dhrishti session named `attach`, or `attach` itself if it is a URL.
 
@@ -294,17 +306,33 @@ def find_session(attach):
     port for a kernel that is already serving -- and on the way there it reassigns the profile,
     the environment name and the agent mode, and repoints the session log directories. Attaching
     to somebody's session must not quietly widen it from `readonly` to `restricted`.
+
+    Every match is refused rather than guessed at each stage: attach exists for exactly the case
+    where another session is already running, so resolving to the wrong live namespace -- a
+    different cwd, a different agent mode, someone else's data -- is worse than raising.
     """
     attach = str(attach).strip()
     if '://' in attach: return attach
     from dhrishti.serving import active
     entries = active()
-    hit = next((e for e in entries if e.get('name') == attach), None)
-    # A bare name is looked up first; falling back to cwd is a courtesy for a session started
-    # without one, so it is matched on the whole basename rather than a substring -- 'leela'
-    # must not also match 'old-leela-backup'.
+    exact = [e for e in entries if e.get('name') == attach]
+    if len(exact) > 1: raise RuntimeError(_ambiguous(attach, exact))
+    hit = exact[0] if exact else None
+    # A kernel registers as '<project>-pyrepl-<pid>' (see Kernel._bootstrap) so two sessions in
+    # the same project never collide on name, but that also makes the full name unwieldy to
+    # type -- so a name that isn't an exact match is tried as a project prefix next, and only
+    # resolves if it picks out exactly one.
     if hit is None and attach:
-        hit = next((e for e in entries if Path(str(e.get('cwd') or '')).name == attach), None)
+        prefixed = [e for e in entries if str(e.get('name') or '').startswith(attach)]
+        if len(prefixed) > 1: raise RuntimeError(_ambiguous(attach, prefixed))
+        hit = prefixed[0] if prefixed else None
+    if hit is None and attach:
+        # Falling back to cwd is a courtesy for a session started under a name this attach value
+        # does not match at all; matched on the whole basename, not a substring, so 'leela' does
+        # not also match 'old-leela-backup'.
+        by_cwd = [e for e in entries if Path(str(e.get('cwd') or '')).name == attach]
+        if len(by_cwd) > 1: raise RuntimeError(_ambiguous(attach, by_cwd))
+        hit = by_cwd[0] if by_cwd else None
     if hit is None: raise RuntimeError(
         f'no live dhrishti session matching {attach!r}; running: '
         f'{", ".join(str(e.get("name")) for e in entries) or "none"}')
