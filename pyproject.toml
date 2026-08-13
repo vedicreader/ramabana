@@ -24,12 +24,21 @@ dependencies = [
     "exhash>=0.4.9",           # hash-verified line addressing: how the agent edits files safely
     "fastcore>=2.1.16",        # fenced_blocks / str_diff, behind the completion and diff surfaces
     "rishi>=0.1.8",            # every model runtime, including MLX and hosted FastLLM
-    "fossick>=0.1.0",           # first-party web research primitives and skill
+    "fossick>=0.1.11",          # first-party web research primitives and skill. 0.1.11 is the
+                                # RRF-fused search and the research that reports what it could
+                                # not read, which `LocalHost.research` returns the digest of
     "koshas>=0.0.31",           # first-party repo/environment context primitives and skill
     "litesearch>=0.1.1",        # RRF fusion shared with Vault.federate
     "rgapi>=0.1.19",            # ripgrep / fd primitives behind LocalHost.search and grep
     "fastllm-claude-code>=0.0.7",
-    "vishalakshi>=0.0.1",
+    # `vault.py` calls `federate`, `web`, `ask(instruction=)` and `acquire.ACTIONS`; a 0.0.1 has
+    # none of them, so the floor was low enough to resolve a release that cannot work.
+    "vishalakshi>=0.1.7",
+    # `spec.py` parses OpenAPI, Google discovery and GraphQL introspection through fastspec, and
+    # reads a document as YAML when it is not JSON. Both were only ever present transitively --
+    # fastspec via ghapi and python-fastllm -- so `api_call` worked by accident of the resolver.
+    "fastspec>=0.2.1",
+    "pyyaml>=6.0",
 ]
 
 # Applications may supply their own implementations through Host; these dependencies make
