@@ -23,7 +23,7 @@ classifiers = [
 dependencies = [
     "exhash>=0.4.9",           # hash-verified line addressing: how the agent edits files safely
     "fastcore>=2.1.16",        # fenced_blocks / str_diff, behind the completion and diff surfaces
-    "rishi>=0.1.1",            # every model runtime, including MLX and hosted FastLLM
+    "rishi>=0.1.8",            # every model runtime, including MLX and hosted FastLLM
     "fossick>=0.1.0",           # first-party web research primitives and skill
     "koshas>=0.0.31",           # first-party repo/environment context primitives and skill
     "litesearch>=0.1.1",        # RRF fusion shared with Vault.federate
@@ -43,7 +43,7 @@ mcp = ["mcp>=1.2"]
 all = ["ramabana[cli,mcp,pyrepl]"]
 # Every notebook is executed by `nbdev-test`, including the cli and mcp pages, so the dev
 # environment needs both frontends' dependencies or CI cannot run the docs as tests.
-dev = ["ramabana[all]", "rishi[all]>=0.1.1", "nbdev>=3.3", "notebook>=7.6.0", "pytest>=8.0.0"]
+dev = ["ramabana[all]", "rishi[all]>=0.1.8", "nbdev>=3.3", "notebook>=7.6.0", "pytest>=8.0.0"]
 # pyrepl is the terminal app plus a kernel, so it needs the cli extra as well as its own.
 pyrepl = [
     "ramabana[cli]",
@@ -83,9 +83,9 @@ path = "ramabana/__init__.py"
 dev = [
     "nbdev>=3.3.11",
     "notebook>=7.6.1",
-    "rishi[all]>=0.1.2",
+    "rishi[all]>=0.1.8",
     "ramabana[all]",
-    "rishi[all]>=0.1.1",
+    "rishi[all]>=0.1.8",
     "pytest>=8.0.0",
     "dhrishti>=0.1.2",
 ]

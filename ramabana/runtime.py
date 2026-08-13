@@ -883,12 +883,7 @@ class RishiBackend(Backend):
                 kw['backend'] = backends[backend.lower()]()
             eng.setdefault('max_num_tokens',self.spec.ctx)
             kw['eng_kw']=eng
-            conv=dict(kw.pop('conv_kw',{}) or {})
-            # litert takes a config object here now, not a flag.
-            if self.tools and 'constrained_decoding_config' not in conv:
-                from litert_lm.interfaces import ConstrainedDecodingConfig
-                conv['constrained_decoding_config']=ConstrainedDecodingConfig(enable=True)
-            if conv:kw['conv_kw']=conv
+            if conv := dict(kw.pop('conv_kw',{}) or {}): kw['conv_kw']=conv   # rishi constrains a tool call itself
         return kw
     def _start(self):
         from rishi import Chat
