@@ -30,7 +30,7 @@ are the same thing.
 | `06_mcp` | `ramabana.mcp` | the same tools, served over MCP |
 | `07_vault` | `ramabana.vault` | durable memory, federated search and watches, on [vishalakshi](https://github.com/vedicreader/vishalakshi) |
 | `08_shop` | `ramabana.shop` | a trolley an agent can fill, on [fossick](https://github.com/vedicreader/fossick) |
-| `11_pyrepl` | `ramabana.pyrepl` | a Python prompt you own with an agent beside it, on [dhrishti](https://github.com/vedicreader/dhrishti) |
+| `11_pyrepl` | `ramabana.pyrepl` | the kernel and overlay behind `--python`, on [dhrishti](https://github.com/vedicreader/dhrishti) |
 
 Every model runtime – LiteRT, MLX, llama.cpp and hosted providers – arrives through
 `rishi.Chat`. Ramabana owns agent policy, not provider-specific model loops.
@@ -40,7 +40,7 @@ Every model runtime – LiteRT, MLX, llama.cpp and hosted providers – arrives 
 ``` sh
 pip install ramabana                 # the harness
 pip install 'ramabana[cli]'          # ...and the terminal app
-pip install 'ramabana[pyrepl]'       # ...and the Python prompt with an agent beside it
+pip install 'ramabana[pyrepl]'       # ...and the Python prompt inside it
 pip install 'ramabana[mcp]'          # ...and the MCP server
 pip install 'ramabana[all]'
 ```
@@ -306,21 +306,22 @@ pong
 ## At a Python prompt
 
 ``` sh
-ramabana pyrepl --root .
+ramabana --python --root .
 ```
 
-One terminal holding two things. The Python prompt’s namespace belongs to whoever is typing, and
+There is one program and Python is a mode inside it: `/python` starts a kernel of your own and
+takes the line, `/agent` hands it back. The prompt’s namespace belongs to whoever is typing, and
 Ramabana reads that namespace and builds in a layer of its own: it cannot rebind a name it did not
 create. That guarantee is [dhrishti](https://github.com/vedicreader/dhrishti)’s – it serves the
-kernel’s namespace and splits its API in two – and pyrepl points the agent at the half that
+kernel’s namespace and splits its API in two – and Ramabana points the agent at the half that
 cannot mutate anything.
 
-`/python` and `/agent` switch what a typed line means, tab completes from the live kernel with
-each candidate’s type and shape beside it, a suite grows the buffer until its blank line, and
-`/promote NAME` adopts one of the agent’s variables into your own namespace. Everything else is
-the terminal above, unchanged. `--attach NAME` joins a session somebody else started – inside
-[leela](https://github.com/vedicreader/leela) that is the kernel already running – and starts
-nothing of its own. See [pyrepl](11_pyrepl.ipynb).
+Tab completes from the live kernel with each candidate’s type and shape beside it, a suite grows
+the buffer until its blank line, and `/promote NAME` adopts one of the agent’s variables into your
+own namespace. Everything else is the terminal above, unchanged. `--attach NAME` joins a session
+somebody else started – inside [leela](https://github.com/vedicreader/leela) that is the kernel
+already running – and starts nothing of its own, so there is no prompt of yours to type Python at.
+See [pyrepl](11_pyrepl.ipynb).
 
 ## As an MCP server
 

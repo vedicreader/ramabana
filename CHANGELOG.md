@@ -7,9 +7,11 @@ everything the harness was leaving on the table in the four libraries underneath
 
 ### New
 
-- `ramabana pyrepl`: a Python prompt whose namespace is yours, with the agent reading it through
-  Dhrishti's sandboxed overlay and unable to rebind anything it did not create. `--attach` locks
-  into a kernel that is already serving, which is how it runs inside leela.
+- `ramabana --python`: a Python prompt whose namespace is yours, with the agent reading it through
+  Dhrishti's sandboxed overlay and unable to rebind anything it did not create. It is a mode of the
+  one terminal rather than a second program -- `/python` starts the kernel and takes the line,
+  `/agent` hands it back, and everything else about the surface is unchanged. `--attach` locks into
+  a kernel that is already serving, which is how it runs inside leela.
 
 ### Added
 

@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from ramabana import cli, pyrepl
+from ramabana import cli
 from ramabana.pyrepl import DhrishtiHost, Kernel, output_text
 
 pytest.importorskip('dhrishti', reason='the overlay contract needs a live kernel: pip install ramabana[pyrepl]')
@@ -19,12 +19,14 @@ def test_output_text_normalises_jupyter_outputs():
     assert output_text(outputs) == 'hello\n42\nValueError: bad'
 
 
-def test_cli_dispatches_the_pyrepl_positional_command(monkeypatch):
-    monkeypatch.setattr(pyrepl, 'main', lambda **kwargs: kwargs)
-    result = cli.main('pyrepl', root='work', model='gpt', web=False)
-    assert result['root'] == 'work'
-    assert result['model'] == 'gpt'
-    assert result['web'] is False
+def test_cli_offers_python_mode_as_flags_on_the_one_command():
+    from fastcore.script import anno_parser
+
+    p = anno_parser(cli.main.__wrapped__, pos=['prompt'])
+    assert p.parse_args(['--python']).python is True
+    assert p.parse_args(['--attach', 'proj']).attach == 'proj'
+    assert p.parse_args([]).python is False
+    assert p.parse_args(['one question']).prompt == 'one question'
 
 
 def test_dhrishti_agent_overlay_reads_but_does_not_rebind_owner_namespace(tmp_path):
