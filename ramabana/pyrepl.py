@@ -258,7 +258,7 @@ class DhrishtiHost(LocalHost):
 def annotate(matches, described):
     "Candidate names with their type and shape where the session knows one."
     # exact names only: `df.copy` is a method on a binding, not a binding
-    return [f'{m} → {described[m]}' if m in described else m for m in matches]
+    return [f'{m} -> {described[m]}' if m in described else m for m in matches]
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0901
 def _ambiguous(attach, cands):

@@ -408,8 +408,8 @@ class Ui:
         self.mode = 'agent'        # 'python' once `enter_python` has a kernel
         self.kernel = None         # the owner's `pyrepl.Kernel`, or None
         self.attached = ''
-        self._join_ask = ''   # the session /join asked about, so the second try means yes         # the base of a session someone else owns, when we joined one
-        self.matches = None        # kernel completion candidates on screen, or None
+        self._join_ask = ''        # the session /join asked about; the same one again means yes
+        self.desc = []             # 'name -> type' for the live names among the candidates
         self.attachments = []      # `Attachment`s the next prompt carries
         self.frame = 0             # animated status frame; advanced only while a turn runs
         self._reply = ''           # the reply text so far, so a streamed block repaints whole
@@ -491,7 +491,10 @@ class Ui:
     def overlay(self):
         "Transient rows above the tail: options, slash completion, or the plan checklist."
         if self.menu is not None: return self.menu.render()
-        if self.complete is not None: return [self.complete.renderable()]
+        if self.complete is not None:
+            rows = [self.complete.renderable()]
+            if self.desc: rows.append(Text('  '.join(self.desc), style=GRUVBOX['gray']))
+            return rows
         if self.show_plan and self.agent.plan:
             return [Tooltip(self.agent.plan.md(), max_lines=12).renderable()]
         return []
@@ -694,7 +697,7 @@ class Ui:
         `/model` with the word "refactor" in it would open a menu instead of running.
         """
         src, line = self.buf.text, self.buf.text.strip()
-        self.complete = self.matches = None
+        self.complete, self.desc = None, []
         self.buf.clear()
         if not line: return None
         if line in ('/python', '/py'): return self.enter_python()
@@ -754,7 +757,10 @@ class Ui:
         # a slash line is a command, not code, so no branch here claims it: `/agent` is invalid
         # Python, and without this python mode -- the default once you are in it -- has no exit
         if self.mode == 'python' and self.ask is None and not self.buf.text.lstrip().startswith('/'):
-            if k.name == 'tab' and self.turn is None and self.buf.text: return self.complete_python()
+            # `complete is None`: with a menu already up, tab belongs to it, the way it does for
+            # a slash command. Without this the second tab re-completed instead of cycling.
+            if (k.name == 'tab' and self.complete is None and self.turn is None
+                    and self.buf.text): return self.complete_python()
             # a typed suite grows the buffer instead of submitting it; `codeop` asks, not the kernel.
             # A blank line submits what is pending, as at any Python prompt.
             if (k.name == 'enter' and self.menu is None and self.buf.text.strip()
@@ -772,7 +778,7 @@ class Ui:
                 self.comp.spawn(self.kernel.interrupt(), name='interrupt')
                 self.buf.clear()
                 return self.paint()
-        self.matches = None
+        self.desc = []
         if self.menu is not None:
             done, choice = self.menu.choose(k.name)
             if not done: return self.paint()
@@ -859,7 +865,6 @@ def tail(self:Ui):
     if self.hint: rows.append(Text(' ' + self.hint, style=GRUVBOX['gray']))
     chips = self.attach_row()
     if chips is not None: rows.append(chips)
-    if self.matches: rows.append(Text('  '.join(self.matches[:8]), style=GRUVBOX['gray']))
     rows.append(self.prompt())
     before = Text(self._prefixed(self.buf.text[:self.buf.cursor]))
     rendered = self.comp.console.render_lines(before, pad=False)
@@ -1053,27 +1058,26 @@ def on_output(self:Ui, output):
 
 @patch
 async def complete_python(self:Ui):
-    "Kernel completion for the buffer, with the displayed list annotated from the namespace."
+    """Kernel completion, through the same menu the slash commands use.
+
+    `CompletionMenu` owns the buffer span, so tab cycles and shift+tab goes back; `desc` is a
+    separate line because cycling writes the highlighted match into the buffer and a type would
+    go in with it.
+    """
     from ramabana.pyrepl import annotate
-    # typing is not gated during the awaits, so the candidates are rechecked after each
-    identity = (self.buf.text, self.buf.cursor)
+    identity = (self.buf.text, self.buf.cursor)   # typing is not gated during the awaits
     def stale(): return (self.buf.text, self.buf.cursor) != identity
     try:
         matches, start = await self.kernel.complete(self.buf.text, self.buf.cursor)
         if not matches or stale(): return
-        common = os.path.commonprefix(matches)
-        if len(matches) == 1 or len(common) > self.buf.cursor - start:
-            self.buf.text = self.buf.text[:start] + common + self.buf.text[self.buf.cursor:]
-            self.buf.cursor = start + len(common)
-            identity = (self.buf.text, self.buf.cursor)   # our own edit, not the user moving on
-        if len(matches) <= 1:
-            self.matches = None
-            return
-        self.matches = list(matches)   # bare names paint first: `describe` is synchronous HTTP
+        m = CompletionMenu(self.buf, list(matches), start=start, show=8)
+        if m.insert_common(): identity = (self.buf.text, self.buf.cursor)   # our edit, not theirs
+        if len(matches) == 1: return
+        self.complete = m
         self.paint()
         described = await asyncio.to_thread(self.agent.host.describe)
-        if stale(): return
-        self.matches = annotate(matches, described)
+        if stale() or self.complete is not m: return
+        self.desc = [x for x in annotate(matches, described) if ' -> ' in x][:4]
     finally:
         self.turn = None
         self.paint()
@@ -1085,28 +1089,8 @@ async def _promote(self:Ui, name):
     if self.attached:   # their token, their namespace, their surface to adopt from
         return self.note(f'{self.attached} belongs to whoever started it, so promoting is theirs to '
                          'do. The agent works in its own layer here and cannot write into the kernel.')
-    base = self.kernel.base if self.kernel else ''
-    self.say(Text(await asyncio.to_thread(promote, base, name)), 'note', fold=None)
-    self.turn = None
-    self.paint()
-
-@patch
-async def _join(self:Ui, which):
-    "Join a live session from the prompt. Closing our own kernel loses its names, so ask once."
-    if self.kernel is not None:
-        held = [x for x in (self.agent.host.list_vars() or '').splitlines() if x.strip()]
-        if held and self._join_ask != which:
-            self._join_ask = which
-            return self.note(f'your kernel holds {len(held)} name(s); joining closes it and loses '
-                             f'them. /join {which} again to go ahead.')
-        await self.kernel.shutdown()
-        self.kernel, self.mode = None, 'agent'
-        self.note('closed your kernel')
-    self._join_ask = ''
-    try: base = await self.attach_session(which)
-    except Exception as e: self.say(Text(agent_err(e)), 'error', fold=None)
-    else: self.say(Text(f'attached to {base}; the agent reads that namespace and writes into its '
-                        'own layer there. /vars lists it.'), 'note', fold=None)
+    self.say(Text(await asyncio.to_thread(promote, self.kernel.base if self.kernel else '', name)),
+             'note', fold=None)
     self.turn = None
     self.paint()
 
