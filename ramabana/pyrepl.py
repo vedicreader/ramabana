@@ -185,13 +185,19 @@ class Kernel:
     async def interrupt(self):
         if self.km: await self.km.interrupt_kernel()
 
-    async def shutdown(self):
+    async def shutdown(self, timeout=5):
         if self.kc:
             try: self.kc.stop_channels()
             except Exception: pass
         if self.km and self.km.has_kernel:
-            try: await self.km.shutdown_kernel(now=False)
-            except Exception: pass
+            # `now=False` asks the kernel to exit and waits for it to agree. A kernel serving
+            # dhrishti on a background thread does not reliably agree, and then the request never
+            # returns -- which is a session that will not close and a process left behind serving
+            # a port. So the polite ask gets a deadline and the rude one is the fallback.
+            try: await asyncio.wait_for(self.km.shutdown_kernel(now=False), timeout)
+            except Exception:
+                try: await self.km.shutdown_kernel(now=True)
+                except Exception: pass
         self.km = self.kc = self.base = None
         if self._ipc_dir:
             shutil.rmtree(self._ipc_dir, ignore_errors=True)

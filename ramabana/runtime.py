@@ -1006,7 +1006,12 @@ class RishiBackend(Backend):
             eng.setdefault('max_num_tokens',self.spec.ctx)
             kw['eng_kw']=eng
             conv=dict(kw.pop('conv_kw',{}) or {})
-            if self.tools:conv.setdefault('enable_constrained_decoding',True)
+            # litert takes a config object here now, not a flag: `enable_constrained_decoding`
+            # was accepted by `create_conversation` once and is not any more, so every litert
+            # model with tools failed to load with a TypeError naming this argument.
+            if self.tools and 'constrained_decoding_config' not in conv:
+                from litert_lm.interfaces import ConstrainedDecodingConfig
+                conv['constrained_decoding_config']=ConstrainedDecodingConfig(enable=True)
             if conv:kw['conv_kw']=conv
         return kw
     def _start(self):
