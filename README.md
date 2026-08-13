@@ -16,8 +16,8 @@ same [`Host`](https://vedicreader.github.io/ramabana/tools.html#host).
 
 ## What is in it
 
-The nbdev source is nine notebooks, and each one is exactly one module – the page you
-read and the module you import are the same thing.
+The nbdev source is one notebook per module – the page you read and the module you import
+are the same thing.
 
 | notebook | module | owns |
 |----|----|----|
@@ -30,6 +30,7 @@ read and the module you import are the same thing.
 | `06_mcp` | `ramabana.mcp` | the same tools, served over MCP |
 | `07_vault` | `ramabana.vault` | durable memory, federated search and watches, on [vishalakshi](https://github.com/vedicreader/vishalakshi) |
 | `08_shop` | `ramabana.shop` | a trolley an agent can fill, on [fossick](https://github.com/vedicreader/fossick) |
+| `11_pyrepl` | `ramabana.pyrepl` | a Python prompt you own with an agent beside it, on [dhrishti](https://github.com/vedicreader/dhrishti) |
 
 Every model runtime – LiteRT, MLX, llama.cpp and hosted providers – arrives through
 `rishi.Chat`. Ramabana owns agent policy, not provider-specific model loops.
@@ -39,6 +40,7 @@ Every model runtime – LiteRT, MLX, llama.cpp and hosted providers – arrives 
 ``` sh
 pip install ramabana                 # the harness
 pip install 'ramabana[cli]'          # ...and the terminal app
+pip install 'ramabana[pyrepl]'       # ...and the Python prompt with an agent beside it
 pip install 'ramabana[mcp]'          # ...and the MCP server
 pip install 'ramabana[all]'
 ```
@@ -287,7 +289,7 @@ The same task, without the terminal, for a pipe:
 
 ``` sh
 $ ramabana --model gpt-mini --approve auto --prompt "$TASK"
-1. **Constant:** `RESERVE`, set to **16,384 tokens** — headroom for the model's reply and tool results.
+1. **Constant:** `RESERVE`, set to **16,384 tokens** -- headroom for the model's reply and tool results.
 2. **Coles price:** Arnott's Tim Tam Original 200g is **A$6.00**.
 
 **`RESERVE` (16,384 tokens) × A$0.001 = A$16.384 ÷ A$6.00 = 2.7307 packs (2 whole packs).**
@@ -300,6 +302,25 @@ template-primed reasoning model’s deliberation never reaches the transcript:
 $ ramabana --model ornith-9b --prompt 'Reply with exactly the word: pong'
 pong
 ```
+
+## At a Python prompt
+
+``` sh
+ramabana pyrepl --root .
+```
+
+One terminal holding two things. The Python prompt’s namespace belongs to whoever is typing, and
+Ramabana reads that namespace and builds in a layer of its own: it cannot rebind a name it did not
+create. That guarantee is [dhrishti](https://github.com/vedicreader/dhrishti)’s – it serves the
+kernel’s namespace and splits its API in two – and pyrepl points the agent at the half that
+cannot mutate anything.
+
+`/python` and `/agent` switch what a typed line means, tab completes from the live kernel with
+each candidate’s type and shape beside it, a suite grows the buffer until its blank line, and
+`/promote NAME` adopts one of the agent’s variables into your own namespace. Everything else is
+the terminal above, unchanged. `--attach NAME` joins a session somebody else started – inside
+[leela](https://github.com/vedicreader/leela) that is the kernel already running – and starts
+nothing of its own. See [pyrepl](11_pyrepl.ipynb).
 
 ## As an MCP server
 

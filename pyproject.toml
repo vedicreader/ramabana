@@ -43,8 +43,10 @@ mcp = ["mcp>=1.2"]
 all = ["ramabana[cli,mcp,pyrepl]"]
 # Every notebook is executed by `nbdev-test`, including the cli and mcp pages, so the dev
 # environment needs both frontends' dependencies or CI cannot run the docs as tests.
-dev = ["ramabana[cli,mcp,pyrepl]", "rishi[all]>=0.1.1", "nbdev>=3.3", "notebook>=7.6.0", "pytest>=8.0.0"]
+dev = ["ramabana[all]", "rishi[all]>=0.1.1", "nbdev>=3.3", "notebook>=7.6.0", "pytest>=8.0.0"]
+# pyrepl is the terminal app plus a kernel, so it needs the cli extra as well as its own.
 pyrepl = [
+    "ramabana[cli]",
     "dhrishti>=0.1.2",
     "jupyter-client>=8.9.1",
 ]
@@ -82,7 +84,7 @@ dev = [
     "nbdev>=3.3.11",
     "notebook>=7.6.1",
     "rishi[all]>=0.1.2",
-    "ramabana[cli,mcp,pyrepl]",
+    "ramabana[all]",
     "rishi[all]>=0.1.1",
     "pytest>=8.0.0",
     "dhrishti>=0.1.2",
