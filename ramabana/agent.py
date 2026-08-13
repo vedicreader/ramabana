@@ -147,12 +147,7 @@ def _s(v, n=90):
 
 # %% ../nbs/03_agent.ipynb #3f508bca
 def summarise(tool, args):
-    """The imperative one-liner for a call: what a person would say they just did.
-
-    Per tool rather than a generic `name(args)` render, because the useful summary is
-    different every time and the generic one is unreadable at a glance -- which is the
-    only way this list is ever read.
-    """
+    "The imperative one-liner for a call: what a person would say they just did."
     a = args if isinstance(args, dict) else {}
     p, q = a.get('path', ''), a.get('query', '')
     if tool in _LABEL:           return _LABEL[tool]
@@ -276,17 +271,7 @@ def _indent(s, pad='  '):
 
 # %% ../nbs/03_agent.ipynb #bb3e51e3
 class Activity:
-    """The stream of calls for a session, and the hook a frontend hangs a redraw on.
-
-    `on_change` fires twice per call -- once when it starts and once when it finishes --
-    so a frontend can show `⏳ Web fetch: …` while the fetch is happening rather than only
-    afterwards. That is the entire difference between a UI that looks alive and one that
-    looks stuck, and it is why this is not simply a list appended to after the fact.
-
-    Thread-safe because tools run on the model's worker thread and frontends read from
-    theirs. The lock is around list mutation only; `on_change` is called outside it, so a
-    slow frontend cannot stall the model.
-    """
+    "The stream of calls for a session, and the hook a frontend hangs a redraw on."
 
     def __init__(self, on_change=None, max_acts=MAX_ACTS):
         self.acts, self.on_change, self.max_acts = [], on_change, max_acts
@@ -333,12 +318,7 @@ class Activity:
         return [a.dict() for a in (acts[-n:] if n else acts)]
 
     def md(self, mark=None, fold=True, title='what I did'):
-        """The stream as markdown, for saving into a notebook cell.
-
-        Wrapped in a `<details>` of its own so a reply is readable at a glance and the
-        working is one click away -- an answer buried under thirty tool calls is an answer
-        nobody reads.
-        """
+        "The stream as markdown, for saving into a notebook cell."
         acts = self.since(mark) if mark is not None else self.acts
         if not acts: return ''
         body = '\n'.join(a.md(fold) for a in acts)
@@ -387,13 +367,7 @@ def _fmt_cmds(commands):
 
 
 def preview_for(name, args, host=None):
-    """What this call would actually do, as text a person can read in a couple of seconds.
-
-    Per tool rather than generic, because the useful preview is different every time: for
-    an edit it is the commands, for a new file it is the head of the file, for a cell it is
-    which cell. Anything unrecognised falls back to the arguments, which is still better
-    than the tool's name alone.
-    """
+    "What this call would actually do, as text a person can read in a couple of seconds."
     p = args.get('path', '')
     if name == 'edit_file':   return f'{p}\n\n{_fmt_cmds(args.get("commands", ""))}'[:MAX_PREVIEW]
     if name == 'edit_cell':   return f'{p} cell {args.get("cell_id","?")}\n\n{_fmt_cmds(args.get("commands",""))}'[:MAX_PREVIEW]
@@ -417,12 +391,7 @@ def _summary(name, args):
 # %% ../nbs/03_agent.ipynb #cad351c6
 @dataclass
 class Ask:
-    """One request, and the person's answer to it.
-
-    `answer` is None while it is pending, which is also what the frontends poll on. The
-    `Event` is what the model's thread is sitting on; nothing outside this module should
-    touch it, and `answer()` is the only thing that sets it.
-    """
+    "One request, and the person's answer to it; `answer` is None while it is pending."
     tool: str
     args: dict = field(default_factory=dict)
     summary: str = ''
@@ -437,12 +406,7 @@ class Ask:
     def pending(self): return self.answer is None
 
     def __bool__(self):
-        """Truthy exactly when approved, so an `Ask` *is* the approval decision.
-
-        This is what lets `Approvals.gate` return the whole object instead of a bool.
-        Rishi's `if not ok` and fastllm's guard both keep working, and the reason the user
-        gave travels with the decision to whoever formats the refusal.
-        """
+        "Truthy exactly when approved, so an `Ask` *is* the approval decision."
         return self.answer is True
 
     def dict(self):
@@ -459,11 +423,7 @@ class Ask:
         return self._done.wait(timeout)
 
     def reply(self):
-        """What the model is told. A refusal with a reason is the whole point of this module.
-
-        An approval with a note carries it too: "yes, but keep the docstring" is guidance
-        the model should have while it is making the edit, not after.
-        """
+        "What the model is told: a refusal with its reason, an approval with its note."
         if self.answer: return f'Approved by the user. Note from the user: {self.note}' if self.note else None
         return f'{DENIED}. Reason given: {self.note}' if self.note else DENIED
 
@@ -482,20 +442,7 @@ def answer_md(ask):
 
 # %% ../nbs/03_agent.ipynb #ca1437e3
 class Approvals:
-    """The queue of one, and the thread handshake behind it.
-
-    One at a time on purpose. A model that wants to edit four files should be answered
-    four times, because "yes to all of that" is exactly the answer people give when they
-    have not read any of it -- and the tools run sequentially on the local backend anyway.
-    `mode` is where a bulk answer belongs instead: set it to `'auto'` for a session where
-    the user has decided to stop being asked, and it is a deliberate act rather than a
-    slip of the return key.
-
-    `listeners` is not decoration. If no frontend has registered, nobody will ever answer,
-    and `gate` would block the model's worker thread until the timeout for no reason. With
-    zero listeners it refuses immediately and says why, which is a bad outcome that is at
-    least a fast and legible one.
-    """
+    "The queue of one, and the thread handshake behind it. One request at a time."
 
     def __init__(self,
                  tools=(),                  # tool names that need approval; everything else runs
@@ -505,10 +452,7 @@ class Approvals:
                  on_ask=None,               # called with the `Ask` when one is raised
                  on_answer=None):           # called with the `Ask` when it is answered
         self.tools, self.mode, self.timeout, self.host = frozenset(tools), mode, timeout, host
-        # `on_ask`/`on_answer` are the *application's* recorder -- in leela, the thing that
-        # writes the exchange into the notebook. Frontends register through `listen`
-        # instead, so a second frontend opening does not silently unhook the first, or the
-        # recorder. Both halves of an exchange must reach every one of them.
+        # the application's recorder; frontends register through `listen` instead, so neither unhooks the other
         self.on_ask, self.on_answer = on_ask, on_answer
         self.current = None                 # the `Ask` in flight, or None
         self.history = []                   # every `Ask` this session, answered or not
@@ -520,12 +464,7 @@ class Approvals:
     def listeners(self): return len(self._watchers)
 
     def listen(self, on_ask=None, on_answer=None):
-        """Register a frontend, and how to reach it. Returns a callable that unregisters it.
-
-        Registering is what makes asking possible at all: with nobody listening, `request`
-        refuses immediately rather than parking the model's worker thread until the timeout
-        for an answer that was never going to come.
-        """
+        "Register a frontend, and how to reach it. Returns a callable that unregisters it."
         w = (on_ask, on_answer)
         with self._lock: self._watchers.append(w)
         done = [False]
@@ -551,17 +490,11 @@ class Approvals:
         return a if (a is not None and a.pending) else None
 
     def answer(self, id, ok, note='', session=False):
-        """Answer the pending request; optionally approve all later writes this session.
-
-        ``session`` only has meaning for an approval. A refusal can carry guidance, but
-        must never silently turn the policy off for later, unrelated requests.
-        """
+        "Answer the pending request; optionally approve all later writes this session."
         a = self.current
         if a is None or a.id != id or not a.pending: return None
-        if ok and session: self.mode = 'auto'
-        # Record and notify before waking the model thread. Notebook recorders therefore
-        # finish inserting the answer cell before a completed turn can repaint or save the
-        # document; `Ask.resolve` used to set the event first, making this a race.
+        if ok and session: self.mode = 'auto'   # only an approval may turn the policy off
+        # record and notify before waking the model thread, so a recorder finishes first
         a.answer, a.note = bool(ok), note or ''
         if ok and session and not a.note: a.note = 'approved for the rest of this session'
         self._notify('answer', a)
@@ -569,11 +502,7 @@ class Approvals:
         return a
 
     def _decided(self, a, ok, note):
-        """Resolve without asking anybody, and still tell the recorder.
-
-        A refusal nobody hears about reaches the user as a tool failure with no explanation,
-        which is the one outcome this class exists to prevent.
-        """
+        "Resolve without asking anybody, and still tell the recorder."
         a.resolve(ok, note)
         self._notify('answer', a)
         return a
@@ -585,25 +514,14 @@ class Approvals:
 
     # -- the model side ------------------------------------------------------
     def gate(self, tool_call):
-        """The `approve(tool_call)` both backends call. Blocks the model's thread.
-
-        Returns the `Ask`, not a bool: it is falsy when refused, so every existing
-        `if not approve(tc)` still reads correctly, and it carries `reply()` so the reason
-        the person gave can reach the model instead of being flattened to "denied".
-        """
+        "The `approve(tool_call)` both backends call. Blocks the model's thread."
         return self.request(*_tc(tool_call))
 
     def request(self, name, args, force=False, timeout=None):
-        """Raise one request and wait for it. Returns the resolved `Ask`.
-
-        Returned rather than a bare bool because the caller needs `reply()` -- the reason
-        the user gave is the part worth carrying back, and a bool has nowhere to put it.
-        `force` lets an external client explicitly request a browser decision even when its
-        tool name is not part of Leela's own write-tool policy.
-        """
+        "Raise one request and wait for it. Returns the resolved `Ask`, whose `reply()` carries the reason."
         a = Ask(tool=name, args=args, summary=_summary(name, args), preview=preview_for(name, args, self.host))
         self.history.append(a)
-        if not force and name not in self.tools: return a.resolve(True)
+        if not force and name not in self.tools: return a.resolve(True)   # `force` asks anyway
         if self.mode == 'auto': return a.resolve(True)
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
         if self.listeners < 1:
@@ -621,13 +539,7 @@ def always(tool_call): return True
 def never(tool_call): return False
 
 def policy(modes, ask):
-    """`approve(tool_call)` from per-tool modes: 'approved' | 'check' | 'dont_run'.
-
-    Rishi ships this as `hitl_policy` and fastllm has no equivalent at all, so it is
-    written out here rather than imported: the harness needs one approval shape across
-    both backends, and it must not stop working because the local engine is not installed.
-    `fastllm_hitl.py` is what teaches the cloud side to call it.
-    """
+    "`approve(tool_call)` from per-tool modes: 'approved' | 'check' | 'dont_run'."
     def approve(tc):
         name, _ = _tc(tc)
         mode = (modes or {}).get(name, 'check')
@@ -644,12 +556,7 @@ INLINE_SKILLS = ('exhash',)
 
 
 def tool_plan(prompt):
-    """A small deterministic routing step before the model sees a turn.
-
-    This is intentionally not another model call: routing “what default model does this
-    project use?” to the web is exactly the mistake this prevents, and tool choice should be
-    predictable enough to inspect in conversation history.
-    """
+    "A small deterministic routing step before the model sees a turn; never another model call."
     p = str(prompt or '').lower()
     repo = ('this repo', 'repository', 'codebase', 'implementation', 'implemented',
             'default model', 'config', 'source code', 'where is', 'which file', ' method',
@@ -676,12 +583,7 @@ def request_text(prompt):
 
 # %% ../nbs/03_agent.ipynb #fdd81169
 def prompt_directives(prompt, tools=(), skills=()):
-    """Explicit `/tool` and `/skill-name` mentions embedded in an ordinary prompt.
-
-    Only names already exposed to the agent count, so URLs and filesystem paths are left
-    alone. The text after a tool mention is retained as its suggested query; the model
-    still chooses arguments for tools whose schema is more structured than one string.
-    """
+    "Explicit `/tool` and `/skill-name` mentions in an ordinary prompt; known names only."
     text = str(prompt or '')
     tool_names = {getattr(t, '__name__', ''): t for t in tools}
     skill_names = {s.name.lower(): s for s in skills}
@@ -691,7 +593,7 @@ def prompt_directives(prompt, tools=(), skills=()):
         name = match.group(1)
         if name in tool_names:
             end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-            requested.append((name, text[match.end():end].strip()))
+            requested.append((name, text[match.end():end].strip()))   # the text after it is the suggested query
         elif name.lower() in skill_names:
             loaded.append(skill_names[name.lower()])
     return requested, loaded
@@ -701,17 +603,7 @@ MAX_CONTEXT_FILE = 8000     # chars of one AGENTS.md; past this it is documentat
 CONTEXT_FILES = ('AGENTS.md', '.agents/AGENTS.md', '.leela/AGENTS.md')
 
 def project_context(host, mx=MAX_CONTEXT_FILE):
-    """The project's own instructions to an agent, from `AGENTS.md` in each open folder.
-
-    Every other harness reads this file and this one did not, which meant a repository
-    could not tell this agent the things it tells every other one -- which package manager
-    to use, which directories are generated, how to run the tests. The convention is worth
-    more than any rule we could write here, because it is the *project's* rule and it is
-    already written down.
-
-    Returned as a block per file with its path on it, so the model can tell a project
-    instruction from something the harness made up, and can go read the file itself.
-    """
+    "The project's own instructions to an agent, from `AGENTS.md` in each open folder."
     from pathlib import Path
     out, seen = [], set()
     for r in host.roots or ():
@@ -732,9 +624,7 @@ def project_context(host, mx=MAX_CONTEXT_FILE):
             '\n</project_context>')
 
 
-# The briefing's working rules, each tagged with the tool it is about. A rule for a tool
-# the host does not offer is worse than no rule: it advertises a capability that is not
-# there, and the model spends turns discovering that. `None` means "always applies".
+# The briefing's working rules, tagged with the tool each is about; `None` always applies.
 RULES = (
     (None, 'Act on the user’s verb. “Create”, “run”, “fix”, “add” and “as NAME” request a\n'
            '  result, not a plan: use the tool that produces it, verify it, then report what exists.\n'
@@ -787,40 +677,19 @@ RULES = (
 
 
 def work_rules(names=()):
-    """The briefing's rules, keeping only those whose tool is actually on the table.
-
-    An empty `names` means "do not filter" rather than "no tools": callers that build a
-    briefing before the tool list exists (a preview, a test) should still see the whole
-    thing.
-    """
+    "The briefing's rules, keeping those whose tool is on the table; empty `names` filters nothing."
     names = set(names or ())
     return '\n'.join(f'- {text}' for tool, text in RULES if not names or tool is None or tool in names)
 
 
 def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=()):
-    """The agent's briefing: what it is, where it is, how to work, and what it knows.
-
-    The skill index is names and descriptions only -- bodies are a `read_skill` away --
-    because a dozen full skill texts would crowd out the code the model is meant to be
-    looking at. The exception is spelled out in `INLINE_SKILLS` and is deliberately short.
-
-    `tools` is the tool list the model will actually be given, and it decides which rules
-    appear. A briefing assembled independently of the tools drifts from them -- which is
-    how this one came to describe a `scale_numeric` that no longer exists, and to promise
-    verification the harness had no way to perform.
-    """
+    "The agent's briefing: what it is, where it is, how to work, and what it knows."
     names = {getattr(t, '__name__', '') for t in tools or ()}
     roots = '\n'.join(f'  {r}' for r in host.roots) or '  (no folder open)'
-    # Only when the host says so. A briefing that promises reads outside the folders on a
-    # host that refuses them costs the model a turn discovering that; one that stays silent
-    # on a host that allows them costs it the capability.
-    if getattr(host, 'read_outside', False):
+    if getattr(host, 'read_outside', False):   # only when the host says so
         roots += ('\n  Reads may name any path on this machine. Writing, running commands and\n'
                   '  listing files stay inside the folders above.')
-    # Claimed only where it is true: a host that runs inspections concurrently says so, and
-    # telling the model to "keep it short because the kernel is busy" is advice for a problem
-    # it may not have.
-    conc = ('\n  Your kernel runs each inspection in its own subshell, so this works while one '
+    conc = (   # claimed only where it is true'\n  Your kernel runs each inspection in its own subshell, so this works while one '
             "of the user's cells is still running." if getattr(host, 'concurrent', False) else '')
     live = ('' if 'inspect_python' not in names and names else
             '\n- To *look at* live state, prefer `inspect_python`: neither of its scopes can change\n'
@@ -874,11 +743,7 @@ class Todo:
 
 
 class Plan:
-    """The session's working list: what to do, what's done, what to resume after a stop.
-
-    Persisted beside history so `/resume` brings the checklist back with the conversation.
-    Frontends render `md()`; models mutate through the plan tools; leela reads `dict()`.
-    """
+    "The session's working list: what to do, what's done, what to resume after a stop."
     def __init__(self, title='', todos=None, updated=0.):
         self.title = str(title or '')
         self.todos, self.updated = [], float(updated or time.time())
@@ -1046,12 +911,7 @@ def plan_tools(get_plan, save=None):
 
 # %% ../nbs/03_agent.ipynb #083961a6
 class Agent:
-    """The IDE's agent: a routed chat whose tools are the host's own capabilities.
-
-    `note` and `ready` report availability rather than raising, the way `Search.backend`
-    does: the model is a multi-gigabyte download on one side and an API key on the other,
-    and an editor that will not open without either is a worse editor.
-    """
+    "The IDE's agent: a routed chat whose tools are the host's own capabilities."
 
     def __init__(self,
                  host,
@@ -1079,9 +939,7 @@ class Agent:
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
         self.instruction_style = instruction_style
         self.history_name = history_name
-        # One Agent instance owns one continuous model context. Persist that identity on
-        # every turn so history can group conversations without pretending separate app
-        # launches shared context.
+        # one Agent owns one continuous model context, persisted so history can group turns
         self.session_id = f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}'
         self.turn_seq, self.current_turn_id = 0, ''
         self.current_branch_id, self.checkpoints = 'main', {}
@@ -1139,19 +997,12 @@ class Agent:
 
     @property
     def subagent_budget(self):
-        """What the sub-agent model can afford. Usually not the turn model: `DEFAULT_POLICY`
-        points `subagent` at the small local model, so the default configuration is a frontier
-        turn delegating to a 16k engine."""
+        "What the sub-agent model can afford; usually not the turn model's."
         try: return budget_for(self.routing.spec('subagent'), self.tool_max_len)
         except Exception: return self.budget
 
     def _sub_plain(self):
-        """The tool list a sub-agent gets, sized to the model sub-agents run on.
-
-        The turn's list when the two models can afford the same briefing, which is the common
-        case and saves building and probing a second one. Sub-agent tools are left out of it
-        either way: a sub-agent does not delegate.
-        """
+        "The tool list a sub-agent gets, sized to the model sub-agents run on."
         b = self.subagent_budget
         if b == self.budget: return self._plain
         if self._subtools is None:
@@ -1161,16 +1012,9 @@ class Agent:
 
     @property
     def budget(self):
-        """What the turn model can afford to be told -- see `core.budget_for`.
-
-        The turn model, not the job's own, because there is one tool list and one briefing per
-        conversation. `spec('turn')` raises when the chosen model is not installed here, and
-        that must not cost the caller their tools: a host with no model still has a tool list,
-        and reporting a smaller agent because we could not resolve a name would be a worse
-        answer than reporting the full one.
-        """
+        "What the turn model can afford to be told -- see `core.budget_for`."
         try: spec = self.routing.spec('turn')
-        except Exception: return budget_for(None, self.tool_max_len)
+        except Exception: return budget_for(None, self.tool_max_len)   # an unresolved name costs no tools
         return budget_for(spec, self.tool_max_len)
 
     @property
@@ -1196,14 +1040,7 @@ class Agent:
         return self
 
     def refresh(self):
-        """Re-discover skills, extensions and tools, and re-brief a running turn backend in place.
-
-        Opening a folder mid-conversation changes what the agent should be told (the roots line
-        in the briefing) and may add tools, skills or extensions the new folder carries. Unlike
-        `reload`, the loaded engine and the conversation history are kept -- only the system
-        prompt and tool set are pushed to a live turn backend, so a folder opened during a chat
-        costs nothing on a local model and does not interrupt the conversation.
-        """
+        "Re-discover skills, extensions and tools, and re-brief a running turn backend in place."
         self._skills = self._reg = self._tools = self._subtools = None
         spec = self.routing.spec('turn')
         b = self._backends.get((spec.backend, spec.model_id))
@@ -1211,14 +1048,9 @@ class Agent:
         return self
 
     def system_prompt(self):
-        # `self._plain` rather than `self.tools`: the briefing's rules are chosen by which
-        # tools exist, and asking for the recorded wrappers here would build the tool list
-        # as a side effect of describing it.
         if self._sp: return self._sp
         if self._tools is None: self.tools
-        # A skill body is 3k tokens of a 12k budget on the smallest local model, and it is
-        # inlined precisely because we cannot verify it was read. That insurance is cheap on a
-        # frontier window and unaffordable on this one, and `read_skill` still reaches it.
+        # a skill body is 3k tokens of a 12k budget, and `read_skill` still reaches it
         inline = self.inline_skills if self.budget.inline else ()
         extra = ''
         if self.plan:
@@ -1229,20 +1061,10 @@ class Agent:
 
     # -- recording -----------------------------------------------------------
     def _record(self, f):
-        """Wrap one tool so its call is logged and its damage is measurable.
-
-        `functools.wraps` is load-bearing rather than tidy: both backends build their tool
-        schema from the function's signature, docstring and annotations, and `__wrapped__`
-        is what lets `inspect` see through to the real one. Without it every tool would be
-        described to the model as `(*args, **kw)` with no documentation.
-
-        The snapshot has to happen here because this is the last moment the `before` still
-        exists. First touch only -- later edits to the same file in one turn are part of
-        one change.
-        """
+        "Wrap one tool so its call is logged and its damage is measurable."
         name = getattr(f, '__name__', '?')
 
-        @functools.wraps(f)
+        @functools.wraps(f)   # both backends build the tool schema from the real signature
         def wrapper(*a, **kw):
             args = _named(f, a, kw)
             self._tool_calls_turn += 1
@@ -1253,24 +1075,18 @@ class Agent:
             meta = self._action_meta(name, args)
             act = self.activity.start(name, args, **meta)
             self.registry.fire('before_tool', self, name, args)
-            if name in WRITE_TOOLS:
+            if name in WRITE_TOOLS:   # first touch only: later edits are part of one change
                 if (p := args.get('path')):
                     if p not in self.before: self.before[p] = self.host.text_at(p) or ''
                 elif name == 'run_shell': self.snapshot_tree()
             try: out = f(*a, **kw)
-            except NotImplementedError as e:
-                # The host lost a capability mid-session (a kernel died, a folder closed).
-                # A raise here ends the turn; a failure the model can read does not.
+            except NotImplementedError as e:   # a raise ends the turn; a readable failure does not
                 self.activity.finish(act, agent_err(e), ok=False)
                 return err(f'{name} is not available here', e)
             except Exception as e:
                 self.activity.finish(act, agent_err(e), ok=False)
                 raise
-            # One spelling of failure, checked in one place. The guess this replaced was a
-            # list of prefixes ('edit failed', 'could not') that every new tool had to
-            # remember to match, and a tool that phrased its failure any other way was
-            # recorded as a success and read by the model as a result.
-            self.activity.finish(act, out, ok=not failed(out))
+            self.activity.finish(act, out, ok=not failed(out))   # one spelling of failure, in one place
             self.registry.fire('after_tool', self, name, out)
             return out
         return wrapper
@@ -1280,19 +1096,7 @@ class Agent:
         return {'turn_id': self.current_turn_id, 'branch_id': self.current_branch_id}
 
     def snapshot_tree(self):
-        """Read the open folders, so `changes()` can tell what a shell command moved.
-
-        Every other write tool names the file it is about to change, and that one file is
-        what gets snapshotted. `run_shell` names nothing. `black .`, a codemod, a `git
-        checkout` -- a command can rewrite twenty files and mention none of them, and this
-        keyed on a tool argument called `path`, so `changes()` answered `{}`. The README
-        leans on `changes()` as the thing that knows what moved, which made the silence a
-        good deal worse than the gap.
-
-        The only way to know what a command changed is to have read the files first, so
-        this does: once per turn, up to `SHELL_SNAPSHOT` characters. Past that it declines
-        and says so, rather than going quiet and returning an empty dict.
-        """
+        "Read the open folders once per turn, so `changes()` can tell what a shell command moved."
         if self._walked: return True
         try: paths = [str(p) for p in self.host.walk()]
         except Exception as e:
@@ -1312,19 +1116,13 @@ class Agent:
         return True
 
     def changes(self):
-        """`{path: (before, after)}` for every file this turn's write tools actually moved.
-
-        A tool that reported success but changed nothing does not appear here, which is the
-        whole point: this is the file, not the claim about the file. A file a shell command
-        *created* appears with `''` as its before, exactly as one `create_file` made would.
-        """
+        "`{path: (before, after)}` for every file this turn's write tools actually moved."
         out = {}
         for p, was in self.before.items():
             now = self.host.text_at(p)
             if now is not None and now != was: out[p] = (was, now)
         if self._walked:
-            # A command can also make files, and a snapshot taken before it ran cannot hold
-            # one. Whatever is here now and was not there then is an addition.
+            # a command can also make files, which no earlier snapshot can hold
             try: paths = [str(p) for p in self.host.walk()]
             except Exception: paths = []
             for p in paths:
@@ -1334,22 +1132,12 @@ class Agent:
 
     # -- backends ------------------------------------------------------------
     def _be(self, job='turn'):
-        """The backend for `job`, built on first use and shared by every job on the same model.
-
-        Shared by model rather than by job on purpose. If summaries and turns happen to
-        resolve to the same local model, building two backends would load the engine twice
-        -- gigabytes, for no reason. The tools go on whichever backend is the turn model's;
-        every other job reaches the engine through `oneshot` or `spawn`, neither of which
-        wants them.
-        """
+        "The backend for `job`, built on first use and shared by every job on the same model."
         spec = self.routing.spec(job)
         key = (spec.backend, spec.model_id)
         if key not in self._backends:
             is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
-            # Rishi defaults multimodal on, which asks LiteRT to construct vision and audio
-            # encoders even for text-only bundles such as the local Gemma models. Keep that
-            # expensive capability opt-in and pass it to every LiteRT engine, not only the
-            # conversational turn backend.
+            # rishi defaults multimodal on, which builds encoders even for text-only bundles
             kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
             if is_turn:
                 kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.tool_max_len,
@@ -1374,13 +1162,7 @@ class Agent:
 
     @property
     def ready(self):
-        """Whether the turn model is up.
-
-        Asked of the backend rather than looked up in the cache. Building a `Backend` is
-        just an object -- the expensive part is `start()`, which this does not call -- and
-        reaching into `_backends` by key meant anything that supplied a backend some other
-        way (a test, a sub-agent harness) reported itself as permanently not ready.
-        """
+        "Whether the turn model is up. Asked of the backend rather than looked up in the cache."
         return self._be('turn').ready
 
     @property
@@ -1395,8 +1177,7 @@ class Agent:
         if b.start() is None:
             self.note = b.note
             return None
-        # From the backend that is actually running, not from the routing table: a status
-        # line that names a model the turn is not on is worse than no status line.
+        # from the backend that is running, not from the routing table
         self.note = f'{model_note(b.spec)} · {len(self.tools)} tools'
         return b
 
@@ -1414,9 +1195,7 @@ class Agent:
         history = self._backends[old].snapshot_hist() if job == 'turn' and old in self._backends else []
         before = self.budget
         spec = self.routing.set(name, job)
-        # The tool list and the briefing are both sized to the turn model, so a change of model
-        # that changes the budget has to rebuild them -- before `_be` is asked for a backend,
-        # which would otherwise brief it from the outgoing model's cache.
+        # tools and briefing are sized to the turn model, so rebuild before `_be` briefs one
         if job == 'turn' and self.budget != before: self._tools = None
         if job == 'subagent': self._subtools = None
         new = (spec.backend, spec.model_id)
@@ -1429,12 +1208,7 @@ class Agent:
         return spec
 
     def set_local_multimodal(self, enabled):
-        """Choose whether newly loaded LiteRT engines include media encoders.
-
-        The setting belongs to the engine, not a conversation, so changing it releases
-        loaded LiteRT backends. They are recreated lazily on the next local request.
-        Cloud and llama.cpp backends are unaffected.
-        """
+        "Choose whether newly loaded LiteRT engines include media encoders."
         enabled = bool(enabled)
         if enabled == self.local_multimodal: return enabled
         if self.busy: raise RuntimeError('cannot change local multimodal while the assistant is working')
@@ -1445,29 +1219,12 @@ class Agent:
         return enabled
 
     def lend_model(self):
-        """Let a host that builds its own chats use this session's engine instead of loading one.
-
-        `VaultHost.ask` reaches vishalakshi, which builds a `rishi.Chat` from
-        `$VISHALAKSHI_MODEL` on every call. On a local model that is a second copy of an
-        engine already in memory -- gigabytes, to answer on a *different* model from the one
-        the user is talking to.
-
-        What is lent is a factory rather than a chat, because vishalakshi builds a fresh
-        conversation per question and builds another from scratch if the first prompt
-        overflows the window. Both still happen; they just happen on weights we already have.
-        A host with no `mk_chat` is left alone, and so is one somebody has already given one.
-
-        The factory honours the model it is asked for, and that is load-bearing rather than
-        polite. When the retrieved sections turn out to hold personal information, vishalakshi
-        asks for its *local* model by name and then checks that what it got back really runs
-        here -- so a factory that ignored the name and handed over the session's cloud chat
-        would be handing a bank statement to a hosted API, and would be caught doing it.
-        """
+        "Lend this session's engine to a host that builds its own chats, as a factory."
         if getattr(self.host, 'mk_chat', 'none of its business') is not None: return False
 
         def mk(model=None, **kw):
             from rishi import Chat
-            spec = self._spec_for(model)
+            spec = self._spec_for(model)   # honour the name: a local-only ask must not go to the cloud
             if spec is None: return Chat(model, **kw)
             b = self._backends.get((spec.backend, spec.model_id))
             engine = getattr(getattr(b, 'chat', None), 'engine', None)
@@ -1477,35 +1234,16 @@ class Agent:
         return True
 
     def _spec_for(self, model=None):
-        """The `ModelSpec` a lent factory should build on, for the model name it was handed.
-
-        `None` means "whatever the cheap jobs run on", which is the ordinary case. A *name* is
-        somebody asking for that model specifically, and the only caller that does is asking
-        because the answer must not leave the machine -- so it is resolved, and a name that
-        does not resolve here is answered with None rather than quietly substituted.
-        """
+        "The `ModelSpec` a lent factory should build on; `None` means the cheap jobs' model."
         if model:
             try: return self.routing._resolve(str(model))
-            except Exception: return None
+            except Exception: return None   # never substituted for a name asked for by name
         b = self._be_or_none('oneshot')
         return None if b is None or b.chat is None else b.spec
 
     # -- standing interests --------------------------------------------------
     def poll_watches(self, force=False):
-        """Fire whatever the host has due, in a daemon thread, at most every `poll_every` seconds.
-
-        This is the half of the watch feature that was missing. `Host.poll` is the tick the
-        whole thing is built around -- a watch is a job somebody arranged to have re-run --
-        and nothing ever called it, so a reminder set last week surfaced only if the model
-        happened to choose `poll_watches` in some later session. A standing interest that
-        depends on being remembered is not standing.
-
-        A turn is the tick, because a turn is the only moment the harness knows somebody is
-        here to be reminded. In a thread, because a watch re-reads URLs and the person who
-        just pressed enter is not waiting on somebody else's changelog. Whatever fires files
-        itself into durable memory on the way past, so the next `memory_search` finds it
-        regardless of what this turn was about.
-        """
+        "Fire whatever the host has due, in a daemon thread, at most every `poll_every` seconds."
         import time
         if not self.poll_every and not force: return None
         if self._poll_thread is not None and self._poll_thread.is_alive(): return self._poll_thread
@@ -1535,8 +1273,7 @@ class Agent:
         self.activity.mark(self.current_turn_id) # and so does `turn_md()`
         self.checkpoints[self.current_turn_id] = {'before': self._be('turn').snapshot_hist(),
                                                   'branch_id': self.current_branch_id}
-        # Each checkpoint is a deep copy of a whole conversation, so an unbounded dict of them
-        # is a session-length memory leak rather than a history feature.
+        # each checkpoint is a whole conversation, so the dict stays bounded
         for old in list(self.checkpoints)[:-MAX_CHECKPOINTS]: self.checkpoints.pop(old, None)
         self.registry.fire('before_turn', self, prompt)
         self.poll_watches()
@@ -1551,9 +1288,7 @@ class Agent:
         self._turn_plan = {'route': route, 'text': plan,
                            'tools': [name for name, _ in requested],
                            'skills': [skill.name for skill in loaded]}
-        # Planning has teeth: repo/current-doc routes and explicitly selected safe query
-        # tools execute before generation. The model receives evidence instead of merely
-        # being advised to choose a tool it may ignore.
+        # planning has teeth: safe query tools run before generation, so the model gets evidence
         preflights = []
         first = {'repo': 'search_code', 'web': 'web_search'}.get(route)
         if first: preflights.append((first, request))
@@ -1570,13 +1305,9 @@ class Agent:
         for skill in loaded:
             outgoing = _append(outgoing, f'\n\n<requested-skill name="{skill.name}">\n{skill.text()}\n</requested-skill>')
         b = self._be('turn')
-        # Looking only at the existing KV cache misses the common failure: a notebook or
-        # pasted prompt that crosses the limit in one turn. Measure the actual pending
-        # message (including the local chat template) and compact before submitting it.
+        # measure the pending message too: a pasted notebook can cross the limit in one turn
         if self.compactor.auto and (self.compactor.due(b) or not b.fits(outgoing)): self.compact()
-        # Notebook context is complete unless the actual turn cannot fit. Only then apply
-        # the per-cell keep/discard policy carried in its markup. Conversation compaction
-        # cannot shrink the pending user message, so this has to happen after it.
+        # only when the turn cannot fit; compaction cannot shrink the pending message
         if not b.fits(outgoing): outgoing = compact_notebook_context(outgoing, b.fits)
         if not b.fits(outgoing):
             projected = b.projected_tokens(outgoing)
@@ -1672,9 +1403,7 @@ class Agent:
 
     def _finish(self, text, prompt=''):
         b = self._be('turn')
-        # A backend counts cumulatively, so adding `b.use` every turn charges turn one again
-        # on turn two. Fold in each backend's *delta* instead, and do it for every backend:
-        # a summary or a delegated subagent spends on a routed model that is not `b`.
+        # a backend counts cumulatively, so fold in each backend's delta
         turn_use = Usage(model=b.use.model)
         backends = list(self._backends.items())
         if all(backend is not b for _, backend in backends):
@@ -1683,9 +1412,7 @@ class Agent:
             previous = self._usage_seen.get(key, Usage(model=backend.use.model))
             turn_use = turn_use + (backend.use - previous)
             self._usage_seen[key] = Usage(**backend.use.dict())
-        # Keep the foreground model as the label even when summaries or delegated work
-        # added usage on a routed model during this turn.
-        turn_use.model = b.use.model or b.spec.model_id
+        turn_use.model = b.use.model or b.spec.model_id   # the foreground model is the label
         self.turn_use = turn_use
         self.use = self.use + turn_use
         self.registry.fire('after_turn', self, text)
@@ -1724,31 +1451,13 @@ class Agent:
                 yield f'\n\n{self.note}'
 
     def compose(self, prompt, context='', screen='', image=None, context_path=''):
-        """One message from whatever the frontend can supply: the notebook above the
-        question, a captured screen as text, and a captured screen as a picture.
-
-        `image` goes in as a *content part* rather than as a tool result, which is both the
-        supported path to a multimodal turn on either backend and the right place for it --
-        alongside the question asked about it, instead of behind a tool the model has to
-        think to call.
-
-        `screen` is the terminal frontend's equivalent and stays text on purpose: a
-        terminal screen is a grid of characters, so sending it as prose is both exact and
-        far cheaper than a rendering of it would be.
-
-        Separate from `ask_with` so `stream_with` composes identically. A streamed turn
-        that quietly saw a different message from a blocking one would be a very hard bug
-        to find.
-        """
+        "One message from what the frontend can supply: the notebook, the screen as text, the screen as a picture."
         parts = []
-        # A text-only LiteRT engine cannot accept image content parts. Do not hand bytes
-        # to it after explicitly omitting the encoders; leave a truthful marker instead.
+        # a text-only LiteRT engine cannot accept image parts, so leave a truthful marker
         local_text_only = bool(image) and self.model.runtime == 'litert' and not self.local_multimodal
         if local_text_only: parts.append('[Image attachment omitted: local multimodal is disabled.]')
         if context:
-            # The open notebook's path is operational context, not decoration: without it
-            # a small model invents an absolute path before calling view_cell/view_file.
-            # It is already sandbox-approved by Workspace.open/Notebook.load.
+            # the path is operational context: without it a small model invents one
             attr = f' path="{context_path}"' if context_path else ''
             parts.append(f'<notebook{attr}>\n{context}\n</notebook>')
         if screen: parts.append(f'<screen>\n{screen}\n</screen>')
@@ -1795,13 +1504,7 @@ class Agent:
 
     # -- the cheap jobs ------------------------------------------------------
     def oneshot(self, prompt, sp='', job='oneshot', max_tokens=None):
-        """A question on whichever model `job` routes to, in a conversation that is thrown away.
-
-        `oneshot` is a job in its own right now, so the small fast model every cheap call
-        wants has a name that can be pointed somewhere -- `/model qwen-4b oneshot`, or
-        `$RAMABANA_MODEL_ONESHOT` -- and `Routing` can find it a substitute when it is not
-        installed, instead of the call silently returning nothing.
-        """
+        "A question on whichever model `job` routes to, in a conversation that is thrown away."
         b = self._be_or_none(job)
         return '' if b is None else b.oneshot(prompt, sp, max_tokens)
 
@@ -1815,20 +1518,14 @@ class Agent:
         return self.oneshot(text, sp, 'summary')
 
     def compact(self, extra=''):
-        """Compact the conversation now. Returns the summary text, or `''` with `compactor.note` set.
-
-        The summarizing runs on the `summary` model -- local by default. Paying frontier
-        prices to compress a frontier conversation is exactly the spending routing exists
-        to stop, and the job is a mechanical transformation of a transcript we already hold.
-        """
+        "Compact the conversation now. Returns the summary text, or `''` with `compactor.note` set."
         b = self._be('turn')
         if b.chat is None:
             self.compactor.note = 'nothing to compact: the model is not running'
             return ''
         sub = self._be_or_none('summary')
         summary_backend = sub if sub is not None else b
-        # A 4k local model cannot reserve 4k output tokens after reading a summary prompt.
-        # Keep summaries compact and derive their input budget from the model actually used.
+        # derived from the model actually used: a 4k model cannot reserve 4k output tokens
         summary_output = min(1024, max(256, summary_backend.spec.ctx // 4))
         summariser = summary_backend.oneshot
         text = self.compactor.compact(
@@ -1860,14 +1557,7 @@ class Agent:
 
     @property
     def problems(self):
-        """Everything that went wrong and had nowhere to be reported, newest last.
-
-        Gathered from every backend rather than kept here, because most of these happen on
-        the *cheap* model -- a compaction that could not run, a completion the engine
-        refused, an engine complaining on stderr in native code where nothing can catch it.
-        Each of those returns `''` to a caller that cannot raise, and until this existed,
-        `''` was the whole story the user got.
-        """
+        "Everything that went wrong and had nowhere to be reported, newest last."
         out = []
         for b in self._backends.values():
             for p in b.problems:
@@ -1885,10 +1575,7 @@ class Agent:
         return {'ready': self.ready, 'busy': self.busy, 'note': self.note,
                 'problems': self.problems,
                 'model': self.model.name, 'model_note': model_note(self.model),
-                # A tool withheld for a small window is invisible otherwise: the briefing
-                # describes only what was built, so nothing else would say a group is missing
-                # by choice rather than because the host cannot do it.
-                'budget': self.budget.note,
+                'budget': self.budget.note,   # a tool withheld for a small window is invisible otherwise
                 'ntools': len(self.tools), 'nskills': len(self.skills),
                 'pct_full': round(self.pct_full, 3), 'compactions': self.compactor.count,
                 'use': self.use.dict(), 'usage': repr(self.use),
@@ -1899,12 +1586,7 @@ class Agent:
                 'calls': [{'tool': t, 'args': str(a)[:300]} for t, a in self.calls[-40:]]}
 
     def command(self, line):
-        """Run a slash command. Returns text to show, or None when the command is unknown.
-
-        Here rather than in the frontends because both of them need every one of these, and
-        a command that exists in the terminal and not the browser is the kind of drift
-        `keys.py` was written to prevent.
-        """
+        "Run a slash command. Returns text to show, or None when the command is unknown."
         line = (line or '').strip().lstrip('/')
         name, _, arg = line.partition(' ')
         arg = arg.strip()
@@ -1980,16 +1662,7 @@ class Agent:
 
 # %% ../nbs/03_agent.ipynb #821de023
 def _named(f, a, kw=None):
-    """Every argument as a dict, positional ones matched to their parameter names.
-
-    Models normally send named arguments, but an extension's tool may be called
-    positionally by another extension -- and it may be called *both* ways at once, which is
-    where this used to go wrong. The caller asked for `kw if kw else _named(f, a)`, so one
-    keyword argument threw the whole positional half away: `edit_file('a.py', commands=...)`
-    was recorded as `{'commands': ...}`. That is an activity line with no path in it, and
-    worse, `changes()` looks for the path here -- so the file was never snapshotted and the
-    edit never showed up as a change.
-    """
+    "Every argument as a dict, positional ones matched to their parameter names."
     kw = dict(kw or {})
     if not a: return kw
     try:
@@ -1999,13 +1672,7 @@ def _named(f, a, kw=None):
 
 
 def _append(prompt, text):
-    """Add `text` to a message that may be a list of content parts rather than a string.
-
-    `compose` returns a list when an image is attached, and `list += str` extends the list
-    one character at a time -- so a turn with a screenshot arrived at the model as the image
-    followed by several hundred single-character parts, with the tool plan and every
-    preflight result shredded among them. The text belongs on the message's text part.
-    """
+    "Add `text` to a message that may be a list of content parts rather than a string."
     if not isinstance(prompt, (list, tuple)): return prompt + text
     parts = list(prompt)
     for i in range(len(parts) - 1, -1, -1):
@@ -2048,12 +1715,7 @@ def _strip_echo(before, out):
 
 # %% ../nbs/03_agent.ipynb #35da5eee
 def _fence_tail(text):
-    """What follows an *unterminated* fence, or None.
-
-    A small model asked for bare code often explains itself first and then opens a fence, and
-    the token cap arrives before the closing one. Everything before that opener is prose, so
-    inserting it would put an essay in the middle of the user's file.
-    """
+    "What follows an *unterminated* fence, or None -- everything before the opener is prose."
     if '```' not in text: return None
     head, _, rest = text.rpartition('```')
     if '```' in head and head.count('```') % 2: return None   # a complete block: fenced_blocks has it
@@ -2061,12 +1723,7 @@ def _fence_tail(text):
 
 
 def _clean(text, before, max_lines):
-    """A raw model reply as something safe to insert: fences off, prose off, echo off, `max_lines` long.
-
-    `fenced_blocks` rather than a ```python-only matcher because a completion model asked for
-    bare code and fencing it anyway rarely bothers with an info string. It also keeps this
-    function testable without a model installed.
-    """
+    "A raw model reply as something safe to insert: fences off, prose off, echo off, `max_lines` long."
     from fastcore.xtras import fenced_blocks
     text = text or ''
     if (blocks := fenced_blocks(text)): out = blocks[-1][1]
@@ -2079,21 +1736,7 @@ def _clean(text, before, max_lines):
 
 # %% ../nbs/03_agent.ipynb #d5db0743
 class Completer:
-    """Inline completion, always on the local model.
-
-    Routing sends `completion` to the local backend unconditionally, and that is the whole
-    argument for routing in one feature: a completion is four lines of code, fires
-    constantly, has to feel instant, and is worth approximately nothing per call. Sending
-    it to a frontier model would be slower, cost real money, and put every keystroke's
-    surroundings on someone else's wire.
-
-    A completion is a *question about the code on screen*, not a turn in a conversation, so
-    it runs in a throwaway conversation on an engine that is already loaded. Letting
-    suggestions accumulate would poison the assistant's context as well as their own.
-
-    Nothing here is automatic. The kernel's own completions are instant and correct and
-    stay bound to typing; this costs a forward pass, so it fires only when asked for.
-    """
+    "Inline completion: the local model, a throwaway conversation, and only when asked for."
 
     def __init__(self, agent, max_lines=MAX_COMPLETION_LINES, max_tokens=COMPLETION_TOKENS):
         self.a, self.max_lines, self.max_tokens = agent, max_lines, max_tokens
@@ -2110,9 +1753,7 @@ class Completer:
         support = ''
         if context: support += f'<related_code>\n{context[-6000:]}\n</related_code>\n'
         if variables: support += f'<runtime_variables>\n{variables[:4000]}\n</runtime_variables>\n'
-        # Whatever the application has pinned to completion. Duck-typed rather than an
-        # interface: the harness has no opinion about where a note came from, and a host
-        # that keeps none simply has no `ws`.
+        # whatever the application pinned to completion; a host that keeps none has no `ws`
         try: memory = self.a.ws.agent_memory_context('completion', max_chars=6000)
         except Exception: memory = ''
         if memory: support += f'<user_memory>\n{memory}\n</user_memory>\n'
@@ -2125,10 +1766,7 @@ class Completer:
         if b is None:
             self.note = 'no completion model available'
             return ''
-        if b.busy:
-            # One engine means one generation at a time. Declining beats queueing behind a
-            # tool loop the user is watching: "the model is thinking" is a better answer
-            # than an editor that has stopped taking keys.
+        if b.busy:   # one engine, one generation: declining beats queueing behind a tool loop
             self.note = 'model busy -- it is mid-turn'
             return ''
         text = b.oneshot(self._prompt(code, pos, lang, context), COMPLETE_SP, self.max_tokens)
