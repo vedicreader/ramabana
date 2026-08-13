@@ -110,12 +110,7 @@ def _fed_hit(h):
 
 # %% ../nbs/07_vault.ipynb #bc5c6436
 class VaultHost(LocalHost):
-    """`LocalHost` with a vishalakshi vault: durable memory, federated search, watches.
-
-    Reading is filed rather than throwaway; `search` fuses vault prose, kosha and ripgrep
-    through `Vault.federate`. The vault opens in a background thread so `tools_for` never
-    blocks on an embedding model load -- advertise via `capabilities`, never probe.
-    """
+    "`LocalHost` with a vishalakshi vault: durable memory, `Vault.federate` search, watches."
 
     @property
     def capabilities(self):

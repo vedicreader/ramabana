@@ -13,6 +13,7 @@ import asyncio, codeop, json, os, queue, re, shutil, sys, tempfile, urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 from rich.text import Text
+from fastcore.meta import delegates
 from .core import agent_err
 from .tools import LocalHost
 
@@ -194,7 +195,8 @@ def _api(base, path, params=None, timeout=60):
         return json.loads(response.read())
 
 class DhrishtiHost(LocalHost):
-    "A project host whose Python tools use a protected Dhrishti overlay."
+    "`LocalHost` whose Python tools run on a protected Dhrishti overlay."
+    @delegates(LocalHost.__init__)
     def __init__(self, roots, base, **kwargs):
         super().__init__(roots, **kwargs)
         self.base = base

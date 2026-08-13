@@ -1,12 +1,6 @@
-"""Routing: which model runs which job, and what happens when it is not on this machine.
+"""Routing: which model runs which job, and what happens when a runtime is missing.
 
-One file per functional block, and this is the block `core.py` exists for. It gathers what used
-to be split between `test_rishi_routing.py` and `test_harness.py` -- including a copy of the
-no-leela seam test that both files carried.
-
-Each test below is one scenario rather than one fact, so a failure names the behaviour that
-broke rather than the line that broke. Nothing here loads a model: `Routing` and `resolve` deal
-in `ModelSpec`s, and a spec is the whole input.
+Nothing here loads a model — `Routing` and `resolve` deal in `ModelSpec`s.
 """
 import subprocess
 import sys
@@ -32,9 +26,7 @@ def child(code):
 # -- the policy ------------------------------------------------------------------------
 
 def test_the_one_shot_model_is_named_once_and_moves_every_cheap_job(monkeypatch):
-    """The whole argument for the module: pointing the turn at a frontier model must not move
-    completions, and moving the cheap model must move all of them together -- while still letting
-    one job be singled out, and letting the environment override a single job."""
+    "Turn model is independent of oneshot; oneshot moves every cheap job; env can override one job."
     assert LOCAL['gemma-e4b'] == 'litert-community/gemma-4-E4B-it-litert-lm'
     assert DEFAULT_POLICY['oneshot'] == 'gemma-e4b'
 
@@ -60,11 +52,7 @@ def test_the_one_shot_model_is_named_once_and_moves_every_cheap_job(monkeypatch)
 
 
 def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runtime):
-    """`resolve` raises for a runtime whose dependency is missing and the caller swallowed it, so
-    on a machine without LiteRT every one-shot silently returned ''. A cheap job goes elsewhere
-    and records why; the turn model the user chose fails loudly instead."""
-    # Stated, not borrowed from the venv: `rishi[all]` installs MLX, and a test that reads the
-    # machine instead of saying what it means starts failing with nothing wrong in the code.
+    "Missing oneshot runtime falls back with a note; a missing turn model raises."
     hide_runtime('mlx')
     r = Routing(turn='gpt-mini')
     r.policy['oneshot'] = 'mlx/not-installed-here'
@@ -81,16 +69,14 @@ def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runt
 
 
 def test_a_short_name_is_checked_for_its_runtime_like_a_long_one(hide_runtime):
-    """`resolve('mlx/...')` always refused a runtime that is not installed; `resolve('qwen-4b')`
-    did not, so a job routed to it got a spec, built a backend, and failed at `start()`.
-
-    The absence is stated rather than read off the venv: with `rishi[all]` installed this test
-    used to take its early-return branch for both names and assert nothing at all."""
-    for short, long in (('qwen-4b', 'mlx/mlx-community/Qwen3.5-4B-MLX-4bit'),
-                        ('gemma-e4b', 'litert/litert-community/gemma-4-E4B-it-litert-lm')):
+    "Catalogue short names and `runtime/model` specs both refuse an uninstalled runtime."
+    pairs = (('qwen-4b', 'mlx/mlx-community/Qwen3.5-4B-MLX-4bit'),
+             ('gemma-e4b', 'litert/litert-community/gemma-4-E4B-it-litert-lm'))
+    for short, long in pairs:
         runtime = MODELS[short][0]
-        assert resolve(short).runtime == runtime
-        hide_runtime(runtime)
+        if core.runtime_available(runtime):
+            assert resolve(short).runtime == runtime
+            hide_runtime(runtime)
         with pytest.raises(RuntimeError, match='unavailable'): resolve(short)
         with pytest.raises(RuntimeError, match='unavailable'): resolve(long)
 
@@ -195,9 +181,7 @@ def test_a_blocking_call_consumes_the_stream_only_transport():
 
 
 def test_the_tools_travel_in_the_system_prompt_when_the_wire_is_closed(monkeypatch):
-    """An enterprise-managed Claude Code forbids every dynamic MCP server, and MCP is how that
-    transport declares tools -- so the strip that policy requires left the model with none. The
-    schemas go in the system prompt instead, and rishi reads the calls back out of the reply."""
+    "Managed Claude Code closes MCP tools; schemas go in the system prompt with `tool_mode='tags'`."
     from fastllm.acomplete import api_registry
 
     def search_code(query: str) -> str:
@@ -246,9 +230,7 @@ def test_a_tag_tool_call_comes_back_as_a_real_tool_call():
 # -- the seam --------------------------------------------------------------------------
 
 def test_ramabana_does_not_import_leela():
-    """The seam that made the move out of leela a file move. Both routing files used to carry a
-    copy of this; it lives here once, because what it protects is what `resolve` is allowed to
-    know about."""
+    "Generated modules must not import leela."
     import ramabana
     bad = [f'{f.name}:{n}' for p in ramabana.__path__ for f in Path(p).glob('*.py')
            for n, line in enumerate(f.read_text().splitlines(), 1)

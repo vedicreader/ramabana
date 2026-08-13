@@ -1,20 +1,7 @@
-"""The briefing: what a model is told, what it is sent back, and what the project tells it.
+"""Briefing contracts: budget, tool channel, skill disclosure, and a local-window e2e fit.
 
-This repository already has two test tiers, and this file is deliberately the second one. The
-notebooks in `nbs/` carry a `## Tests` section each, written to be read: they print what they
-checked, and `00_core.ipynb` is where the budget *arithmetic* lives, in a form you can follow.
-What is here is the *wiring* and the *contracts* -- the things a reader of the notebooks would
-not notice had broken, run in bulk.
-
-So the arithmetic is not repeated here. Each test below names one contract, and the last one is
-the end-to-end property all of it exists for: that a turn on a small local model fits in its
-window. That one would have caught every bug the others were written for.
-
-Compaction under a full briefing belongs to the window rather than to the briefing, and lives in
-`test_context.py` with the rest of that block.
-
-Nothing here loads a model. A `ModelSpec` is the whole input the budget takes, so a spec
-standing in for an uninstalled engine tests exactly what a real one would.
+Budget arithmetic lives in `00_core.ipynb`. Compaction under a full briefing is in `test_context.py`.
+Nothing here loads a model.
 """
 
 import pytest
@@ -59,10 +46,7 @@ def names(a): return {getattr(t, '__name__', '') for t in a.tools}
 # -- what the budget decides -----------------------------------------------------------
 
 def test_a_frugal_agent_differs_from_a_full_one_in_every_way_the_budget_decides(host):
-    """One contract with four halves, asserted together because they are one decision: a small
-    window loses the research groups it could not use, does not get a skill body inlined, gets a
-    smaller clip, and says so. `read_skill` still reaches the skill, so this costs a call rather
-    than a capability."""
+    "Small window: no research tools, no inlined skill body, smaller clip, shorter briefing."
     small, big = mk(host, SMALL), mk(host, BIG)
     assert not (names(small) & RESEARCH) and RESEARCH <= names(big)
     assert '## exhash' in big.system_prompt() and '## exhash' not in small.system_prompt()
@@ -219,13 +203,7 @@ def test_a_tag_call_that_came_back_as_prose_is_reported(monkeypatch):
 # -- the property all of it exists for -------------------------------------------------
 
 def test_a_local_turn_fits_its_window_end_to_end(tmp_path):
-    """The one test that would have caught every bug the others were written for.
-
-    A real `Agent` on the 16k model that ships as the local default, running a real four-call
-    turn through its real tools, with the whole prompt measured the way the engine will see it:
-    briefing, plus what four tool results actually cost. Under the old settings it does not fit,
-    which is the point -- that was not a slow agent, it was one that could not finish a turn.
-    """
+    "Four-call frugal turn on the 16k local model fits under the compaction threshold."
     (tmp_path/'big.py').write_text('\n'.join(f'def f{i}(): return {i}  # ' + 'x'*70
                                              for i in range(900)))
     host = LocalHost([str(tmp_path)], web=False, index=False)

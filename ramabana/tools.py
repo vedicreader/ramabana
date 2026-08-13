@@ -139,7 +139,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from fastcore.basics import AttrDict, ifnone
 from fastcore.docments import frontmatter
-from fastcore.parallel import startthread
+from fastcore.foundation import L
+from fastcore.parallel import parallel, startthread
 from .core import AgentError, agent_err
 
 
@@ -148,7 +149,7 @@ MAX_GREP_HITS = 60  # exact matches one `grep` returns; part of the Host contrac
 MAX_API = 200       # public names one `public_api` listing returns; part of the same contract
 
 class Hit(AttrDict):
-    "One search result, in the shape every backend of `Host.search` returns."
+    "One `Host.search` hit: path, line, symbol, text."
     def __init__(self, path, line=1, symbol='', text=''):
         super().__init__(path=path, line=line, symbol=symbol, text=text)
     def __repr__(self): return f'{self.path}:{self.line}  {self.symbol}  {self.text}'
@@ -432,10 +433,7 @@ SANDBOX = 'path is outside the open folders'
 SECRET = 'path holds credentials and is never read'
 NO_ROOTS = 'no folders are open, so no path is inside them'
 
-#: Never opened, even when a host is allowed to read outside its folders. Opening the
-#: sandbox is a decision about *source* -- somebody's site-packages, a sibling checkout, a
-#: log under /var -- and not about their keys, which a turn would put verbatim into a cloud
-#: model's context. Matched with `fnmatch` against the resolved path, so `*` crosses `/`.
+#: Credential-shaped paths refused even with `read_outside`. `fnmatch` on the resolved path.
 DENY = ('*/.ssh/*', '*/.aws/*', '*/.gnupg/*', '*/.config/gcloud/*', '*/.netrc',
         '*/.git-credentials', '*/.codex/auth.json', '*/.claude/.credentials.json',
         '*/.env', '*/.env.*', '*/id_rsa*', '*/id_ed25519*', '*.pem', '*.key', '*.p12')
@@ -468,10 +466,11 @@ def _md_doc(d):
     return '\n'.join(head + [''] + [body]).strip() if head else body.strip()
 
 def _fuse(legs, limit):
-    "Merge ranked `Hit` lists by reciprocal rank fusion via `litesearch.rrf_all`; identity is `path:line`."
+    "Merge ranked `Hit` lists with `litesearch.rrf_all`; identity is `path:line`."
     legs = [list(l) for l in legs if l]
     if not legs: return []
     if len(legs) == 1: return legs[0][:limit]
+    from litesearch import rrf_all   # imported here: it pulls pandas, and only fusion needs it
     by_key, lists = {}, []
     for leg in legs:
         rows = []
@@ -480,10 +479,7 @@ def _fuse(legs, limit):
             by_key.setdefault(key, h)
             rows.append({'_fid': key})
         lists.append(rows)
-    try:
-        from litesearch import rrf_all
-        fused = rrf_all(lists, id_key='_fid', limit=limit)
-    except Exception: return legs[0][:limit]
+    fused = rrf_all(lists, id_key='_fid', limit=limit)
     return [by_key[r['_fid']] for r in fused if r.get('_fid') in by_key]
 
 def ld_json(html):
@@ -513,7 +509,7 @@ class LocalHost(Host):
         self._approvals, self._note, self.web = approvals, note, web
         self.read_outside, self.deny = bool(read_outside), tuple(deny or ())
         self.transcript = []           # what this process has printed, for `read_terminal`
-        self._koshas, self._index_errors, self._index_thread = [], [], None
+        self._indexes, self._index_errors, self._index_thread = [], [], None
         self._pending = list(self._roots)     # roots whose sync has not returned yet
         self.rerank, self.rerank_model, self._rerank_note = bool(rerank), rerank_model, ''
         if index: self.sync_index()
@@ -532,7 +528,7 @@ class LocalHost(Host):
                         k = Kosha(dir=Path(root))
                         k.sync(dir=Path(root), verbose=False, force=force, pyproject=True,
                                in_parallel=True, graph=True)
-                        self._koshas.append(k)
+                        self._indexes.append(k)
                     except Exception as e: self._index_errors.append(agent_err(e))
                     finally:
                         try: self._pending.remove(root)
@@ -545,12 +541,12 @@ class LocalHost(Host):
     @property
     def index_ready(self):
         "Whether *every* open folder is indexed. `indexed` is the per-folder answer `search` uses."
-        return bool(self._koshas) and not self._pending
+        return bool(self._indexes) and not self._pending
 
     @property
     def indexed(self):
         "The folders whose index is built and searchable now. The rest are still syncing."
-        return [str(getattr(k, 'root', '')) for k in list(self._koshas)]
+        return [str(getattr(k, 'root', '')) for k in list(self._indexes)]
 
     def wait_index(self, timeout=None):
         "Wait for the automatic Kosha sync. Returns whether semantic search is ready."
@@ -561,11 +557,7 @@ class LocalHost(Host):
     def roots(self): return list(self._roots)
 
     def check(self, path, must_exist=False, reading=False):
-        """Resolve `path` and refuse anything outside `roots`. Every other method assumes this ran.
-
-        With `read_outside` on, a *read* may name any path on the machine and a write may not.
-        Enumeration stays confined either way: `walk`, and so `grep` and `list_files`, never leave.
-        """
+        "Resolve `path`; refuse outside `roots` (unless `read_outside` and `reading`). Walks stay confined."
         p = Path(path).expanduser()
         if not self._roots: raise AgentError(f'{NO_ROOTS}: {p}')  # empty roots must refuse, not IndexError
         if not p.is_absolute(): p = Path(self._roots[0])/p
@@ -678,10 +670,10 @@ class LocalHost(Host):
 
     def _semantic(self, query, limit):
         "Kosha hybrid results (repo + env + graph) as the Host's stable `Hit` shape."
-        koshas = list(self._koshas)
-        if not koshas: return []
+        indexes = list(self._indexes)
+        if not indexes: return []
         out, seen = [], set()
-        for k in koshas:
+        for k in indexes:
             try:
                 rows = self._ranked(k.context, q=query, limit=limit, repo=True, env=True,
                                     graph=True, columns='content,metadata')
@@ -727,7 +719,7 @@ class LocalHost(Host):
 
     @property
     def search_note(self):
-        n, tot = len(self._koshas), len(self._roots)
+        n, tot = len(self._indexes), len(self._roots)
         if n:
             where = f'{n} of {tot} folder(s)' if self._pending else f'{tot} folder(s)'
             return f'Kosha semantic + keyword index over {where} and environment fused with ripgrep{self._rerank_note}'
@@ -737,10 +729,10 @@ class LocalHost(Host):
     def public_api(self, package, limit=MAX_API):
         "Kosha's public surface for `package`, `@patch`-added methods included."
         if not str(package or '').strip(): return []      # the capability probe
-        koshas = list(self._koshas)
-        if not koshas: raise AgentError(f'no code index: {self.search_note}')
+        indexes = list(self._indexes)
+        if not indexes: raise AgentError(f'no code index: {self.search_note}')
         out, seen = [], set()
-        for k in koshas:
+        for k in indexes:
             try: rows = k.public_api(package, meta_cols='name,mod_name,docstring,path,lineno', limit=limit)
             except Exception as e: self._index_errors.append(agent_err(e)); continue
             for row in rows:
@@ -895,17 +887,10 @@ class LocalHost(Host):
         rows = fossick.search(str(query), n=int(n))   # `n` to fossick; its own default is 10
         return [AttrDict(title=str(r.get('title', '')), url=str(r.get('href') or r.get('url', ''))) for r in rows]
 
-    #: Extracted characters below which a page did not really load. A site that turns away
-    #: scrapers does not answer 403 -- it answers 200 with an empty shell, so escalating on
-    #: the status code never fires and fossick's own `auto=` tier stops at `plain`.
+    #: Below this many extracted chars, treat a 200 as an empty shell and escalate past fossick `auto`.
     THIN_PAGE = 400
 
-    #: URLs that are not really pages, and the fossick reader that knows what each one *is*.
-    #: Fetched as a page, a GitHub blob is chrome and line numbers wrapped around the file, an
-    #: arxiv abstract is not the paper, and a YouTube watch page does not contain its
-    #: transcript at all. `read_url`'s docstring has promised the first two all along.
-    #: `read_gh_repo` is deliberately not here: cloning a repository is not reading a page,
-    #: and it is reached by name, not by handing this tool a URL.
+    #: Dedicated fossick readers for URLs that are not HTML pages. Clone stays on `read_gh_repo`.
     READERS = (
         (re.compile(r'https?://(www\.)?github\.com/[^/]+/[^/]+/(blob|raw)/', re.I), 'read_gh_file', {}),
         (re.compile(r'https?://(www\.)?arxiv\.org/(abs|pdf)/', re.I), 'read_arxiv', dict(save_pdf=False, source=True)),
@@ -913,12 +898,7 @@ class LocalHost(Host):
     )
 
     def read_url(self, url, remember=True):
-        """One page as markdown: the prose, and the structured data the prose leaves out.
-
-        `READERS` routes the URLs that are not really pages. Everything else is `auto=True`,
-        fossick's own escalation, plus an escalation here for a 200 that extracts to nothing.
-        A page's *facts* live in `schema.org` JSON-LD rather than in its prose.
-        """
+        "Page as markdown via fossick: `READERS`, then `fetch(auto=True)`, thin-page escalate, JSON-LD."
         fossick = self._fossick()
         for rx, name, kw in self.READERS:
             if not rx.search(str(url)) or (reader := getattr(fossick, name, None)) is None: continue
@@ -2009,18 +1989,13 @@ def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, sk
 
 # %% ../nbs/02_tools.ipynb #fe517832
 def delegate_many(backend, questions, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, n_workers=4, skills=()):
-    """Ask several questions at once. Returns answers in the order the questions were given.
-
-    Generation overlaps on a cloud backend only -- litert holds one conversation at a time, so
-    local fan-out runs one after another. Tool work overlaps either way, and is usually the bulk.
-    """
-    qs = list(questions)
-    if not qs: return []
+    "Ask several questions; fan out with `fastcore.parallel` on cloud backends, serial on local."
+    qs = L(questions)
+    if not qs: return L()
+    run = lambda q: delegate(backend, q, tools, sp, max_steps, skills)
     if len(qs) == 1 or getattr(backend.spec, 'local', False) or n_workers < 2:
-        return [delegate(backend, q, tools, sp, max_steps, skills) for q in qs]
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(min(n_workers, len(qs))) as ex:
-        return list(ex.map(lambda q: delegate(backend, q, tools, sp, max_steps, skills), qs))
+        return L(run(q) for q in qs)
+    return parallel(run, qs, n_workers=min(n_workers, len(qs)), threadpool=True)
 
 # %% ../nbs/02_tools.ipynb #906e7f69
 def named_skills(get_skills, names):

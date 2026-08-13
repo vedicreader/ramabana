@@ -14,11 +14,19 @@ example below run against -- filling a real trolley is not something a doc build
 
 ## The real one
 
+`FossickCart` drives a logged-in Chrome tab through `fossick.shop`.
+
 ## The double
+
+`FakeCart` records adds for tests without opening a browser.
 
 ## The tools
 
+Host methods that expose the trolley to the model.
+
 ## The weekly shop
+
+A scripted multi-store run used as an end-to-end example.
 
 Docs: https://vedicreader.github.io/ramabana/shop.html.md"""
 
@@ -80,16 +88,7 @@ class Cart:
 
 # %% ../nbs/08_shop.ipynb #c5569e86
 class FossickCart(Cart):
-    """A real, logged-in Chrome, driven through `fossick.shop`.
-
-    The session is opened on first use and then reused. `fossick.shop()` picks up a tab an
-    earlier call left on the same site instead of piling up another one, so moving to a second
-    store and back does not lose the first trolley.
-
-    Nothing here logs in. Both of the stores this was written for refuse a fresh automated
-    session -- one is bot-walled, the other is members-only -- so the browser is the one the
-    person already uses, and the agent is a hand on it rather than a client of its own.
-    """
+    "Real Chrome trolley via `fossick.shop`; session opens on first use and is reused."
 
     def __init__(self, port=SHOP_PORT, tout=SHOP_TOUT, headless=None):
         store_attr()

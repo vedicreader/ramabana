@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from urllib.parse import urlparse
 
+from fastcore.meta import delegates
 from .core import AgentError, agent_err
 from .tools import LocalHost
 
@@ -101,23 +102,21 @@ def parse_ops(spec):
 
 # %% ../nbs/10_spec.ipynb #spec07
 class SpecHost(LocalHost):
-    """`LocalHost` that can also read an API specification and call what it declares.
-
-    Everything `LocalHost` does is unchanged. What is added is one loaded spec per name, so a
-    conversation can hold several -- an internal service and the vendor API it wraps -- and
-    the agent names which one it means.
-
-    Nothing is loaded at construction. A spec is a network fetch, and a host whose tool list
-    waits on one is the mistake `VaultHost` documents at length.
-    """
+    "`LocalHost` plus named API specs (OpenAPI / Discovery / GraphQL) loaded on demand."
 
     @property
     def capabilities(self):
-        "Declared rather than probed: the probe would be `api_ops`, which needs a loaded spec."
+        "Advertise `api`; never probe — that needs a loaded spec."
         return {**super().capabilities, 'api': True}
 
-    def __init__(self, *a, specs=None, headers=None, timeout=60.0, **kw):
-        super().__init__(*a, **kw)
+    @delegates(LocalHost.__init__)
+    def __init__(self,
+                 roots=('.',),          # the folders the agent is confined to
+                 specs=None,            # name -> parsed spec, for a host that starts loaded
+                 headers=None,          # sent with every API call, for auth
+                 timeout=60.0,          # per-call timeout, in seconds
+                 **kwargs):             # forwarded to `LocalHost`
+        super().__init__(roots, **kwargs)
         self.specs, self.headers, self.timeout = dict(specs or {}), dict(headers or {}), timeout
         self._clients = {}
 
