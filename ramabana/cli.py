@@ -415,6 +415,10 @@ class Ui:
             return Text(self.ASKING, style=f"bold {GRUVBOX['yellow']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
         return Text('▌ ', style=f"bold {GRUVBOX['blue']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
 
+    def _prefixed(self, text):
+        "`text` with whatever precedes it on screen, which is what `tail` measures against."
+        return (self.ASKING if self.ask is not None else '▌ ') + text
+
     def overlay(self):
         "Transient rows above the tail: options, slash completion, or the plan checklist."
         if self.menu is not None: return self.menu.render()
@@ -658,7 +662,7 @@ class Ui:
                 self.buf.text, self.buf.cursor = prompt, len(prompt)
                 return self.paint()
             self.say(Text(prompt), 'user')
-            self.say(Text(f'{choice.label} — {choice.note}'), 'note')
+            self.say(Text(f'{choice.label} -- {choice.note}'), 'note')
             self.paint()
             return run_turn(self, prompt + choice.suffix)
         if self.complete is not None and k.name in ('tab', 'shift+tab', 'up', 'down'):
@@ -731,14 +735,12 @@ class Ui:
 @patch
 def tail(self:Ui):
     "The live-tail description shared with Teleprint's transcript view."
-    pre = self.ASKING if self.ask is not None else '▌ '
     rows = [self.status()]
     if self.hint: rows.append(Text(' ' + self.hint, style=GRUVBOX['gray']))
     chips = self.attach_row()
     if chips is not None: rows.append(chips)
-    prompt = self.prompt()
-    rows.append(prompt)
-    before = Text(pre + self.buf.text[:self.buf.cursor])
+    rows.append(self.prompt())
+    before = Text(self._prefixed(self.buf.text[:self.buf.cursor]))
     rendered = self.comp.console.render_lines(before, pad=False)
     cursor = (len(rows) - 1, len(rendered) - 1, sum(s.cell_length for s in rendered[-1]))
     return rows, cursor
@@ -756,11 +758,15 @@ def recall(self:Ui, step):
 _core_submit = Ui.submit
 
 @patch
-def submit(self:Ui):
-    "Submit the line and remember it for Ctrl-P/Ctrl-N recall."
-    line = self.buf.text.strip()
+def remember(self:Ui, line):
+    "Keep `line` for Ctrl-P/Ctrl-N recall."
     if line and (not self.history or self.history[-1] != line): self.history.append(line)
     self.history_at, self.draft = len(self.history), ''
+
+@patch
+def submit(self:Ui):
+    "Submit the line and remember it for Ctrl-P/Ctrl-N recall."
+    self.remember(self.buf.text.strip())
     return _core_submit(self)
 
 _core_on_key = Ui.on_key
@@ -948,7 +954,7 @@ def main(
     approve: str = 'ask',                # ask | auto | off | none (gate nothing at all)
     web: bool = True,                    # let the web tools reach the network through fossick
     read_outside: bool = False,          # let reads name any path on this machine; writes stay inside
-    vault: bool = False,                 # keep what is read in a vishalakshi vault, for the next session
+    vault: bool = False,                 # vishalakshi vault for what is read; not offered by pyrepl
     cfg: str = '~/.config/ramabana',     # config dir, for skills, extensions and resumable history
     resume: str = '',                    # saved session id/prefix, or 'latest'
 ):
@@ -957,6 +963,9 @@ def main(
     # own kernel, its own module. The import is here so `ramabana` starts without jupyter_client
     # installed, and so a test can monkeypatch `pyrepl.main`.
     if prompt == 'pyrepl':
+        if vault:
+            print('pyrepl has no vault-backed host; run it without --vault', file=sys.stderr)
+            return 2
         from ramabana.pyrepl import main as pyrepl_main
         return pyrepl_main(root=root, model=model, approve=approve, web=web,
                            read_outside=read_outside, cfg=cfg, resume=resume)
