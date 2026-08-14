@@ -170,3 +170,6 @@ chatcache/
 # screenshots pasted into a session
 clipboard-image.png
 leela_agent_sessions/
+
+# demo capture intermediates
+media/frames/
