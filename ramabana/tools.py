@@ -396,7 +396,7 @@ class LocalHost(Host):
         self.rerank, self.rerank_model, self._rerank_note = bool(rerank), rerank_model, ''
         if index: self.sync_index()
 
-    def sync_index(self, wait=False, force=False):
+    def sync_index(self, wait=False, force=False, graph=False):
         "Run `Kosha.sync` for every open root, once, in a daemon thread; each root publishes as it returns."
         if self._index_thread is None or not self._index_thread.is_alive():
             def run():
@@ -407,9 +407,8 @@ class LocalHost(Host):
                     self._index_errors.append(agent_err(e)); self._pending = []; return
                 for root in list(self._roots):
                     try:
-                        k = Kosha(dir=Path(root))
-                        k.sync(dir=Path(root), verbose=False, force=force, pyproject=True,
-                               in_parallel=True, graph=True)
+                        k = Kosha(dir=Path(root), busy_timeout=30000)
+                        k.sync(dir=Path(root), verbose=False, force=force, pyproject=True, graph=graph)
                         self._indexes.append(k)
                     except Exception as e: self._index_errors.append(agent_err(e))
                     finally:

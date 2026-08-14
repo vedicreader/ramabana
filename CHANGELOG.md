@@ -1,4 +1,5 @@
 # Changelog
+kosha sync made faster
 
 Shri Rama jayam. Ramabana relase
 
