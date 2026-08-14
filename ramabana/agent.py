@@ -96,6 +96,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNA
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, functools, json, re, threading, time, uuid
 from dataclasses import dataclass, field
+from fastcore.basics import patch
 from .core import agent_err, available_models, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, make_backend, Compactor, compact_notebook_context, notices_block
 from .tools import (MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
@@ -1024,8 +1025,8 @@ class Agent:
     @property
     def subagent_budget(self):
         "What the sub-agent model can afford; usually not the turn model's."
-        try: spec = self.routing.spec('subagent')
-        except Exception: return self.budget
+        spec = self.spec_or_none('subagent')
+        if spec is None: return self.budget
         return budget_for(spec, self.tool_max_len, tool_channel(spec))
 
     def _sub_plain(self):
@@ -1037,17 +1038,15 @@ class Agent:
                                        mx=b.tool_max, drop=b.drop)
         return self._subtools
 
-    @property
-    def turn_spec(self):
-        "The turn model's spec, or `None` when the name does not resolve to one."
-        try: return self.routing.spec('turn')
+    def spec_or_none(self, job='turn'):
+        "`job`'s model spec, or `None` when its name does not resolve to one."
+        try: return self.routing.spec(job)
         except Exception: return None
 
     @property
     def budget(self):
         "What the turn model can afford to be told -- see `core.budget_for`."
-        try: spec = self.routing.spec('turn')
-        except Exception: return budget_for(None, self.tool_max_len)   # an unresolved name costs no tools
+        spec = self.spec_or_none()        # an unresolved name costs no tools and no channel
         return budget_for(spec, self.tool_max_len, tool_channel(spec))
 
     @property
@@ -1329,7 +1328,7 @@ class Agent:
         preflights += [(name, query or request) for name, query in requested if name in eager]
         by_name = {getattr(t, '__name__', ''): t for t in self.tools}
         outgoing = _append(outgoing, f'\n\n<tool-plan route="{route}">{plan}</tool-plan>')
-        if tool_channel(self.turn_spec) == 'tags': outgoing = _append(outgoing, OUTPUT_CONTRACT)
+        if tool_channel(self.spec_or_none()) == 'tags': outgoing = _append(outgoing, OUTPUT_CONTRACT)
         for name, query in dict.fromkeys(preflights):
             tool = by_name.get(name)
             if tool is None: continue
@@ -1812,7 +1811,8 @@ class Completer:
         return out
 
 # %% ../nbs/03_agent.ipynb #0358c91a
-def _cloud_backend_or_none(self, model):
+@patch
+def _cloud_backend_or_none(self:Agent, model):
     "A started remote backend for one delegated fan-out, without changing routing."
     try:
         spec = self.routing._resolve(str(model))
@@ -1822,9 +1822,6 @@ def _cloud_backend_or_none(self, model):
         backend = self._backends[key]
         return backend if backend.start() is not None else None
     except Exception: return None
-
-
-Agent._cloud_backend_or_none = _cloud_backend_or_none
 
 
 # %% ../nbs/03_agent.ipynb #46f071e0

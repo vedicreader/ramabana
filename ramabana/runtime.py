@@ -833,13 +833,7 @@ class Backend:
         except Exception:return max(1,(len(text or '')+3)//4)
     @property
     def used_tokens(self):
-        """What the window holds now, which every engine reports for itself.
-
-        An agent harness used to report billing volume instead: Claude Code re-reads its cached
-        prompt on every internal step and folds those cache reads into `total_tokens`, which
-        over-stated a two-message conversation by 6.6x, while cursor reported nothing at all and
-        sat at zero. Both are measured at the source from rishi 0.1.12, which is the floor.
-        """
+        "What the window holds, which the engine reports. Occupancy not billing volume: rishi>=0.1.12."
         try:return self.chat.token_count if self.chat else 0
         except Exception:return self.use.total
     @property
