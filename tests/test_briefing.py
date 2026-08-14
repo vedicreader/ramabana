@@ -9,15 +9,35 @@ import pytest
 from ramabana import runtime
 from ramabana import agent as A
 from ramabana.agent import Agent
-from ramabana.core import (Budget, ModelSpec, budget_for, force_tags, forget_forced_tags,
+from ramabana.core import (SMALL_CTX, Budget, ModelSpec, budget_for, force_tags, forget_forced_tags,
                            tool_channel)
 from ramabana.runtime import estimate_tokens, threshold
 from ramabana.testing import FakeBackend, FullHost, ScriptedBackend, Step, fake_agent
-from ramabana.tools import LocalHost, Skill, clip_lines, named_skills, sub_sp, tools_for
+from ramabana.tools import LocalHost, Skill, _delegate_result, clip_lines, named_skills, sub_sp, tools_for
 
 SMALL = ModelSpec('gemma-e2b', 'litert', 'litert-community/x', 16_384)   # the local default
 BIG = ModelSpec('sonnet', 'remote', 'claude-sonnet-4-5', 200_000)
 CC = ModelSpec('cc', 'remote', 'claude_code/claude-sonnet-5', 200_000)
+CURSOR = ModelSpec('opus5', 'cursor', 'claude-opus-5', 200_000)
+#: The same model as `CC`, reached through Claude Code itself rather than FastLLM's transport.
+CLAUDE = ModelSpec('claude/claude-sonnet-5', 'claude', 'claude-sonnet-5', 128_000)
+
+
+def _claude_transport():
+    """`_claude_payload_compat` applied to a stand-in transport; returns a fresh payload's options.
+
+    A stand-in rather than FastLLM's: what is under test is the gate, and the real one needs the
+    Claude Agent SDK installed and a login to build a payload at all.
+    """
+    from types import SimpleNamespace
+    def mk_payload(*a, **kw):
+        return {'prompt': '', 'options': SimpleNamespace(
+            model=CC.model_id.split('/', 1)[1], mcp_servers={'ramabana': object()},
+            allowed_tools=['mcp__ramabana__search_code'], strict_mcp_config=True)}
+    t = SimpleNamespace(mk_payload=mk_payload)
+    from ramabana.core import _claude_payload_compat
+    _claude_payload_compat(t)
+    return lambda: t.mk_payload()['options']
 
 RESEARCH = {'web_search', 'read_url', 'research', 'memory_search', 'memory_read',
             'memory_tree', 'memory_topics', 'memory_forget'}
@@ -152,6 +172,12 @@ def test_named_skills_reach_the_sub_agents_briefing(host):
     assert 'nosuchskill' in search('how do we deploy?', skills='nosuchskill')
 
 
+def test_delegated_output_rejects_empty_and_repetitive_prose():
+    assert 'no answer' in _delegate_result('')
+    assert 'repetitive output' in _delegate_result('Cmd+V ' * 20)
+    assert _delegate_result('found tools.py:42') == 'found tools.py:42'
+
+
 # -- where the tool schemas travel -----------------------------------------------------
 
 def test_the_tool_channel_is_one_decision(monkeypatch):
@@ -175,6 +201,86 @@ def test_the_tool_channel_is_one_decision(monkeypatch):
     assert tool_channel(BIG) == 'tags'
     monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'native')
     assert tool_channel(CC) == 'native'
+    # ...but not on an agent harness, which has no wire to be native on: both render the whole
+    # conversation into a prompt, so their schemas have always gone out as tags.
+    assert tool_channel(CURSOR) == 'tags' and tool_channel(CLAUDE) == 'tags'
+
+
+def test_the_claude_harness_is_the_way_in_a_managed_policy_leaves_open(monkeypatch):
+    """Two ways to reach Claude, and only one of them an enterprise policy can close.
+
+    `claude_code/...` goes through FastLLM's transport, which declares tools as an in-process MCP
+    server -- the thing a managed configuration forbids. `claude/...` drives Claude Code itself and
+    never opens one, so it is on the tags channel unconditionally rather than on discovery of a
+    config file at one of three paths.
+    """
+    import ramabana.core as _core
+    monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)
+    assert tool_channel(CC) == 'native'        # the wire is open here, so the transport keeps it
+    assert tool_channel(CLAUDE) == 'tags'      # ...and the harness never had one either way
+
+    assert CLAUDE.runtime == 'claude' and not CLAUDE.local   # the binary is local, the model is not
+    assert CLAUDE.model_id == 'claude-sonnet-5'              # the `claude/` prefix is rishi's, not the id's
+
+
+def test_the_claude_payload_is_stripped_for_every_reason_the_wire_is_shut(monkeypatch):
+    """The other half of the tags decision, and the half that used to be missed.
+
+    Moving the schemas into the prompt is not enough on its own: the in-process MCP server stays
+    in the payload and a managed policy refuses it anyway. Gating the strip on the config probe
+    alone meant the two ways of reaching tags that the probe cannot see -- the override that
+    exists for a policy at an undocumented path, and a refusal already learned from a failure --
+    moved the schemas and then failed exactly as they had before."""
+    import ramabana.core as _core
+    monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)
+    mk = _claude_transport()
+    assert mk().mcp_servers and mk().strict_mcp_config is True   # wire open: untouched
+
+    for shut, undo in ((lambda: monkeypatch.setenv('RAMABANA_CLAUDE_TAG_TOOLS', '1'),
+                        lambda: monkeypatch.delenv('RAMABANA_CLAUDE_TAG_TOOLS')),
+                       (lambda: monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: True),
+                        lambda: monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)),
+                       (lambda: force_tags(CC.model_id, 'refused mid-turn'), forget_forced_tags)):
+        shut()
+        try:
+            o = mk()
+            assert o.mcp_servers == {} and o.allowed_tools == [] and o.strict_mcp_config is False
+        finally: undo()
+
+
+def test_a_refused_wire_channel_is_learned_once_and_the_turn_still_answers(monkeypatch):
+    """The case detection cannot reach. A policy at a path the three-path probe does not know is
+    only ever learned from the failure it causes, and an agent that has to be told by hand is one
+    that sat there with no tools until somebody read the source. One turn pays for the lesson."""
+    import ramabana.core as _core
+    monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)
+    calls = []
+
+    class Refusing(runtime.RishiBackend):
+        def _start(self): return object()          # nothing is sent; `_send` is the whole wire
+        def _usage(self): return None
+        def _send(self, msg, **kw):
+            calls.append(tool_channel(self.spec))
+            if calls[-1] == 'native': raise RuntimeError('mcp_servers disallowed by policy')
+            return 'answered'
+
+    b = Refusing(CC, tools=[lambda: None])
+    try:
+        assert b.send('hi') == 'answered'
+        assert calls == ['native', 'tags']         # tried the wire, learned, and finished the turn
+        assert any('travel in the system prompt' in p for p in b.problems)
+        assert tool_channel(CC) == 'tags'          # and the next turn does not try the wire again
+    finally: forget_forced_tags()
+
+
+def test_the_tags_channel_is_paid_for_out_of_the_window_it_shares(monkeypatch):
+    """What the tags channel costs the briefing. Rishi appends the schemas to the system prompt
+    after everything here has finished deciding what fits, so a window sized as if they were free
+    is a window that overflows by the size of the tool set."""
+    tight = ModelSpec('tight', 'remote', 'x', SMALL_CTX + 1000)
+    assert budget_for(tight, 6000).note == 'full briefing'      # native: comfortably above SMALL_CTX
+    assert budget_for(tight, 6000, 'tags').drop                 # tags: the schemas push it under
+    assert budget_for(BIG, 6000, 'tags').note == 'full briefing'  # and 200k does not care
 
 
 def test_a_tag_call_that_came_back_as_prose_is_reported(monkeypatch):
@@ -269,6 +375,37 @@ def test_the_briefing_describes_only_the_tools_the_model_was_given():
     sp = A.system_prompt(h, tools=tools_for(h))
     for t in {t.__name__ for t in tools_for(h)} & {n for n, _ in A.RULES if n}: assert t in sp
     assert 'delegate_parallel' not in sp          # this host offers no sub-agents
+
+
+def test_the_coding_standard_reaches_the_briefing_it_was_written_for(host):
+    """`coding_patterns` names Ramabana's own tools, and reached no model on any backend. It was
+    dropped from `skills` under the default profile -- so it was missing from the index as well,
+    and `system_prompt`'s inline loop skipped a name it could not find without saying so."""
+    big = Agent(host, extensions=False, subagents=False)
+    big.routing.spec = lambda job='turn', fallback=True: BIG
+    assert 'coding_patterns' in {s.name for s in big.skills}
+    sp = big.system_prompt()
+    assert '## coding_patterns' in sp and 'Every construct must earn its place' in sp
+
+    small = Agent(host, extensions=False, subagents=False)
+    small.routing.spec = lambda job='turn', fallback=True: SMALL
+    assert 'earn its place' not in small.system_prompt()   # the budget still decides
+
+
+def test_the_tags_channel_hears_the_output_contract_after_the_tool_protocol():
+    """Rishi appends the tag protocol *after* the briefing, so on that channel the last thing the
+    model reads is tool punctuation and the style rules are a whole briefing away. Riding out with
+    the turn is the only position later than that. Every other channel already has a system
+    message and is left alone."""
+    native = ModelSpec('gpt', 'remote', 'gpt-5.6', 200_000)
+    for spec, tagged in ((CURSOR, True), (CLAUDE, True), (native, False)):
+        a, be = fake_agent(replies=['done'])
+        a.routing.spec = lambda job='turn', fallback=True, _s=spec: _s
+        a.ask('what does budget_for decide?')
+        assert ('<output-contract>' in str(be.sent[-1])) is tagged, spec.name
+
+    # It restates the briefing's own rule rather than introducing a second instruction system.
+    assert 'plain sentences' in A.work_rules() and 'plain sentences' in A.OUTPUT_CONTRACT
 
 
 def test_the_projects_own_instructions_are_read_marked_and_bounded():

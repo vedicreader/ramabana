@@ -6,10 +6,11 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLAUDE', 'CLOUD', 'CURSOR',
-           'DFLT_CURSOR_CTX', 'RUNTIMES', 'CUSTOM', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY',
-           'DFLT_LOCAL_CTX', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TOOL_CHANNELS', 'AgentError', 'agent_err',
-           'use_env_prefix', 'env', 'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx',
-           'ModelSpec', 'resolve', 'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model',
+           'DFLT_AGENT_CTX', 'RUNTIMES', 'AGENTS', 'CUSTOM', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap',
+           'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
+           'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env',
+           'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx', 'ModelSpec',
+           'prefix_typo', 'resolve', 'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model',
            'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
@@ -81,38 +82,56 @@ CURSOR = {f'cursor/{mid}': mid for mid in (
     'grok-4.5', 'composer-2.5', 'claude-opus-5', 'claude-sonnet-5', 'claude-fable-5',
     'gpt-5.6-sol', 'gpt-5.6-terra', 'gemini-3.6-flash', 'kimi-k3', 'glm-5.2')}
 
-#: Cursor does not report a window, and roughly 16k of every turn is its own prompt. 128k is the
-#: `ModelSpec` default rather than the 32k local one, which would brief a frontier model frugally.
-DFLT_CURSOR_CTX = 128_000
+#: Claude Code's catalogue, prefixed the same way and for the same reason: a bare `claude-...` name
+#: has always reached these models through `remote`, and a short name here that shadowed it would
+#: move a model between harnesses silently. Same models, different way in -- and this is the way in
+#: that still has tools where an enterprise policy has closed MCP.
+CLAUDE = {f'claude/{mid}': mid for mid in (
+    'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'claude-fable-5',
+    'claude-opus-4-8', 'claude-sonnet-4-6')}
+
+#: Neither agent harness reports a window, and a good deal of every turn is the harness's own
+#: prompt -- roughly 16k for Cursor, 50k for Claude Code. 128k is the `ModelSpec` default rather
+#: than the 32k local one, which would brief a frontier model frugally.
+DFLT_AGENT_CTX = 128_000
 
 #: Every runtime `register_model` accepts, as one name a host can read. leela mirrored this
 #: list in its own module and drifted from it twice; there is nothing to mirror now.
-RUNTIMES = ('litert', 'mlx', 'llama', 'cursor', 'remote')
+RUNTIMES = ('litert', 'mlx', 'llama', 'cursor', 'claude', 'remote')
+
+#: The runtimes that are an agent harness rather than a completion endpoint. The binary is local and
+#: the model is not, the window is the harness's to spend, and neither can carry a tool schema on
+#: the wire -- so `tool_channel` answers `tags` for both, whatever else it is told.
+AGENTS = ('cursor', 'claude')
 
 CUSTOM = {}
 _RUNTIME_DEPS = {'litert': 'litert_lm', 'mlx': 'mlx_lm', 'llama': 'llama_cpp'}
 
 
-def _cursor_available():
-    """Whether Cursor can be reached at all.
+def _harness_available(mod, binary):
+    """Whether an agent harness can be reached at all: its SDK, or the binary it drives.
 
-    Not a package check: Cursor is an agent, reached either through the `cursor-agent` CLI or
-    through `cursor-sdk` with a key, so `find_spec` is the wrong question and would answer no
-    on a machine where the CLI is installed and logged in.
+    Not a package check. These are agents rather than libraries, reached either through a CLI or
+    through an SDK, so `find_spec` is the wrong question and would answer no on a machine where
+    the CLI is installed and logged in.
     """
-    try: from rishi.cursor import cursor_bin, sdk_available
+    try: m = importlib.import_module(mod)
     except Exception: return False
     try:
-        if sdk_available(): return True
+        if m.sdk_available(): return True
     except Exception: pass
-    try: return bool(cursor_bin())
+    try: return bool(getattr(m, binary)())
     except Exception: return False
+
+def _cursor_available(): return _harness_available('rishi.cursor', 'cursor_bin')
+def _claude_available(): return _harness_available('rishi.claude', 'claude_bin')
 
 
 def runtime_available(runtime):
     "Whether Rishi's optional dependency for `runtime` can be reached. Never raises."
     if runtime == 'remote': return True
     if runtime == 'cursor': return _cursor_available()
+    if runtime == 'claude': return _claude_available()
     try: return importlib.util.find_spec(_RUNTIME_DEPS[runtime]) is not None
     except (ImportError, KeyError, ValueError): return False
 
@@ -120,6 +139,7 @@ MODELS = {**{k: ('litert', v) for k, v in LOCAL.items()},
           **{k: ('mlx', v) for k, v in MLX.items()},
           **{k: ('llama', v) for k, v in LLAMA.items()},
           **{k: ('cursor', v) for k, v in CURSOR.items()},
+          **{k: ('claude', v) for k, v in CLAUDE.items()},
           **{k: ('remote', v) for k, v in CLOUD.items()}}
 
 
@@ -164,7 +184,7 @@ def _managed_claude_mcp():
 
 
 def _claude_payload_compat(transport):
-    """Make FastLLM's Claude Code payload legal under an enterprise-managed MCP policy.
+    """Make FastLLM's Claude Code payload legal wherever its MCP channel is closed.
 
     The transport declares Ramabana's tools to Claude Code as an in-process MCP server, and a
     managed configuration forbids every dynamic MCP server there is. Stripping them is the
@@ -172,15 +192,22 @@ def _claude_payload_compat(transport):
     coding agent that cannot read a file.
 
     So the tools go through the other channel, the one no policy can close: the system prompt.
-    `claude_tags` is what asks Rishi for that, and this stays what it always was -- the last
-    edit before the payload goes out, making it legal.
+    This stays what it always was -- the last edit before the payload goes out, making it legal.
+
+    It asks `tool_channel` rather than probing for the managed config itself, because the probe
+    is only one of the three reasons the wire is shut: `$RAMABANA_CLAUDE_TAG_TOOLS` is there for
+    a policy at a path the probe does not know, and `force_tags` for one learned from a refusal.
+    Stripping on the probe alone meant the schemas moved to the prompt in those two cases while
+    the illegal MCP block stayed in the payload, so the turn failed exactly as it had before.
+    `tool_channel` is defined further down the module and resolved when a payload is built.
     """
     mk_payload = transport.mk_payload
     if getattr(mk_payload, '_ramabana_enterprise_mcp', False): return
     def compatible_payload(*args, **kwargs):
         payload = mk_payload(*args, **kwargs)
-        if _managed_claude_mcp():
-            options = payload['options']
+        options = payload['options']
+        # the transport answers for `claude_code/` only, and carries the bare id in the options
+        if tool_channel(f'claude_code/{getattr(options, "model", "")}') == 'tags':
             options.strict_mcp_config = False
             options.mcp_servers = {}
             options.allowed_tools = []
@@ -261,6 +288,9 @@ def available_models(include_legacy=False):
     if runtime_available('cursor'):
         rows += [{'value': name, 'label': mid, 'provider': 'cursor',
                   'source': 'Cursor agent (CLI or SDK)'} for name, mid in CURSOR.items()]
+    if runtime_available('claude'):
+        rows += [{'value': name, 'label': mid, 'provider': 'claude',
+                  'source': 'Claude Code (CLI or SDK)'} for name, mid in CLAUDE.items()]
     auth = auth_status()
     if auth['openai']['available']:
         for model in _openai_models(include_legacy):
@@ -335,7 +365,7 @@ class ModelSpec:
     def local(self):
         # Cursor runs off this machine as much as a hosted API does. Reporting it local would put
         # `model_note` in the wrong column and offer its chat for engine sharing it cannot do.
-        return self.backend not in ('remote', 'cursor')
+        return self.backend not in ('remote', *AGENTS)
     def __str__(self): return f'{self.name} ({self.model_id})'
 
 
@@ -351,6 +381,21 @@ def _cloud_ctx(model_id):
     except Exception as e: return 128_000, f'context window unknown ({agent_err(e)}), assuming 128k'
 
 # %% ../nbs/00_core.ipynb #1d37d28a
+#: Prefixes that name a runtime or a transport rather than a vendor, in the spelling that works.
+PREFIXES = (*RUNTIMES, 'claude_code')
+
+
+def prefix_typo(prefix):
+    """The known prefix `prefix` is a `-`/`_` slip of, or None.
+
+    Only that one class of slip. Everything else with a slash is a real `vendor/model` spec and has
+    to keep falling through to `remote`, which is what `openai/gpt-5.6` depends on -- but no vendor
+    is called `claude-code`, and reading one as though it were costs a confusing turn to find out.
+    """
+    key = str(prefix or '').replace('-', '_')
+    return next((p for p in PREFIXES if p != prefix and p.replace('-', '_') == key), None)
+
+
 def resolve(name, default_local=DFLT_LOCAL):
     'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec.'
     if not name: name = default_local
@@ -361,9 +406,9 @@ def resolve(name, default_local=DFLT_LOCAL):
             # the same check the `vendor/model` branch makes: an absent runtime is not a model
             if not runtime_available(backend):
                 raise RuntimeError(f'{backend} runtime is unavailable; install rishi[{backend}]')
-            # `local_ctx` is a table of on-device windows, and Cursor is not on the device: its
+            # `local_ctx` is a table of on-device windows, and a harness is not on the device: its
             # models would take the 32k local default and be briefed as though they were small.
-            ctx = DFLT_CURSOR_CTX if backend == 'cursor' else local_ctx(name)
+            ctx = DFLT_AGENT_CTX if backend in AGENTS else local_ctx(name)
             return ModelSpec(name, backend, mid, ctx, config=config)
         if mid.startswith('claude_code/'):
             ok, error = _load_claude_transport()
@@ -372,16 +417,20 @@ def resolve(name, default_local=DFLT_LOCAL):
         return ModelSpec(name, backend, mid, ctx, note, config)
     if '/' in name:
         runtime, model_id = name.split('/', 1)
+        if (fix := prefix_typo(runtime)): raise KeyError(
+            f'{name!r}: nothing is spelled {runtime!r} -- did you mean {fix}/{model_id}? An unknown '
+            'prefix is read as a vendor and handed to `remote`, which then asks for an API key you '
+            'do not need, so the slip surfaces as a credentials error three layers from the typo.')
         if runtime == 'claude_code':
             ok, error = _load_claude_transport()
             if not ok: raise RuntimeError(f'Claude Code transport unavailable: {error}')
-        if runtime in ('litert', 'mlx', 'llama', 'cursor'):
+        if runtime in ('litert', 'mlx', 'llama', *AGENTS):
             if not runtime_available(runtime):
                 raise RuntimeError(f'{runtime} runtime is unavailable; install rishi[{runtime}]')
             # `cursor` belongs here and not in the cloud branch below: falling through returned a
             # spec whose backend was `remote` and whose model id was the whole prefixed name, so
             # `RishiBackend` built a `RemoteChat` for a Cursor model and the wrong vendor answered.
-            ctx = DFLT_CURSOR_CTX if runtime == 'cursor' else local_ctx(name)
+            ctx = DFLT_AGENT_CTX if runtime in AGENTS else local_ctx(name)
             return ModelSpec(name, runtime, model_id, ctx)
         ctx, note = _cloud_ctx(name)
         return ModelSpec(name, 'remote', name, ctx, note)
@@ -411,7 +460,14 @@ class Budget:
     note: str = ''           # why, for a status bar
 
 
-def budget_for(spec, tool_max):
+#: Tokens `rishi.tag_tools_sp` adds to the system prompt for a full tool set. Measured rather
+#: than guessed -- 20 tools of JSON schema is 13k characters -- because on the tags channel this
+#: comes out of the same window the briefing is being sized against, and it is spent by Rishi
+#: after everything here has finished deciding what fits.
+TAGS_SCHEMA_TOKENS = 3300
+
+
+def budget_for(spec, tool_max, channel='native'):
     """The briefing `spec`'s model can afford, from its context window.
 
     `tool_max` is the caller's own default, and this only ever lowers it. Raising the clip on a
@@ -423,6 +479,7 @@ def budget_for(spec, tool_max):
     already assumes 128k when a table fails it.
     """
     ctx = getattr(spec, 'ctx', 0) or 0
+    if ctx > 0 and channel == 'tags': ctx = max(1, ctx - TAGS_SCHEMA_TOKENS)
     if ctx <= 0 or ctx > SMALL_CTX: return Budget(tool_max=tool_max, note='full briefing')
     mx = min(tool_max, max(TOOL_MAX_FLOOR, (ctx//16)*4))
     return Budget(FRUGAL_DROP, False, mx,
@@ -491,8 +548,14 @@ def tool_channel(spec):
 
     `$RAMABANA_TOOL_CHANNEL` forces either, for any model, which is also how a machine whose MCP
     is broken in a way nothing here detects gets a working agent without waiting for a release.
+    It cannot force `native` on an agent harness, because that is a fact about the transport rather
+    than a policy: `CursorChat` and `ClaudeChat` render the conversation into a prompt and neither
+    opens a wire to put a schema on, so their tools have always travelled as tags whatever this
+    returned. For `claude` that is the whole point -- it is the way in that still has tools once an
+    enterprise policy has closed MCP to the `claude_code/` transport `remote` uses.
     """
     mid = str(getattr(spec, 'model_id', spec) or '')
+    if getattr(spec, 'runtime', '') in AGENTS: return 'tags'
     if (v := (env('TOOL_CHANNEL') or '').strip().lower()) in TOOL_CHANNELS: return v
     if mid in _forced_tags: return 'tags'
     return 'tags' if claude_tags(mid) else 'native'

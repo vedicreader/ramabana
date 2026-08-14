@@ -14,6 +14,7 @@ backend that writes to fd 2 exactly the way litert does.
 """
 import os
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -60,6 +61,53 @@ def test_the_window_arithmetic_holds_at_both_ends(monkeypatch):
     monkeypatch.setenv('LEELA_LOCAL_CTX', 'gemma-e4b:16384,gemma-12b:32000')
     assert local_ctx('gemma-e4b') == 16384
     assert local_ctx('gemma-e2b') == 16_384, 'a per-model override must not move the others'
+
+
+def _harness_chat(cls, hist, billed=260_915, sp='BRIEFING'):
+    """A real `rishi` harness chat with no CLI behind it.
+
+    `__new__` rather than the constructor: what is under test is the window read-out, and building
+    one properly wants a Claude Code login and a `cursor-agent` binary that CI has neither of.
+    """
+    chat = cls.__new__(cls)
+    chat.hist, chat.sp, chat.toolspecs, chat._ctx_tokens = list(hist), sp, [], billed
+    return chat
+
+
+def test_an_agent_harness_reports_occupancy_rather_than_what_the_turn_was_billed():
+    """The window read-out these transports give, which ramabana's arithmetic takes on trust.
+
+    Claude Code runs an internal multi-step loop and re-reads its cached prompt on every step, and
+    `norm_claude_usage` folds those cache reads into `total_tokens` -- the right number for cost and
+    the wrong one for the window. Measured on one real turn it over-stated a two-message
+    conversation by 6.6x, and it never came back down when history was replaced, so compaction
+    could not clear it and the turn refused itself with `input is too large` over a nearly empty
+    context. `cursor-agent` reports no usage at all, so the same reading sat at zero for the whole
+    session and compaction never fired once. Fixed in rishi 0.1.12, which is the floor; this is
+    here so a downgrade or a regression there fails loudly rather than as a stuck agent.
+    """
+    from rishi.claude import ClaudeChat
+    from rishi.cursor import CursorChat
+    claude = ModelSpec('claude/claude-sonnet-5', 'claude', 'claude-sonnet-5', 128_000)
+    cursor = ModelSpec('opus5', 'cursor', 'claude-opus-5', 128_000)
+
+    hist = [{'role': 'user', 'content': 'hello'}, {'role': 'assistant', 'content': 'hi'}]
+    for cls, spec in ((ClaudeChat, claude), (CursorChat, cursor)):
+        b = runtime.Backend(spec)
+        b.chat = _harness_chat(cls, hist)
+        assert b.used_tokens < 1000, cls.__name__          # what the window holds, not the bill
+        assert b.fits('one more question'), cls.__name__   # ...so the turn is not refused
+        assert not runtime.should_compact(b.used_tokens, spec.ctx), cls.__name__
+
+        # And a conversation that has genuinely filled the window is still refused.
+        full = runtime.Backend(spec)
+        full.chat = _harness_chat(cls, hist + [{'role': 'user', 'content': 'x' * 800_000}], billed=0)
+        assert full.used_tokens > spec.ctx and not full.fits('anything'), cls.__name__
+
+    # A hosted API bills one call per step, so its own reading is the context and is passed through.
+    remote = runtime.Backend(ModelSpec('gpt', 'remote', 'gpt-5.6', 200_000))
+    remote.chat = SimpleNamespace(token_count=42_000)
+    assert remote.used_tokens == 42_000
 
 
 # -- compaction ------------------------------------------------------------------------

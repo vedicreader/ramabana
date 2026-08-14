@@ -11,7 +11,7 @@ import pytest
 from ramabana import agent, core
 from ramabana.agent import Agent
 from ramabana.core import (DEFAULT_POLICY, LOCAL, MODELS, ONESHOT_JOBS, ModelSpec, Routing,
-                           available_models, register_model, resolve)
+                           available_models, prefix_typo, register_model, resolve)
 from ramabana.runtime import RishiBackend, make_backend
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 
@@ -70,13 +70,11 @@ def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runt
 
 def test_a_short_name_is_checked_for_its_runtime_like_a_long_one(hide_runtime):
     "Catalogue short names and `runtime/model` specs both refuse an uninstalled runtime."
-    pairs = (('qwen-4b', 'mlx/mlx-community/Qwen3.5-4B-MLX-4bit'),
-             ('gemma-e4b', 'litert/litert-community/gemma-4-E4B-it-litert-lm'))
-    for short, long in pairs:
-        runtime = MODELS[short][0]
-        if core.runtime_available(runtime):
-            assert resolve(short).runtime == runtime
-            hide_runtime(runtime)
+    pairs = (('qwen-4b', 'mlx', 'mlx/mlx-community/Qwen3.5-4B-MLX-4bit'),
+             ('gemma-e4b', 'litert', 'litert/litert-community/gemma-4-E4B-it-litert-lm'))
+    for short, runtime, long in pairs:
+        assert MODELS[short][0] == runtime   # the catalogue, never the venv
+        hide_runtime(runtime)                # absence is stated, so `rishi[all]` cannot mask it
         with pytest.raises(RuntimeError, match='unavailable'): resolve(short)
         with pytest.raises(RuntimeError, match='unavailable'): resolve(long)
 
@@ -88,6 +86,21 @@ def test_a_name_is_resolved_or_refused_but_never_guessed():
     assert (s.backend, s.model_id) == ('remote', 'somevendor/some-model') and s.ctx > 0
     for name in ('gemma-e2b', 'gemma-e4b', 'sonnet'): # and everything runs through the one adapter
         assert isinstance(make_backend(resolve(name)), RishiBackend)
+
+
+def test_a_runtime_misspelled_for_a_vendor_is_caught_where_it_was_typed():
+    """`claude-code/...` is the one slip a vendor fall-through cannot absorb.
+
+    It is not a vendor, so it was handed to `remote`, which asked for an `ANTHROPIC_API_KEY` that
+    nothing about the request needed -- a credentials error three layers from a hyphen. Only the
+    `-`/`_` class of slip is caught: every other prefix is still a real spec taken at face value,
+    which is what `openai/gpt-5.6` depends on.
+    """
+    with pytest.raises(KeyError, match='claude_code/claude-opus-5'):
+        resolve('claude-code/claude-opus-5')
+    assert prefix_typo('claude-code') == 'claude_code' and prefix_typo('claude_code') is None
+    assert prefix_typo('openai') is None and prefix_typo('my-vendor') is None
+    assert resolve('openai/gpt-5.6').backend == 'remote'      # a vendor still falls through
 
 
 # -- changing the turn model -----------------------------------------------------------

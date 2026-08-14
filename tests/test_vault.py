@@ -89,7 +89,15 @@ def test_a_failing_watch_is_recorded_rather_than_raised_and_the_rest_still_run(h
     host.watch('https://example.invalid', action='url', every='1d', start=time.time() - 1)
     host.watch('still fine', action='remind', every='1d', start=time.time() - 1)
     out = host.poll()
-    assert {r['action']: r['status'] for r in out['results']} == {'url': 'error', 'remind': 'ok'}
+    # vishalakshi 0.1.8 dropped `action` from a poll result: every entry is `kind: 'watch'` now, and
+    # which watch it was is only recoverable from what the successful one produced. Assert the
+    # contract that matters instead of the key that moved -- one watch failed with its reason kept,
+    # the other still ran and filed its note.
+    assert out['ran'] == 2 and sorted(r['status'] for r in out['results']) == ['error', 'ok']
+    bad = next(r for r in out['results'] if r['status'] == 'error')
+    good = next(r for r in out['results'] if r['status'] == 'ok')
+    assert 'name not resolved' in bad['error'] and bad['result'] is None
+    assert good['error'] is None and good['result']['title'] == 'still fine'
 
 
 def test_search_degrades_to_the_local_leg_when_the_vault_cannot_answer(host, tmp_path):

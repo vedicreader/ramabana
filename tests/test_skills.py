@@ -1,4 +1,7 @@
-"""Skills and extensions: discovery, override, briefing disclosure, and the shared command surface."""
+"""Skills and extensions: discovery, override, progressive disclosure, and the shared command surface.
+
+One test per contract, so a failure names the behaviour that broke rather than the file it lived in.
+"""
 import pytest
 
 from ramabana import agent, core, tools
@@ -6,8 +9,8 @@ from ramabana.testing import fake_agent
 from ramabana.tools import Registry, Skill, find, load
 
 
-def test_skills_discover_override_index_and_extensions(tmp_path):
-    "Installed pyskills appear; file SKILL.md wins; index carries names not bodies; extensions add tools/skills/commands without crashing."
+def test_skills_are_discovered_from_packages_and_overridden_by_files(tmp_path):
+    "Installed pyskills appear, a project's own `SKILL.md` wins, and a loose `.md` is not a skill."
     found = {s.name: s for s in tools.discover()}
     assert 'exhash' in found and found['exhash'].source == 'pyskill' and found['exhash'].text().strip()
     patterns = found['coding_patterns']
@@ -26,6 +29,9 @@ def test_skills_discover_override_index_and_extensions(tmp_path):
     meta, body = tools.frontmatter('---\nname: x\ndescription: "y z"\n---\nbody\n')
     assert meta == {'name': 'x', 'description': 'y z'} and body.strip() == 'body'
 
+
+def test_the_index_carries_names_not_bodies_and_find_refuses_to_guess():
+    "Progressive disclosure: one clipped line per skill, never a body, and no guessing on a prefix."
     ss = tools.discover()
     idx = tools.skill_index(ss)
     assert 'read_skill' in idx
@@ -36,6 +42,9 @@ def test_skills_discover_override_index_and_extensions(tmp_path):
     two = [Skill('editskill', 'pyskill'), Skill('editor', 'pyskill')]
     assert find(two, 'edit') is None and find(two, 'editskill').name == 'editskill'
 
+
+def test_an_extension_adds_a_tool_a_skill_and_a_command_and_never_crashes_the_session(tmp_path):
+    "Project extensions are off unless asked for, and everything they get wrong is reported, not raised."
     ext = tmp_path/'extensions'
     ext.mkdir(parents=True)
     (ext/'mine.py').write_text(
@@ -50,6 +59,7 @@ def test_skills_discover_override_index_and_extensions(tmp_path):
     assert [t.__name__ for t in reg.tools] == ['count_todos']
     assert reg.skills[0].name == 'house-style'
     assert reg.commands['hi'][0](None, 'you') == 'hello you'
+    assert 'mine.py: 1 tool(s), 1 skill(s), 1 command(s)' in reg.notes
 
     (ext/'mine.py').unlink()
     (ext/'bad.py').write_text('raise RuntimeError("boom")\n')

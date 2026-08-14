@@ -23,7 +23,12 @@ classifiers = [
 dependencies = [
     "exhash>=0.4.9",           # hash-verified line addressing: how the agent edits files safely
     "fastcore>=2.1.16",        # fenced_blocks / str_diff, behind the completion and diff surfaces
-    "rishi>=0.1.8",            # every model runtime, including MLX and hosted FastLLM
+    # Every model runtime, including MLX and hosted FastLLM. 0.1.11 is `rishi.claude`, which the
+    # `claude/...` models need: without it `runtime_available('claude')` answers False and they do
+    # not appear at all, which is a quietly smaller agent rather than a failure anyone would notice.
+    # 0.1.12 is `token_count` reporting what the window holds rather than what the turn was billed:
+    # under it a claude turn refused itself over an empty window and cursor never compacted at all.
+    "rishi>=0.1.12",
     "fossick>=0.1.11",          # first-party web research primitives and skill. 0.1.11 is the
                                 # RRF-fused search and the research that reports what it could
                                 # not read, which `LocalHost.research` returns the digest of
@@ -52,7 +57,7 @@ mcp = ["mcp>=1.2"]
 all = ["ramabana[cli,mcp,pyrepl]"]
 # Every notebook is executed by `nbdev-test`, including the cli and mcp pages, so the dev
 # environment needs both frontends' dependencies or CI cannot run the docs as tests.
-dev = ["ramabana[all]", "rishi[all]>=0.1.8", "nbdev>=3.3", "notebook>=7.6.0", "pytest>=8.0.0"]
+dev = ["ramabana[all]", "rishi[all]>=0.1.12", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0"]
 # pyrepl is the terminal app plus a kernel, so it needs the cli extra as well as its own.
 pyrepl = [
     "ramabana[cli]",
@@ -89,12 +94,6 @@ include = ["/ramabana", "/nbs", "/tests", "/CHANGELOG.md", "/README.md", "/pypro
 path = "ramabana/__init__.py"
 
 [dependency-groups]
-dev = [
-    "nbdev>=3.3.11",
-    "notebook>=7.6.1",
-    "rishi[all]>=0.1.8",
-    "ramabana[all]",
-    "rishi[all]>=0.1.8",
-    "pytest>=8.0.0",
-    "dhrishti>=0.1.2",
-]
+# One definition, in the extra above. This is the uv entry point onto it, so `uv sync --group dev`
+# and `pip install ramabana[dev]` cannot drift apart.
+dev = ["ramabana[dev]"]

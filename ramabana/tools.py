@@ -479,7 +479,8 @@ def _fuse(legs, limit):
             by_key.setdefault(key, h)
             rows.append({'_fid': key})
         lists.append(rows)
-    fused = rrf_all(lists, id_key='_fid', limit=limit)
+    try: fused = rrf_all(lists, id_key='_fid', limit=limit)
+    except Exception: return legs[0][:limit]   # a bad fusion degrades the ranking, never `search`
     return [by_key[r['_fid']] for r in fused if r.get('_fid') in by_key]
 
 def ld_json(html):
@@ -1979,7 +1980,7 @@ def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, sk
         # the tool wrappers are the hard stop: native engines own their own tool loop
         sub = backend.spawn(sp=sub_sp(sp, skills), tools=read_only(tools, max_calls=max_steps * 4))
         if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
-        return sub.send(question)
+        return _delegate_result(sub.send(question))
     except Exception as e:
         return err('delegation failed', e)
     finally:
@@ -1992,7 +1993,7 @@ def delegate_many(backend, questions, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STE
     "Ask several questions; fan out with `fastcore.parallel` on cloud backends, serial on local."
     qs = L(questions)
     if not qs: return L()
-    run = lambda q: delegate(backend, q, tools, sp, max_steps, skills)
+    def run(q): return delegate(backend, q, tools, sp, max_steps, skills)
     if len(qs) == 1 or getattr(backend.spec, 'local', False) or n_workers < 2:
         return L(run(q) for q in qs)
     return parallel(run, qs, n_workers=min(n_workers, len(qs)), threadpool=True)
@@ -2011,7 +2012,7 @@ def named_skills(get_skills, names):
                  f"{', '.join(s.name for s in every) or 'none'}]")
 
 
-def subagent_tools(get_backend, get_tools, get_skills=None):
+def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=None):
     """The `delegate` tool, bound to whatever backend routing says sub-agents run on.
 
     Every argument is a callable, so a model switch mid-session is picked up. `get_tools` is the
@@ -2039,7 +2040,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None):
         sk, note = named_skills(get_skills, skills)
         return clip(delegate(b, question, get_tools(), skills=sk), MAX_TOOL_CHARS) + note
 
-    def delegate_parallel(questions: str, skills: str = '') -> str:
+    def delegate_parallel(questions: str, skills: str = '', cloud_model: str = '') -> str:
         """Hand several independent questions to sub-agents at once, and get back every answer.
 
         `questions` is a JSON array of strings, e.g.
@@ -2054,11 +2055,12 @@ def subagent_tools(get_backend, get_tools, get_skills=None):
         them. Use it when the questions share a subject; when they do not, ask them in separate
         `delegate_search` calls so each gets only what its own task needs.
 
-        Every question must be self-contained: a sub-agent cannot see this conversation or
-        the other questions.
+        `cloud_model` optionally selects one configured remote model for this fan-out; it does not
+        change the session's turn or default sub-agent model. Every question must be self-contained:
+        a sub-agent cannot see this conversation or the other questions.
         """
-        b = get_backend()
-        if b is None: return 'no model is available to delegate to'
+        b = get_cloud_backend(cloud_model) if cloud_model and get_cloud_backend is not None else get_backend()
+        if b is None: return f"no model is available to delegate to{f' ({cloud_model})' if cloud_model else ''}"
         try:
             qs = json.loads(questions) if isinstance(questions, str) else list(questions)
             if not isinstance(qs, list) or not all(isinstance(q, str) for q in qs):
@@ -2071,3 +2073,14 @@ def subagent_tools(get_backend, get_tools, get_skills=None):
         return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2) + note
 
     return [delegate_search, delegate_parallel]
+
+# %% ../nbs/02_tools.ipynb #9424aadf
+def _delegate_result(text):
+    "Reject degenerate delegated prose before it can be presented as research."
+    text = str(text or '').strip()
+    words = re.findall(r"[A-Za-z0-9_+.-]+", text.lower())
+    if not text: return 'Delegated inspection failed: the sub-agent returned no answer.'
+    if len(words) >= 12 and max(words.count(w) for w in set(words)) > max(8, len(words) // 4):
+        return 'Delegated inspection failed: repetitive output was discarded as unreliable.'
+    return text
+

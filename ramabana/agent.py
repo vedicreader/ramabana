@@ -86,16 +86,17 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS', 'DENIED', 'DFLT_TIMEOUT',
-           'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'TODO_STATUSES', 'TODO_MARK',
-           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'summarise', 'Act',
-           'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'Approvals', 'always', 'never', 'policy', 'applied',
-           'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context', 'work_rules',
-           'system_prompt', 'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent', 'Completer']
+           'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT',
+           'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS',
+           'CTX_BEFORE', 'CTX_AFTER', 'summarise', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
+           'Approvals', 'always', 'never', 'policy', 'applied', 'apply', 'note', 'tool_plan', 'request_text',
+           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items',
+           'plan_tools', 'Agent', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, functools, json, re, threading, time, uuid
 from dataclasses import dataclass, field
-from .core import agent_err, available_models, budget_for, JOBS, Routing, model_note
+from .core import agent_err, available_models, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, make_backend, Compactor, compact_notebook_context, notices_block
 from .tools import (MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
                             find, load, skill_index, subagent_tools, tools_for)
@@ -552,7 +553,7 @@ def apply(): return True
 def note(): return 'provided by rishi.remote'
 
 # %% ../nbs/03_agent.ipynb #6b808b15
-INLINE_SKILLS = ('exhash',)
+INLINE_SKILLS = ('exhash', 'coding_patterns')
 
 
 def tool_plan(prompt):
@@ -673,7 +674,18 @@ RULES = (
            '  read it and change the approach, do not retry the same call.'),
     (None, 'Write, edit and run only inside the folders above. Anything else is refused.'),
     (None, 'Be concise. Report what you did and what it cost, not what you intend to do.'),
+    (None, 'Answer in plain sentences. Headings, bullet lists and bold belong in a document the\n'
+           '  user asked for, not in a reply, and a code fence holds code rather than prose.\n'
+           '  Formatting a two-line answer as a report is the most common way this briefing is ignored.'),
 )
+
+
+#: Re-asserted after the tag block on the tags channel. Rishi appends the tool protocol *after*
+#: the briefing there, so the last thing those models read is tool punctuation rather than the
+#: rules. Riding out with the turn is the only way the rules get to be last instead.
+OUTPUT_CONTRACT = ('\n\n<output-contract>Reply in plain sentences: no headings, no bullet list, no '
+                   'bold, no code fence around prose. Lead with the answer and stop. This outranks any '
+                   'formatting habit carried in from another harness.</output-contract>')
 
 
 def work_rules(names=()):
@@ -710,6 +722,22 @@ How to work:
         if (s := find(skills, name)): sp += f'\n\n## {s.name}\n\n{s.text()}'
     sp += project_context(host)
     return sp + (f'\n\n{extra}' if extra else '')
+
+# %% ../nbs/03_agent.ipynb #8eff0a57
+CLAUDE_NOTES = """## Working as Claude
+
+These apply on top of the rules above, and outrank them where they disagree.
+
+- The environment and the repository history are the user's. Do not install packages, change environment configuration, or run any git command -- read-only ones included -- unless the user approved that exact command in this conversation. Where git would answer something, name the command and ask.
+- Approval does not travel. Confirm before an action that is hard to reverse or that is visible outside this machine, and look at the target before you delete or overwrite it. If what you find contradicts how it was described, say that instead of proceeding.
+- There is no momentum. Never extend agreed work into new decisions, and when in doubt whether something was agreed, it was not. Approval for a downstream change does not cover an upstream one.
+- A question outranks the work in flight. Answer it in prose and end the turn. A question is never approval to continue and never an occasion to change code.
+- Correct the record. When an earlier claim of yours turns out to be wrong, say so plainly rather than moving quietly past it.
+- Everything the user needs is in the final text of the turn, with no tool call after it. Text between tool calls may never reach them, so restate anything important that appeared only mid-run.
+- Lead with the outcome when the turn concludes: the first sentence says what happened or what you found. Keep the plan-first opener for a turn that will carry on working.
+- No metadiscourse. Do not advertise the content ("the key point is", "what's interesting is"), and never end on a caveat or a note. A risk that could change the decision belongs in the body, beside the reasoning it affects.
+- Never hard-wrap prose: one paragraph is one line, and the display wraps it. To show markdown the user can copy, use a four-space indented block rather than a fence.
+"""
 
 # %% ../nbs/03_agent.ipynb #8f32832a
 TODO_STATUSES = ('pending', 'active', 'done', 'cancelled')
@@ -978,8 +1006,6 @@ class Agent:
         if self._skills is None:
             try:
                 self._skills = discover(self.host.roots, self.cfg, extra=self.registry.skills)
-                if self.instruction_style == 'ramabana':
-                    self._skills = [s for s in self._skills if s.name != 'coding_patterns']
             except Exception as e:
                 self._skills = []
                 self.note = f'skills unavailable ({agent_err(e)})'
@@ -998,8 +1024,9 @@ class Agent:
     @property
     def subagent_budget(self):
         "What the sub-agent model can afford; usually not the turn model's."
-        try: return budget_for(self.routing.spec('subagent'), self.tool_max_len)
+        try: spec = self.routing.spec('subagent')
         except Exception: return self.budget
+        return budget_for(spec, self.tool_max_len, tool_channel(spec))
 
     def _sub_plain(self):
         "The tool list a sub-agent gets, sized to the model sub-agents run on."
@@ -1011,11 +1038,17 @@ class Agent:
         return self._subtools
 
     @property
+    def turn_spec(self):
+        "The turn model's spec, or `None` when the name does not resolve to one."
+        try: return self.routing.spec('turn')
+        except Exception: return None
+
+    @property
     def budget(self):
         "What the turn model can afford to be told -- see `core.budget_for`."
         try: spec = self.routing.spec('turn')
         except Exception: return budget_for(None, self.tool_max_len)   # an unresolved name costs no tools
-        return budget_for(spec, self.tool_max_len)
+        return budget_for(spec, self.tool_max_len, tool_channel(spec))
 
     @property
     def tools(self):
@@ -1024,7 +1057,7 @@ class Agent:
             extra = list(self.registry.tools)
             if self.subagents:
                 extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
-                                        lambda: self.skills)
+                                        lambda: self.skills, self._cloud_backend_or_none)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
             b = self.budget
             plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop)
@@ -1296,6 +1329,7 @@ class Agent:
         preflights += [(name, query or request) for name, query in requested if name in eager]
         by_name = {getattr(t, '__name__', ''): t for t in self.tools}
         outgoing = _append(outgoing, f'\n\n<tool-plan route="{route}">{plan}</tool-plan>')
+        if tool_channel(self.turn_spec) == 'tags': outgoing = _append(outgoing, OUTPUT_CONTRACT)
         for name, query in dict.fromkeys(preflights):
             tool = by_name.get(name)
             if tool is None: continue
@@ -1776,3 +1810,85 @@ class Completer:
         out = _clean(text, code[:pos], self.max_lines)
         self.note = f'{len(out.splitlines())} line(s) from {b.spec.name}' if out else 'no suggestion'
         return out
+
+# %% ../nbs/03_agent.ipynb #0358c91a
+def _cloud_backend_or_none(self, model):
+    "A started remote backend for one delegated fan-out, without changing routing."
+    try:
+        spec = self.routing._resolve(str(model))
+        if spec.local: return None
+        key = (spec.backend, spec.model_id)
+        if key not in self._backends: self._backends[key] = make_backend(spec)
+        backend = self._backends[key]
+        return backend if backend.start() is not None else None
+    except Exception: return None
+
+
+Agent._cloud_backend_or_none = _cloud_backend_or_none
+
+
+# %% ../nbs/03_agent.ipynb #46f071e0
+_TOOL_MIN, _TOOL_MAX = 20, 400
+_STEP_MIN, _STEP_MAX = 8, 80
+
+
+def _limit(value, lo, hi, default):
+    if str(value or '').lower() == 'auto': return 'auto'
+    try: return max(lo, min(hi, int(value)))
+    except (TypeError, ValueError): return default
+
+
+def _auto_limits(prompt, continued=False):
+    text = request_text(prompt).lower()
+    score = int(continued) * 2 + sum(word in text for word in (
+        'implement', 'build', 'fix', 'feature', 'test', 'verify', 'refactor', 'migration', 'continue'))
+    if score >= 5: return 240, 60
+    if score >= 2: return 160, 40
+    if score: return 80, 20
+    return 24, 8
+
+
+_agent_init_limits = Agent.__init__
+def _init_limits(self, *args, max_tool_calls='auto', max_steps='auto', **kwargs):
+    _agent_init_limits(self, *args, **kwargs)
+    self.tool_budget = _limit(max_tool_calls, _TOOL_MIN, _TOOL_MAX, 'auto')
+    self.step_budget = _limit(max_steps, _STEP_MIN, _STEP_MAX, 'auto')
+    self.max_tool_calls, self.max_steps = 80, 20
+Agent.__init__ = _init_limits
+
+
+_agent_prepare_limits = Agent._prepare
+def _prepare_limits(self, prompt):
+    continued = self._tool_calls_turn >= self.max_tool_calls
+    auto_tools, auto_steps = _auto_limits(prompt, continued)
+    self.max_tool_calls = auto_tools if self.tool_budget == 'auto' else self.tool_budget
+    self.max_steps = auto_steps if self.step_budget == 'auto' else self.step_budget
+    backend = self._be('turn')
+    if hasattr(backend, 'max_steps'): backend.max_steps = self.max_steps
+    return _agent_prepare_limits(self, prompt)
+Agent._prepare = _prepare_limits
+
+
+_agent_command_limits = Agent.command
+def _command_limits(self, line):
+    raw = (line or '').strip().lstrip('/')
+    name, _, arg = raw.partition(' ')
+    arg = arg.strip()
+    if name in ('tool-budget', 'steps'):
+        attr, lo, hi = ('tool_budget', _TOOL_MIN, _TOOL_MAX) if name == 'tool-budget' else ('step_budget', _STEP_MIN, _STEP_MAX)
+        if arg:
+            value = _limit(arg, lo, hi, getattr(self, attr))
+            if value == getattr(self, attr) and str(arg).lower() != 'auto' and not str(arg).isdigit():
+                return f'usage: /{name} [auto|{lo}..{hi}]'
+            setattr(self, attr, value)
+        value = getattr(self, attr)
+        active = self.max_tool_calls if name == 'tool-budget' else self.max_steps
+        return f'{name}: {value} (last turn: {active})'
+    return _agent_command_limits(self, line)
+Agent.command = _command_limits
+
+
+_agent_commands_limits = Agent.commands
+def _commands_limits(self): return sorted(set(_agent_commands_limits(self)) | {'tool-budget', 'steps'})
+Agent.commands = _commands_limits
+

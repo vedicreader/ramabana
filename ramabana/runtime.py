@@ -127,7 +127,7 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
 import copy, os, re, sys, threading
 from contextlib import contextmanager
 from dataclasses import dataclass
-from .core import agent_err, env, tool_channel
+from .core import agent_err, env, force_tags, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # tail kept per call; an engine that logs a lot must not eat memory
@@ -764,21 +764,31 @@ class Backend:
     def send(self,msg,**kw):
         if self.start() is None:return self.note
         with self.lock:
-            try:
-                out=self._send(msg,**kw); self.use=self._usage()
-                self._check_reply(out)
-                return out or self._empty()
-            except Exception as e:return self._failed('failed',e)
+            for again in (True,False):
+                try:
+                    out=self._send(msg,**kw); self.use=self._usage()
+                    self._check_reply(out)
+                    return out or self._empty()
+                except Exception as e:
+                    if not (again and self._recover(e)):return self._failed('failed',e)
     def stream(self,msg,**kw):
         if self.start() is None:yield self.note; return
         with self.lock:
-            n,buf=0,[]
-            try:
-                for c in self._stream(msg,**kw): n+=len(c or ''); buf.append(c or ''); yield c
-                self.use=self._usage()
-                self._check_reply(''.join(buf))
-                if not n:yield self._empty(True)
-            except Exception as e:yield f'\n\n{self._failed("failed",e)}'
+            for again in (True,False):
+                n,buf=0,[]
+                try:
+                    for c in self._stream(msg,**kw): n+=len(c or ''); buf.append(c or ''); yield c
+                    self.use=self._usage()
+                    self._check_reply(''.join(buf))
+                    if not n:yield self._empty(True)
+                    return
+                except Exception as e:
+                    # only before anything reached the screen: a retry cannot unsay a chunk
+                    if not (again and not n and self._recover(e)):
+                        yield f'\n\n{self._failed("failed",e)}'; return
+    def _recover(self,e):
+        "Fix what made `e` happen, if this backend knows how, so one retry is worth taking. No by default."
+        return False
     def _check_reply(self,text):
         "Look at a finished reply for a failure the transport could not raise. Nothing by default."
         return text
@@ -823,6 +833,13 @@ class Backend:
         except Exception:return max(1,(len(text or '')+3)//4)
     @property
     def used_tokens(self):
+        """What the window holds now, which every engine reports for itself.
+
+        An agent harness used to report billing volume instead: Claude Code re-reads its cached
+        prompt on every internal step and folds those cache reads into `total_tokens`, which
+        over-stated a two-message conversation by 6.6x, while cursor reported nothing at all and
+        sat at zero. Both are measured at the source from rishi 0.1.12, which is the floor.
+        """
         try:return self.chat.token_count if self.chat else 0
         except Exception:return self.use.total
     @property
@@ -911,6 +928,30 @@ class RishiBackend(Backend):
         if self.spec.model_id.startswith('claude_code/'): return answer_only(''.join(self._stream(msg, **kw)))
         from rishi.core import resp_text
         return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
+    #: What a transport says when it will not carry the tool schemas. An enterprise policy is the
+    #: reason; the wording is the SDK's, and it arrives under several of these at once.
+    MCP_REFUSED=('mcp','strict_mcp_config','allowed_tools','disallowed','not permitted','policy')
+    def _recover(self,e):
+        """Learn that this model's wire tool channel is closed, so later turns stop trying it.
+
+        A managed configuration at one of the three documented paths is detected before the first
+        request, by `claude_tags`. One at a path nobody documented, a plugin that failed to
+        register, a version that dropped the field -- those are only ever learned from the failure
+        they cause, and learning it here is what keeps the cost at one turn instead of every turn.
+
+        The chat is rebuilt rather than reconfigured: `_runtime_kw` reads the channel when the
+        chat is constructed, so a live one goes on sending schemas that are already being refused.
+        """
+        if not self.tools or tool_channel(self.spec)=='tags':return False
+        if not any(s in f'{e}'.lower() for s in self.MCP_REFUSED):return False
+        force_tags(self.spec.model_id,agent_err(e))
+        self.problem(f'{self.spec.name}: the wire refused the tool schemas, so they now travel in '
+                     f'the system prompt instead ({agent_err(e)})')
+        hist=self.hist
+        self.close(); self.retry()
+        if self.chat is None:return False
+        if hist:self.restore_hist(hist)
+        return True
     def _check_reply(self,text):
         """Report a tag call that came back as prose, which is what the tags channel costs.
 

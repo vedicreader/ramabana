@@ -149,6 +149,7 @@ scripted.calls, scripted.changes(), repr(scripted.use)
 ramabana --root . --model gpt-mini      # a transcript of blocks, a status bar, one line to type in
 ramabana --python --root .              # the same program, with Python as a mode inside it
 ramabana-mcp --root .                   # the same tools, served to another agent
+ramabana --approve auto --prompt "$TASK"  # no terminal at all: the answer, on stdout
 ```
 
 In the terminal app ([cli](05_cli.ipynb)): tool calls are foldable blocks rather than lines, writes
@@ -290,6 +291,24 @@ agent.summarise(answer)
 ```
 
     "The compactor's reply headroom of 16,384 tokens (valued at $16.38) is sufficient to purchase 2 packs of Arnott's Tim Tam Original 200g biscuits at $6.00 each."
+
+The same task without the terminal, for a pipe – the answer on stdout and nothing else:
+
+``` sh
+$ ramabana --model gpt-mini --approve auto --prompt "$TASK"
+1. **Constant:** `RESERVE`, set to **16,384 tokens** -- headroom for the model's reply and tool results.
+2. **Coles price:** Arnott's Tim Tam Original 200g is **A$6.00**.
+
+**`RESERVE` (16,384 tokens) × A$0.001 = A$16.384 ÷ A$6.00 = 2.7307 packs (2 whole packs).**
+```
+
+Running the turn on the local model is one flag, and the reply is the reply – a template-primed
+reasoning model’s deliberation never reaches the transcript:
+
+``` sh
+$ ramabana --model ornith-9b --prompt 'Reply with exactly the word: pong'
+pong
+```
 
 ## Develop
 
