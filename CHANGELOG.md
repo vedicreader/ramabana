@@ -1,4 +1,6 @@
 # Changelog
+make system prompts tighter and show one line tool calls
+
 kosha sync made faster
 
 Shri Rama jayam. Ramabana relase
