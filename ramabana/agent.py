@@ -96,10 +96,11 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNA
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, functools, json, re, threading, time, uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from fastcore.basics import patch
 from .core import agent_err, available_models, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, make_backend, Compactor, compact_notebook_context, notices_block
-from .tools import (MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
+from .tools import (mime_for, MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
                             find, load, skill_index, subagent_tools, tools_for)
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -1060,7 +1061,7 @@ class Agent:
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
             b = self.budget
             plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop,
-                              get_spec=self.spec_or_none)
+                              get_spec=self.spec_or_none, on_media=self._drew)
             self._plain = plain
             self._tools = [self._record(t) for t in plain]
         return self._tools
@@ -1298,6 +1299,7 @@ class Agent:
     def _prepare(self, prompt):
         "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
         self.before.clear()                    # `changes()` reports this turn, not the session
+        self._drawn = []                       # pictures this turn's tools wrote, for the frontend
         self._walked = False
         self.turn_use = Usage()                # a failed turn cannot inherit the previous turn's cost
         self._tool_calls_turn = 0               # applies even when a native engine owns the loop
@@ -1696,14 +1698,26 @@ class Agent:
 
 
 # %% ../nbs/03_agent.ipynb #15c8df1f
+@patch
+def _drew(self: Agent, paths):
+    "Record pictures a tool wrote this turn, so a frontend can show them."
+    self._drawn = getattr(self, '_drawn', []) + list(paths)
+
 @patch(as_prop=True)
 def last_media(self: Agent):
-    "Media the model generated on the newest turn, as `{'mime','data'}` dicts."
+    """Pictures from the newest turn, as `{'mime','data'}` dicts.
+
+    Two routes produce one: the model returns the image on its response, or a tool writes a file
+    and returns its path. A frontend cannot draw a filename, so both arrive here."""
     be = self._be('turn')
     m = next((m for m in reversed(list(be.hist if be else []))
               if isinstance(m, dict) and m.get('role') == 'assistant'), None)
-    return list((m or {}).get('media') or [])
-
+    out = list((m or {}).get('media') or [])
+    for p in getattr(self, '_drawn', []):
+        p = Path(p)
+        try: out.append({'mime': mime_for(p), 'data': p.read_bytes()})
+        except OSError: pass
+    return out
 
 # %% ../nbs/03_agent.ipynb #821de023
 def _named(f, a, kw=None):

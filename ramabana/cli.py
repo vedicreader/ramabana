@@ -33,7 +33,7 @@ from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
 from .core import accepts, agent_err, env
-from .tools import GEN_EXT, WRITE_TOOLS, LocalHost, media_dir, save_media
+from .tools import WRITE_TOOLS, LocalHost, media_dir, save_media
 from .agent import Agent, Approvals, answer_md
 from datetime import datetime
 from . import __version__
@@ -321,7 +321,12 @@ MAX_IMG_COLS = 60
 CELL_ASPECT = 2.1
 
 def png_size(path):
-    "`(width, height)` in pixels from a PNG's IHDR, or `None`."
+    """`(width, height)` in pixels from a PNG's IHDR, or `None`.
+
+    `fastcore.xtras.image_size` is the obvious home for this and cannot be used: its `_png_size`
+    and `_gif_size` both read a `head` that is never bound, so every PNG raises `NameError` and
+    only the JPEG branch works.
+    """
     try: b = Path(path).read_bytes()[:24]
     except OSError: return None
     if len(b) < 24 or b[:8] != b'\x89PNG\r\n\x1a\n': return None

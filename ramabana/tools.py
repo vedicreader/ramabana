@@ -7,20 +7,21 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 # %% auto #0
 __all__ = ['MAX_GREP_HITS', 'MAX_API', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'MAX_FILE',
            'MAX_VARS', 'LD_CHARS', 'GROUP', 'EXTRA_MODULES', 'MAX_SKILL_CHARS', 'SKILL_DESC_MAX', 'EVENTS',
-           'MAX_TOOL_CHARS', 'MAX_HITS', 'WRITE_TOOLS', 'ERR', 'GEN_EXT', 'RESPONSES_API', 'IMAGE_API', 'IMAGE_MODEL',
+           'MAX_TOOL_CHARS', 'MAX_HITS', 'WRITE_TOOLS', 'ERR', 'RESPONSES_API', 'IMAGE_API', 'IMAGE_MODEL',
            'IMAGE_SIZES', 'API_VENDORS', 'SUB_MAX_STEPS', 'SUB_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied',
            'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs',
            'load', 'err', 'failed', 'clip', 'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools',
-           'media_dir', 'save_media', 'image_available', 'api_model', 'draws_itself', 'image_tools', 'web_tools',
-           'memory_tools', 'api_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools', 'tools_for',
-           'read_only', 'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
+           'media_dir', 'mime_for', 'save_media', 'image_available', 'api_model', 'draws_itself', 'image_tools',
+           'web_tools', 'memory_tools', 'api_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools',
+           'tools_for', 'read_only', 'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
-import ast, functools, json, os, re, runpy, shutil, threading, uuid
+import ast, functools, json, mimetypes, os, re, runpy, shutil, threading, uuid
 from base64 import b64decode
 from dataclasses import dataclass, field
 from pathlib import Path
 from fastcore.basics import AttrDict, ifnone
+from fastcore.xtras import detect_mime
 from fastcore.docments import frontmatter
 from fastcore.foundation import L
 from fastcore.parallel import parallel, startthread
@@ -1454,13 +1455,16 @@ def media_dir(session=''):
     d.mkdir(parents=True, exist_ok=True)
     return d
 
-#: Extension for each mime a model generates; anything absent is saved under its own subtype.
-GEN_EXT = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif',
-           'video/mp4': '.mp4', 'video/webm': '.webm'}
+def mime_for(path):
+    "The mime a saved picture is: what its bytes say, else what its name does."
+    try: m = detect_mime(Path(path).read_bytes()[:64])
+    except OSError: m = None
+    return m or mimetypes.guess_type(str(path))[0] or 'image/png'
 
 def save_media(m, session='', stem='image'):
     "One `{'mime','data'}` from `Resp.media` written under the session, as a `Path`."
-    ext = GEN_EXT.get(m.get('mime', ''), '.' + str(m.get('mime', 'bin')).split('/')[-1])
+    mime = m.get('mime') or 'image/png'
+    ext = mimetypes.guess_extension(mime) or '.' + mime.split('/')[-1]
     d = media_dir(session)
     n = 1 + len(list(d.glob(f'{stem}-*')))
     p = d / f'{stem}-{n}{ext}'
@@ -1521,7 +1525,7 @@ def _from_responses(raw):
     from rishi.remote import gen_media
     return gen_media(raw)
 
-def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None):
+def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=None):
     "Drawing: by the turn's own model where it can, and by the images endpoint where it cannot."
 
     def generate_image(prompt: str, size: str = '1024x1024', n: int = 1) -> str:
@@ -1542,6 +1546,9 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None):
         if not media: return err('the model returned no image', 'the reply carried no picture')
         try: out = [save_media(m, session, 'generated') for m in media]
         except Exception as e: return err('could not save the image', e)
+        # the model is told the path; `on_media` is what puts the picture on the user's screen,
+        # since a tool result is text and a frontend cannot draw a filename
+        if on_media: on_media(out)
         return clip('\n'.join(str(p) for p in out))
 
     return [generate_image]
@@ -1885,7 +1892,7 @@ def skill_tools(host, get_skills, mx=MAX_TOOL_CHARS):
     return [read_skill, create_skill]
 
 # %% ../nbs/02_tools.ipynb #ddf75013
-def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None):
+def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None):
     """Every tool this host can actually support, plus whatever extensions registered.
 
     Groups are dropped whole, answered by `Host.capabilities` where the host declares it and by
@@ -1900,7 +1907,7 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_s
     if 'notebook' not in drop and _has(host, 'notebook', lambda: host.nb_cells('.')): tools += notebook_tools(host, mx)
     if 'web' not in drop and _has(host, 'web', lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
     # credentialled, never probed: a key is either there or it is not
-    if 'image' not in drop and image_available(): tools += image_tools(host, mx, get_spec=get_spec)
+    if 'image' not in drop and image_available(): tools += image_tools(host, mx, get_spec=get_spec, on_media=on_media)
     if 'memory' not in drop and _has(host, 'memory', lambda: host.memory_tree('')): tools += memory_tools(host, mx)
     if 'watch' not in drop and _has(host, 'watch', lambda: host.watches()): tools += watch_tools(host, mx)
     # declared, never probed: `api_ops` raises for a missing spec, not a missing capability

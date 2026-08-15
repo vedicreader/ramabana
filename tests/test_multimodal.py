@@ -399,3 +399,57 @@ def test_the_transmit_is_written_once_and_never_through_the_transcript(tmp_path,
     assert 'iVBOR' in blob                          # base64 payload present...
     body = blob.split('\x1b\\')[-1]
     assert 'iVBOR' not in body                      # ...but only before the APC terminator
+
+
+# -- a picture a tool wrote still has to reach the screen -------------------------------
+
+from ramabana.testing import fake_agent
+from ramabana.tools import mime_for
+
+
+def test_a_picture_a_tool_wrote_reaches_the_frontend(tmp_path, monkeypatch, caps):
+    """A tool result is text. The model is handed a path, and a frontend cannot draw a
+    filename, so the bytes have to arrive by another route or nothing is ever shown."""
+    from base64 import b64encode
+    png = _png(64, 64)
+    caps(_Caps(('text', 'image'), ('text',)))
+    monkeypatch.setenv('OPENAI_API_KEY', 'k')
+    monkeypatch.setattr('ramabana.tools._post_image',
+                        lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
+    agent, _ = fake_agent(replies=['done'])
+    agent._drawn = []
+    gi = image_tools(None, session=str(tmp_path), get_spec=lambda: None,
+                     on_media=agent._drew)[0]
+    out = gi('a bottle')
+    assert not failed(out)
+    assert [m['data'] for m in agent.last_media] == [png]
+    assert agent.last_media[0]['mime'] == 'image/png'
+
+
+def test_a_turn_does_not_inherit_the_previous_turns_pictures():
+    agent, _ = fake_agent(replies=['one', 'two'])
+    agent._drew(['/nonexistent/a.png'])
+    agent.ask('draw something')
+    assert agent.last_media == []
+
+
+def test_a_recorded_file_that_has_gone_away_is_skipped_not_raised(tmp_path):
+    agent, _ = fake_agent(replies=['done'])
+    agent._drawn = [tmp_path/'vanished.png']
+    assert agent.last_media == []
+
+
+def test_a_saved_picture_is_named_by_its_mime_and_read_back_by_its_bytes(tmp_path):
+    "The extension comes from the mime, and the mime comes back from the bytes."
+    png = _png(8, 8)
+    p = save_media({'mime': 'image/png', 'data': png}, tmp_path)
+    assert p.suffix == '.png' and mime_for(p) == 'image/png'
+    assert save_media({'mime': 'video/mp4', 'data': b'x'}, tmp_path).suffix == '.mp4'
+    assert save_media({'mime': 'image/webp', 'data': b'x'}, tmp_path).suffix == '.webp'
+
+
+def test_the_mime_of_a_file_with_no_signature_falls_back_to_its_name(tmp_path):
+    p = tmp_path/'a.webp'
+    p.write_bytes(b'RIFF\x00\x00\x00\x00WEBPVP8 ')
+    assert mime_for(p) == 'image/webp'
+    assert mime_for(tmp_path/'missing.png') == 'image/png'
