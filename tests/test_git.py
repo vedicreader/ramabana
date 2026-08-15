@@ -162,8 +162,8 @@ def test_the_gateway_inherits_this_environment_until_a_host_says_otherwise(repo)
     assert g.env(repo) is None
     g.env_for = lambda cwd: {'PATH': '/nowhere'}
     assert g.env(repo) == {'PATH': '/nowhere'}
+    g = GitGateway()
     g.env_for = lambda cwd: (_ for _ in ()).throw(RuntimeError('no venv here'))
-    g._env_cache.clear()
     assert g.env(repo) is None, 'a host that cannot answer must not break git'
 
 
@@ -178,9 +178,9 @@ def test_the_tools_answer_with_the_repository_state_and_refuse_what_is_outside_i
     status = _json.loads(tools['git_status']())
     assert status['branch'] == 'main' and status['clean'] and status['result'] == []
     (repo/'app.py').write_text('value = 2\n')
-    diff = _json.loads(tools['git_diff']())['result']
+    diff = _json.loads(tools['git_diff']())          # a read answers as itself, not as status
     assert '-value = 1' in diff and '+value = 2' in diff
-    assert tools['git_preview']('sideways', 'main').startswith('ERROR:')
+    assert tools['git_merge_preview']('nowhere').startswith('ERROR:')
     assert tools['git_remote']('teleport').startswith('ERROR:')
 
 def test_a_previewed_merge_and_the_merge_agree_about_the_conflict(diverged):
@@ -191,12 +191,12 @@ def test_a_previewed_merge_and_the_merge_agree_about_the_conflict(diverged):
         roots = [str(diverged)]
         def check(self, p, must_exist=False): return Path(str(p))
     tools = {t.__name__: t for t in git_tools(Host())}
-    preview = _json.loads(tools['git_preview']('merge', 'feature'))['result']
+    preview = _json.loads(tools['git_merge_preview']('feature'))
     assert preview['relation'] == 'diverged' and preview['conflicts'] == ['app.py']
-    assert 'review' not in preview, 'a per-file review is not a tool result'
+    assert 'review' not in preview and preview['changed']['files'] == 1, 'the review is summarised, not sent'
     merged = _json.loads(tools['git_merge']('feature'))
     assert merged['result']['conflicted'] == ['app.py'] and merged['operation']['active'] == 'merge'
-    assert _json.loads(tools['git_conflicts']())['result']['summary']['manual'] == 1
+    assert _json.loads(tools['git_conflicts']())['summary']['manual'] == 1
     assert _json.loads(tools['git_resolve']('app.py', 'ours'))['result']['conflicted'] == []
     assert _json.loads(tools['git_undo']())['result']['op'] == 'merge'
 

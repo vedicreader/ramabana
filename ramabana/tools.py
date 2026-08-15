@@ -1047,8 +1047,8 @@ MAX_HITS = 20
 WRITE_TOOLS = frozenset({'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell',
                          'run_python', 'run_shell', 'memory_forget', 'create_skill',
                          'cancel_watch', 'cart_add', 'cart_remove',
-                         'git_commit', 'git_merge', 'git_rebase', 'git_resolve',
-                         'git_operation', 'git_remote', 'git_undo'})
+                         'git_commit', 'git_checkout', 'git_sync', 'git_merge', 'git_rebase',
+                         'git_resolve', 'git_operation', 'git_remote', 'git_undo'})
 
 # Every tool failure starts with this: no engine carries an `is_error` flag, so the flag is in the text.
 ERR = 'ERROR: '

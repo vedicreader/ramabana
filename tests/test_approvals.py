@@ -35,8 +35,8 @@ def test_the_gate_draws_its_line_around_the_write_tools_and_answers_as_a_bool():
     """
     assert {'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell', 'run_python',
             'run_shell', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add', 'cart_remove',
-            'git_commit', 'git_merge', 'git_rebase', 'git_resolve', 'git_operation', 'git_remote',
-            'git_undo'} == set(WRITE_TOOLS)
+            'git_commit', 'git_checkout', 'git_sync', 'git_merge', 'git_rebase', 'git_resolve',
+            'git_operation', 'git_remote', 'git_undo'} == set(WRITE_TOOLS)
     from ramabana.git import GIT_WRITE_TOOLS
     assert GIT_WRITE_TOOLS <= WRITE_TOOLS
 

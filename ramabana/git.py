@@ -6,9 +6,9 @@ Docs: https://vedicreader.github.io/ramabana/git.html.md"""
 
 # %% auto #0
 __all__ = ['READS', 'NET', 'MIXED', 'BARE_READS', 'FOREIGN_LOCK', 'LOCK_ATTEMPTS', 'LOCK_BACKOFF', 'SAFEPOINT_REF',
-           'JOURNAL_NAME', 'LEELA_JOURNAL', 'JOURNAL_KEEP', 'GIT_WRITE_TOOLS', 'GitError', 'classify', 'RepoLock',
-           'Safepoint', 'GitGateway', 'gateway', 'repo_root', 'url_name', 'clone_target', 'clone', 'shorten', 'GitRepo',
-           'git_tools']
+           'JOURNAL_NAME', 'LEELA_JOURNAL', 'JOURNAL_KEEP', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS',
+           'GitError', 'classify', 'RepoLock', 'Safepoint', 'GitGateway', 'gateway', 'repo_root', 'url_name',
+           'clone_target', 'clone', 'shorten', 'GitRepo', 'git_tools']
 
 # %% ../nbs/12_git.ipynb #a66934e5
 import json, re, shlex, shutil, subprocess, threading, time, difflib
@@ -16,6 +16,8 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from urllib.parse import urlparse
 from fastcore.all import Path, first
+from fastcore.xtras import flexicache, time_policy
+
 
 class GitError(RuntimeError): pass
 
@@ -130,7 +132,6 @@ class GitGateway:
     def __init__(self):
         self._locks = {}
         self._registry = threading.Lock()
-        self._env_cache = {}
         self._exe = None
         self.env_for = None      # a host that knows about project virtualenvs sets this
     def _lock(self, root):
@@ -142,24 +143,15 @@ class GitGateway:
         if self._exe is None: self._exe = shutil.which('git') or ''
         if not self._exe: raise GitError('git is not installed or not on PATH')
         return self._exe
-    def env(self, cwd, ttl=30):
+    def env(self, cwd):
         "The checkout's own environment, or None to inherit this process's."
-        if self.env_for is None: return None
-        key = str(cwd)
-        hit = self._env_cache.get(key)
-        if hit and time.monotonic() - hit[0] < ttl: return hit[1]
-        try: value = self.env_for(cwd)
-        except Exception: value = None
-        self._env_cache[key] = (time.monotonic(), value)
-        return value
-    def memo(self, cwd, key, make, ttl=60):
-        "A per-repository answer that changes on the timescale of the environment, not the tree."
-        cache_key = (str(cwd), key)
-        hit = self._env_cache.get(cache_key)
-        if hit and time.monotonic() - hit[0] < ttl: return hit[1]
-        value = make()
-        self._env_cache[cache_key] = (time.monotonic(), value)
-        return value
+        # not inside the cache: a host that sets `env_for` after the first git command would
+        # otherwise be ignored until the entry expired
+        return self._env(str(cwd)) if self.env_for is not None else None
+    @flexicache(time_policy(30), maxsize=64)
+    def _env(self, cwd):
+        try: return self.env_for(cwd)
+        except Exception: return None
     def resolves(self, cwd, command):
         "Where a configured filter or hook command would actually be found, or `''`."
         try: parts = shlex.split(str(command or ''))
@@ -301,13 +293,16 @@ def _conflict_blocks(text):
         out.append({'start': start, 'end': finish, 'ours': ours, 'theirs': theirs}); pos = finish
     return out
 
+@flexicache(time_policy(5), maxsize=256)
+def _toplevel(p):
+    r = _run(p, 'rev-parse', '--show-toplevel', check=False)
+    return Path(r.stdout.strip()).resolve() if r.returncode == 0 and r.stdout.strip() else None
+
 def repo_root(path):
     "The containing worktree root, or `None` when path is not in a repository."
     p = Path(path).expanduser().resolve()
     if p.is_file(): p = p.parent
-    try:
-        r = _run(p, 'rev-parse', '--show-toplevel', check=False)
-        return Path(r.stdout.strip()).resolve() if r.returncode == 0 and r.stdout.strip() else None
+    try: return _toplevel(p)
     except (OSError, GitError): return None
 
 def url_name(url):
@@ -606,32 +601,31 @@ class GitRepo:
     def _gitdir(self):
         git_dir = Path(self.run('rev-parse', '--git-dir').strip())
         return git_dir if git_dir.is_absolute() else self.root/git_dir
+    @flexicache(time_policy(60), maxsize=32)
     def filter_health(self):
         "Whether this repository's content filters can actually run."
-        def probe():
-            names = set()
-            for p in (self.root/'.gitattributes', self._gitdir()/'info'/'attributes'):
-                try:
-                    names.update(re.findall(r'filter=([\w.+-]+)', p.read_text(encoding='utf-8',
-                        errors='replace')))
-                except OSError:
-                    continue
-            rows = []
-            for name in sorted(names):
-                def config(field): return self._ask('config', '--get', f'filter.{name}.{field}')
-                clean, smudge = config('clean'), config('smudge')
-                command = clean or smudge
-                resolved = gateway().resolves(self.root, command) if command else ''
-                rows.append({
-                    'name': name, 'clean': clean, 'smudge': smudge,
-                    'required': config('required').lower() == 'true', 'resolved': resolved,
-                    'configured': bool(command),
-                    'ok': bool(command) and bool(resolved),
-                })
-            broken = [r for r in rows if not r['ok']]
-            return {'filters': rows, 'ok': not broken,
-                'explain': _explain_filters(broken) if broken else ''}
-        return gateway().memo(self.root, 'filters', probe)
+        names = set()
+        for p in (self.root/'.gitattributes', self._gitdir()/'info'/'attributes'):
+            try:
+                names.update(re.findall(r'filter=([\w.+-]+)', p.read_text(encoding='utf-8',
+                    errors='replace')))
+            except OSError:
+                continue
+        rows = []
+        for name in sorted(names):
+            def config(field): return self._ask('config', '--get', f'filter.{name}.{field}')
+            clean, smudge = config('clean'), config('smudge')
+            command = clean or smudge
+            resolved = gateway().resolves(self.root, command) if command else ''
+            rows.append({
+                'name': name, 'clean': clean, 'smudge': smudge,
+                'required': config('required').lower() == 'true', 'resolved': resolved,
+                'configured': bool(command),
+                'ok': bool(command) and bool(resolved),
+            })
+        broken = [r for r in rows if not r['ok']]
+        return {'filters': rows, 'ok': not broken,
+            'explain': _explain_filters(broken) if broken else ''}
     def _operation(self):
         git_dir = self._gitdir()
         checks = (
@@ -938,13 +932,33 @@ class GitRepo:
         for row in rows:
             row.update(stats.get(row['path'], {'additions': 0, 'deletions': 0, 'binary': False}))
         return rows
+    EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+    @staticmethod
+    def _merge_tree_out(r):
+        "`merge-tree --write-tree --name-only`: the tree it wrote, then the conflicted paths."
+        head, _, rest = r.stdout.partition('\n')
+        # Names run to the first blank line; git's own commentary follows it.
+        return head.strip(), [x for x in (l.strip() for l in rest.split('\n\n', 1)[0].splitlines()) if x]
     def _rehearse(self, ours, theirs):
         "Merge `theirs` into `ours` in memory: the files that would conflict, and whether any do."
         r = _run(self.root, 'merge-tree', '--write-tree', '--name-only', ours, theirs, check=False)
         if not r.returncode: return [], False
-        named = (x.strip() for x in r.stdout.splitlines()[1:])
-        return list(dict.fromkeys(
-            x for x in named if x and not x.startswith(('Auto-merging ', 'CONFLICT ')))), True
+        return list(dict.fromkeys(self._merge_tree_out(r)[1])), True
+    def _replay(self, onto, commits):
+        "Cherry-pick `commits` onto `onto` in memory. A rebase replays; rehearsing it must too."
+        at, done = onto, []
+        for c in commits:
+            parent = first(c['parents']) or self.EMPTY_TREE
+            r = _run(self.root, 'merge-tree', '--write-tree', '--name-only',
+                f'--merge-base={parent}', at, c['oid'], check=False)
+            tree, names = self._merge_tree_out(r)
+            if r.returncode or not tree:
+                return done, {'short': c['short'], 'subject': c['subject'], 'oid': c['oid'],
+                    'files': names, 'error': '' if tree else (r.stderr or r.stdout).strip()}
+            at = _run(self.root, 'commit-tree', tree, '-p', at, '-m', c['short'],
+                kind='read').stdout.strip()      # an unreferenced object: no ref, index or worktree
+            done.append(c['short'])
+        return done, None
     def _side_by_side(self, path, left, right, from_label, to_label, patch):
         "Both versions of one file and the patch between them, decoded when it is a notebook."
         if not str(path).lower().endswith('.ipynb'): return left, right, patch
@@ -1031,6 +1045,59 @@ class GitRepo:
             | self._in_the_way()
             | {'merge_base': merge_base, 'conflicts': conflicts, 'conflict_likely': likely,
                 'review': self.review(current, incoming, 'review')})
+    SYNC_OPS = ('fast-forward', 'merge', 'rebase', 'reset')
+    def divergence(self, upstream='', fetch=False):
+        "This branch against its upstream, and every way back with its conflicts rehearsed."
+        branch = self.run('branch', '--show-current').strip()
+        if not branch: raise GitError('cannot sync a detached HEAD')
+        if fetch: self.fetch()
+        up = str(upstream or '').strip() or self._ask('rev-parse', '--abbrev-ref', '@{upstream}')
+        out = {'branch': branch, 'upstream': up, 'ahead': 0, 'behind': 0, 'relation': 'no-upstream',
+            'ours': [], 'theirs': [], 'merge_base': '', 'options': [], 'recommended': ''} | self._in_the_way()
+        if not up: return out
+        head, other = self._resolve_ref('HEAD'), self._resolve_ref(up)
+        counts = self.run('rev-list', '--left-right', '--count', f'{other}...{head}').split()
+        behind, ahead = map(int, counts) if len(counts) == 2 else (0, 0)
+        ours = self.history(limit=250, ref=f'{other}..{head}')
+        theirs = self.history(limit=250, ref=f'{head}..{other}')
+        relation = ('identical' if head == other else 'ahead' if not behind
+            else 'fast-forward' if not ahead else 'diverged')
+        merged, likely = self._rehearse(head, other) if behind and ahead else ([], False)
+        replayed, stopped = self._replay(other, list(reversed(ours))) if behind and ahead else ([], None)
+        # Every path but reset autostashes, so dirt warns rather than blocks.
+        aside = '' if out['clean'] else f'{_plural(len(out["dirty"]), "file")} set aside and put back'
+        note = lambda *xs: ' · '.join(x for x in xs if x)
+        opts = [
+            {'op': 'fast-forward', 'label': f'Fast-forward to {up}', 'commits': behind,
+                'available': bool(behind) and not ahead, 'conflicts': [],
+                'note': note(f'{_plural(ahead, "commit")} of yours in the way' if ahead else '', aside)},
+            {'op': 'merge', 'label': f'Merge {up} into {branch}', 'commits': behind, 'conflicts': merged,
+                'available': bool(behind),
+                'note': note(f'{_plural(len(merged), "file")} to resolve, once' if likely else '', aside)},
+            {'op': 'rebase', 'label': f'Rebase {branch} onto {up}', 'commits': ahead,
+                'available': bool(behind and ahead), 'conflicts': (stopped or {}).get('files') or [],
+                'stops_at': stopped, 'replayed': len(replayed),
+                'note': note(f'stops at {stopped["short"]} — {shorten(stopped["subject"], 44)}'
+                    if stopped else '', aside)},
+            {'op': 'reset', 'label': f'Discard {branch} and take {up}', 'commits': ahead,
+                'available': bool(behind), 'conflicts': [], 'destructive': True,
+                'note': note(f'{_plural(ahead, "commit")} of yours lost' if ahead else '',
+                    f'{_plural(len(out["dirty"]), "uncommitted file")} lost' if not out['clean'] else '')},
+        ]
+        out |= {'ahead': ahead, 'behind': behind, 'relation': relation, 'ours': ours, 'theirs': theirs,
+            'merge_base': self._ask('merge-base', head, other), 'options': opts}
+        out['recommended'] = ('' if not behind else 'fast-forward' if not ahead
+            else 'rebase' if not stopped else 'merge' if not likely else 'merge')
+        return out
+    def sync(self, how='rebase', upstream=''):
+        "Reconcile with the upstream the way the plan named."
+        if how not in self.SYNC_OPS: raise GitError(f'sync must be one of {", ".join(self.SYNC_OPS)}')
+        up = str(upstream or '').strip() or self._ask('rev-parse', '--abbrev-ref', '@{upstream}')
+        if not up: raise GitError('this branch has no upstream to sync with')
+        if how == 'fast-forward': return self.pull()
+        if how == 'merge': return self._guarded('merge', lambda: self._attempt('merge', '--no-edit', up), autostash=True)
+        if how == 'rebase': return self._guarded('rebase', lambda: self._attempt('rebase', '--autostash', up))
+        return self._guarded('reset', lambda: self._mutate('reset', '--hard', up).strip())
     def rebase_preview(self, onto):
         "Describe replaying current-only commits on `onto` before mutating history."
         current = self.run('branch', '--show-current').strip()
@@ -1038,11 +1105,13 @@ class GitRepo:
         current_oid, onto_oid = self._resolve_ref('HEAD'), self._resolve_ref(onto)
         base = self._ask('merge-base', current_oid, onto_oid)
         if not base: raise GitError(f'{current} and {onto} do not share a merge base')
-        conflicts, likely = self._rehearse(onto_oid, current_oid)
+        commits = self.history(limit=250, ref=f'{onto_oid}..{current_oid}')
+        replayed, stopped = self._replay(onto_oid, list(reversed(commits)))
         return ({'current': current, 'onto': str(onto)}
             | self._in_the_way()
-            | {'merge_base': base, 'commits': self.history(limit=250, ref=f'{onto_oid}..{current_oid}'),
-                'conflicts': conflicts, 'conflict_likely': likely,
+            | {'merge_base': base, 'commits': commits, 'replayed': len(replayed),
+                'conflicts': (stopped or {}).get('files') or [], 'conflict_likely': bool(stopped),
+                'stops_at': stopped,
                 'already_based': base == onto_oid, 'review': self.review(onto, current, 'review')})
     def compare(self, left, right):
         "Compare the complete snapshots at two refs, from `left` to `right`."
@@ -1306,8 +1375,11 @@ class GitRepo:
             'hunks': self._patch_hunks(r.stdout), 'diff': r.stdout, 'status': changed}
 
 # %% ../nbs/12_git.ipynb #e12fe7ce
-GIT_WRITE_TOOLS = frozenset({'git_commit', 'git_merge', 'git_rebase', 'git_resolve',
-                             'git_operation', 'git_remote', 'git_undo'})
+GIT_READ_TOOLS = ('git_status', 'git_diff', 'git_log', 'git_divergence', 'git_merge_preview',
+                  'git_rebase_preview', 'git_conflicts', 'git_compare')
+GIT_TOOLS = (*GIT_READ_TOOLS, 'git_commit', 'git_checkout', 'git_sync', 'git_merge', 'git_rebase',
+             'git_resolve', 'git_operation', 'git_remote', 'git_undo')
+GIT_WRITE_TOOLS = frozenset(GIT_TOOLS) - set(GIT_READ_TOOLS)
 
 def git_tools(host, mx=8000):
     "Git for an agent: what the repository is, what a mutation would do, and the guarded mutation."
@@ -1315,75 +1387,99 @@ def git_tools(host, mx=8000):
     def repo(path=''):
         roots = [Path(r).expanduser().resolve() for r in (getattr(host, 'roots', None) or ())]
         if not roots: raise GitError('open a folder before asking about its repository')
-        found = GitRepo.at(host.check(path or roots[0], must_exist=True))
+        found = GitRepo.at(host.check(path or getattr(host, 'project', '') or roots[0], must_exist=True))
         if not any(found.root == r or found.root.is_relative_to(r) for r in roots):
             raise GitError(f'{found.root} is outside the open folders; open the repository root first')
-        _invalidate(found.root)   # the agent edits files behind git's back; the half-second cache would lie
+        _invalidate(found.root)   # the agent edits files behind git's back; the cache would lie
         return found
     def state(r):
+        "What the repository is now: the answer every mutation ends with."
         i = r.info()
-        return {k: i[k] for k in ('root', 'branch', 'upstream', 'ahead', 'behind', 'clean', 'operation')}
-    def answer(r, body=None):
-        return clip(json.dumps(state(r) | ({'result': body} if body is not None else {}),
-                               indent=2, default=str), mx)
-    def act(what, path, f):
+        return {k: i[k] for k in ('root', 'branch', 'upstream', 'ahead', 'behind', 'clean', 'operation')} | {
+            'branches': [b['name'] for b in i['branches']]}   # after a fetch or a checkout, the question
+    def report(what, path, act=None):
+        "A mutation, answered with what the repository is now."
         try:
             r = repo(path)
-            return answer(r, f(r))
+            out = act(r) if act else None
+            return clip(json.dumps(state(r) | ({'result': out} if out is not None else {}),
+                                   indent=2, default=str), mx)
         except Exception as e: return err(what, e)
+    def data(what, path, act):
+        "A read, answered as itself: no refreshed status appended to something already long."
+        try: return clip(json.dumps(act(repo(path)), indent=2, default=str), mx)
+        except Exception as e: return err(what, e)
+    def subjects(cs): return [f"{c['short']} {c['subject']}" for c in cs[:40]]
+    def slim(p):
+        "One preview without the per-file review that would fill the window."
+        keep = ('current', 'incoming', 'onto', 'relation', 'clean', 'dirty', 'untracked', 'merge_base',
+                'conflicts', 'conflict_likely', 'stops_at', 'replayed', 'already_based')
+        out = {k: v for k, v in p.items() if k in keep}
+        if p.get('commits') is not None: out['commits'] = subjects(p['commits'])
+        if p.get('review'): out['changed'] = p['review']['summary']
+        return out
 
     def git_status(path: str = '') -> str:
         "Branch, upstream drift, the files that changed, and any operation in progress."
-        return act('git_status', path, lambda r: r.info()['changes'])
+        return report('git_status', path, lambda r: r.info()['changes'])
     def git_diff(path: str = '', staged: bool = False, ref: str = '') -> str:
-        "The unified diff of the working tree, of the index with `staged`, or of one commit with `ref`."
-        return act('git_diff', path, lambda r: r.commit_detail(ref)['patch'] if ref else r.diff(staged=staged))
+        "The working tree as a patch, the index with `staged`, or one commit with `ref`."
+        return data('git_diff', path, lambda r: r.commit_detail(ref)['patch'] if ref else r.diff(staged=staged))
     def git_log(limit: int = 20, path: str = '') -> str:
-        "Recent commits, newest first, as `short subject (author)`."
-        return act('git_log', path, lambda r: [f"{c['short']} {c['subject']} ({c['author']})"
-                                               for c in r.history(limit=limit, ref='HEAD')])
-    def git_preview(operation: str, ref: str, path: str = '') -> str:
-        """Rehearse a `merge` or a `rebase` without touching the repository.
+        "Recent commits, newest first."
+        return data('git_log', path, lambda r: subjects(r.history(limit=limit, ref='HEAD')))
+    def git_divergence(path: str = '') -> str:
+        """How this branch stands against its upstream, and each way back with its conflicts rehearsed.
 
-        Reports how the branches are related, which files would conflict, and what uncommitted
-        work is in the way. Always do this before `git_merge` or `git_rebase`.
+        The one to ask when a push is refused or a pull will not fast-forward: it names which of
+        fast-forward, merge, rebase and reset is available, what each costs, and which is
+        recommended. `git_sync` then performs the one you chose.
         """
-        def look(r):
-            if operation == 'merge': return r.merge_preview(ref)
-            if operation == 'rebase': return r.rebase_preview(ref)
-            raise GitError('preview operation must be merge or rebase')
-        return act('git_preview', path, lambda r: _thin(look(r)))
+        def plan(r):
+            d = r.divergence()
+            return d | {'ours': subjects(d['ours']), 'theirs': subjects(d['theirs'])}
+        return data('git_divergence', path, plan)
+    def git_merge_preview(branch: str, path: str = '') -> str:
+        "What merging `branch` would do, and which files would conflict. Changes nothing."
+        return data('git_merge_preview', path, lambda r: slim(r.merge_preview(branch)))
+    def git_rebase_preview(onto: str, path: str = '') -> str:
+        "What rebasing onto `onto` would do, replayed commit by commit. Names the first that stops."
+        return data('git_rebase_preview', path, lambda r: slim(r.rebase_preview(onto)))
     def git_conflicts(path: str = '') -> str:
         "The unresolved files, how many marker blocks each holds, and which of them are safe."
-        return act('git_conflicts', path, lambda r: r.conflict_plan())
+        return data('git_conflicts', path, lambda r: r.conflict_plan())
+    def git_compare(left: str, right: str, path: str = '') -> str:
+        "What separates two branches, tags or commits, as a file summary rather than a patch."
+        return data('git_compare', path, lambda r: {k: v for k, v in r.compare(left, right).items() if k != 'patch'})
     def git_commit(message: str, path: str = '', amend: bool = False) -> str:
         "Commit what is staged. Nothing is staged for you: stage with `run_shell` first."
-        return act('git_commit', path, lambda r: r.commit(message, amend))
-    def git_merge(branch: str, strategy: str = 'merge', path: str = '') -> str:
+        return report('git_commit', path, lambda r: r.commit(message, amend))
+    def git_checkout(branch: str, path: str = '') -> str:
+        "Switch to a local branch, or create a tracking branch from `REMOTE/BRANCH`."
+        return report('git_checkout', path, lambda r: r.checkout(branch))
+    def git_sync(how: str = 'rebase', path: str = '') -> str:
+        "Reconcile with the upstream by `fast-forward`, `merge`, `rebase` or `reset`, per `git_divergence`."
+        return report('git_sync', path, lambda r: r.sync(how))
+    def git_merge(branch: str, path: str = '', strategy: str = 'merge') -> str:
         "Merge `branch` (`merge`, `squash` or `ff-only`). Uncommitted work is set aside and put back."
-        return act('git_merge', path, lambda r: r.merge(branch, strategy))
+        return report('git_merge', path, lambda r: r.merge(branch, strategy))
     def git_rebase(onto: str, path: str = '') -> str:
         "Replay this branch onto `onto`. Stops on the first conflicting commit for `git_resolve`."
-        return act('git_rebase', path, lambda r: r.rebase(onto))
+        return report('git_rebase', path, lambda r: r.rebase(onto))
     def git_resolve(file: str, choice: str = 'ours', path: str = '') -> str:
-        "Settle one conflicted file as `ours`, `theirs`, or `worktree`, and stage it."
-        return act('git_resolve', path, lambda r: r.resolve_conflict(file, choice))
+        "Settle one conflicted file as `ours`, `theirs` or `worktree`, and stage it."
+        return report('git_resolve', path, lambda r: r.resolve_conflict(file, choice))
     def git_operation(action: str, path: str = '') -> str:
         "`continue`, `skip` or `abort` the merge, rebase, cherry-pick or revert in progress."
-        return act('git_operation', path, lambda r: r.operation_action(action))
+        return report('git_operation', path, lambda r: r.operation_action(action))
     def git_remote(action: str = 'fetch', path: str = '') -> str:
         "Talk to the remote: `fetch`, `pull` (fast-forward only), or `push`."
         ops = {'fetch': lambda r: r.fetch(), 'pull': lambda r: r.pull(), 'push': lambda r: r.push()}
         if action not in ops: return err('git_remote', ValueError('action must be fetch, pull or push'))
-        return act('git_remote', path, ops[action])
+        return report('git_remote', path, ops[action])
     def git_undo(token: str = '', path: str = '') -> str:
-        "Put the repository back to a safepoint -- the newest one, or the `undo` token of a result."
-        return act('git_undo', path, lambda r: r.undo(token))
-    return [git_status, git_diff, git_log, git_preview, git_conflicts, git_commit, git_merge,
-            git_rebase, git_resolve, git_operation, git_remote, git_undo]
-
-def _thin(preview):
-    "A preview without the per-file review, which is a tool result nobody reads whole."
-    review = preview.get('review') or {}
-    return {k: v for k, v in preview.items() if k != 'review'} | {
-        'changed_files': review.get('summary', {}).get('files', 0)}
+        "Put the repository back to a safepoint -- the newest, or the `undo` token of a result."
+        return report('git_undo', path, lambda r: r.undo(token))
+    return [git_status, git_diff, git_log, git_divergence, git_merge_preview, git_rebase_preview,
+            git_conflicts, git_compare, git_commit, git_checkout, git_sync, git_merge, git_rebase,
+            git_resolve, git_operation, git_remote, git_undo]
