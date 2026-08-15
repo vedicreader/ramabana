@@ -88,10 +88,10 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS', 'DENIED', 'DFLT_TIMEOUT',
            'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT',
            'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS',
-           'CTX_BEFORE', 'CTX_AFTER', 'summarise', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
-           'Approvals', 'always', 'never', 'policy', 'applied', 'apply', 'note', 'tool_plan', 'request_text',
-           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items',
-           'plan_tools', 'Agent', 'Completer']
+           'CTX_BEFORE', 'CTX_AFTER', 'summarise', 'Act', 'Activity', 'edit_preview', 'preview_for', 'Ask', 'ask_md',
+           'answer_md', 'Approvals', 'always', 'never', 'policy', 'applied', 'apply', 'note', 'tool_plan',
+           'request_text', 'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan',
+           'parse_plan_items', 'plan_tools', 'Agent', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, functools, json, re, threading, time, uuid
@@ -100,7 +100,7 @@ from pathlib import Path
 from fastcore.basics import patch
 from .core import agent_err, available_models, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, make_backend, Compactor, compact_notebook_context, notices_block
-from .tools import (mime_for, MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
+from .tools import (mime_for, MAX_TOOL_CHARS, WRITE_TOOLS, Registry, _edits, clip, discover, err, failed,
                             find, load, skill_index, subagent_tools, tools_for)
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -369,9 +369,21 @@ def _fmt_cmds(commands):
     return '\n'.join(out)
 
 
+def edit_preview(path, edits):
+    "The blocks an edit would swap, as a patch: what a person is being asked to approve."
+    try: items = _edits(edits)
+    except Exception: return str(edits)[:MAX_PREVIEW]
+    out = [f'--- a/{path}', f'+++ b/{path}']
+    for old, new in items:
+        out.append('@@ replace @@')
+        out += [f'-{l}' for l in old.splitlines()] + [f'+{l}' for l in new.splitlines()]
+    return '\n'.join(out)
+
+
 def preview_for(name, args, host=None):
     "What this call would actually do, as text a person can read in a couple of seconds."
     p = args.get('path', '')
+    if name == 'replace_text': return edit_preview(p, args.get('edits', ''))[:MAX_PREVIEW]
     if name == 'edit_file':   return f'{p}\n\n{_fmt_cmds(args.get("commands", ""))}'[:MAX_PREVIEW]
     if name == 'edit_cell':   return f'{p} cell {args.get("cell_id","?")}\n\n{_fmt_cmds(args.get("commands",""))}'[:MAX_PREVIEW]
     if name == 'create_file':

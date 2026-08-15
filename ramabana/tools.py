@@ -10,10 +10,11 @@ __all__ = ['MAX_GREP_HITS', 'MAX_API', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 
            'MAX_TOOL_CHARS', 'MAX_HITS', 'WRITE_TOOLS', 'ERR', 'RESPONSES_API', 'IMAGE_API', 'IMAGE_MODEL',
            'IMAGE_SIZES', 'API_VENDORS', 'SUB_MAX_STEPS', 'SUB_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied',
            'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs',
-           'load', 'err', 'failed', 'clip', 'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools',
-           'media_dir', 'mime_for', 'save_media', 'image_available', 'api_model', 'draws_itself', 'image_tools',
-           'web_tools', 'memory_tools', 'api_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools',
-           'tools_for', 'read_only', 'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
+           'load', 'err', 'failed', 'clip', 'clip_lines', 'readable', 'code_tools', 'unified', 'file_tools',
+           'notebook_tools', 'media_dir', 'mime_for', 'save_media', 'image_available', 'api_model', 'draws_itself',
+           'image_tools', 'web_tools', 'memory_tools', 'api_tools', 'watch_tools', 'session_tools', 'shell_tools',
+           'skill_tools', 'tools_for', 'read_only', 'sub_sp', 'delegate', 'delegate_many', 'named_skills',
+           'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, functools, json, mimetypes, os, re, runpy, shutil, threading, uuid
@@ -399,7 +400,7 @@ class LocalHost(Host):
         self.rerank, self.rerank_model, self._rerank_note = bool(rerank), rerank_model, ''
         if index: self.sync_index()
 
-    def sync_index(self, wait=False, force=False, graph=False):
+    def sync_index(self, wait=False, force=False, graph=True):
         "Run `Kosha.sync` for every open root, once, in a daemon thread; each root publishes as it returns."
         # `_semantic` queries `Kosha.context(graph=True)`, so an ordinary sync has to build one
         if self._index_thread is None or not self._index_thread.is_alive():
@@ -1045,7 +1046,9 @@ MAX_HITS = 20
 # The tools that change something on disk, in the live session, or on the machine -- see `Approvals`.
 WRITE_TOOLS = frozenset({'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell',
                          'run_python', 'run_shell', 'memory_forget', 'create_skill',
-                         'cancel_watch', 'cart_add', 'cart_remove'})
+                         'cancel_watch', 'cart_add', 'cart_remove',
+                         'git_commit', 'git_merge', 'git_rebase', 'git_resolve',
+                         'git_operation', 'git_remote', 'git_undo'})
 
 # Every tool failure starts with this: no engine carries an `is_error` flag, so the flag is in the text.
 ERR = 'ERROR: '
@@ -1323,11 +1326,11 @@ def _apply_edits(text, edits):
     return ''.join(out)
 
 
-def _diff(before, after, path='file'):
+def unified(before, after, path='file', n=2):
     "A unified diff, which is what a person approving an edit should be looking at."
     import difflib
     d = difflib.unified_diff(before.splitlines(), after.splitlines(),
-                             f'a/{path}', f'b/{path}', lineterm='', n=2)
+                             f'a/{path}', f'b/{path}', lineterm='', n=n)
     return '\n'.join(d)
 
 
@@ -1385,7 +1388,7 @@ def file_tools(host, mx=MAX_TOOL_CHARS):
         if after == before: return err('the edits changed nothing; check oldText against a fresh view_file')
         try: host.write(str(p), after)
         except Exception as e: return err('write failed', e)
-        return clip(f'replaced {len(items)} block(s) in {p}\n' + _diff(before, after, str(p)), mx)
+        return clip(f'replaced {len(items)} block(s) in {p}\n' + unified(before, after, str(p)), mx)
 
     def edit_file(path: str, commands: str) -> str:
         """Edit a file with hash-verified exhash commands, and return the diff.
@@ -1900,6 +1903,12 @@ def skill_tools(host, get_skills, mx=MAX_TOOL_CHARS):
     return [read_skill, create_skill]
 
 # %% ../nbs/02_tools.ipynb #ddf75013
+def _in_repo(host):
+    "Whether an open folder is a checkout, which is the only thing the git tools can work on."
+    from ramabana.git import repo_root
+    try: return any(repo_root(r) for r in (getattr(host, 'roots', None) or ()))
+    except Exception: return False
+
 def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None):
     """Every tool this host can actually support, plus whatever extensions registered.
 
@@ -1924,6 +1933,9 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_s
     shell = _declared(host, 'shell')   # `run_cmd` has no harmless probe; `_supports` asks instead
     if 'shell' not in drop and (_supports(host, 'run_cmd', lambda: host.run_cmd('')) if shell is None else shell):
         tools += shell_tools(host, mx)
+    if 'git' not in drop and _in_repo(host):
+        from ramabana.git import git_tools
+        tools += git_tools(host, mx)
     if get_skills is not None and 'skill' not in drop: tools += skill_tools(host, get_skills, mx)
     tools += list(extra or ())
     return tools

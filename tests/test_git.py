@@ -165,3 +165,45 @@ def test_the_gateway_inherits_this_environment_until_a_host_says_otherwise(repo)
     g.env_for = lambda cwd: (_ for _ in ()).throw(RuntimeError('no venv here'))
     g._env_cache.clear()
     assert g.env(repo) is None, 'a host that cannot answer must not break git'
+
+
+def test_the_tools_answer_with_the_repository_state_and_refuse_what_is_outside_it(repo, tmp_path):
+    from ramabana.git import git_tools
+    import json as _json
+    class Host:
+        roots = [str(repo)]
+        def check(self, p, must_exist=False): return repo/str(p) if not str(p).startswith(str(repo)) else Path(str(p))
+    from pathlib import Path
+    tools = {t.__name__: t for t in git_tools(Host())}
+    status = _json.loads(tools['git_status']())
+    assert status['branch'] == 'main' and status['clean'] and status['result'] == []
+    (repo/'app.py').write_text('value = 2\n')
+    diff = _json.loads(tools['git_diff']())['result']
+    assert '-value = 1' in diff and '+value = 2' in diff
+    assert tools['git_preview']('sideways', 'main').startswith('ERROR:')
+    assert tools['git_remote']('teleport').startswith('ERROR:')
+
+def test_a_previewed_merge_and_the_merge_agree_about_the_conflict(diverged):
+    from ramabana.git import git_tools
+    import json as _json
+    from pathlib import Path
+    class Host:
+        roots = [str(diverged)]
+        def check(self, p, must_exist=False): return Path(str(p))
+    tools = {t.__name__: t for t in git_tools(Host())}
+    preview = _json.loads(tools['git_preview']('merge', 'feature'))['result']
+    assert preview['relation'] == 'diverged' and preview['conflicts'] == ['app.py']
+    assert 'review' not in preview, 'a per-file review is not a tool result'
+    merged = _json.loads(tools['git_merge']('feature'))
+    assert merged['result']['conflicted'] == ['app.py'] and merged['operation']['active'] == 'merge'
+    assert _json.loads(tools['git_conflicts']())['result']['summary']['manual'] == 1
+    assert _json.loads(tools['git_resolve']('app.py', 'ours'))['result']['conflicted'] == []
+    assert _json.loads(tools['git_undo']())['result']['op'] == 'merge'
+
+def test_the_git_group_is_offered_only_where_there_is_a_repository(repo, tmp_path):
+    from ramabana.tools import LocalHost, tools_for, WRITE_TOOLS
+    names = lambda root: [t.__name__ for t in tools_for(LocalHost([str(root)], web=False, index=False))]
+    assert 'git_status' in names(repo) and 'git_merge' in names(repo)
+    plain = tmp_path.parent/'not-a-repo'; plain.mkdir()
+    assert not [n for n in names(plain) if n.startswith('git_')]
+    assert {'git_commit', 'git_merge', 'git_undo'} <= WRITE_TOOLS

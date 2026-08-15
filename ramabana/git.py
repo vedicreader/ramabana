@@ -6,8 +6,9 @@ Docs: https://vedicreader.github.io/ramabana/git.html.md"""
 
 # %% auto #0
 __all__ = ['READS', 'NET', 'MIXED', 'BARE_READS', 'FOREIGN_LOCK', 'LOCK_ATTEMPTS', 'LOCK_BACKOFF', 'SAFEPOINT_REF',
-           'JOURNAL_NAME', 'LEELA_JOURNAL', 'JOURNAL_KEEP', 'GitError', 'classify', 'RepoLock', 'Safepoint',
-           'GitGateway', 'gateway', 'repo_root', 'url_name', 'clone_target', 'clone', 'shorten', 'GitRepo']
+           'JOURNAL_NAME', 'LEELA_JOURNAL', 'JOURNAL_KEEP', 'GIT_WRITE_TOOLS', 'GitError', 'classify', 'RepoLock',
+           'Safepoint', 'GitGateway', 'gateway', 'repo_root', 'url_name', 'clone_target', 'clone', 'shorten', 'GitRepo',
+           'git_tools']
 
 # %% ../nbs/12_git.ipynb #a66934e5
 import json, re, shlex, shutil, subprocess, threading, time, difflib
@@ -1303,3 +1304,86 @@ class GitRepo:
             ranges.append({'from': start, 'to': end, 'kind': kind})
         return {'path': path, 'changed': True, 'ranges': ranges,
             'hunks': self._patch_hunks(r.stdout), 'diff': r.stdout, 'status': changed}
+
+# %% ../nbs/12_git.ipynb #e12fe7ce
+GIT_WRITE_TOOLS = frozenset({'git_commit', 'git_merge', 'git_rebase', 'git_resolve',
+                             'git_operation', 'git_remote', 'git_undo'})
+
+def git_tools(host, mx=8000):
+    "Git for an agent: what the repository is, what a mutation would do, and the guarded mutation."
+    from ramabana.tools import clip, err
+    def repo(path=''):
+        roots = [Path(r).expanduser().resolve() for r in (getattr(host, 'roots', None) or ())]
+        if not roots: raise GitError('open a folder before asking about its repository')
+        found = GitRepo.at(host.check(path or roots[0], must_exist=True))
+        if not any(found.root == r or found.root.is_relative_to(r) for r in roots):
+            raise GitError(f'{found.root} is outside the open folders; open the repository root first')
+        _invalidate(found.root)   # the agent edits files behind git's back; the half-second cache would lie
+        return found
+    def state(r):
+        i = r.info()
+        return {k: i[k] for k in ('root', 'branch', 'upstream', 'ahead', 'behind', 'clean', 'operation')}
+    def answer(r, body=None):
+        return clip(json.dumps(state(r) | ({'result': body} if body is not None else {}),
+                               indent=2, default=str), mx)
+    def act(what, path, f):
+        try:
+            r = repo(path)
+            return answer(r, f(r))
+        except Exception as e: return err(what, e)
+
+    def git_status(path: str = '') -> str:
+        "Branch, upstream drift, the files that changed, and any operation in progress."
+        return act('git_status', path, lambda r: r.info()['changes'])
+    def git_diff(path: str = '', staged: bool = False, ref: str = '') -> str:
+        "The unified diff of the working tree, of the index with `staged`, or of one commit with `ref`."
+        return act('git_diff', path, lambda r: r.commit_detail(ref)['patch'] if ref else r.diff(staged=staged))
+    def git_log(limit: int = 20, path: str = '') -> str:
+        "Recent commits, newest first, as `short subject (author)`."
+        return act('git_log', path, lambda r: [f"{c['short']} {c['subject']} ({c['author']})"
+                                               for c in r.history(limit=limit, ref='HEAD')])
+    def git_preview(operation: str, ref: str, path: str = '') -> str:
+        """Rehearse a `merge` or a `rebase` without touching the repository.
+
+        Reports how the branches are related, which files would conflict, and what uncommitted
+        work is in the way. Always do this before `git_merge` or `git_rebase`.
+        """
+        def look(r):
+            if operation == 'merge': return r.merge_preview(ref)
+            if operation == 'rebase': return r.rebase_preview(ref)
+            raise GitError('preview operation must be merge or rebase')
+        return act('git_preview', path, lambda r: _thin(look(r)))
+    def git_conflicts(path: str = '') -> str:
+        "The unresolved files, how many marker blocks each holds, and which of them are safe."
+        return act('git_conflicts', path, lambda r: r.conflict_plan())
+    def git_commit(message: str, path: str = '', amend: bool = False) -> str:
+        "Commit what is staged. Nothing is staged for you: stage with `run_shell` first."
+        return act('git_commit', path, lambda r: r.commit(message, amend))
+    def git_merge(branch: str, strategy: str = 'merge', path: str = '') -> str:
+        "Merge `branch` (`merge`, `squash` or `ff-only`). Uncommitted work is set aside and put back."
+        return act('git_merge', path, lambda r: r.merge(branch, strategy))
+    def git_rebase(onto: str, path: str = '') -> str:
+        "Replay this branch onto `onto`. Stops on the first conflicting commit for `git_resolve`."
+        return act('git_rebase', path, lambda r: r.rebase(onto))
+    def git_resolve(file: str, choice: str = 'ours', path: str = '') -> str:
+        "Settle one conflicted file as `ours`, `theirs`, or `worktree`, and stage it."
+        return act('git_resolve', path, lambda r: r.resolve_conflict(file, choice))
+    def git_operation(action: str, path: str = '') -> str:
+        "`continue`, `skip` or `abort` the merge, rebase, cherry-pick or revert in progress."
+        return act('git_operation', path, lambda r: r.operation_action(action))
+    def git_remote(action: str = 'fetch', path: str = '') -> str:
+        "Talk to the remote: `fetch`, `pull` (fast-forward only), or `push`."
+        ops = {'fetch': lambda r: r.fetch(), 'pull': lambda r: r.pull(), 'push': lambda r: r.push()}
+        if action not in ops: return err('git_remote', ValueError('action must be fetch, pull or push'))
+        return act('git_remote', path, ops[action])
+    def git_undo(token: str = '', path: str = '') -> str:
+        "Put the repository back to a safepoint -- the newest one, or the `undo` token of a result."
+        return act('git_undo', path, lambda r: r.undo(token))
+    return [git_status, git_diff, git_log, git_preview, git_conflicts, git_commit, git_merge,
+            git_rebase, git_resolve, git_operation, git_remote, git_undo]
+
+def _thin(preview):
+    "A preview without the per-file review, which is a tool result nobody reads whole."
+    review = preview.get('review') or {}
+    return {k: v for k, v in preview.items() if k != 'review'} | {
+        'changed_files': review.get('summary', {}).get('files', 0)}

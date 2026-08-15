@@ -6,13 +6,14 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 
 # %% auto #0
 __all__ = ['DARK', 'LIGHT', 'THEMES', 'KAKU', 'GRUVBOX', 'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL',
-           'NOTIFY_EVERY', 'MOUSE_ON', 'MOUSE_OFF', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA',
-           'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM',
-           'MAX_IMG_COLS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'PYREPL_MODULES', 'set_theme', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths',
-           'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics',
-           'png_size', 'img_cells', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option',
-           'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
+           'NOTIFY_EVERY', 'MOUSE_ON', 'MOUSE_OFF', 'HELP', 'DIFF_META', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA',
+           'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM',
+           'KITTY_PROGRAM', 'MAX_IMG_COLS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR',
+           'MENUS', 'PYREPL_MODULES', 'set_theme', 'diff_stat', 'is_diff', 'diff_text', 'changes_patch', 'key_card',
+           'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment',
+           'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'draw_png', 'media_line',
+           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui',
+           'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -33,7 +34,7 @@ from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
 from .core import accepts, agent_err, env
-from .tools import WRITE_TOOLS, LocalHost, media_dir, save_media
+from .tools import WRITE_TOOLS, LocalHost, media_dir, save_media, unified
 from .agent import Agent, Approvals, answer_md
 from datetime import datetime
 from . import __version__
@@ -85,6 +86,7 @@ def _theme_parts(palette):
         'plan': (Text('▸ ', style=f"bold {palette['yellow']}"), Text('  ')),
         'note': (Text('· ', style=palette['gray']), Text('  ')),
         'error': (Text('× ', style=f"bold {palette['red']}"), Text('  ')),
+        'diff': (Text('± ', style=palette['aqua']), Text('  ')),
     }
     return markdown, gutters
 
@@ -103,9 +105,43 @@ approve y approve · n refuse · a approve all · ctrl+y approve with a note · 
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · enter runs what compiles · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
+diff    /diff · /diff staged · /diff REF · edits and git patches colour themselves
 extra   /theme · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
+
+# %% ../nbs/05_cli.ipynb #aff4c9f9
+DIFF_META = ('diff --git', 'index ', 'new file', 'deleted file', 'similarity index',
+             'rename ', '--- ', '+++ ', '\\ No newline')
+
+def diff_stat(patch):
+    "`+n −m` over a patch, counting content lines rather than its file headers."
+    lines = str(patch or '').splitlines()
+    add = sum(1 for l in lines if l.startswith('+') and not l.startswith('+++'))
+    rm = sum(1 for l in lines if l.startswith('-') and not l.startswith('---'))
+    return f'+{add} −{rm}'
+
+def is_diff(text):
+    "Whether `text` holds a unified diff, and so should be coloured rather than printed."
+    return any(l.startswith(('@@ ', 'diff --git ')) for l in str(text or '').splitlines())
+
+def diff_text(patch, palette=None):
+    "A unified diff as coloured `Text`; a line that is not part of one keeps the body style."
+    p = palette or GRUVBOX
+    out = Text()
+    for i, line in enumerate(str(patch or '').splitlines()):
+        if line.startswith(DIFF_META): style = p['gray']
+        elif line.startswith('@@'): style = p['aqua']
+        elif line.startswith('+'): style = p['green']
+        elif line.startswith('-'): style = p['red']
+        else: style = p['fg1']
+        if i: out.append('\n')
+        out.append(line, style=style)
+    return out
+
+def changes_patch(changes):
+    "One patch across `{path: (before, after)}`, which is what a turn leaves behind."
+    return '\n'.join(unified(b, a, p) for p, (b, a) in sorted((changes or {}).items()))
 
 # %% ../nbs/05_cli.ipynb #buildstamp
 BUILD = datetime.fromtimestamp(Path(__file__).stat().st_mtime).strftime('%H:%M') if '__file__' in dir() else ''
@@ -485,6 +521,7 @@ async def run_turn(ui, prompt):
     finally:
         ui.turn = None
         ui.show_media(ui.agent.last_media)
+        ui.show_changes()
         for p in ui.agent.problems: ui.say(Text(p), 'error')
         ui.agent.clear_problems()
         ui.touch(now=True)
@@ -662,6 +699,10 @@ class Ui:
         "Called twice per tool call, from the model's thread: once running, once finished."
         self._post(self._act, act)
 
+    def _detail(self, detail):
+        "A tool result: a diff in colour, anything else in the body grey."
+        return diff_text(detail) if is_diff(detail) else Text(detail, style=GRUVBOX['gray'])
+
     def _act(self, act):
         color = GRUVBOX['blue'] if act.ok is None else GRUVBOX['green'] if act.ok else GRUVBOX['red']
         line = Text(act.line(), style=color)
@@ -670,7 +711,7 @@ class Ui:
         if blk is None:
             self.acts[act.id] = self.say(line, 'tool', source=src)
             return self.paint()
-        body = [line] if not act.detail else [line, Text(act.detail, style=GRUVBOX['gray'])]
+        body = [line] if not act.detail else [line, self._detail(act.detail)]
         self.comp.set_body(blk, *body, source=src)
         blk.collapsed = blk.height > FOLD_TOOL   # `set_body` re-measures but does not re-decide
         self.comp.refresh_block(blk)
@@ -686,7 +727,8 @@ class Ui:
         self.ask = ask
         self.buf.clear()
         title = Text(ask.summary, style=f"bold {GRUVBOX['yellow']}")
-        self.say(title + Text('\n\n') + Text(ask.preview, style=GRUVBOX['fg1']), 'ask', fold=None)
+        preview = diff_text(ask.preview) if is_diff(ask.preview) else Text(ask.preview, style=GRUVBOX['fg1'])
+        self.say(title + Text('\n\n') + preview, 'ask', fold=None)
         self.paint()
 
     def on_answer(self, ask):
@@ -855,6 +897,7 @@ class Ui:
         if name == '/detach': return self.note(self.detach(arg))
         if name == '/paste': return self.note(self.attach_clipboard())
         if name == '/copy': return self.note(self.copy_last(arg))
+        if name == '/diff': return self.show_diff(arg)
         if line.startswith('/'):
             out = self.agent.command(line)
             kind = 'plan' if name in ('/plan', '/todo', '/todos') and out is not None else (
@@ -977,6 +1020,35 @@ def show_media(self: Ui, media, session=''):
             continue
         self.say(Text(media_line(p)), 'note')
 
+
+# %% ../nbs/05_cli.ipynb #ebb62e2b
+@patch
+def show_changes(self: Ui):
+    "One block for everything this turn moved: the stat, then the patch."
+    try: changed = self.agent.changes()
+    except Exception: return None
+    if not changed: return None
+    patch = changes_patch(changed)
+    head = f'{len(changed)} file{"" if len(changed) == 1 else "s"} changed  {diff_stat(patch)}'
+    return self.say(Text(head, style=GRUVBOX['aqua']) + Text('\n') + diff_text(patch),
+                    'diff', source=f'{head}\n{patch}')
+
+# %% ../nbs/05_cli.ipynb #9781845f
+@patch
+def show_diff(self: Ui, arg=''):
+    "`/diff`: the working tree, the index with `staged`, or one commit by ref."
+    from ramabana.git import GitRepo
+    roots = list(getattr(self.agent.host, 'roots', None) or [])
+    if not roots: return self.note('open a folder to diff', 'error')
+    try:
+        r = GitRepo.at(roots[0])
+        patch = r.commit_detail(arg)['patch'] if arg and arg != 'staged' else r.diff(staged=arg == 'staged')
+    except Exception as e: return self.note(agent_err(e), 'error')
+    if not patch.strip(): return self.note('no changes')
+    head = f'{arg or "working tree"}  {diff_stat(patch)}'
+    self.say(Text(head, style=GRUVBOX['aqua']) + Text('\n') + diff_text(patch), 'diff',
+             source=f'{head}\n{patch}')
+    return None
 
 # %% ../nbs/05_cli.ipynb #280bb985
 @patch

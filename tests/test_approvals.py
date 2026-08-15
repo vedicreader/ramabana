@@ -29,10 +29,16 @@ def test_the_gate_draws_its_line_around_the_write_tools_and_answers_as_a_bool():
     refused. The line is not only the filesystem: deleting a standing reminder and spending money
     in a trolley are both things a person should see before they happen. And a sub-agent nobody is
     watching gets none of them -- a delegated question is a question.
+
+    A git mutation is on the same side of the line: a merge and a rebase move the working tree,
+    and a push is the one thing here nobody can undo afterwards.
     """
     assert {'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell', 'run_python',
-            'run_shell', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add',
-            'cart_remove'} == set(WRITE_TOOLS)
+            'run_shell', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add', 'cart_remove',
+            'git_commit', 'git_merge', 'git_rebase', 'git_resolve', 'git_operation', 'git_remote',
+            'git_undo'} == set(WRITE_TOOLS)
+    from ramabana.git import GIT_WRITE_TOOLS
+    assert GIT_WRITE_TOOLS <= WRITE_TOOLS
 
     ap = agent.Approvals(tools={'edit_file'}, mode='auto')
     assert ap.gate({'function': {'name': 'search_code', 'arguments': {'query': 'x'}}})   # ungated
