@@ -1059,7 +1059,8 @@ class Agent:
                                         lambda: self.skills, self._cloud_backend_or_none)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
             b = self.budget
-            plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop)
+            plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop,
+                              get_spec=self.spec_or_none)
             self._plain = plain
             self._tools = [self._record(t) for t in plain]
         return self._tools

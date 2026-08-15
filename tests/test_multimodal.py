@@ -245,3 +245,110 @@ def test_the_tool_is_registered_only_where_the_key_is(monkeypatch):
     assert 'generate_image' not in [f.__name__ for f in tools_for(h, drop={'image'})]
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
     assert 'generate_image' not in [f.__name__ for f in tools_for(h)]
+
+
+# -- which terminals can draw ----------------------------------------------------------
+
+from ramabana.cli import KITTY_PROGRAM, KITTY_TERM
+
+
+@pytest.fixture
+def bare_term(monkeypatch):
+    "No terminal identity and no override, so each test states only what it means to."
+    for k in ('KITTY_WINDOW_ID', 'GHOSTTY_RESOURCES_DIR', 'TERM', 'TERM_PROGRAM',
+              'RAMABANA_KITTY', 'LEELA_KITTY'):
+        monkeypatch.delenv(k, raising=False)
+    return monkeypatch
+
+
+@pytest.mark.parametrize('term', ('kaku', 'xterm-kitty', 'wezterm', 'ghostty'))
+def test_a_terminal_that_speaks_the_protocol_is_recognised(bare_term, term):
+    bare_term.setenv('TERM', term)
+    assert kitty_graphics()
+
+
+def test_leelas_terminal_is_not_mistaken_for_one_that_can_draw(bare_term):
+    "leela runs xterm.js, whose image addon has no unicode-placeholder support."
+    bare_term.setenv('TERM', 'xterm-256color')
+    assert not kitty_graphics()
+
+
+def test_the_env_override_settles_it_either_way(bare_term):
+    "The list can only name terminals known when it was written; a user may know better."
+    bare_term.setenv('TERM', 'xterm-256color')
+    bare_term.setenv('RAMABANA_KITTY', '1')
+    assert kitty_graphics()
+    bare_term.setenv('TERM', 'kaku')
+    bare_term.setenv('RAMABANA_KITTY', '0')
+    assert not kitty_graphics()
+
+
+def test_leela_may_spell_the_override_with_its_own_prefix(bare_term):
+    bare_term.setenv('TERM', 'xterm-256color')
+    bare_term.setenv('LEELA_KITTY', '1')
+    assert kitty_graphics()
+
+
+# -- which model does the drawing ------------------------------------------------------
+
+from ramabana.tools import api_model, draws_itself
+
+
+def test_a_model_that_draws_for_itself_is_told_apart_from_one_that_cannot(caps):
+    caps(_Caps(('text', 'image'), ('text',)))
+    assert not draws_itself(_spec())
+    c = _Caps(('text', 'image'), ('text',)); c.tools = ('image',)
+    caps(c)
+    assert draws_itself(_spec())
+    caps(None)
+    assert not draws_itself(_spec())
+    assert not draws_itself(None)
+
+
+def test_the_vendor_prefix_is_stripped_for_the_endpoint():
+    "`openai/gpt-5.6-luna` is a model_not_found at the API, which spells it `gpt-5.6-luna`."
+    assert api_model('openai/gpt-5.6-luna') == 'gpt-5.6-luna'
+    assert api_model('azure/gpt-5') == 'gpt-5'
+    assert api_model('gpt-5.6-sol') == 'gpt-5.6-sol'
+    assert api_model('anthropic/claude-opus-4-5') == 'anthropic/claude-opus-4-5'
+
+
+def test_a_drawing_model_draws_as_itself_rather_than_delegating(tmp_path, monkeypatch, caps):
+    from base64 import b64encode
+    png = b'\x89PNG\r\n\x1a\nx'
+    c = _Caps(('text', 'image'), ('text',)); c.tools = ('image',)
+    caps(c)
+    monkeypatch.setenv('OPENAI_API_KEY', 'k')
+    seen = {}
+    def fake(prompt, model, timeout=300):
+        seen['model'] = model
+        return {'output': [{'type': 'image_generation_call', 'result': b64encode(png).decode()}]}
+    monkeypatch.setattr('ramabana.tools._post_responses', fake)
+    monkeypatch.setattr('ramabana.tools._post_image', lambda *a, **kw: pytest.fail('delegated'))
+    gi = _gi(session=str(tmp_path), get_spec=lambda: _spec('openai/gpt-5.6-luna'))
+    out = gi('a bottle')
+    assert not failed(out)
+    assert seen['model'] == 'openai/gpt-5.6-luna'      # api_model strips it at the wire
+    assert Path(out.strip()).read_bytes() == png
+
+
+def test_a_model_that_cannot_draw_falls_back_to_the_images_endpoint(tmp_path, monkeypatch, caps):
+    from base64 import b64encode
+    png = b'\x89PNG\r\n\x1a\nx'
+    caps(_Caps(('text', 'image'), ('text',)))
+    monkeypatch.setenv('OPENAI_API_KEY', 'k')
+    monkeypatch.setattr('ramabana.tools._post_responses', lambda *a, **kw: pytest.fail('should not ask'))
+    monkeypatch.setattr('ramabana.tools._post_image',
+                        lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
+    gi = _gi(session=str(tmp_path), get_spec=lambda: _spec('anthropic/claude-opus-4-5'))
+    assert Path(gi('a bottle').strip()).read_bytes() == png
+
+
+def test_a_drawing_model_that_returns_no_picture_is_a_refusal(tmp_path, monkeypatch, caps):
+    c = _Caps(('text', 'image'), ('text',)); c.tools = ('image',)
+    caps(c)
+    monkeypatch.setenv('OPENAI_API_KEY', 'k')
+    monkeypatch.setattr('ramabana.tools._post_responses',
+                        lambda *a, **kw: {'output': [{'type': 'message'}]})
+    gi = _gi(session=str(tmp_path), get_spec=lambda: _spec('openai/gpt-5.6-luna'))
+    assert failed(gi('a bottle'))

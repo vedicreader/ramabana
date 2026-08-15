@@ -7,13 +7,13 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 # %% auto #0
 __all__ = ['MAX_GREP_HITS', 'MAX_API', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'MAX_FILE',
            'MAX_VARS', 'LD_CHARS', 'GROUP', 'EXTRA_MODULES', 'MAX_SKILL_CHARS', 'SKILL_DESC_MAX', 'EVENTS',
-           'MAX_TOOL_CHARS', 'MAX_HITS', 'WRITE_TOOLS', 'ERR', 'GEN_EXT', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES',
-           'SUB_MAX_STEPS', 'SUB_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied', 'ld_json', 'LocalHost', 'Skill',
-           'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'err', 'failed', 'clip',
-           'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools', 'media_dir', 'save_media',
-           'image_available', 'image_tools', 'web_tools', 'memory_tools', 'api_tools', 'watch_tools', 'session_tools',
-           'shell_tools', 'skill_tools', 'tools_for', 'read_only', 'sub_sp', 'delegate', 'delegate_many',
-           'named_skills', 'subagent_tools']
+           'MAX_TOOL_CHARS', 'MAX_HITS', 'WRITE_TOOLS', 'ERR', 'GEN_EXT', 'RESPONSES_API', 'IMAGE_API', 'IMAGE_MODEL',
+           'IMAGE_SIZES', 'API_VENDORS', 'SUB_MAX_STEPS', 'SUB_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied',
+           'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs',
+           'load', 'err', 'failed', 'clip', 'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools',
+           'media_dir', 'save_media', 'image_available', 'api_model', 'draws_itself', 'image_tools', 'web_tools',
+           'memory_tools', 'api_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools', 'tools_for',
+           'read_only', 'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, functools, json, os, re, runpy, shutil, threading, uuid
@@ -24,7 +24,7 @@ from fastcore.basics import AttrDict, ifnone
 from fastcore.docments import frontmatter
 from fastcore.foundation import L
 from fastcore.parallel import parallel, startthread
-from .core import AgentError, agent_err
+from .core import AgentError, agent_err, spec_caps
 
 
 # %% ../nbs/02_tools.ipynb #561c4516
@@ -1467,43 +1467,81 @@ def save_media(m, session='', stem='image'):
     p.write_bytes(m['data'])
     return p
 
-#: Where a picture is asked for, and the field its bytes come back in.
+#: Where a picture is asked for. The first is any chat model that draws through the Responses
+#: image tool; the second is the dedicated endpoint, for models that cannot draw at all.
+RESPONSES_API = 'https://api.openai.com/v1/responses'
 IMAGE_API = 'https://api.openai.com/v1/images/generations'
 IMAGE_MODEL = 'gpt-image-1'
 IMAGE_SIZES = ('1024x1024', '1536x1024', '1024x1536', 'auto')
 
 def image_available(): return bool(os.environ.get('OPENAI_API_KEY'))
 
+def _hdrs(): return {'Authorization': f"Bearer {os.environ['OPENAI_API_KEY']}"}
+
 def _post_image(prompt, size, n, timeout=120):
     "Raw `data` rows from the images endpoint."
     import httpx
-    r = httpx.post(IMAGE_API, timeout=timeout,
-                   headers={'Authorization': f"Bearer {os.environ['OPENAI_API_KEY']}"},
+    r = httpx.post(IMAGE_API, timeout=timeout, headers=_hdrs(),
                    json={'model': IMAGE_MODEL, 'prompt': prompt, 'size': size, 'n': n})
     r.raise_for_status()
     return r.json().get('data') or []
 
-def image_tools(host, mx=MAX_TOOL_CHARS, session=''):
-    "Drawing, for a model that cannot draw itself."
+#: Vendor prefixes a spec carries and the endpoint does not: `openai/gpt-5.6-luna` is a
+#: `model_not_found` at the API, which spells the same model `gpt-5.6-luna`.
+API_VENDORS = ('openai/', 'azure/')
+
+def api_model(model):
+    "A spec's `model_id` as the OpenAI endpoints spell it."
+    s = str(model or '')
+    for v in API_VENDORS:
+        if s.startswith(v): return s[len(v):]
+    return s
+
+def _post_responses(prompt, model, timeout=300):
+    "The untouched Responses reply from `model` drawing through its built-in image tool."
+    import httpx
+    r = httpx.post(RESPONSES_API, timeout=timeout, headers=_hdrs(),
+                   json={'model': api_model(model), 'input': prompt,
+                         'tools': [{'type': 'image_generation'}]})
+    r.raise_for_status()
+    return r.json()
+
+def draws_itself(spec):
+    """Can `spec`'s own model draw, given the image tool?
+
+    `supported_output_modalities` says no for every chat model: it describes what one returns
+    unprompted. `Caps.tools` is the second answer, and it is what makes gpt-5.6-luna draw as
+    itself rather than handing the prompt to a different model."""
+    if spec is None: return False
+    c = spec_caps(spec)
+    return bool(c is not None and 'image' in getattr(c, 'tools', ()))
+
+def _from_responses(raw):
+    "Generated pictures out of a Responses reply, read by the same `rishi` code a turn uses."
+    from rishi.remote import gen_media
+    return gen_media(raw)
+
+def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None):
+    "Drawing: by the turn's own model where it can, and by the images endpoint where it cannot."
 
     def generate_image(prompt: str, size: str = '1024x1024', n: int = 1) -> str:
         """Generate a picture from a description and save it. Returns the paths written.
 
-        Use when the user asks for an image and this model cannot produce one itself. `size` is
-        one of 1024x1024, 1536x1024, 1024x1536, auto.
+        Use whenever the user asks for an image. `size` is one of 1024x1024, 1536x1024,
+        1024x1536, auto, and applies only when this model cannot draw for itself.
         """
         if not image_available(): return err('image generation is unavailable', 'OPENAI_API_KEY is not set')
         if size not in IMAGE_SIZES: return err('unknown size', f'{size!r}; use one of {", ".join(IMAGE_SIZES)}')
-        n = max(1, min(int(n or 1), 4))
-        try: rows = _post_image(prompt, size, n)
+        spec = get_spec() if get_spec else None
+        try:
+            if draws_itself(spec): media = _from_responses(_post_responses(prompt, spec.model_id))
+            else: media = [{'mime': 'image/png', 'data': b64decode(r['b64_json'])}
+                           for r in _post_image(prompt, size, max(1, min(int(n or 1), 4)))
+                           if r.get('b64_json')]
         except Exception as e: return err('could not generate the image', e)
-        if not rows: return err('the image endpoint returned nothing', 'no data rows')
-        out = []
-        for row in rows:
-            if not (b64 := row.get('b64_json')): continue
-            try: out.append(save_media({'mime': 'image/png', 'data': b64decode(b64)}, session, 'generated'))
-            except Exception as e: return err('could not save the image', e)
-        if not out: return err('the image endpoint returned no image data', 'every row was empty')
+        if not media: return err('the model returned no image', 'the reply carried no picture')
+        try: out = [save_media(m, session, 'generated') for m in media]
+        except Exception as e: return err('could not save the image', e)
         return clip('\n'.join(str(p) for p in out))
 
     return [generate_image]
@@ -1847,7 +1885,7 @@ def skill_tools(host, get_skills, mx=MAX_TOOL_CHARS):
     return [read_skill, create_skill]
 
 # %% ../nbs/02_tools.ipynb #ddf75013
-def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=()):
+def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None):
     """Every tool this host can actually support, plus whatever extensions registered.
 
     Groups are dropped whole, answered by `Host.capabilities` where the host declares it and by
@@ -1862,7 +1900,7 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=()):
     if 'notebook' not in drop and _has(host, 'notebook', lambda: host.nb_cells('.')): tools += notebook_tools(host, mx)
     if 'web' not in drop and _has(host, 'web', lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
     # credentialled, never probed: a key is either there or it is not
-    if 'image' not in drop and image_available(): tools += image_tools(host, mx)
+    if 'image' not in drop and image_available(): tools += image_tools(host, mx, get_spec=get_spec)
     if 'memory' not in drop and _has(host, 'memory', lambda: host.memory_tree('')): tools += memory_tools(host, mx)
     if 'watch' not in drop and _has(host, 'watch', lambda: host.watches()): tools += watch_tools(host, mx)
     # declared, never probed: `api_ops` raises for a missing spec, not a missing capability

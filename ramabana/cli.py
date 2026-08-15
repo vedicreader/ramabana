@@ -7,12 +7,12 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 # %% auto #0
 __all__ = ['DARK', 'LIGHT', 'THEMES', 'KAKU', 'GRUVBOX', 'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL',
            'NOTIFY_EVERY', 'MOUSE_ON', 'MOUSE_OFF', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA',
-           'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'MAX_IMG_COLS', 'CELL_ASPECT', 'ST',
-           'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'PYREPL_MODULES', 'set_theme', 'key_card', 'guide_text',
-           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
-           'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'draw_png', 'media_line',
-           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui',
-           'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
+           'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM',
+           'MAX_IMG_COLS', 'CELL_ASPECT', 'ST', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'PYREPL_MODULES', 'set_theme',
+           'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
+           'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'draw_png',
+           'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn',
+           'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -32,7 +32,7 @@ from teleprint.compositor import Compositor
 from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
-from .core import accepts, agent_err
+from .core import accepts, agent_err, env
 from .tools import GEN_EXT, WRITE_TOOLS, LocalHost, media_dir, save_media
 from .agent import Agent, Approvals, answer_md
 from datetime import datetime
@@ -300,12 +300,21 @@ def media_note(atts, spec=None):
 # %% ../nbs/05_cli.ipynb #e6190af7
 #: Terminals that speak kitty's graphics protocol, by what they put in the environment.
 KITTY_ENV = ('KITTY_WINDOW_ID', 'GHOSTTY_RESOURCES_DIR')
+KITTY_TERM = ('kitty', 'kaku', 'ghostty', 'wezterm')        # substrings of $TERM
+KITTY_PROGRAM = ('WezTerm', 'Kaku', 'ghostty', 'kitty')     # exact $TERM_PROGRAM
 
 def kitty_graphics():
-    "Does this terminal speak the kitty graphics protocol, and can we render for it?"
+    """Does this terminal speak the kitty graphics protocol, and can we render for it?
+
+    `$RAMABANA_KITTY` settles it either way. The list below can only name the terminals known
+    when it was written, and one that does support the protocol but is missing from it shows a
+    path where it could have shown the picture."""
     if find_spec('kittytgp') is None: return False
+    if (forced := env('KITTY')) is not None:
+        return str(forced).strip().lower() not in ('0', 'false', 'no', '')
     if any(os.environ.get(k) for k in KITTY_ENV): return True
-    return 'kitty' in os.environ.get('TERM', '') or os.environ.get('TERM_PROGRAM') == 'WezTerm'
+    term, prog = os.environ.get('TERM', '').lower(), os.environ.get('TERM_PROGRAM', '')
+    return any(t in term for t in KITTY_TERM) or prog in KITTY_PROGRAM
 
 #: Widest a picture is drawn, and how tall a cell is relative to its width.
 MAX_IMG_COLS = 60
@@ -315,8 +324,9 @@ def png_size(path):
     "`(width, height)` in pixels from a PNG's IHDR, or `None`."
     try: b = Path(path).read_bytes()[:24]
     except OSError: return None
-    if b[:8] != b'\x89PNG\r\n\x1a\n': return None
-    return int.from_bytes(b[16:20], 'big'), int.from_bytes(b[20:24], 'big')
+    if len(b) < 24 or b[:8] != b'\x89PNG\r\n\x1a\n': return None
+    w, h = int.from_bytes(b[16:20], 'big'), int.from_bytes(b[20:24], 'big')
+    return (w, h) if w and h else None
 
 def img_cells(path, cols):
     "Cell width and height for `path` drawn at most `cols` wide, keeping its aspect."
