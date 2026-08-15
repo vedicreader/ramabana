@@ -10,11 +10,11 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX',
            'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
            'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env',
            'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx', 'ModelSpec',
-           'prefix_typo', 'resolve', 'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model',
-           'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
+           'prefix_typo', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'register_model',
+           'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
-import importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
+import functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
 from fastcore.all import Path
 from dataclasses import dataclass, field
 
@@ -368,10 +368,29 @@ def resolve(name, default_local=DFLT_LOCAL):
         return ModelSpec(name, 'remote', name, ctx, note)
     raise KeyError(f'unknown model {name!r}; known: {", ".join(sorted(MODELS))}, or a vendor/model spec')
 
+@functools.lru_cache(maxsize=256)
+def _caps(model_id, runtime):
+    "`rishi.model_caps`, memoised; `None` where rishi predates it."
+    try:
+        from rishi.core import model_caps
+        return model_caps(model_id, runtime=runtime)
+    except Exception: return None
+
+def spec_caps(spec):
+    "What `spec`'s model accepts and what it hands back, or `None` where rishi cannot say."
+    return _caps(spec.model_id, spec.backend if spec.local else 'remote')
+
+def accepts(spec, kind):
+    "Can `spec`'s model be sent `kind`? Unknown counts as yes."
+    c = spec_caps(spec)
+    return True if c is None or not c.known else c.accepts(kind)
+
 def model_note(spec):
     "One line about a resolved model, for a status bar."
     where = 'local' if spec.local else 'cloud'
-    return f'{spec.name} · {where} · {spec.ctx//1000}k ctx' + (f' · {spec.note}' if spec.note else '')
+    out = f'{spec.name} · {where} · {spec.ctx//1000}k ctx'
+    if (c := spec_caps(spec)) is not None and (m := c.fmt()): out += f' · {m}'
+    return out + (f' · {spec.note}' if spec.note else '')
 
 # %% ../nbs/00_core.ipynb #4e529923
 SMALL_CTX = 24_000       # at or below this window, a model is briefed frugally

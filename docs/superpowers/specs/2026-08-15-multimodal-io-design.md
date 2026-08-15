@@ -15,7 +15,7 @@ worth recording.
   content parts, and llama, litert, mlx and remote all consume them. What rishi
   has no notion of is *output* modalities, or any way to ask what a model
   supports.
-- **litellm's model table already answers the capability question.**
+- **fastllm's bundled model table already answers the capability question.**
   `fastllm.types.get_model_info('gemini-2.5-flash-image', 'gemini')` returns
   `supported_modalities: [text, image, audio, video]` and
   `supported_output_modalities: [text, image]`. Ramabana already calls that
@@ -73,7 +73,7 @@ Two additions to `nbs/00_core.ipynb`, one to `nbs/04_remote.ipynb`.
 class Caps:
     inp:  tuple = ('text',)
     out:  tuple = ('text',)
-    source: str = ''   # 'litellm' | 'mmproj' | 'runtime' | 'fallback' | 'default'
+    source: str = ''   # 'fastllm' | 'mmproj' | 'runtime' | 'fallback' | 'default'
 
     @property
     def gen_image(self): return 'image' in self.out
@@ -86,13 +86,13 @@ including local models that would be expensive to load.
 Resolution order:
 
 1. **Cloud** — `fastllm.types.get_model_info`, reading `supported_modalities` and
-   `supported_output_modalities`. `source='litellm'`.
+   `supported_output_modalities`. `source='fastllm'`.
 2. **Local** — a `_caps` hook each runtime module supplies. llama already has
    `get_mmproj` (`rishi/llama.py:69`) to detect a projector beside the model;
    litert has its `multimodal` flag; mlx already routes vision repos to
    `MlxVlmChat` (`rishi/core.py:588`). `source='mmproj'` or `'runtime'`.
 3. **Fallback** — a small hand-maintained table keyed by vendor prefix, for the
-   providers litellm leaves blank (Anthropic). `source='fallback'`.
+   providers fastllm leaves blank (Anthropic). `source='fallback'`.
 4. **Default** — text in, text out, `source='default'`.
 
 The `source` field carries more weight than it appears to. It is what lets a
@@ -188,7 +188,7 @@ banner.
 
 Video is the genuinely new work: a `generate_video` tool, a persisted job handle,
 polling, and an HTML5 `<video>` output in the chat cell. `veo-3.0-generate-001`
-is absent from litellm's table, so this piece cannot lean on the capability layer
+is absent from fastllm's table, so this piece cannot lean on the capability layer
 and needs its own hand-maintained entry.
 
 ## Error handling

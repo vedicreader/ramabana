@@ -1608,7 +1608,8 @@ class Agent:
         return {'ready': self.ready, 'busy': self.busy, 'note': self.note,
                 'problems': self.problems,
                 'model': self.model.name, 'model_note': model_note(self.model),
-                'budget': self.budget.note,   # a tool withheld for a small window is invisible otherwise
+                'budget': self.budget.note, 'tool_budget': self.tool_budget, 'step_budget': self.step_budget,
+                'tool_calls': self._tool_calls_turn, 'tool_limit': self.max_tool_calls, 'step_limit': self.max_steps,   # a tool withheld for a small window is invisible otherwise
                 'ntools': len(self.tools), 'nskills': len(self.skills),
                 'pct_full': round(self.pct_full, 3), 'compactions': self.compactor.count,
                 'use': self.use.dict(), 'usage': repr(self.use),
@@ -1691,6 +1692,16 @@ class Agent:
         "Every command name, built-in and registered, for a help line or an autocomplete."
         return sorted({'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
                        'plan', 'todos', 'todo', *self.registry.commands})
+
+
+# %% ../nbs/03_agent.ipynb #15c8df1f
+@patch(as_prop=True)
+def last_media(self: Agent):
+    "Media the model generated on the newest turn, as `{'mime','data'}` dicts."
+    be = self._be('turn')
+    m = next((m for m in reversed(list(be.hist if be else []))
+              if isinstance(m, dict) and m.get('role') == 'assistant'), None)
+    return list((m or {}).get('media') or [])
 
 
 # %% ../nbs/03_agent.ipynb #821de023

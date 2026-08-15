@@ -7,11 +7,12 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 # %% auto #0
 __all__ = ['DARK', 'LIGHT', 'THEMES', 'KAKU', 'GRUVBOX', 'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL',
            'NOTIFY_EVERY', 'MOUSE_ON', 'MOUSE_OFF', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA',
-           'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'PYREPL_MODULES', 'set_theme', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths',
-           'attach_refs', 'clipboard_png', 'Attachment', 'media_parts', 'media_note', 'file_refs', 'FileAttachment',
-           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain',
-           'ask_once', 'main']
+           'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'MAX_IMG_COLS', 'CELL_ASPECT', 'ST',
+           'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'PYREPL_MODULES', 'set_theme', 'key_card', 'guide_text',
+           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'draw_png', 'media_line',
+           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui',
+           'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -31,8 +32,8 @@ from teleprint.compositor import Compositor
 from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
-from .core import agent_err
-from .tools import WRITE_TOOLS, LocalHost
+from .core import accepts, agent_err
+from .tools import GEN_EXT, WRITE_TOOLS, LocalHost, media_dir, save_media
 from .agent import Agent, Approvals, answer_md
 from datetime import datetime
 from . import __version__
@@ -156,9 +157,8 @@ def guide_text(text):
     return out
 
 # %% ../nbs/05_cli.ipynb #bffc3eec
-#: What a prompt can carry, and what each kind is called. Images reach the model as content
-#: parts; audio is carried by path, because `Agent.compose` inlines pictures on every backend
-#: while sound needs a runtime built with the encoders for it.
+#: What a prompt can carry, and what each kind is called. Both reach the model as content parts
+#: where `core.accepts` says it can take them; audio falls back to a path when it cannot.
 MEDIA = {
     '.png': ('image', 'image/png'),   '.jpg':  ('image', 'image/jpeg'),
     '.jpeg': ('image', 'image/jpeg'), '.gif':  ('image', 'image/gif'),
@@ -274,17 +274,81 @@ class Attachment:
     def line(self): return f'{self.kind}  {self.path}  {self.mime}  {_human(len(self))}'
     def __repr__(self): return f'Attachment({self.kind} {self.label()})'
 
-def media_parts(atts):
-    "The attachments that go out as model content parts: the pictures."
-    return [a.data for a in atts if a.kind == 'image']
+def sendable(atts, spec=None):
+    "The attachment kinds `spec`'s model can be sent. Pictures always; sound where it can hear."
+    kinds = {'image'}
+    if spec is None or accepts(spec, 'audio'): kinds.add('audio')
+    return kinds
 
-def media_note(atts):
+def media_parts(atts, spec=None):
+    "The attachments that go out as model content parts."
+    ok = sendable(atts, spec)
+    return [a.data for a in atts if a.kind in ok]
+
+def media_note(atts, spec=None):
     "What the message says about the files attached to it."
     if not atts: return ''
+    ok = sendable(atts, spec)
     rows, note = '\n'.join(a.line() for a in atts), ''
     if any(a.kind == 'image' for a in atts): note += '\nThe images above are attached to this message.'
-    if any(a.kind == 'audio' for a in atts): note += '\nAudio is attached by path only; read it from the path above if you need its contents.'
+    if any(a.kind == 'audio' for a in atts):
+        note += ('\nThe audio above is attached to this message.' if 'audio' in ok else
+                 '\nAudio is attached by path only -- this model does not accept audio input. '
+                 'Read it from the path above if you need its contents.')
     return f'\n\n<attachments>\n{rows}\n</attachments>{note}'
+
+# %% ../nbs/05_cli.ipynb #e6190af7
+#: Terminals that speak kitty's graphics protocol, by what they put in the environment.
+KITTY_ENV = ('KITTY_WINDOW_ID', 'GHOSTTY_RESOURCES_DIR')
+
+def kitty_graphics():
+    "Does this terminal speak the kitty graphics protocol, and can we render for it?"
+    if find_spec('kittytgp') is None: return False
+    if any(os.environ.get(k) for k in KITTY_ENV): return True
+    return 'kitty' in os.environ.get('TERM', '') or os.environ.get('TERM_PROGRAM') == 'WezTerm'
+
+#: Widest a picture is drawn, and how tall a cell is relative to its width.
+MAX_IMG_COLS = 60
+CELL_ASPECT = 2.1
+
+def png_size(path):
+    "`(width, height)` in pixels from a PNG's IHDR, or `None`."
+    try: b = Path(path).read_bytes()[:24]
+    except OSError: return None
+    if b[:8] != b'\x89PNG\r\n\x1a\n': return None
+    return int.from_bytes(b[16:20], 'big'), int.from_bytes(b[20:24], 'big')
+
+def img_cells(path, cols):
+    "Cell width and height for `path` drawn at most `cols` wide, keeping its aspect."
+    if not (wh := png_size(path)): return None
+    w, h = wh
+    c = max(1, min(cols, MAX_IMG_COLS))
+    return c, max(1, round(c * (h / w) / CELL_ASPECT))
+
+#: End of an APC string, which is where kittytgp's transmit stops and its placeholders start.
+ST = '\x1b\\'
+
+def draw_png(path, cols=MAX_IMG_COLS):
+    """`(transmit, placeholders)` for drawing `path` inline, or `('', '')`.
+
+    They are separated because only the second is text. `rich` strips the APC introducer but keeps
+    its payload, so sending the transmit through the transcript spills a megabyte of base64 onto
+    the screen; it goes straight to the tty instead.
+    """
+    if not kitty_graphics() or Path(path).suffix.lower() != '.png': return '', ''
+    if not (cr := img_cells(path, cols)): return '', ''
+    try:
+        from kittytgp import build_render_bytes
+        out = build_render_bytes(str(path), cols=cr[0], rows=cr[1])
+    except Exception: return '', ''
+    s = out.decode('utf-8', 'replace') if isinstance(out, bytes) else str(out)
+    i = s.rfind(ST)
+    return (s[:i+len(ST)], s[i+len(ST):].strip('\n')) if i >= 0 else ('', s.strip('\n'))
+
+def media_line(path):
+    "What the transcript says about a saved picture when it cannot draw it."
+    return f'![{Path(path).name}]({path})' if kitty_graphics() else f'saved  {path}'
+
 
 # %% ../nbs/05_cli.ipynb #2a893877
 MAX_FILE_ATTACH = 120_000  # characters; enough source to be useful without consuming a whole turn
@@ -387,7 +451,8 @@ async def run_turn(ui, prompt):
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
     ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
     atts, ui.attachments = list(ui.attachments), []
-    ask, media = prompt + media_note(atts), media_parts(atts)
+    spec = ui.agent.model
+    ask, media = prompt + media_note(atts, spec), media_parts(atts, spec)
     def pump():
         try:
             for chunk in ui.agent.stream_with(ask, image=media or None):
@@ -400,6 +465,7 @@ async def run_turn(ui, prompt):
         while (chunk := await q.get()) is not None: blk = ui.stream(blk, chunk)
     finally:
         ui.turn = None
+        ui.show_media(ui.agent.last_media)
         for p in ui.agent.problems: ui.say(Text(p), 'error')
         ui.agent.clear_problems()
         ui.touch(now=True)
@@ -873,6 +939,21 @@ class Ui:
         self.comp.refresh_block(blk)
         self.touch()
         return blk
+
+
+# %% ../nbs/05_cli.ipynb #64a54061
+@patch
+def show_media(self: Ui, media, session=''):
+    "Save the pictures a turn generated, and draw them where the terminal can."
+    for m in media or []:
+        try: p = save_media(m, session or getattr(self.agent, 'session_dir', '') or '.')
+        except Exception as e:
+            self.say(Text(f'could not save generated media ({agent_err(e)})'), 'error')
+            continue
+        tx, cells = draw_png(p, self.comp.cols)
+        if tx: self.comp.tty.write(tx)
+        if cells: self.say(Text.from_ansi(cells), 'reply')
+        self.say(Text(media_line(p)), 'note')
 
 
 # %% ../nbs/05_cli.ipynb #280bb985

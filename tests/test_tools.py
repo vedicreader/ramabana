@@ -85,6 +85,21 @@ def test_every_tool_failure_is_spelled_the_same_way():
 
 # -- editing and searching -------------------------------------------------------------
 
+def test_file_edits_honor_an_optional_host_write_check():
+    class Guarded(MemHost):
+        def __init__(self):
+            super().__init__({'/proj/a.py': 'x = 1\n'})
+            self.checked = []
+        def check_write(self, path):
+            self.checked.append(str(path))
+            return path
+    h = Guarded(); tools = by_name(file_tools(h))
+    assert not failed(tools['replace_text']('a.py', '[{"oldText": "x = 1", "newText": "x = 2"}]'))
+    assert h.checked == ['/proj/a.py']
+    h.checked.clear()
+    assert failed(tools['edit_file']('a.py', 'not json'))
+    assert h.checked == ['/proj/a.py']
+
 def test_exact_text_editing_writes_only_when_every_edit_is_located():
     """All of it or none of it, so a rejected edit leaves the file exactly as it was: an ambiguous
     `oldText` and a stale one are both refusals, not partial writes. Three argument shapes are
@@ -246,7 +261,10 @@ def test_the_code_index_builds_the_graph_it_later_queries(monkeypatch, tmp_path)
     seen = {}
 
     class FakeKosha:
-        def __init__(self, dir=None): pass
+        # `**kw`, not `dir=None`: `sync_index` also passes `busy_timeout`, and a fake that
+        # rejects it raises inside the sync thread, where the error is swallowed and this
+        # test silently stops reaching `sync` at all
+        def __init__(self, **kw): pass
         def sync(self, **kw):
             seen.update(kw)
             return self

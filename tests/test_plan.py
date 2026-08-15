@@ -55,6 +55,8 @@ def test_status_exposes_plan_for_leela_and_the_cli_bar():
     a.plan.set('P', ['x']); a.plan.update('x', status='active')
     s = a.status()
     assert s['plan']['title'] == 'P' and '▸' in s['plan_line']
+    assert s['tool_calls'] == 0 and s['tool_limit'] == a.max_tool_calls
+    assert s['step_limit'] == a.max_steps
     assert 'plan' in a.commands() and 'todo' in a.commands()
 
 

@@ -7,15 +7,17 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 # %% auto #0
 __all__ = ['MAX_GREP_HITS', 'MAX_API', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'MAX_FILE',
            'MAX_VARS', 'LD_CHARS', 'GROUP', 'EXTRA_MODULES', 'MAX_SKILL_CHARS', 'SKILL_DESC_MAX', 'EVENTS',
-           'MAX_TOOL_CHARS', 'MAX_HITS', 'WRITE_TOOLS', 'ERR', 'SUB_MAX_STEPS', 'SUB_SP', 'NO_SUB', 'Hit', 'Host',
-           'NullHost', 'denied', 'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover', 'skill_index', 'find',
-           'Registry', 'ext_dirs', 'load', 'err', 'failed', 'clip', 'clip_lines', 'readable', 'code_tools',
-           'file_tools', 'notebook_tools', 'web_tools', 'memory_tools', 'api_tools', 'watch_tools', 'session_tools',
+           'MAX_TOOL_CHARS', 'MAX_HITS', 'WRITE_TOOLS', 'ERR', 'GEN_EXT', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES',
+           'SUB_MAX_STEPS', 'SUB_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied', 'ld_json', 'LocalHost', 'Skill',
+           'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'err', 'failed', 'clip',
+           'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools', 'media_dir', 'save_media',
+           'image_available', 'image_tools', 'web_tools', 'memory_tools', 'api_tools', 'watch_tools', 'session_tools',
            'shell_tools', 'skill_tools', 'tools_for', 'read_only', 'sub_sp', 'delegate', 'delegate_many',
            'named_skills', 'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, functools, json, os, re, runpy, shutil, threading, uuid
+from base64 import b64decode
 from dataclasses import dataclass, field
 from pathlib import Path
 from fastcore.basics import AttrDict, ifnone
@@ -396,8 +398,9 @@ class LocalHost(Host):
         self.rerank, self.rerank_model, self._rerank_note = bool(rerank), rerank_model, ''
         if index: self.sync_index()
 
-    def sync_index(self, wait=False, force=False, graph=False):
+    def sync_index(self, wait=False, force=False, graph=True):
         "Run `Kosha.sync` for every open root, once, in a daemon thread; each root publishes as it returns."
+        # `_semantic` queries `Kosha.context(graph=True)`, so an ordinary sync has to build one
         if self._index_thread is None or not self._index_thread.is_alive():
             def run():
                 try:
@@ -1369,6 +1372,7 @@ def file_tools(host, mx=MAX_TOOL_CHARS):
         when you must be certain the line you are changing is the line you read.
         """
         p = host.check(path)
+        if hasattr(host, 'check_write'): host.check_write(p)
         try: items = _edits(edits)
         except Exception as e: return err('could not parse edits', e)
         if not items: return err('no edits given')
@@ -1395,6 +1399,7 @@ def file_tools(host, mx=MAX_TOOL_CHARS):
         """
         from exhash import file_exhash
         p = host.check(path)
+        if hasattr(host, 'check_write'): host.check_write(p)
         try: cmds = _cmds(commands)
         except Exception as e: return err('could not parse commands', e)
         if not cmds: return err('no commands given')
@@ -1441,6 +1446,68 @@ def notebook_tools(host, mx=MAX_TOOL_CHARS):
         except Exception as e: return err('could not add cell', e)
 
     return [notebook_cells, view_cell, edit_cell, add_cell]
+
+# %% ../nbs/02_tools.ipynb #67be8d35
+def media_dir(session=''):
+    "Where a turn's generated pictures are kept: beside the session record that produced them."
+    d = Path(session or '.') / 'media'
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+#: Extension for each mime a model generates; anything absent is saved under its own subtype.
+GEN_EXT = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif',
+           'video/mp4': '.mp4', 'video/webm': '.webm'}
+
+def save_media(m, session='', stem='image'):
+    "One `{'mime','data'}` from `Resp.media` written under the session, as a `Path`."
+    ext = GEN_EXT.get(m.get('mime', ''), '.' + str(m.get('mime', 'bin')).split('/')[-1])
+    d = media_dir(session)
+    n = 1 + len(list(d.glob(f'{stem}-*')))
+    p = d / f'{stem}-{n}{ext}'
+    p.write_bytes(m['data'])
+    return p
+
+#: Where a picture is asked for, and the field its bytes come back in.
+IMAGE_API = 'https://api.openai.com/v1/images/generations'
+IMAGE_MODEL = 'gpt-image-1'
+IMAGE_SIZES = ('1024x1024', '1536x1024', '1024x1536', 'auto')
+
+def image_available(): return bool(os.environ.get('OPENAI_API_KEY'))
+
+def _post_image(prompt, size, n, timeout=120):
+    "Raw `data` rows from the images endpoint."
+    import httpx
+    r = httpx.post(IMAGE_API, timeout=timeout,
+                   headers={'Authorization': f"Bearer {os.environ['OPENAI_API_KEY']}"},
+                   json={'model': IMAGE_MODEL, 'prompt': prompt, 'size': size, 'n': n})
+    r.raise_for_status()
+    return r.json().get('data') or []
+
+def image_tools(host, mx=MAX_TOOL_CHARS, session=''):
+    "Drawing, for a model that cannot draw itself."
+
+    def generate_image(prompt: str, size: str = '1024x1024', n: int = 1) -> str:
+        """Generate a picture from a description and save it. Returns the paths written.
+
+        Use when the user asks for an image and this model cannot produce one itself. `size` is
+        one of 1024x1024, 1536x1024, 1024x1536, auto.
+        """
+        if not image_available(): return err('image generation is unavailable', 'OPENAI_API_KEY is not set')
+        if size not in IMAGE_SIZES: return err('unknown size', f'{size!r}; use one of {", ".join(IMAGE_SIZES)}')
+        n = max(1, min(int(n or 1), 4))
+        try: rows = _post_image(prompt, size, n)
+        except Exception as e: return err('could not generate the image', e)
+        if not rows: return err('the image endpoint returned nothing', 'no data rows')
+        out = []
+        for row in rows:
+            if not (b64 := row.get('b64_json')): continue
+            try: out.append(save_media({'mime': 'image/png', 'data': b64decode(b64)}, session, 'generated'))
+            except Exception as e: return err('could not save the image', e)
+        if not out: return err('the image endpoint returned no image data', 'every row was empty')
+        return clip('\n'.join(str(p) for p in out))
+
+    return [generate_image]
+
 
 # %% ../nbs/02_tools.ipynb #53642256
 def web_tools(host, mx=MAX_TOOL_CHARS):
@@ -1794,6 +1861,8 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=()):
     if 'file' not in drop: tools += file_tools(host, mx)
     if 'notebook' not in drop and _has(host, 'notebook', lambda: host.nb_cells('.')): tools += notebook_tools(host, mx)
     if 'web' not in drop and _has(host, 'web', lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
+    # credentialled, never probed: a key is either there or it is not
+    if 'image' not in drop and image_available(): tools += image_tools(host, mx)
     if 'memory' not in drop and _has(host, 'memory', lambda: host.memory_tree('')): tools += memory_tools(host, mx)
     if 'watch' not in drop and _has(host, 'watch', lambda: host.watches()): tools += watch_tools(host, mx)
     # declared, never probed: `api_ops` raises for a missing spec, not a missing capability

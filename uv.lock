@@ -1996,6 +1996,15 @@ wheels = [
 ]
 
 [[package]]
+name = "kittytgp"
+version = "0.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/1d/99145a25f1998b1c58ca8734d198868667d7d4d1c5b5079549b4da668285/kittytgp-0.0.2.tar.gz", hash = "sha256:295f9cd4ae9c9a701106860e370037a117c8cb8839f1d639badbba5d4dde5838", size = 15593, upload-time = "2026-04-16T04:31:57.169Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/54/15d79ee63b06dc811ba4155e0a114cfc1573aecd670272ff215c8d80a68f/kittytgp-0.0.2-py3-none-any.whl", hash = "sha256:0121a57446079f405824c3604beaa88583dbecd031953cbb755db2fb6d0525cf", size = 14422, upload-time = "2026-04-16T04:31:55.773Z" },
+]
+
+[[package]]
 name = "kiwisolver"
 version = "1.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3912,17 +3921,20 @@ dependencies = [
 all = [
     { name = "dhrishti" },
     { name = "jupyter-client" },
+    { name = "kittytgp" },
     { name = "mcp" },
     { name = "pyghostty" },
     { name = "teleprint" },
 ]
 cli = [
+    { name = "kittytgp" },
     { name = "pyghostty" },
     { name = "teleprint" },
 ]
 dev = [
     { name = "dhrishti" },
     { name = "jupyter-client" },
+    { name = "kittytgp" },
     { name = "mcp" },
     { name = "nbdev" },
     { name = "notebook" },
@@ -3937,6 +3949,7 @@ mcp = [
 pyrepl = [
     { name = "dhrishti" },
     { name = "jupyter-client" },
+    { name = "kittytgp" },
     { name = "pyghostty" },
     { name = "teleprint" },
 ]
@@ -3959,6 +3972,10 @@ requires-dist = [
     { name = "jupyter-client", marker = "extra == 'all'", specifier = ">=8.9.1" },
     { name = "jupyter-client", marker = "extra == 'dev'", specifier = ">=8.9.1" },
     { name = "jupyter-client", marker = "extra == 'pyrepl'", specifier = ">=8.9.1" },
+    { name = "kittytgp", marker = "extra == 'all'", specifier = ">=0.0.1" },
+    { name = "kittytgp", marker = "extra == 'cli'", specifier = ">=0.0.1" },
+    { name = "kittytgp", marker = "extra == 'dev'", specifier = ">=0.0.1" },
+    { name = "kittytgp", marker = "extra == 'pyrepl'", specifier = ">=0.0.1" },
     { name = "koshas", specifier = ">=0.0.31" },
     { name = "litesearch", specifier = ">=0.1.1" },
     { name = "mcp", marker = "extra == 'all'", specifier = ">=1.2" },

@@ -28,7 +28,10 @@ dependencies = [
     # not appear at all, which is a quietly smaller agent rather than a failure anyone would notice.
     # 0.1.12 is `token_count` reporting what the window holds rather than what the turn was billed:
     # under it a claude turn refused itself over an empty window and cursor never compacted at all.
-    "rishi>=0.1.12",
+    # 0.1.13 is `model_caps`/`Caps` and `gen_media`. Below it `spec_caps` answers None, so the
+    # status bar says nothing about modalities and audio is sent to models that cannot hear it --
+    # a quietly worse agent rather than a failure, which is exactly what a floor is for.
+    "rishi>=0.1.13",
     "fossick>=0.1.11",          # first-party web research primitives and skill. 0.1.11 is the
                                 # RRF-fused search and the research that reports what it could
                                 # not read, which `LocalHost.research` returns the digest of
@@ -52,7 +55,7 @@ dependencies = [
 [project.optional-dependencies]
 # The terminal app. teleprint owns the transcript surface; pyghostty is what makes it
 # testable, since the whole UI is asserted against a headless emulator in 05_cli.ipynb.
-cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0"]
+cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "kittytgp>=0.0.1"]
 mcp = ["mcp>=1.2"]
 all = ["ramabana[cli,mcp,pyrepl]"]
 # Every notebook is executed by `nbdev-test`, including the cli and mcp pages, so the dev
