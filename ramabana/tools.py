@@ -399,7 +399,7 @@ class LocalHost(Host):
         self.rerank, self.rerank_model, self._rerank_note = bool(rerank), rerank_model, ''
         if index: self.sync_index()
 
-    def sync_index(self, wait=False, force=False, graph=True):
+    def sync_index(self, wait=False, force=False, graph=False):
         "Run `Kosha.sync` for every open root, once, in a daemon thread; each root publishes as it returns."
         # `_semantic` queries `Kosha.context(graph=True)`, so an ordinary sync has to build one
         if self._index_thread is None or not self._index_thread.is_alive():

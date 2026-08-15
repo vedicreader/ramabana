@@ -10,7 +10,7 @@ Modules:
 - `ramabana.testing`: The doubles: a host with no disk, backends with no model, and a script that behaves like a bad local engine.
 - `ramabana.vault`: Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing watches that put things back on the agent's desk."""
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 from .core import AgentError, agent_err, env
 

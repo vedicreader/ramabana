@@ -1,4 +1,6 @@
 # Changelog
+image support and openapi spec support
+
 make system prompts tighter and show one line tool calls
 
 kosha sync made faster
