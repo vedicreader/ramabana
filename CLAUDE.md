@@ -56,6 +56,8 @@ Surface what already exists first: invoke the `kosha` skill, and `litesearch` fo
 
 Match the surrounding design. This codebase uses fastcore selectively — `patch` to spread a class across cells, `delegates` on subclass `__init__`s, `AttrDict`, `L`, `ifnone` — but assigns in `__init__` explicitly rather than reaching for `store_attr`. Docments are the house signature style, and docstrings are one line.
 
+Write it dense: one-line bodies stay on the line, no blank-line padding, and no comment that restates the code or repeats the docstring. A comment earns its place only by saying what the code cannot; longer rationale goes in `docs/`.
+
 Tests in `tests/` are hand-written pytest with long sentence-style names (`test_private_sections_never_reach_a_hosted_model`), plain `assert`, doubles from `ramabana.testing`, and no test loads a model. Notebooks carry the readable `test_eq` examples; `tests/` asserts contracts in bulk. Keep that division.
 
 When something in the wider stack — fastcore, rishi, teleprint, nbdev — is missing what you need, say so rather than building around it.

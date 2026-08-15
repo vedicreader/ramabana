@@ -706,7 +706,7 @@ class Usage:
 
 # %% ../nbs/01_runtime.ipynb #c7b0f585
 def canonical_msg(m):
-    "Whether `m` is a plain `role`/`content` turn read back from the durable log, not a live message."
+    "A plain `role`/`content` turn, as the durable log stores it."
     return isinstance(m,dict) and set(m)=={'role','content'} and isinstance(m['content'],str)
 
 # %% ../nbs/01_runtime.ipynb #af66f277
@@ -745,7 +745,6 @@ class Backend:
         except Exception as e:self.chat=None; self._failed('unavailable',e)
         return self.chat
     def retry(self):
-        # a rebuilt chat is the same conversation, so the live history outlives the one it ran on
         self._resume_hist=self.snapshot_hist() or self._resume_hist
         self._tried,self.chat=False,None; return self.start()
     def set_approve(self,approve):
@@ -820,8 +819,7 @@ class Backend:
         if self.chat:return self.restore_hist(hist)
         self._resume_hist=copy.deepcopy(list(hist or [])); return self
     def _mk_hist(self,hist):
-        "A snapshot is already this chat's own messages; turns read back from the log are built into them."
-        # assigned raw they reach no provider: a transcript on screen with an empty context behind it
+        "Canonical turns become this chat's own messages; a snapshot already is one."
         hist=copy.deepcopy(list(hist or []))
         mk=getattr(self.chat,'mk_msgs',None)
         return mk(hist) if mk and all(canonical_msg(m) for m in hist) else hist

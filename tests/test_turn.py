@@ -154,20 +154,13 @@ def test_an_attached_image_survives_the_tool_plan():
 
 
 class _Chat:
-    "A chat that keeps its own message shape, the way rishi's does."
     def __init__(self): self.hist, self.rebuilt = [], 0
     def mk_msgs(self, msgs): return [dict(m, built=True) for m in msgs]
     def _recreate_conv(self): self.rebuilt += 1
 
-
 class _Be(Backend):
-    def __init__(self, *a, **kw):
-        super().__init__(*a, **kw)
-        self.starts = 0
-    def _start(self):
-        self.starts += 1
-        return _Chat()
-
+    def __init__(self, *a, **kw): super().__init__(*a, **kw); self.starts = 0
+    def _start(self): self.starts += 1; return _Chat()
 
 def test_a_resumed_conversation_is_built_into_the_provider_messages_and_survives_a_rebuild():
     "Raw role/content dicts sit in `hist` and reach no model: a transcript on screen, an empty context behind it."
@@ -175,10 +168,8 @@ def test_a_resumed_conversation_is_built_into_the_provider_messages_and_survives
     be.resume_hist([{'role': 'user', 'content': 'remember cedar'}, {'role': 'assistant', 'content': 'cedar'}])
     be.start()
     assert [m['built'] for m in be.chat.hist] == [True, True] and be.chat.rebuilt == 1
-
     live = be.snapshot_hist()
     be.restore_hist(live)
-    assert be.chat.hist == live, 'a snapshot is already the chat\'s own messages and must not be rebuilt from'
-
+    assert be.chat.hist == live, 'a snapshot must not be rebuilt from'
     be.retry()
     assert be.starts == 2 and be.chat.hist == live
