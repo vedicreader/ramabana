@@ -8,17 +8,15 @@
 <img src="media/rama-arrow.png" alt="rama's arrow" width="96" />
 </p>
 
-The **brain** of a coding agent — policy, tools, memory, routing. No editor. No IDE.
-Hosts speak one protocol; models arrive through [rishi](https://github.com/vedicreader/rishi)
-(LiteRT · MLX · llama.cpp · Cursor · hosted APIs). A terminal app and an MCP server ship on
-that same host.
+The brain of a coding agent: policy, tools, memory, and routing, with no editor attached.
+Hosts speak one protocol. Models arrive through [rishi](https://github.com/vedicreader/rishi)
+(LiteRT, MLX, llama.cpp, Cursor, hosted APIs). A terminal app and an MCP server ship as frontends
+on that same host.
 
 <p align="center">
 
 <img src="media/ramabana-cli-demo.gif" alt="ramabana CLI on Gemma 4 LiteRT" width="820" />
 </p>
-
-## Try it
 
 ``` sh
 pip install 'ramabana[cli]'
@@ -26,11 +24,9 @@ ramabana --root . --model gemma-e4b
 ramabana --root . --model gemma-e2b --approve auto 'Reply with exactly: pong'
 ```
 
-Models are fetched on first use. On CPU-only machines: `RAMABANA_LITERT_BACKEND=cpu`.
+rishi fetches a model on first use. On CPU-only machines set `RAMABANA_LITERT_BACKEND=cpu`.
 
-## In code
-
-[`LocalHost`](https://vedicreader.github.io/ramabana/tools.html#localhost) indexes the folders you open. Tools the host cannot perform are never offered.
+[`LocalHost`](https://vedicreader.github.io/ramabana/tools.html#localhost) indexes the folders you open. The harness never offers a tool the host cannot perform.
 
 ``` python
 from ramabana import Agent
@@ -50,9 +46,7 @@ a.ask('where is the compaction threshold?')
 
     'in `ramabana/runtime.py`'
 
-## Explore
-
-One notebook per module — the page you read is the module you import.
+One notebook per module: the page you read is the module you import.
 
 [core](00_core.ipynb) · [runtime](01_runtime.ipynb) · [tools](02_tools.ipynb) ·
 [agent](03_agent.ipynb) · [cli](05_cli.ipynb) · [mcp](06_mcp.ipynb) ·
