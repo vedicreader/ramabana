@@ -57,7 +57,7 @@ dependencies = [
 [project.optional-dependencies]
 # The terminal app. teleprint owns the transcript surface; pyghostty is what makes it
 # testable, since the whole UI is asserted against a headless emulator in 05_cli.ipynb.
-cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "kittytgp>=0.0.1"]
+cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0"]
 mcp = ["mcp>=1.2"]
 all = ["ramabana[cli,mcp,pyrepl]"]
 # Every notebook is executed by `nbdev-test`, including the cli and mcp pages, so the dev

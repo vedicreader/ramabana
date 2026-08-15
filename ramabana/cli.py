@@ -8,11 +8,11 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 __all__ = ['DARK', 'LIGHT', 'THEMES', 'KAKU', 'GRUVBOX', 'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL',
            'NOTIFY_EVERY', 'MOUSE_ON', 'MOUSE_OFF', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA',
            'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM',
-           'MAX_IMG_COLS', 'CELL_ASPECT', 'ST', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'PYREPL_MODULES', 'set_theme',
-           'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
-           'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'draw_png',
-           'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn',
-           'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
+           'MAX_IMG_COLS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
+           'PYREPL_MODULES', 'set_theme', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths',
+           'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics',
+           'png_size', 'img_cells', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option',
+           'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -304,29 +304,29 @@ KITTY_TERM = ('kitty', 'kaku', 'ghostty', 'wezterm')        # substrings of $TER
 KITTY_PROGRAM = ('WezTerm', 'Kaku', 'ghostty', 'kitty')     # exact $TERM_PROGRAM
 
 def kitty_graphics():
-    """Does this terminal speak the kitty graphics protocol, and can we render for it?
+    """Does this terminal speak the kitty graphics protocol?
 
     `$RAMABANA_KITTY` settles it either way. The list below can only name the terminals known
     when it was written, and one that does support the protocol but is missing from it shows a
     path where it could have shown the picture."""
-    if find_spec('kittytgp') is None: return False
     if (forced := env('KITTY')) is not None:
         return str(forced).strip().lower() not in ('0', 'false', 'no', '')
     if any(os.environ.get(k) for k in KITTY_ENV): return True
     term, prog = os.environ.get('TERM', '').lower(), os.environ.get('TERM_PROGRAM', '')
     return any(t in term for t in KITTY_TERM) or prog in KITTY_PROGRAM
 
-#: Widest a picture is drawn, and how tall a cell is relative to its width.
-MAX_IMG_COLS = 60
+#: Widest a picture is drawn, how tall a cell is relative to its width, and how many one turn
+#: may draw. Small and few on purpose: a tall block is what makes the transcript hard to scroll.
+MAX_IMG_COLS = 24
 CELL_ASPECT = 2.1
+MAX_IMG_DRAW = 2
 
 def png_size(path):
     """`(width, height)` in pixels from a PNG's IHDR, or `None`.
 
     `fastcore.xtras.image_size` is the obvious home for this and cannot be used: its `_png_size`
     and `_gif_size` both read a `head` that is never bound, so every PNG raises `NameError` and
-    only the JPEG branch works.
-    """
+    only the JPEG branch works."""
     try: b = Path(path).read_bytes()[:24]
     except OSError: return None
     if len(b) < 24 or b[:8] != b'\x89PNG\r\n\x1a\n': return None
@@ -340,25 +340,29 @@ def img_cells(path, cols):
     c = max(1, min(cols, MAX_IMG_COLS))
     return c, max(1, round(c * (h / w) / CELL_ASPECT))
 
-#: End of an APC string, which is where kittytgp's transmit stops and its placeholders start.
-ST = '\x1b\\'
+#: Bytes of base64 per APC chunk, as the protocol requires them chunked.
+APC_CHUNK = 4096
 
 def draw_png(path, cols=MAX_IMG_COLS):
-    """`(transmit, placeholders)` for drawing `path` inline, or `('', '')`.
+    """The escape that draws `path` at the cursor, or `''`.
 
-    They are separated because only the second is text. `rich` strips the APC introducer but keeps
-    its payload, so sending the transmit through the transcript spills a megabyte of base64 onto
-    the screen; it goes straight to the tty instead.
-    """
-    if not kitty_graphics() or Path(path).suffix.lower() != '.png': return '', ''
-    if not (cr := img_cells(path, cols)): return '', ''
-    try:
-        from kittytgp import build_render_bytes
-        out = build_render_bytes(str(path), cols=cr[0], rows=cr[1])
-    except Exception: return '', ''
-    s = out.decode('utf-8', 'replace') if isinstance(out, bytes) else str(out)
-    i = s.rfind(ST)
-    return (s[:i+len(ST)], s[i+len(ST):].strip('\n')) if i >= 0 else ('', s.strip('\n'))
+    A *direct* placement, not the unicode-placeholder kind. Placeholders are the tidier idea --
+    the image is ordinary text, so it survives a repaint -- but the terminals this runs in ignore
+    `U=1` and print `U+10EEEE` as a missing glyph, so every picture arrived with a block of tofu
+    behind it. Direct placement is what they actually implement.
+
+    `C=1` keeps the cursor where it was, so the caller decides how many rows the image occupies
+    rather than the terminal moving the cursor out from under the compositor."""
+    if not kitty_graphics() or Path(path).suffix.lower() != '.png': return ''
+    if not (cr := img_cells(path, cols)): return ''
+    try: data = b64encode(Path(path).read_bytes())
+    except OSError: return ''
+    head, out = f'a=T,f=100,q=2,C=1,c={cr[0]},r={cr[1]}', []
+    for i in range(0, len(data), APC_CHUNK):
+        piece, more = data[i:i+APC_CHUNK], int(i + APC_CHUNK < len(data))
+        ctl = f'{head},m={more}' if i == 0 else f'm={more}'
+        out.append('\x1b_G' + ctl + ';' + piece.decode() + '\x1b\\')
+    return ''.join(out)
 
 def media_line(path):
     "What the transcript says about a saved picture when it cannot draw it."
@@ -959,17 +963,20 @@ class Ui:
 # %% ../nbs/05_cli.ipynb #64a54061
 @patch
 def show_media(self: Ui, media, session=''):
-    "Save the pictures a turn generated, and draw them where the terminal can."
-    for m in media or []:
+    """Save the pictures a turn generated, and draw them where the terminal can.
+
+    Saving happens either way, so the fallback names a file that exists. Only `MAX_IMG_DRAW` are
+    drawn: the rest are listed, because a wall of tall blocks is what makes the transcript hard
+    to scroll back through."""
+    for n, m in enumerate(media or []):
         try: p = save_media(m, session or getattr(self.agent, 'session_dir', '') or '.')
         except Exception as e:
             self.say(Text(f'could not save generated media ({agent_err(e)})'), 'error')
             continue
-        tx, cells = draw_png(p, self.comp.cols)
-        if tx: self.comp.tty.write(tx)
-        # `fold=0`: a picture is 20-odd rows, and the default threshold collapses it to its
-        # first line -- one row of an image, which reads as nothing having been drawn
-        if cells: self.say(Text.from_ansi(cells), 'reply', fold=0)
+        if n < MAX_IMG_DRAW and (esc := draw_png(p, self.comp.cols)):
+            rows = img_cells(p, self.comp.cols)[1]
+            self.say(Text('\n' * max(0, rows - 1)), 'reply', fold=0)   # rows the image will occupy
+            self.comp.tty.write(esc)
         self.say(Text(media_line(p)), 'note')
 
 

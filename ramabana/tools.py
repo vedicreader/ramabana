@@ -1669,13 +1669,21 @@ def api_tools(host, mx=MAX_TOOL_CHARS):
         try: return clip(json.dumps(host.api_load(src, name), default=str), mx)
         except Exception as e: return err('could not load the spec', e)
 
-    def api_ops(group: str = '', name: str = '', match: str = '') -> str:
+    def api_ops(group: str = '', name: str = '', match: str = '', offset: int = 0) -> str:
         """List the operations a loaded spec declares, with their signatures.
 
         Narrow with `group` or `match` first: a real API has hundreds of operations, and
-        reading all of them is not how you find the one you want.
+        reading all of them is not how you find the one you want. One page comes back at a
+        time; `api_load` says how many there are in total, and `offset` walks the rest.
         """
-        try: return clip(json.dumps(host.api_ops(group, name, match), default=str), mx)
+        try:
+            rows = host.api_ops(group, name, match, offset=offset)
+            total = host.api_count(group=group, name=name, match=match)
+            out = {'operations': rows}
+            if offset or len(rows) < total:
+                out |= {'matched': total, 'showing': f'{offset + 1}-{offset + len(rows)}',
+                        'more': f'call again with offset={offset + len(rows)}'} if offset + len(rows) < total else {'matched': total}
+            return clip(json.dumps(out, default=str), mx)
         except Exception as e: return err('could not read the operations', e)
 
     def api_call(operation: str, name: str = '', params: dict = None) -> str:
