@@ -31,7 +31,9 @@ dependencies = [
     # 0.1.13 is `model_caps`/`Caps` and `gen_media`. Below it `spec_caps` answers None, so the
     # status bar says nothing about modalities and audio is sent to models that cannot hear it --
     # a quietly worse agent rather than a failure, which is exactly what a floor is for.
-    "rishi>=0.1.13",
+    # 0.1.14, not 0.1.13: on 0.1.13 `norm_completion` reads `comp.raw` as a plain attribute, so
+    # every Completion-shaped object without one raises AttributeError mid-turn.
+    "rishi>=0.1.14",
     "fossick>=0.1.11",          # first-party web research primitives and skill. 0.1.11 is the
                                 # RRF-fused search and the research that reports what it could
                                 # not read, which `LocalHost.research` returns the digest of
@@ -60,7 +62,7 @@ mcp = ["mcp>=1.2"]
 all = ["ramabana[cli,mcp,pyrepl]"]
 # Every notebook is executed by `nbdev-test`, including the cli and mcp pages, so the dev
 # environment needs both frontends' dependencies or CI cannot run the docs as tests.
-dev = ["ramabana[all]", "rishi[all]>=0.1.12", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0"]
+dev = ["ramabana[all]", "rishi[all]>=0.1.14", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0"]
 # pyrepl is the terminal app plus a kernel, so it needs the cli extra as well as its own.
 pyrepl = [
     "ramabana[cli]",
