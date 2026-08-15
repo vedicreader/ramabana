@@ -963,20 +963,18 @@ class Ui:
 # %% ../nbs/05_cli.ipynb #64a54061
 @patch
 def show_media(self: Ui, media, session=''):
-    """Save the pictures a turn generated, and draw them where the terminal can.
+    """Save the pictures a turn generated and name them in the transcript.
 
-    Saving happens either way, so the fallback names a file that exists. Only `MAX_IMG_DRAW` are
-    drawn: the rest are listed, because a wall of tall blocks is what makes the transcript hard
-    to scroll back through."""
-    for n, m in enumerate(media or []):
+    Drawing them inline is off: a kitty placement lands at the cursor, which after a paint is the
+    input line, and the next frame erases it -- a blank gap where a picture should be. Placing it
+    where the block actually is needs the compositor to say which screen row that block occupies,
+    and to re-place it on every frame. teleprint has no API for either, so this saves the file and
+    prints the path until it does. `draw_png` is the escape that will be used then."""
+    for m in media or []:
         try: p = save_media(m, session or getattr(self.agent, 'session_dir', '') or '.')
         except Exception as e:
             self.say(Text(f'could not save generated media ({agent_err(e)})'), 'error')
             continue
-        if n < MAX_IMG_DRAW and (esc := draw_png(p, self.comp.cols)):
-            rows = img_cells(p, self.comp.cols)[1]
-            self.say(Text('\n' * max(0, rows - 1)), 'reply', fold=0)   # rows the image will occupy
-            self.comp.tty.write(esc)
         self.say(Text(media_line(p)), 'note')
 
 

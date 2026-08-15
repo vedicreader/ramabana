@@ -379,22 +379,20 @@ def _painted(png_bytes, tmp_path, cols=100, rows=40, media=None):
     return asyncio.run(run())
 
 
-def test_the_image_reaches_the_terminal_and_no_glyphs_reach_the_transcript(tmp_path, monkeypatch):
-    """The whole point of dropping placeholders: the picture goes to the tty as a direct
-    placement, and the transcript never carries a single U+10EEEE for a terminal to draw."""
+def test_nothing_is_drawn_into_the_transcript_and_no_glyphs_reach_it(tmp_path, monkeypatch):
+    """Inline drawing is off. A placement lands at the cursor, which after a paint is the input
+    line, and the next frame erases it -- a blank gap where a picture should be."""
     monkeypatch.setenv('RAMABANA_KITTY', '1')
     blob = _painted(_png(600, 600), tmp_path)
-    assert '\x1b_G' in blob and 'a=T' in blob and 'C=1' in blob
-    assert PLACEHOLDER not in blob
+    assert '\x1b_G' not in blob          # no image escape...
+    assert PLACEHOLDER not in blob       # ...and no placeholder glyphs either
 
 
-def test_only_a_couple_of_pictures_are_drawn_however_many_a_turn_made(tmp_path, monkeypatch):
-    "A wall of tall blocks is what makes the transcript hard to scroll back through."
+def test_every_picture_is_saved_and_named_however_many_a_turn_made(tmp_path, monkeypatch):
     monkeypatch.setenv('RAMABANA_KITTY', '1')
     png = _png(64, 64)
-    blob = _painted(png, tmp_path, media=[{'mime': 'image/png', 'data': png}] * 5)
-    assert blob.count('a=T') == MAX_IMG_DRAW
-    assert len(list((tmp_path/'media').glob('*.png'))) == 5   # all saved, only some drawn
+    _painted(png, tmp_path, media=[{'mime': 'image/png', 'data': png}] * 5)
+    assert len(list((tmp_path/'media').glob('*.png'))) == 5
 
 
 # -- a picture a tool wrote still has to reach the screen -------------------------------
