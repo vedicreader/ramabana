@@ -120,8 +120,8 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
            'ACTION_NOTICE', 'MAX_STEPS', 'ONESHOT_TOKENS', 'interesting', 'captured', 'capture', 'estimate_tokens',
            'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle',
            'surgical_history', 'reorient', 'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor',
-           'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend', 'use_chat', 'RishiBackend',
-           'make_backend']
+           'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'canonical_msg', 'Backend', 'use_chat',
+           'RishiBackend', 'make_backend']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import copy, os, re, sys, threading
@@ -704,6 +704,11 @@ class Usage:
         return ' · '.join(p)
     def dict(self): return dict(self.__dict__)
 
+# %% ../nbs/01_runtime.ipynb #c7b0f585
+def canonical_msg(m):
+    "Whether `m` is a plain `role`/`content` turn read back from the durable log, not a live message."
+    return isinstance(m,dict) and set(m)=={'role','content'} and isinstance(m['content'],str)
+
 # %% ../nbs/01_runtime.ipynb #af66f277
 class Backend:
     kind='?'
@@ -739,7 +744,10 @@ class Backend:
             self.note=f'{len(self.tools)} tools'
         except Exception as e:self.chat=None; self._failed('unavailable',e)
         return self.chat
-    def retry(self): self._tried,self.chat=False,None; return self.start()
+    def retry(self):
+        # a rebuilt chat is the same conversation, so the live history outlives the one it ran on
+        self._resume_hist=self.snapshot_hist() or self._resume_hist
+        self._tried,self.chat=False,None; return self.start()
     def set_approve(self,approve):
         self.approve=approve
         if self.chat:self.chat.approve=approve
@@ -811,10 +819,16 @@ class Backend:
         "Restore canonical history now, or after this backend starts lazily."
         if self.chat:return self.restore_hist(hist)
         self._resume_hist=copy.deepcopy(list(hist or [])); return self
+    def _mk_hist(self,hist):
+        "A snapshot is already this chat's own messages; turns read back from the log are built into them."
+        # assigned raw they reach no provider: a transcript on screen with an empty context behind it
+        hist=copy.deepcopy(list(hist or []))
+        mk=getattr(self.chat,'mk_msgs',None)
+        return mk(hist) if mk and all(canonical_msg(m) for m in hist) else hist
     def restore_hist(self,hist):
         "Restore a checkpoint and rebuild provider conversation state."
         if not self.chat:raise RuntimeError('nothing to restore: the model is not running')
-        self.chat.hist[:]=copy.deepcopy(list(hist or []))
+        self.chat.hist[:]=self._mk_hist(hist)
         recreate=getattr(self.chat,'_recreate_conv',None)
         if recreate:recreate()
         return self

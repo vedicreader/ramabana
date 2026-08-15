@@ -5,8 +5,8 @@ block is about whether they tell the truth -- a tool that claimed success and ch
 not appear in the diff, and a backend that counts cumulatively must not charge turn one twice.
 """
 from ramabana import agent, core
-from ramabana.runtime import Usage
-from ramabana.testing import MemHost, ScriptedBackend, Step, fake_agent
+from ramabana.runtime import Backend, Usage
+from ramabana.testing import SPEC, MemHost, ScriptedBackend, Step, fake_agent
 
 
 def test_a_turn_records_its_activity_and_is_charged_exactly_once():
@@ -151,3 +151,34 @@ def test_an_attached_image_survives_the_tool_plan():
     assert isinstance(sent, list) and len(sent) == 2
     assert sent[0] == b'\x89PNG-not-really'
     assert '<user-request>' in sent[1] and '<tool-plan' in sent[1]
+
+
+class _Chat:
+    "A chat that keeps its own message shape, the way rishi's does."
+    def __init__(self): self.hist, self.rebuilt = [], 0
+    def mk_msgs(self, msgs): return [dict(m, built=True) for m in msgs]
+    def _recreate_conv(self): self.rebuilt += 1
+
+
+class _Be(Backend):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.starts = 0
+    def _start(self):
+        self.starts += 1
+        return _Chat()
+
+
+def test_a_resumed_conversation_is_built_into_the_provider_messages_and_survives_a_rebuild():
+    "Raw role/content dicts sit in `hist` and reach no model: a transcript on screen, an empty context behind it."
+    be = _Be(SPEC)
+    be.resume_hist([{'role': 'user', 'content': 'remember cedar'}, {'role': 'assistant', 'content': 'cedar'}])
+    be.start()
+    assert [m['built'] for m in be.chat.hist] == [True, True] and be.chat.rebuilt == 1
+
+    live = be.snapshot_hist()
+    be.restore_hist(live)
+    assert be.chat.hist == live, 'a snapshot is already the chat\'s own messages and must not be rebuilt from'
+
+    be.retry()
+    assert be.starts == 2 and be.chat.hist == live
