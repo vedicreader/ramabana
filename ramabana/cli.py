@@ -962,7 +962,9 @@ def show_media(self: Ui, media, session=''):
             continue
         tx, cells = draw_png(p, self.comp.cols)
         if tx: self.comp.tty.write(tx)
-        if cells: self.say(Text.from_ansi(cells), 'reply')
+        # `fold=0`: a picture is 20-odd rows, and the default threshold collapses it to its
+        # first line -- one row of an image, which reads as nothing having been drawn
+        if cells: self.say(Text.from_ansi(cells), 'reply', fold=0)
         self.say(Text(media_line(p)), 'note')
 
 

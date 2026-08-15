@@ -352,3 +352,50 @@ def test_a_drawing_model_that_returns_no_picture_is_a_refusal(tmp_path, monkeypa
                         lambda *a, **kw: {'output': [{'type': 'message'}]})
     gi = _gi(session=str(tmp_path), get_spec=lambda: _spec('openai/gpt-5.6-luna'))
     assert failed(gi('a bottle'))
+
+
+# -- the picture actually reaches the screen -------------------------------------------
+
+def _painted(png_bytes, tmp_path, cols=100, rows=40):
+    "Every byte the compositor and the out-of-band write put on an emulated tty."
+    import asyncio
+    from teleprint.compositor import Compositor
+    from teleprint.testing import EmuTty
+    from ramabana.cli import Ui
+    from ramabana.testing import fake_agent
+
+    async def run():
+        tty = EmuTty(cols, rows)
+        comp = Compositor(tty); comp._register_signals = lambda: None
+        await comp.start()
+        agent, _ = fake_agent(replies=['ok'])
+        ui, writes = Ui(comp, agent), []
+        orig = tty.write
+        tty.write = lambda s: (writes.append(s), orig(s))[1]
+        ui.show_media([{'mime': 'image/png', 'data': png_bytes}], session=str(tmp_path))
+        ui.paint()
+        return ''.join(writes)
+    return asyncio.run(run())
+
+
+def test_the_whole_picture_is_painted_rather_than_folded_to_one_row(tmp_path, monkeypatch):
+    """A block taller than the fold threshold collapses to its first line. For a picture that
+    is one row of it, which reads as nothing having been drawn at all."""
+    pytest.importorskip('kittytgp')
+    monkeypatch.setenv('RAMABANA_KITTY', '1')
+    png = _png(600, 600)
+    blob = _painted(png, tmp_path)
+    cols, rows = img_cells(next((tmp_path/'media').glob('*.png')), 100)
+    assert '\x1b_G' in blob                       # the transmit went out of band
+    assert blob.count(PLACEHOLDER) == cols * rows  # and every cell was painted, not just line one
+    assert rows > 12                               # taller than FOLD, so this really is the case
+
+
+def test_the_transmit_is_written_once_and_never_through_the_transcript(tmp_path, monkeypatch):
+    pytest.importorskip('kittytgp')
+    monkeypatch.setenv('RAMABANA_KITTY', '1')
+    blob = _painted(_png(120, 120), tmp_path)
+    assert blob.count('\x1b_G') >= 1
+    assert 'iVBOR' in blob                          # base64 payload present...
+    body = blob.split('\x1b\\')[-1]
+    assert 'iVBOR' not in body                      # ...but only before the APC terminator
