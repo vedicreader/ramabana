@@ -941,13 +941,22 @@ class GitRepo:
         for row in rows:
             row.update(stats.get(row['path'], {'additions': 0, 'deletions': 0, 'binary': False}))
         return rows
-    def _rehearse(self, ours, theirs, base=''):
-        "Merge `theirs` into `ours` in memory: the files that would conflict, and whether any do."
+    def _merge_tree(self, ours, theirs, base=''):
+        "One in-memory merge: the tree it wrote, the files that would conflict, and whether any do."
         args = ['merge-tree', '--write-tree', '--name-only', *([f'--merge-base={base}'] if base else [])]
         r = _run(self.root, *args, ours, theirs, check=False)
-        if not r.returncode: return [], False
-        named = (x.strip() for x in r.stdout.splitlines()[1:])
-        return uniqueify([x for x in named if x and not x.startswith(('Auto-merging ', 'CONFLICT '))]), True
+        lines = r.stdout.splitlines()
+        tree = lines[0].strip() if lines else ''
+        if not r.returncode: return tree, [], False
+        named = []
+        for x in lines[1:]:                     # the file list ends at the blank line before the messages
+            if not x.strip(): break
+            named.append(x.strip())
+        return tree, uniqueify(named), True
+    def _rehearse(self, ours, theirs, base=''):
+        "Merge `theirs` into `ours` in memory: the files that would conflict, and whether any do."
+        _, files, clashed = self._merge_tree(ours, theirs, base)
+        return files, clashed
     def _side_by_side(self, path, left, right, from_label, to_label, patch):
         "Both versions of one file and the patch between them, decoded when it is a notebook."
         if not str(path).lower().endswith('.ipynb'): return left, right, patch
@@ -1332,9 +1341,13 @@ def _upstream(self: GitRepo, name=''):
 @patch
 def _replay(self: GitRepo, onto, commits):
     "Replay `commits` onto `onto` in memory, stopping where a rebase would."
+    head = onto
     for n, row in enumerate(commits):
-        files, clashed = self._rehearse(onto, row['oid'], self._ask('rev-parse', f'{row["oid"]}^'))
+        tree, files, clashed = self._merge_tree(head, row['oid'], self._ask('rev-parse', f'{row["oid"]}^'))
         if clashed: return {'oid': row['short'], 'subject': row['subject']}, n, files
+        # Each result wrapped back into a commit, so the next step replays onto what the last left.
+        head = _run(self.root, '-c', 'user.name=leela', '-c', 'user.email=leela@localhost',
+                    'commit-tree', tree, '-p', head, '-m', row['subject']).stdout.strip() or head
     return None, len(commits), []
 
 @patch
