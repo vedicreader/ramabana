@@ -6,11 +6,11 @@ Claude Code's instructions for working *on* this repository, in three layers.
 - `~/.claude/sysp` — the Claude-specific behavioural prompt, imported rather than copied. It is that repo's `prompts/sysp.md`, symlinked into the aai-coding checkout by its `SETUP.md`, so it is the team's shared prompt itself and not a copy of it.
 - This file — what is specific to Ramabana, and nothing else.
 
-`AGENTS.md` is byte-identical to upstream, so drift is one command:
+`AGENTS.md` is upstream verbatim down to its `## Added here` heading, and Ramabana's own rules below it, so drift is one command and shows an appended block and nothing else:
 
     curl -sS https://raw.githubusercontent.com/AnswerDotAI/aai-coding/main/prompts/core.md | diff - AGENTS.md
 
-Take an upstream change by re-fetching, never by editing the copy. A behavioural rule belongs upstream; only repository mechanics belong in this file.
+Take an upstream change by re-fetching and re-appending, never by editing the vendored half. A behavioural rule that any Answer.AI project would want belongs upstream; repository mechanics belong in this file.
 
 `~/.claude/sysp` resolves outside the working directory, so Claude Code asks once, per project, before loading it; declining leaves it disabled without asking again. Where it does not resolve at all — a cloud container, CI, a machine without the aai-coding setup — the layers below are `AGENTS.md` and this file alone.
 
@@ -30,7 +30,13 @@ Its `<about_this_prompt>` applies literally: the import reaches the real `~/.cla
 
 `ramabana.agent.system_prompt` assembles the briefing for agents Ramabana *runs*: `work_rules`, the skill index, the `INLINE_SKILLS` (`exhash` and `coding_patterns`) inlined in full, then `project_context`. `CLAUDE_NOTES` is that briefing's own Claude layer. None of it reads this file, and changing any of it means editing `nbs/03_agent.ipynb`.
 
-`project_context` does read `AGENTS.md`, so the layering above is also a change to what Ramabana's agents are briefed with in this repo. The Ramabana-specific half of that briefing is `coding_patterns`, which is inlined already — which is why `AGENTS.md` can be the upstream file unchanged.
+`project_context` does read `AGENTS.md`, so the layering above is also a change to what Ramabana's agents are briefed with in this repo. The Ramabana-specific half of that briefing is `coding_patterns`, which is inlined already — which is why `AGENTS.md` needs nothing from upstream beyond the vendored file.
+
+## The pyskills this package publishes
+
+Four notebooks export nothing but a module docstring, which `[project.entry-points.pyskills]` publishes as a skill body: `coding_patterns` (09), `theory` (13), `write_prose` (14), `write_docs` (15). Each is an adaptation of the module of the same name in `AnswerDotAI/aai-coding`, `aai_coding/`, rewritten for Ramabana's tools and nbdev workflow rather than copied — pull that repo and read the upstream module before changing one. Only `coding_patterns` is inlined into every briefing; the rest are found through the skill index and loaded with `read_skill`.
+
+`Skill.text` clips a body at `tools.MAX_SKILL_CHARS` (20k), and `write_prose` sits just under it. A skill body is an exported markdown cell, so it reaches the module as a plain docstring with no `r` prefix: never write a literal backslash escape in one, or it arrives in the skill text decoded. `tests/test_skills.py` holds both contracts.
 
 ## The notebooks are the source
 
