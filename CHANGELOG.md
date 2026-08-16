@@ -1,4 +1,5 @@
 # Changelog
+tool_channel asks the live chat, so an agent harness carrying tools natively is no longer sized and briefed as if it were on tags
 openapi spec changes 
 release
 allow max tool calls auto

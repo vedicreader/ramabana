@@ -201,9 +201,27 @@ def test_the_tool_channel_is_one_decision(monkeypatch):
     assert tool_channel(BIG) == 'tags'
     monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'native')
     assert tool_channel(CC) == 'native'
-    # ...but not on an agent harness, which has no wire to be native on: both render the whole
-    # conversation into a prompt, so their schemas have always gone out as tags.
+    # The override reaches an agent harness too, which it did not before: it is the answer for a
+    # machine broken in a way nothing here detects, and those machines run agent harnesses as well.
+    assert tool_channel(CLAUDE) == 'native'
+    monkeypatch.delenv('RAMABANA_TOOL_CHANNEL')
+
+    # An agent harness answers for itself. Only its SDK can carry the schemas -- either CLI would
+    # have to declare them through a config file a managed policy refuses -- so without one the
+    # answer is tags, and the spec alone can only predict which path a chat will take.
+    monkeypatch.setattr(_core, '_agent_native', lambda rt: False)
     assert tool_channel(CURSOR) == 'tags' and tool_channel(CLAUDE) == 'tags'
+    monkeypatch.setattr(_core, '_agent_native', lambda rt: True)
+    assert tool_channel(CURSOR) == 'native' and tool_channel(CLAUDE) == 'native'
+
+    # ...and a live chat overrules the prediction, because it is the thing that knows. A Claude
+    # chat that opened an MCP server and had it refused is on tags now; nothing about the spec says so.
+    class _Chat:
+        def __init__(self, ch): self.tool_channel = ch
+    assert tool_channel(CLAUDE, _Chat('tags')) == 'tags'
+    assert tool_channel(CURSOR, _Chat('native')) == 'native'
+    assert tool_channel(CLAUDE, _Chat('nonsense')) == 'native'   # not a channel; the prediction stands
+    assert tool_channel(CLAUDE, None) == 'native'
 
 
 def test_the_claude_harness_is_the_way_in_a_managed_policy_leaves_open(monkeypatch):
@@ -217,7 +235,9 @@ def test_the_claude_harness_is_the_way_in_a_managed_policy_leaves_open(monkeypat
     import ramabana.core as _core
     monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)
     assert tool_channel(CC) == 'native'        # the wire is open here, so the transport keeps it
-    assert tool_channel(CLAUDE) == 'tags'      # ...and the harness never had one either way
+    # ...and the harness has a channel of its own only where its SDK is installed to carry it
+    monkeypatch.setattr(_core, '_agent_native', lambda rt: False)
+    assert tool_channel(CLAUDE) == 'tags'
 
     assert CLAUDE.runtime == 'claude' and not CLAUDE.local   # the binary is local, the model is not
     assert CLAUDE.model_id == 'claude-sonnet-5'              # the `claude/` prefix is rishi's, not the id's
@@ -398,14 +418,24 @@ def test_the_tags_channel_hears_the_output_contract_after_the_tool_protocol():
     the turn is the only position later than that. Every other channel already has a system
     message and is left alone."""
     native = ModelSpec('gpt', 'remote', 'gpt-5.6', 200_000)
+    # stated rather than inherited: whether an agent harness is on tags now depends on which SDKs
+    # this machine has, and that is not what this test is about
+    import ramabana.core as _core
+    _real, _core._agent_native = _core._agent_native, lambda rt: False
+    try:
+        _output_contract_cases(native)
+    finally: _core._agent_native = _real
+
+    # It restates the briefing's own rule rather than introducing a second instruction system.
+    assert 'plain sentences' in A.work_rules() and 'plain sentences' in A.OUTPUT_CONTRACT
+
+
+def _output_contract_cases(native):
     for spec, tagged in ((CURSOR, True), (CLAUDE, True), (native, False)):
         a, be = fake_agent(replies=['done'])
         a.routing.spec = lambda job='turn', fallback=True, _s=spec: _s
         a.ask('what does budget_for decide?')
         assert ('<output-contract>' in str(be.sent[-1])) is tagged, spec.name
-
-    # It restates the briefing's own rule rather than introducing a second instruction system.
-    assert 'plain sentences' in A.work_rules() and 'plain sentences' in A.OUTPUT_CONTRACT
 
 
 def test_the_projects_own_instructions_are_read_marked_and_bounded():

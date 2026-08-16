@@ -8,7 +8,7 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLAUDE', 'CLOUD', 'CURSOR',
            'DFLT_AGENT_CTX', 'RUNTIMES', 'AGENTS', 'CUSTOM', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap',
            'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
-           'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env',
+           'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env', 'cursor_mode',
            'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx', 'ModelSpec',
            'prefix_typo', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'register_model',
            'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
@@ -104,6 +104,21 @@ def _harness_available(mod, binary):
         if m.sdk_available(): return True
     except Exception: pass
     try: return bool(getattr(m, binary)())
+    except Exception: return False
+
+def cursor_mode(config=None, tools=True):
+    "The Cursor mode a spec runs in: `agent` where there are tools, because a read-only mode will not run one."
+    return (config or {}).get('mode') or ('agent' if tools else 'ask')
+
+def _agent_native(runtime, spec=None):
+    """Whether this harness will carry the tool schemas itself, for a spec shaped like this one.
+    Cursor will, through its SDK's custom tools, and only in `agent` mode """
+    if runtime != 'cursor': return False
+    try:
+        m = importlib.import_module('rishi.cursor')
+        cfg = getattr(spec, 'config', None) or {}
+        return (bool(getattr(m.CursorChat, 'tool_channel', None)) and bool(m.sdk_available(cfg.get('api_key')))
+                and m.sdk_mode(cursor_mode(cfg)) == 'agent')
     except Exception: return False
 
 def _cursor_available(): return _harness_available('rishi.cursor', 'cursor_bin')
@@ -470,12 +485,19 @@ def forget_forced_tags():
     _forced_tags.clear()
 
 
-def tool_channel(spec):
+def tool_channel(spec, chat=None):
     """Which channel a model's tool schemas travel on: `'native'` on the wire, `'tags'` in the
-    system prompt. Takes a `ModelSpec` or a bare model id. native > CursorChat/ClaudeChat with MCP off"""
-    mid = str(getattr(spec, 'model_id', spec) or '')
-    if getattr(spec, 'runtime', '') in AGENTS: return 'tags'
+    system prompt. Takes a `ModelSpec` or a bare model id, and the live chat when there is one.
+
+    A chat is the authority. An agent runtime decides its own channel from the path it took and from
+    what the harness accepted, so no property of the spec can be sure -- a Claude chat that opened an
+    MCP server and had it refused is on tags now, and only it knows. Without one this predicts, which
+    is all `budget_for` can have: it sizes the tool list, and the tool list is what builds the chat.
+    """
     if (v := (env('TOOL_CHANNEL') or '').strip().lower()) in TOOL_CHANNELS: return v
+    if (ch := getattr(chat, 'tool_channel', None)) in TOOL_CHANNELS: return ch
+    mid = str(getattr(spec, 'model_id', spec) or '')
+    if (rt := getattr(spec, 'runtime', '')) in AGENTS: return 'native' if _agent_native(rt, spec) else 'tags'
     if mid in _forced_tags: return 'tags'
     return 'tags' if claude_tags(mid) else 'native'
 
