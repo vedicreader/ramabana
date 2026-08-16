@@ -429,17 +429,26 @@ def test_a_turn_does_not_inherit_the_previous_turns_pictures():
 
 # -- and it has to reach the screen while the turn is still running ---------------------
 
-def _drawing_agent(tmp_path, name='a.png', replies=('done',)):
-    "An agent mid-turn, and the file a tool has just written."
-    agent, _ = fake_agent(replies=list(replies))
+class _Said:
+    "A `Ui` stand-in for `show_media`, which needs nothing of one but somewhere to print."
+    def __init__(self): self.said = []
+    def say(self, body, kind='reply', **kw): self.said.append(str(body))
+
+
+def _drawing_agent(tmp_path, *names):
+    "An agent mid-turn, and the files a tool has just written."
+    agent, _ = fake_agent(replies=['done'])
     agent._prepare('draw a bottle')      # what a turn does before the model is asked anything
-    p = tmp_path/name
-    p.write_bytes(_png(8, 8))
-    return agent, p
+    out = []
+    for n in names or ('a.png',):
+        p = tmp_path/n
+        p.write_bytes(_png(8, 8))
+        out.append(p)
+    return (agent, *out)
 
 
-def test_a_picture_a_tool_wrote_goes_out_the_moment_it_is_written(tmp_path):
-    "The file exists as soon as the tool returns; the turn can go on for minutes after that."
+def test_a_picture_a_tool_wrote_is_handed_over_as_the_tool_returns(tmp_path):
+    "Bytes and all: a frontend cannot draw a filename, which is why `last_media` exists at all."
     agent, p = _drawing_agent(tmp_path)
     seen = []
     agent.on_media = seen.append
@@ -450,14 +459,13 @@ def test_a_picture_a_tool_wrote_goes_out_the_moment_it_is_written(tmp_path):
 
 
 def test_each_call_hands_over_only_what_that_call_drew(tmp_path):
-    agent, first = _drawing_agent(tmp_path, 'first.png')
-    second = tmp_path/'second.png'
-    second.write_bytes(_png(8, 8))
+    "`generate_image(n=2)` writes two files and reports them in one call, so both shapes matter."
+    agent, first, second, third = _drawing_agent(tmp_path, 'first.png', 'second.png', 'third.png')
     seen = []
     agent.on_media = seen.append
     agent._drew([first])
-    agent._drew([second])
-    assert [[m['path'] for m in pics] for pics in seen] == [[str(first)], [str(second)]]
+    agent._drew([second, third])
+    assert [[m['path'] for m in pics] for pics in seen] == [[str(first)], [str(second), str(third)]]
 
 
 def test_a_picture_the_frontend_already_has_is_not_offered_again_at_the_end(tmp_path):
@@ -476,23 +484,32 @@ def test_a_frontend_that_set_no_hook_is_owed_every_picture_at_the_end(tmp_path):
     assert [m['path'] for m in agent.pending_media] == [str(p)]
 
 
-def test_the_models_own_image_is_owed_at_the_end_however_the_frontend_listens():
+def test_the_models_own_image_is_owed_at_the_end_even_beside_one_the_hook_took(tmp_path):
     "It arrives on the finished response, so no hook can have delivered it early."
-    agent, be = fake_agent(replies=['here you go'])
-    agent.on_media = lambda pics: pytest.fail('the model did not draw through a tool')
-    agent.ask('draw a bottle')
-    be.chat.hist.append({'role': 'assistant', 'content': 'here you go',
-                         'media': [{'mime': 'image/png', 'data': _png(8, 8)}]})
-    assert [m['mime'] for m in agent.pending_media] == ['image/png']
+    agent, p = _drawing_agent(tmp_path)
+    agent.on_media = lambda pics: None
+    agent._drew([p])
+    agent._be('turn').hist_.append({'role': 'assistant', 'content': 'here you go',
+                                    'media': [{'mime': 'image/png', 'data': _png(4, 4)}]})
+    assert [m.get('path') for m in agent.pending_media] == [None]        # the model's, not the tool's
+    assert [m.get('path') for m in agent.last_media] == [None, str(p)]
 
 
-def test_a_hook_that_raises_neither_breaks_the_tool_nor_doubles_the_picture(tmp_path):
+def test_a_hook_that_fails_leaves_its_picture_for_the_end_of_the_turn(tmp_path):
+    "A closed event loop is how this happens, and it is exactly when the sweep has to carry it."
     agent, p = _drawing_agent(tmp_path)
     def boom(pics): raise RuntimeError('the frontend went away')
     agent.on_media = boom
-    agent._drew([p])
-    assert [m['path'] for m in agent.last_media] == [str(p)]
-    assert agent.pending_media == []
+    agent._drew([p])                                           # the tool call itself survives it
+    assert [m['path'] for m in agent.pending_media] == [str(p)]
+
+
+def test_a_hook_attached_midway_is_not_credited_with_what_came_before_it(tmp_path):
+    agent, first, second = _drawing_agent(tmp_path, 'first.png', 'second.png')
+    agent._drew([first])
+    agent.on_media = lambda pics: None
+    agent._drew([second])
+    assert [m['path'] for m in agent.pending_media] == [str(first)]
 
 
 def test_a_file_that_has_gone_away_is_not_handed_to_the_frontend(tmp_path):
@@ -501,18 +518,27 @@ def test_a_file_that_has_gone_away_is_not_handed_to_the_frontend(tmp_path):
     agent.on_media = seen.append
     agent._drew([tmp_path/'vanished.png'])
     assert seen == []
+    assert agent.pending_media == []      # and the sweep has nothing to fall back to either
 
 
 def test_the_ui_names_a_tools_picture_where_the_tool_wrote_it_rather_than_copying_it(tmp_path):
     "It is a file already; a second copy under `media/` is a file nobody asked for."
     from ramabana.cli import Ui
-    said, drawn = [], tmp_path/'generated-1.png'
+    ui, drawn = _Said(), tmp_path/'generated-1.png'
     drawn.write_bytes(_png(8, 8))
-    ui = type('_Say', (), {'say': lambda self, body, kind='reply', **kw: said.append(str(body))})()
     Ui.show_media(ui, [{'mime': 'image/png', 'data': drawn.read_bytes(), 'path': str(drawn)}],
                   session=str(tmp_path))
-    assert str(drawn) in said[-1]
+    assert str(drawn) in ui.said[-1]
     assert not (tmp_path/'media').exists()
+
+
+def test_a_picture_whose_file_has_gone_is_saved_again_rather_than_named_as_a_dead_link(tmp_path):
+    from ramabana.cli import Ui
+    ui = _Said()
+    Ui.show_media(ui, [{'mime': 'image/png', 'data': _png(8, 8), 'path': str(tmp_path/'gone.png')}],
+                  session=str(tmp_path))
+    assert 'gone.png' not in ui.said[-1]
+    assert (tmp_path/'media'/'image-1.png').read_bytes() == _png(8, 8)
 
 
 def test_a_picture_drawn_mid_turn_is_in_the_transcript_once_and_while_the_turn_runs(tmp_path, monkeypatch, caps):
@@ -537,6 +563,8 @@ def test_a_picture_drawn_mid_turn_is_in_the_transcript_once_and_while_the_turn_r
         comp = Compositor(tty); comp._register_signals = lambda: None
         await comp.start()
         agent, _ = fake_agent(replies=[])
+        # the trailing text step is load-bearing: it keeps the pump thread going past the draw, so
+        # the posted `_media` callback is queued before the sentinel that ends the turn
         be = ScriptedBackend(steps=[Step(text='drawing it now '),
                                     Step(tool=('generate_image', {'prompt': 'a bottle'})),
                                     Step(text='there it is')], token_delay=0)

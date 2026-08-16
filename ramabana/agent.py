@@ -906,6 +906,7 @@ class Agent:
         self.plan = Plan()       # durable checklist for stop/start and sub-agent bites
         self.on_plan = None      # frontend hook: callable(plan) after every mutation
         self.on_media = None     # frontend hook: callable(pictures) the moment a turn draws one
+        self._drawn, self._sent = [], set()   # this turn's pictures, and which of them `on_media` took
         self.calls = []          # (tool, args) per call this session -- what the UI shows as activity
         self.history = []        # inspectable user/assistant turns, including the chosen tool plan
         self._load_history()
@@ -1230,8 +1231,7 @@ class Agent:
     def _prepare(self, prompt):
         "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
         self.before.clear()                    # `changes()` reports this turn, not the session
-        self._drawn = []                       # pictures this turn's tools wrote, for the frontend
-        self._streamed = 0                     # how many of them `on_media` has already delivered
+        self._drawn, self._sent = [], set()    # pictures this turn's tools wrote, and which went out live
         self._walked = False
         self.turn_use = Usage()                # a failed turn cannot inherit the previous turn's cost
         self._tool_calls_turn = 0               # applies even when a native engine owns the loop
@@ -1640,29 +1640,31 @@ def _picture(path):
 def _drew(self: Agent, paths):
     """Record pictures a tool wrote this turn, and hand them to the frontend as they appear.
 
-    The turn goes on for as long as the model keeps working, so waiting for it to end would leave
-    a picture that already exists on disk off the screen for minutes. What `on_media` was given is
-    counted, so the frontend's sweep at the end of the turn does not show the same picture twice."""
-    self._drawn = getattr(self, '_drawn', []) + list(paths)
+    The turn goes on for as long as the model keeps working, so waiting for it to end would leave a
+    picture that already exists on disk off the screen for minutes. Which ones the hook *took* is
+    what is recorded, rather than how many: a hook that failed -- a frontend whose event loop has
+    closed is the way that happens -- leaves its pictures in `pending_media` for the sweep at the
+    end of the turn, and a hook attached midway through one is not credited with what came before."""
+    at = len(self._drawn)
+    self._drawn.extend(paths)
     if self.on_media is None: return
-    self._streamed = len(self._drawn)   # counted before the call: a hook that raises must not duplicate
-    if pics := [p for p in map(_picture, paths) if p]:
-        try: self.on_media(pics)
-        except Exception: pass
+    try:
+        if pics := [p for p in map(_picture, paths) if p]: self.on_media(pics)
+    except Exception: return
+    self._sent.update(range(at, len(self._drawn)))
 
 @patch
-def _turn_media(self: Agent, streamed=True):
-    "The newest turn's pictures; `streamed=False` leaves out the ones `on_media` already delivered."
+def _turn_media(self: Agent, pending=False):
+    "The newest turn's pictures; `pending` leaves out the ones `on_media` has already delivered."
     be = self._be('turn')
     m = next((m for m in reversed(list(be.hist if be else []))
               if isinstance(m, dict) and m.get('role') == 'assistant'), None)
-    drawn = getattr(self, '_drawn', [])
-    if not streamed: drawn = drawn[getattr(self, '_streamed', 0):]
+    drawn = [p for i, p in enumerate(self._drawn) if not (pending and i in self._sent)]
     return list((m or {}).get('media') or []) + [p for p in map(_picture, drawn) if p]
 
 @patch(as_prop=True)
 def last_media(self: Agent):
-    """Every picture from the newest turn, as `{'mime','data'}` dicts.
+    """Every picture from the newest turn: `{'mime','data'}`, and `path` where a tool wrote the file.
 
     Two routes produce one: the model returns the image on its response, or a tool writes a file
     and returns its path. A frontend cannot draw a filename, so both arrive here."""
@@ -1670,8 +1672,8 @@ def last_media(self: Agent):
 
 @patch(as_prop=True)
 def pending_media(self: Agent):
-    "The newest turn's pictures `on_media` has not already delivered: what a frontend still owes the screen."
-    return self._turn_media(streamed=False)
+    "The newest turn's pictures `on_media` did not take: what a frontend still owes the screen."
+    return self._turn_media(pending=True)
 
 # %% ../nbs/03_agent.ipynb #821de023
 def _named(f, a, kw=None):

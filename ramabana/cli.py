@@ -467,9 +467,9 @@ async def run_turn(ui, prompt):
     The attachments are taken here, at the start, rather than released at the end: the prompt
     that named them is then the only one that carries them, however the turn goes.
 
-    Pictures a tool drew have already reached the transcript through `Ui.on_media` by the time this
-    ends, so the sweep below asks for `pending_media` rather than for all of it. What is left is
-    what could not exist until the reply was finished, which is the model's own images.
+    Pictures a tool drew reached the transcript through `Ui.on_media` while the turn ran, so the
+    sweep below asks for `pending_media` rather than for all of it: the model's own images, which
+    could not exist until the reply was finished, plus anything the hook failed to take.
     """
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
     ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
@@ -980,7 +980,7 @@ def show_media(self: Ui, media, session=''):
     prints its path until it does. `draw_png` is the escape that will be used then."""
     for m in media or []:
         p = m.get('path')
-        if p is None:
+        if not (p and Path(p).exists()):
             try: p = save_media(m, session or getattr(self.agent, 'session_dir', '') or '.')
             except Exception as e:
                 self.say(Text(f'could not save generated media ({agent_err(e)})'), 'error')
