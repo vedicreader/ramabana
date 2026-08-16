@@ -294,7 +294,8 @@ class FakeBackend(Backend):
         self.hist_ = [{'role': 'user', 'content': summary}] + list(keep)
 
     def spawn(self, sp='', tools=(), **kw):
-        s = FakeBackend(self.spec, replies=['sub answer'], sp=sp, tools=tools, shared=True)
+        # `**kw` through, as the real `spawn` does: a test needs to see the approval gate
+        s = FakeBackend(self.spec, replies=['sub answer'], sp=sp, tools=tools, shared=True, **kw)
         self.spawned.append(s)
         return s
 

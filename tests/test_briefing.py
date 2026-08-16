@@ -391,7 +391,6 @@ def test_the_briefing_describes_only_the_tools_the_model_was_given():
     assert 'Start every user-facing response with what you plan to do or the next action.' in rules
     assert 'Before acting on a request, search Vishalakshi durable memory with `memory_search`' in rules
 
-    # The writing skills are named only where the agent can actually load one.
     assert '`write_docs`' in A.work_rules(['read_skill']) and '`write_prose`' in A.work_rules(['read_skill'])
     assert '`write_docs`' not in A.work_rules(['view_file'])
 

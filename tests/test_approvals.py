@@ -47,6 +47,39 @@ def test_the_gate_draws_its_line_around_the_write_tools_and_answers_as_a_bool():
     assert not (names & WRITE_TOOLS) and 'search_code' in names
 
 
+def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
+    """`Backend.spawn` inherits no `approve`, and `_sub_plain` handed over the unwrapped tools, so a
+    sub-agent granted writes would edit with no prompt and leave nothing in `calls`. Both are the
+    toggle's to close.
+    """
+    from ramabana.tools import NO_SUB, read_only, sub_briefing
+    a, be = fake_agent(approvals=agent.Approvals(tools=WRITE_TOOLS, mode='auto'))
+    search = next(t for t in a.tools if getattr(t, '__name__', '') == 'delegate_search')
+
+    assert a.subagent_writes is False
+    assert {t.__name__ for t in a._sub_plain()} == {t.__name__ for t in a._plain}
+    assert not ({t.__name__ for t in read_only(a.tools)} & WRITE_TOOLS)
+
+    a.command('/subagents on')
+    granted = {t.__name__ for t in read_only(a.tools, writes=True)}
+    assert 'edit_file' in granted and not (granted & NO_SUB), 'writes yes, recursion never'
+    assert a._sub_plain() is a.tools
+
+    before = len(a.calls)
+    search(question='add a docstring to a.py')
+    spawned = be.spawned[-1]
+    assert spawned.approve is not None and len(a.calls) > before
+    assert 'You cannot edit anything' not in spawned.sp
+    assert 'approval policy the main agent answers to' in spawned.sp
+
+    a.command('/subagents off')
+    assert a.subagent_writes is False and a._sub_plain() is a._plain
+    search(question='where else do we do X?')
+    assert be.spawned[-1].approve is None
+    assert 'You cannot edit anything' in be.spawned[-1].sp
+    assert sub_briefing() != sub_briefing(writes=True)
+
+
 def test_a_refusal_always_carries_a_reason_the_model_can_act_on():
     "And an approval carries one too, when the person had something to add to it."
     ap = agent.Approvals(tools={'edit_file'}, timeout=5)

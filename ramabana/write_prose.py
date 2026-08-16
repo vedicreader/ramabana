@@ -81,7 +81,7 @@ The sentences are not all the same length. Most are short. An occasional longer 
 
 Say what you mean. "This is broken", not "there may be some areas for potential improvement". Say "use", not "utilize". If a different topic could be swapped in and the paragraph still read fine, nothing has been said yet. Get specific. Not "improves developer productivity" but "saves me twenty minutes every deploy".
 
-To have a draft checked against these rules, send the rules and the draft to a subagent with `delegate_parallel`, naming the audience so tells 20 and 23 can be judged, and ask for flagged spans rather than a rewrite. Only do that when the user asks for a prose check.
+To have a draft checked, send these rules and the draft to a subagent with `delegate_parallel`. Name the audience, so tells 20 and 23 can be judged. Ask for flagged spans rather than a rewrite. Only do this when the user asks for a prose check.
 
 Docs: https://vedicreader.github.io/ramabana/write_prose.html.md"""
 

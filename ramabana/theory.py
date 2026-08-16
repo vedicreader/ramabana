@@ -4,22 +4,22 @@ Read this when the user says the Theory of something, or asks to discuss, find, 
 
 ## The Theory
 
-The sense is Naur's, from his 1985 paper Programming as Theory Building. A program is not its source code and not its documentation. It is the theory held in its builders' minds: their understanding of how the code maps onto the world, why it is the way it is, and how it can be sensibly extended.
+The sense is Naur's, from his 1985 paper Programming as Theory Building. A program is not its source code and not its documentation. It is the theory held in its builders' minds. They understand how the code maps onto the world, why it took the shape it did, and how to extend it sensibly.
 
 Consequences Naur draws:
 
-- The Theory has to be held in a developer's mind, so it has to be expressed in its most minimal representation. There is always time for details later. When discussing the Theory, conciseness is king. That does not mean excluding important details, and it does not mean giving the developer the illusion of control. It means iterating until the core that is true is found, and anchoring into that.
+- A developer has to hold the Theory in mind, which means expressing it in its most minimal form. There is always time for details later. When discussing the Theory, conciseness is king. That does not mean excluding important details, and it does not mean giving the developer the illusion of control. It means iterating until the core that is true is found, and anchoring into that.
 - The Theory cannot be fully written down. Documentation captures artifacts of the Theory, not the Theory itself, which is why "just read the docs" never fully onboards anyone.
 - A program whose theory-holders have all left is dead, even if it still runs. Reviving it is closer to rebuilding than to reading.
 - Modification quality depends on the Theory, not the code. Someone holding the Theory makes changes that fit the program's nature. Someone without it makes patches that gradually corrode the design.
 
 ## Using it
 
-Working in an unfamiliar codebase, find the Theory first and read the code through it: the driving facts or constraints, the derivation of the design from them, and the alternatives rejected and why. `search_code` finds the pattern; the Theory says why it is the pattern.
+Working in an unfamiliar codebase, find the Theory first and read the code through it. Ask what facts or constraints drove it, how the design follows from them, and which alternatives the builders rejected and why. `search_code` finds the pattern. The Theory says why it is the pattern.
 
-Reviewing a change, ask what Theory the change assumes and whether that matches the Theory of the codebase. A patch can be locally correct and still theory-violating, and that class of problem is invisible to line-by-line review.
+Reviewing a change, ask what Theory the change assumes and whether that matches the Theory of the codebase. A patch can be locally correct and still violate the Theory. Line-by-line review never sees that.
 
-When the user says "the Theory of X", this vocabulary is assumed. Do not re-explain Naur. Discussing a Theory means talking it through in conversation. Do not turn it into a process, a checklist, or markdown files unless the user asks for a written artifact.
+When the user says "the Theory of X", they assume this vocabulary. Do not re-explain Naur. Discussing a Theory means talking it through in conversation. Do not turn it into a process, a checklist, or markdown files unless the user asks for a written artifact.
 
 Stating or discussing a Theory, follow the `write_prose` skill closely. A Theory lives in minds, and its statement has to be plain enough to hold there.
 

@@ -32,14 +32,12 @@ def test_skills_are_discovered_from_packages_and_overridden_by_files(tmp_path):
 
 def test_every_ramabana_pyskill_reaches_the_agent_whole():
     """`Skill.text` clips at `MAX_SKILL_CHARS`, and a writing skill clipped mid-list loses the tells
-    at the end of it. The ones this package ships have to fit, so growing one past the cap fails here
-    rather than silently truncating in a briefing."""
+    at the end. Growing one past the cap fails here rather than truncating in a briefing."""
     found = {s.name: s for s in tools.discover()}
     for name in ('coding_patterns', 'theory', 'write_prose', 'write_docs'):
         s = found[name]
         assert s.source == 'pyskill' and s.where == f'ramabana.{name}'
-        assert len(s.text()) < tools.MAX_SKILL_CHARS, f'{name} is clipped'
-        assert 'more chars]' not in s.text()
+        assert len(s.text()) < tools.MAX_SKILL_CHARS and 'more chars]' not in s.text(), name
     assert 'Naur' in found['theory'].text()
     assert 'Banned words' in found['write_docs'].text() and 'Summaries' in found['write_docs'].text()
     assert 'Banned words' in found['write_prose'].text()
