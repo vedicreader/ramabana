@@ -779,8 +779,8 @@ class RishiBackend(Backend):
         if self.spec.runtime=='remote' and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime=='cursor':
             # Cursor runs a tool only in agent mode, and its custom tools cannot coexist with a
-            # built-in allowlist - so its own shell and editors come along, held by its sandbox
-            # rather than by our approvals. The alternative is tools that never run at all.
+            # built-in allowlist, so its own shell and editors come too, held by its sandbox and not
+            # by our approvals. The alternative is tools that never run.
             kw.setdefault('mode',cursor_mode(kw,bool(self.tools)))
             if kw['mode']=='agent': kw.setdefault('sandbox','enabled')
         if self.spec.runtime=='litert':
