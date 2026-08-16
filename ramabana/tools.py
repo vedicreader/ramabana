@@ -7,13 +7,14 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 # %% auto #0
 __all__ = ['MAX_GREP_HITS', 'MAX_API', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'MAX_FILE',
            'MAX_VARS', 'LD_CHARS', 'GROUP', 'EXTRA_MODULES', 'MAX_SKILL_CHARS', 'SKILL_DESC_MAX', 'EVENTS',
-           'MAX_TOOL_CHARS', 'MAX_HITS', 'WRITE_TOOLS', 'ERR', 'RESPONSES_API', 'IMAGE_API', 'IMAGE_MODEL',
-           'IMAGE_SIZES', 'API_VENDORS', 'SUB_MAX_STEPS', 'SUB_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied',
-           'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs',
-           'load', 'err', 'failed', 'clip', 'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools',
-           'media_dir', 'mime_for', 'save_media', 'image_available', 'api_model', 'draws_itself', 'image_tools',
-           'web_tools', 'memory_tools', 'api_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools',
-           'tools_for', 'read_only', 'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
+           'MAX_TOOL_CHARS', 'MAX_HITS', 'GIT_READ_TOOLS', 'GIT_WRITE_TOOLS', 'GIT_TOOLS', 'WRITE_TOOLS', 'ERR',
+           'RESPONSES_API', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'API_VENDORS', 'SUB_MAX_STEPS', 'SUB_SP',
+           'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied', 'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover',
+           'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'err', 'failed', 'clip', 'clip_lines', 'readable',
+           'code_tools', 'file_tools', 'notebook_tools', 'media_dir', 'mime_for', 'save_media', 'image_available',
+           'api_model', 'draws_itself', 'image_tools', 'web_tools', 'memory_tools', 'api_tools', 'watch_tools',
+           'session_tools', 'shell_tools', 'skill_tools', 'tools_for', 'read_only', 'sub_sp', 'delegate',
+           'delegate_many', 'named_skills', 'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, functools, json, mimetypes, os, re, runpy, shutil, threading, uuid
@@ -1042,10 +1043,15 @@ def load(reg, roots=(), cfg=None, project=False, paths=()):
 MAX_TOOL_CHARS = 6000   # chars per tool result, budgeted for the smallest model; see `Agent(tool_max_len=)`
 MAX_HITS = 20
 
+# Rehearsing a merge is not approving one, so the git tools split before `WRITE_TOOLS` uses them.
+GIT_READ_TOOLS = ('git_status', 'git_divergence', 'git_rebase_preview')
+GIT_WRITE_TOOLS = frozenset({'git_remote', 'git_checkout'})
+GIT_TOOLS = (*GIT_READ_TOOLS, *sorted(GIT_WRITE_TOOLS))
+
 # The tools that change something on disk, in the live session, or on the machine -- see `Approvals`.
 WRITE_TOOLS = frozenset({'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell',
                          'run_python', 'run_shell', 'memory_forget', 'create_skill',
-                         'cancel_watch', 'cart_add', 'cart_remove'})
+                         'cancel_watch', 'cart_add', 'cart_remove'}) | GIT_WRITE_TOOLS
 
 # Every tool failure starts with this: no engine carries an `is_error` flag, so the flag is in the text.
 ERR = 'ERROR: '
@@ -1925,6 +1931,9 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_s
     if 'shell' not in drop and (_supports(host, 'run_cmd', lambda: host.run_cmd('')) if shell is None else shell):
         tools += shell_tools(host, mx)
     if get_skills is not None and 'skill' not in drop: tools += skill_tools(host, get_skills, mx)
+    if 'git' not in drop and getattr(host, 'roots', None) and _declared(host, 'git') is not False:
+        from ramabana.git import git_tools
+        tools += git_tools(host, mx)
     tools += list(extra or ())
     return tools
 

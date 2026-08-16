@@ -30,9 +30,11 @@ def test_the_gate_draws_its_line_around_the_write_tools_and_answers_as_a_bool():
     in a trolley are both things a person should see before they happen. And a sub-agent nobody is
     watching gets none of them -- a delegated question is a question.
     """
+    from ramabana.tools import GIT_READ_TOOLS, GIT_WRITE_TOOLS
     assert {'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell', 'run_python',
             'run_shell', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add',
-            'cart_remove'} == set(WRITE_TOOLS)
+            'cart_remove'} | GIT_WRITE_TOOLS == set(WRITE_TOOLS)
+    assert not (set(GIT_READ_TOOLS) & set(WRITE_TOOLS)), 'rehearsing a merge is not approving one'
 
     ap = agent.Approvals(tools={'edit_file'}, mode='auto')
     assert ap.gate({'function': {'name': 'search_code', 'arguments': {'query': 'x'}}})   # ungated
