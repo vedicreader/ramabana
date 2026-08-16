@@ -877,6 +877,10 @@ class RishiBackend(Backend):
         "Whether this model's template opens a thinking block the model has to close."
         if self._prefill is None:self._prefill=prefills_think(self.chat)
         return self._prefill
+    @property
+    def tool_channel(self):
+        "Where this backend's tool schemas actually travel; the chat answers once there is one."
+        return tool_channel(self.spec,self.chat)
     def _runtime_kw(self):
         import os
         kw={**getattr(self.spec, 'config', {}), **self.kw}
@@ -936,7 +940,7 @@ class RishiBackend(Backend):
         The chat is rebuilt rather than reconfigured: `_runtime_kw` reads the channel when the
         chat is constructed, so a live one goes on sending schemas that are already being refused.
         """
-        if not self.tools or tool_channel(self.spec)=='tags':return False
+        if not self.tools or tool_channel(self.spec,self.chat)=='tags':return False
         if not any(s in f'{e}'.lower() for s in self.MCP_REFUSED):return False
         force_tags(self.spec.model_id,agent_err(e))
         self.problem(f'{self.spec.name}: the wire refused the tool schemas, so they now travel in '
@@ -959,7 +963,7 @@ class RishiBackend(Backend):
         counting those needs a hook rishi does not have yet. A number that is too low is still the
         difference between knowing this channel is costing calls and guessing.
         """
-        if tool_channel(self.spec)=='tags' and '<tool_call' in (text or ''):
+        if tool_channel(self.spec,self.chat)=='tags' and '<tool_call' in (text or ''):
             self.problem(f'{self.spec.name}: a <tool_call> block came back as prose rather than a '
                          'call, so this model is not punctuating the tags channel reliably')
         return text

@@ -106,6 +106,19 @@ def _harness_available(mod, binary):
     try: return bool(getattr(m, binary)())
     except Exception: return False
 
+def _agent_native(runtime):
+    """Whether this harness would carry the tool schemas itself here, rather than in the prompt.
+
+    Only its SDK can - the CLI of either declares tools through a config file, which is the thing a
+    managed policy refuses - and only a Rishi new enough to do it, which `tool_channel` on the chat
+    class is the marker for. A prediction, because `budget_for` has to size the tool list before
+    there is a chat to ask; the chat overrules it the moment one exists.
+    """
+    try:
+        m = importlib.import_module(f'rishi.{runtime}')
+        return bool(getattr(getattr(m, f'{runtime.title()}Chat', None), 'tool_channel', None)) and bool(m.sdk_available())
+    except Exception: return False
+
 def _cursor_available(): return _harness_available('rishi.cursor', 'cursor_bin')
 def _claude_available(): return _harness_available('rishi.claude', 'claude_bin')
 
@@ -470,12 +483,19 @@ def forget_forced_tags():
     _forced_tags.clear()
 
 
-def tool_channel(spec):
+def tool_channel(spec, chat=None):
     """Which channel a model's tool schemas travel on: `'native'` on the wire, `'tags'` in the
-    system prompt. Takes a `ModelSpec` or a bare model id. native > CursorChat/ClaudeChat with MCP off"""
-    mid = str(getattr(spec, 'model_id', spec) or '')
-    if getattr(spec, 'runtime', '') in AGENTS: return 'tags'
+    system prompt. Takes a `ModelSpec` or a bare model id, and the live chat when there is one.
+
+    A chat is the authority. An agent runtime decides its own channel from the path it took and from
+    what the harness accepted, so no property of the spec can be sure -- a Claude chat that opened an
+    MCP server and had it refused is on tags now, and only it knows. Without one this predicts, which
+    is all `budget_for` can have: it sizes the tool list, and the tool list is what builds the chat.
+    """
     if (v := (env('TOOL_CHANNEL') or '').strip().lower()) in TOOL_CHANNELS: return v
+    if (ch := getattr(chat, 'tool_channel', None)) in TOOL_CHANNELS: return ch
+    mid = str(getattr(spec, 'model_id', spec) or '')
+    if (rt := getattr(spec, 'runtime', '')) in AGENTS: return 'native' if _agent_native(rt) else 'tags'
     if mid in _forced_tags: return 'tags'
     return 'tags' if claude_tags(mid) else 'native'
 

@@ -966,6 +966,14 @@ class Agent:
         try: return self.routing.spec(job)
         except Exception: return None
 
+    def chat_or_none(self, job='turn'):
+        "`job`'s live chat if a backend has already been built, without building one to find out."
+        try:
+            spec = self.routing.spec(job)
+            b = self._backends.get((spec.backend, spec.model_id))
+            return None if b is None else b.chat
+        except Exception: return None
+
     @property
     def budget(self):
         "What the turn model can afford to be told -- see `core.budget_for`."
@@ -1253,7 +1261,7 @@ class Agent:
         preflights += [(name, query or request) for name, query in requested if name in eager]
         by_name = {getattr(t, '__name__', ''): t for t in self.tools}
         outgoing = _append(outgoing, f'\n\n<tool-plan route="{route}">{plan}</tool-plan>')
-        if tool_channel(self.spec_or_none()) == 'tags': outgoing = _append(outgoing, OUTPUT_CONTRACT)
+        if tool_channel(self.spec_or_none(), self.chat_or_none()) == 'tags': outgoing = _append(outgoing, OUTPUT_CONTRACT)
         for name, query in dict.fromkeys(preflights):
             tool = by_name.get(name)
             if tool is None: continue
