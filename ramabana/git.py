@@ -12,14 +12,15 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from urllib.parse import urlparse
 
-from fastcore.all import Path, first, patch
+from fastcore.all import L, Path, first, patch, uniqueify
 
 from .tools import GIT_READ_TOOLS, GIT_TOOLS, GIT_WRITE_TOOLS, MAX_TOOL_CHARS, clip, err
 
 # %% auto #0
 __all__ = ['READS', 'NET', 'MIXED', 'BARE_READS', 'FOREIGN_LOCK', 'LOCK_ATTEMPTS', 'LOCK_BACKOFF', 'SAFEPOINT_REF',
-           'JOURNAL_NAME', 'JOURNAL_KEEP', 'SYNC_OPS', 'GitError', 'classify', 'RepoLock', 'Safepoint', 'GitGateway',
-           'gateway', 'repo_root', 'url_name', 'clone_target', 'clone', 'shorten', 'GitRepo', 'git_tools']
+           'JOURNAL_NAME', 'JOURNAL_KEEP', 'SYNC_OPS', 'REMOTE_OPS', 'STATE_KEYS', 'GitError', 'classify', 'RepoLock',
+           'Safepoint', 'GitGateway', 'gateway', 'repo_root', 'url_name', 'clone_target', 'clone', 'shorten', 'GitRepo',
+           'git_tools']
 
 # %% ../nbs/12_git.ipynb #a3db517a
 class GitError(RuntimeError): pass
@@ -940,13 +941,13 @@ class GitRepo:
         for row in rows:
             row.update(stats.get(row['path'], {'additions': 0, 'deletions': 0, 'binary': False}))
         return rows
-    def _rehearse(self, ours, theirs):
+    def _rehearse(self, ours, theirs, base=''):
         "Merge `theirs` into `ours` in memory: the files that would conflict, and whether any do."
-        r = _run(self.root, 'merge-tree', '--write-tree', '--name-only', ours, theirs, check=False)
+        args = ['merge-tree', '--write-tree', '--name-only', *([f'--merge-base={base}'] if base else [])]
+        r = _run(self.root, *args, ours, theirs, check=False)
         if not r.returncode: return [], False
         named = (x.strip() for x in r.stdout.splitlines()[1:])
-        return list(dict.fromkeys(
-            x for x in named if x and not x.startswith(('Auto-merging ', 'CONFLICT ')))), True
+        return uniqueify([x for x in named if x and not x.startswith(('Auto-merging ', 'CONFLICT '))]), True
     def _side_by_side(self, path, left, right, from_label, to_label, patch):
         "Both versions of one file and the patch between them, decoded when it is a notebook."
         if not str(path).lower().endswith('.ipynb'): return left, right, patch
@@ -1309,31 +1310,38 @@ class GitRepo:
 
 # %% ../nbs/12_git.ipynb #7b03da98
 SYNC_OPS = ('fast-forward', 'merge', 'rebase', 'reset')
+REMOTE_OPS = ('fetch', 'pull', 'push')
+STATE_KEYS = ('root', 'branch', 'upstream', 'ahead', 'behind', 'clean', 'branches', 'changes')
 
 def _short_commits(rows, n=20):
-    "Commits as one line each, which is all a plan or a tool result has room for."
+    "Commits as one line each."
     return [f'{r["short"]} {shorten(r["subject"], 72)}' for r in rows[:n]]
+
+def _said(out):
+    "What a mutation reported, whichever shape it reported it in."
+    if isinstance(out, dict): return out.get('summary') or out.get('message') or ''
+    return str(out or '').strip()
+
+@patch
+def _upstream(self: GitRepo, name=''):
+    "The named upstream, or the one this branch tracks."
+    up = str(name or '').strip() or self._ask('rev-parse', '--abbrev-ref', '@{upstream}')
+    if not up: raise GitError('this branch tracks nothing -- push it, or name an upstream')
+    return up
 
 @patch
 def _replay(self: GitRepo, onto, commits):
-    "Rehearse a rebase: each commit cherry-picked onto `onto` in memory, stopping where it would."
+    "Replay `commits` onto `onto` in memory, stopping where a rebase would."
     for n, row in enumerate(commits):
-        parent = self._ask('rev-parse', f'{row["oid"]}^')
-        args = ['merge-tree', '--write-tree', '--name-only']
-        if parent: args.append(f'--merge-base={parent}')
-        r = _run(self.root, *args, onto, row['oid'], check=False)
-        if not r.returncode: continue
-        named = (x.strip() for x in r.stdout.splitlines()[1:])
-        files = list(dict.fromkeys(x for x in named if x and not x.startswith(('Auto-merging ', 'CONFLICT '))))
-        return {'oid': row['short'], 'subject': row['subject']}, n, files
+        files, clashed = self._rehearse(onto, row['oid'], self._ask('rev-parse', f'{row["oid"]}^'))
+        if clashed: return {'oid': row['short'], 'subject': row['subject']}, n, files
     return None, len(commits), []
 
 @patch
 def divergence(self: GitRepo, upstream='', fetch=False):
     "You against your upstream, every way back rehearsed before any of them runs."
     if fetch: self.fetch()
-    upstream = str(upstream or '').strip() or self._ask('rev-parse', '--abbrev-ref', '@{upstream}')
-    if not upstream: raise GitError('this branch tracks nothing -- push it, or name an upstream')
+    upstream = self._upstream(upstream)
     branch = self.run('branch', '--show-current').strip()
     ours_oid, theirs_oid = self._resolve_ref('HEAD'), self._resolve_ref(upstream)
     base = self._ask('merge-base', ours_oid, theirs_oid)
@@ -1351,75 +1359,58 @@ def divergence(self: GitRepo, upstream='', fetch=False):
          'note': 'move straight onto the upstream' if not ahead else 'your own commits are in the way'},
         {'op': 'merge', 'available': bool(behind), 'destructive': False, 'conflicts': conflicts,
          'conflict_likely': likely, 'note': 'one merge commit, and any conflict resolved once'},
-        {'op': 'rebase', 'available': bool(behind) and bool(ahead), 'destructive': True,
+        {'op': 'rebase', 'available': bool(behind and ahead), 'destructive': True,
          'conflicts': replay_conflicts, 'conflict_likely': bool(stops), 'stops_at': stops,
-         'replayed': replayed, 'note': 'a linear history, rewritten -- and a conflict per commit'},
+         'replayed': replayed, 'note': 'a linear history, rewritten, and a conflict per commit'},
         {'op': 'reset', 'available': bool(behind), 'destructive': True,
-         'note': f'throw away {_plural(ahead, "commit")} and take the upstream as it is'},
-    ]
+         'note': f'throw away {_plural(ahead, "commit")} and take the upstream as it is'}]
     recommended = ('' if relation in ('identical', 'ahead') else 'fast-forward' if not ahead else
                    'merge' if stops or not blocked['clean'] else 'rebase')
-    return ({'branch': branch, 'upstream': upstream, 'relation': relation, 'ahead': ahead,
-             'behind': behind, 'merge_base': base, 'options': options, 'recommended': recommended,
-             'ours': _short_commits(ours), 'theirs': _short_commits(theirs)} | blocked)
+    return {'branch': branch, 'upstream': upstream, 'relation': relation, 'ahead': ahead,
+            'behind': behind, 'merge_base': base, 'options': options, 'recommended': recommended,
+            'ours': _short_commits(ours), 'theirs': _short_commits(theirs)} | blocked
 
 @patch
 def sync(self: GitRepo, how='rebase', upstream=''):
     "Reconcile with the upstream the way `divergence` rehearsed."
     if how not in SYNC_OPS: raise GitError(f'sync must be one of {", ".join(SYNC_OPS)}')
-    upstream = str(upstream or '').strip() or self._ask('rev-parse', '--abbrev-ref', '@{upstream}')
-    if not upstream: raise GitError('this branch tracks nothing -- push it, or name an upstream')
-    ref = self._resolve_ref(upstream)
-    calls = {'fast-forward': lambda: self._attempt('merge', '--ff-only', ref),
-             'merge': lambda: self._attempt('merge', '--no-edit', ref),
-             'rebase': lambda: self._attempt('rebase', ref),
-             'reset': lambda: self._attempt('reset', '--hard', ref)}
-    return self._guarded(how, calls[how], autostash=how in ('rebase', 'reset'))
+    ref = self._resolve_ref(self._upstream(upstream))
+    args = {'fast-forward': ('merge', '--ff-only', ref), 'merge': ('merge', '--no-edit', ref),
+            'rebase': ('rebase', ref), 'reset': ('reset', '--hard', ref)}[how]
+    return self._guarded(how, lambda: self._attempt(*args), autostash=how in ('rebase', 'reset'))
 
 def git_tools(host, mx=MAX_TOOL_CHARS):
     "Git bound to one open repository, kept inside the host's roots."
     def repo(path=''):
-        roots = [Path(r).expanduser().resolve() for r in host.roots]
+        roots = L(host.roots).map(lambda r: Path(r).expanduser().resolve())
         if not roots: raise ValueError('open a project folder first')
         found = GitRepo.at(host.check(path or getattr(host, 'project', '') or roots[0], must_exist=True))
-        if not any(found.root == r or found.root.is_relative_to(r) for r in roots):
+        if not any(found.root.is_relative_to(r) for r in roots):
             raise ValueError(f'Git root {found.root} is outside the open folders; open the repository root first')
         return found
-    def state(r, result=''):
-        info = r.info()
-        return {'result': result, 'root': info['root'], 'branch': info['branch'],
-                'upstream': info['upstream'], 'ahead': info['ahead'], 'behind': info['behind'],
-                'clean': info['clean'], 'branches': info['branches'], 'changes': info['changes']}
+    def state(r, result=''): return {'result': result} | {k: r.info()[k] for k in STATE_KEYS}
     def answer(what, path, make):
         try: return clip(json.dumps(make(repo(path)), indent=2), mx * 2)
         except Exception as e: return err(what, e)
+    def preview(r, onto):
+        oid = r._resolve_ref(onto)
+        stops, replayed, _ = r._replay(oid, list(reversed(r.history(limit=250, ref=f'{oid}..HEAD'))))
+        return ({k: v for k, v in r.rebase_preview(onto).items() if k != 'review'}
+                | {'stops_at': stops, 'replayed': replayed})
     def git_status(path: str = '') -> str:
         "Repository status: branch, upstream, local and remote branches, and changed files."
         return answer('git status', path, state)
     def git_divergence(path: str = '', upstream: str = '') -> str:
-        "You against your upstream: how far each way, and every way back with its conflicts rehearsed."
+        "How far this branch has run from its upstream each way, and every way back, rehearsed."
         return answer('git divergence', path, lambda r: r.divergence(upstream))
-    def preview(r, onto):
-        onto_oid = r._resolve_ref(onto)
-        stops, replayed, _ = r._replay(onto_oid, list(reversed(r.history(limit=250, ref=f'{onto_oid}..HEAD'))))
-        return ({k: v for k, v in r.rebase_preview(onto).items() if k != 'review'}
-                | {'stops_at': stops, 'replayed': replayed})
     def git_rebase_preview(onto: str, path: str = '') -> str:
         "What replaying this branch onto `onto` would hit, without rewriting anything."
         return answer('git rebase preview', path, lambda r: preview(r, onto))
     def git_remote(op: str = 'fetch', path: str = '') -> str:
         "Talk to the remote: `fetch`, `pull` (fast-forward only), or `push`."
-        acts = {'fetch': lambda r: r.fetch(), 'pull': lambda r: r.pull(), 'push': lambda r: r.push()}
-        if op not in acts: return err('git remote', ValueError(f'op must be one of {", ".join(acts)}'))
-        return answer(f'git {op}', path, lambda r: state(r, _said(acts[op](r))))
+        if op not in REMOTE_OPS: return err('git remote', ValueError(f'op must be one of {", ".join(REMOTE_OPS)}'))
+        return answer(f'git {op}', path, lambda r: state(r, _said(getattr(r, op)())))
     def git_checkout(branch: str, path: str = '') -> str:
         "Switch to a local branch, or create a local tracking branch from `REMOTE/BRANCH`."
-        return answer('git checkout', path,
-                      lambda r: state(r, _said(r.checkout(str(branch or '').strip()))))
+        return answer('git checkout', path, lambda r: state(r, _said(r.checkout(str(branch or '').strip()))))
     return [git_status, git_divergence, git_rebase_preview, git_remote, git_checkout]
-
-def _said(out):
-    "What a mutation reported, whichever shape it reported it in."
-    if isinstance(out, dict): return out.get('summary') or out.get('message') or ''
-    return str(out or '').strip()
-
