@@ -1,4 +1,5 @@
 # Changelog
+openapi spec changes 
 release
 allow max tool calls auto
 image support and openapi spec support

@@ -136,19 +136,16 @@ class SpecHost(LocalHost):
     def __init__(self,
                  roots=('.',),          # the folders the agent is confined to
                  specs=None,            # name -> parsed spec, for a host that starts loaded
-                 headers=None,          # sent with every API call, for auth
+                 headers=None,          # sent with every API call, whichever spec it is
+                 creds=None,            # name -> headers, sent only with calls to that spec
                  timeout=60.0,          # per-call timeout, in seconds
                  max_ops=MAX_OPS,       # rows one `api_ops` answers with; 0 for every one
                  **kwargs):             # forwarded to `LocalHost`
         super().__init__(roots, **kwargs)
         self.specs, self.headers, self.timeout = dict(specs or {}), dict(headers or {}), timeout
-        #: A page of operations, not the whole catalogue — a turn cannot hold Stripe's 600. It is a
-        #: default, not a limit: `api_ops(limit=...)` overrides it, and a caller writing a document
-        #: rather than a turn passes `limit=0`.
+        self._creds = {str(k): dict(v) for k, v in (creds or {}).items()}
         self.max_ops = max_ops
         self._clients = {}
-        #: what `api_load` reported, by name. A parsed spec keeps `base_url` and `ops` and nothing
-        #: else, so the title, version and source are gone the moment it is parsed.
         self.spec_info = {}
 
     def api_load(self, src, name=''):
@@ -159,8 +156,6 @@ class SpecHost(LocalHost):
         key = str(name or info.get('title') or spec.get('title') or urlparse(str(src)).netloc or 'api').strip()
         self.specs[key] = parsed
         self._clients.pop(key, None)
-        # over every operation, not the page: a group that only exists past the cap is still a
-        # group, and it is the thing to narrow by next
         groups = sorted({o.group or '' for o in parsed.ops})
         total, shown = len(parsed.ops), len(self._page(parsed.ops))
         out = dict(name=key, title=info.get('title', spec.get('title', '')),
@@ -191,12 +186,7 @@ class SpecHost(LocalHost):
         return rows[offset:] if not n else rows[offset:offset + int(n)]
 
     def api_ops(self, group='', name='', match='', limit=None, offset=0):
-        """Operations, optionally narrowed to one group or a substring of the name or summary.
-
-        Narrowing happens before paging, which is the only order that answers the question asked:
-        capping first meant a `match` on a large spec searched the first page and reported the rest
-        as absent.
-        """
+        """Operations, optionally narrowed to one group or a substring of the name or summary.Narrowing happens before paging, """
         _, parsed = self._spec(name)
         rows = [op_row(o) for o in parsed.ops]
         if group: rows = [r for r in rows if r['group'] == group]
@@ -209,6 +199,25 @@ class SpecHost(LocalHost):
         "How many operations that narrowing matches, whatever a page of it holds."
         return len(self.api_ops(group=group, name=name, match=match, limit=0))
 
+    def api_creds(self, name, headers=None):
+        "Set what is sent with calls to one spec and nothing else; `headers=None` clears it."
+        if headers: self._creds[str(name)] = dict(headers)
+        else: self._creds.pop(str(name), None)
+        self._clients.pop(str(name), None)   # a built client captured the old headers
+        return sorted(self._creds)
+
+    def api_keyed(self):
+        "Which specs carry credentials, and which headers they send — never the values."
+        return {k: sorted(v) for k, v in self._creds.items()}
+
+    def _client(self, key, parsed):
+        "One client per spec, built with that spec's own credentials over the host's headers."
+        if key not in self._clients:
+            from fastspec.oapi import OpenAPIClient
+            self._clients[key] = OpenAPIClient(parsed, timeout=self.timeout, sync=True,
+                                               headers={**self.headers, **self._creds.get(key, {})})
+        return self._clients[key]
+
     def api_call(self, operation, name='', **params):
         """Call one operation by name, with its own parameter names.
 
@@ -216,19 +225,20 @@ class SpecHost(LocalHost):
         would mean every caller managing a loop to get one response.
         """
         key, parsed = self._spec(name)
-        client = self._clients.get(key)
-        if client is None:
-            from fastspec.oapi import OpenAPIClient
-            client = self._clients[key] = OpenAPIClient(parsed, headers=self.headers,
-                                                        timeout=self.timeout, sync=True)
+        client = self._client(key, parsed)
         fn = getattr(client, str(operation), None)
-        if fn is None:
-            for grp in dir(client):
-                sub = getattr(client, grp, None)
-                if hasattr(sub, str(operation)): fn = getattr(sub, str(operation)); break
+        if not callable(fn): fn = _in_groups(client, str(operation))
         if fn is None: raise SpecError(f'{key} declares no operation {operation!r}')
         try: return fn(**params)
         except Exception as e: raise SpecError(f'{operation} failed: {agent_err(e)}') from e
+
+def _in_groups(client, operation):
+    "The operation on whichever group holds it, for a client that files its ops by path segment."
+    for attr in dir(client):
+        if attr.startswith('_'): continue
+        try: fn = getattr(getattr(client, attr), operation, None)
+        except Exception: continue
+        if callable(fn): return fn
 
 
 # %% ../nbs/10_spec.ipynb #c3179865
