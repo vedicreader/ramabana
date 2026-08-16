@@ -466,6 +466,10 @@ async def run_turn(ui, prompt):
 
     The attachments are taken here, at the start, rather than released at the end: the prompt
     that named them is then the only one that carries them, however the turn goes.
+
+    Pictures a tool drew reached the transcript through `Ui.on_media` while the turn ran, so the
+    sweep below asks for `pending_media` rather than for all of it: the model's own images, which
+    could not exist until the reply was finished, plus anything the hook failed to take.
     """
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
     ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
@@ -484,7 +488,7 @@ async def run_turn(ui, prompt):
         while (chunk := await q.get()) is not None: blk = ui.stream(blk, chunk)
     finally:
         ui.turn = None
-        ui.show_media(ui.agent.last_media)
+        ui.show_media(ui.agent.pending_media)
         for p in ui.agent.problems: ui.say(Text(p), 'error')
         ui.agent.clear_problems()
         ui.touch(now=True)
@@ -533,6 +537,7 @@ class Ui:
         self.transcript = TranscriptView(comp, self.tail)
         agent.activity.on_change = self.on_act
         agent.on_plan = self.on_plan
+        agent.on_media = self.on_media
         if agent.approvals is not None: agent.approvals.listen(self.on_ask, self.on_answer)
 
     def _post(self, fn, *a):
@@ -963,19 +968,34 @@ class Ui:
 # %% ../nbs/05_cli.ipynb #64a54061
 @patch
 def show_media(self: Ui, media, session=''):
-    """Save the pictures a turn generated and name them in the transcript.
+    """Name a turn's pictures in the transcript, saving the ones that are not files yet.
+
+    A picture a tool drew arrives with the `path` it was written to, and naming that is the whole
+    job; only the model's own images, which come back as bytes on the response, are saved here.
 
     Drawing them inline is off: a kitty placement lands at the cursor, which after a paint is the
     input line, and the next frame erases it -- a blank gap where a picture should be. Placing it
     where the block actually is needs the compositor to say which screen row that block occupies,
-    and to re-place it on every frame. teleprint has no API for either, so this saves the file and
-    prints the path until it does. `draw_png` is the escape that will be used then."""
+    and to re-place it on every frame. teleprint has no API for either, so this names the file and
+    prints its path until it does. `draw_png` is the escape that will be used then."""
     for m in media or []:
-        try: p = save_media(m, session or getattr(self.agent, 'session_dir', '') or '.')
-        except Exception as e:
-            self.say(Text(f'could not save generated media ({agent_err(e)})'), 'error')
-            continue
+        p = m.get('path')
+        if not (p and Path(p).exists()):
+            try: p = save_media(m, session or getattr(self.agent, 'session_dir', '') or '.')
+            except Exception as e:
+                self.say(Text(f'could not save generated media ({agent_err(e)})'), 'error')
+                continue
         self.say(Text(media_line(p)), 'note')
+
+@patch
+def on_media(self: Ui, media):
+    "A tool drew, from the model's thread: put the picture in the transcript now, not at the end of the turn."
+    self._post(self._media, media)
+
+@patch
+def _media(self: Ui, media):
+    self.show_media(media)
+    self.paint()
 
 
 # %% ../nbs/05_cli.ipynb #280bb985
