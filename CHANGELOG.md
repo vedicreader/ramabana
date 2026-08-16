@@ -1,4 +1,5 @@
 # Changelog
+a picture a tool draws reaches the CLI transcript while the turn is still running, through the new `Agent.on_media` hook, rather than waiting for the reply to finish
 release
 tool_channel asks the live chat, so an agent harness carrying tools natively is no longer sized and briefed as if it were on tags
 openapi spec changes 
