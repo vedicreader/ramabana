@@ -25,9 +25,11 @@ __all__ = ['READS', 'NET', 'MIXED', 'BARE_READS', 'FOREIGN_LOCK', 'LOCK_ATTEMPTS
 # %% ../nbs/12_git.ipynb #a3db517a
 class GitError(RuntimeError): pass
 
+#: `commit-tree` writes an object and touches no ref, index or worktree. A loose object is
+#: written atomically, so a rehearsal that builds hundreds of them needs no write lock.
 READS = frozenset({
-    'blame', 'cat-file', 'check-attr', 'check-ignore', 'count-objects', 'describe', 'diff',
-    'diff-index', 'diff-tree', 'for-each-ref', 'grep', 'log', 'ls-files', 'ls-tree',
+    'blame', 'cat-file', 'check-attr', 'check-ignore', 'commit-tree', 'count-objects', 'describe',
+    'diff', 'diff-index', 'diff-tree', 'for-each-ref', 'grep', 'log', 'ls-files', 'ls-tree',
     'merge-base', 'merge-tree', 'name-rev', 'reflog', 'rev-list', 'rev-parse', 'shortlog',
     'show', 'show-ref', 'status', 'var', 'verify-commit', 'whatchanged',
 })
