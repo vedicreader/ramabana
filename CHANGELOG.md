@@ -1,4 +1,5 @@
 # Changelog
+allow max tool calls auto
 image support and openapi spec support
 
 make system prompts tighter and show one line tool calls
