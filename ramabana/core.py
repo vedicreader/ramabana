@@ -8,7 +8,7 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLAUDE', 'CLOUD', 'CURSOR',
            'DFLT_AGENT_CTX', 'RUNTIMES', 'AGENTS', 'CUSTOM', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap',
            'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
-           'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env',
+           'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env', 'cursor_mode',
            'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx', 'ModelSpec',
            'prefix_typo', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'register_model',
            'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
@@ -106,17 +106,19 @@ def _harness_available(mod, binary):
     try: return bool(getattr(m, binary)())
     except Exception: return False
 
-def _agent_native(runtime):
-    """Whether this harness would carry the tool schemas itself here, rather than in the prompt.
+def cursor_mode(config=None, tools=True):
+    "The Cursor mode a spec runs in: `agent` where there are tools, because a read-only mode will not run one."
+    return (config or {}).get('mode') or ('agent' if tools else 'ask')
 
-    Only its SDK can - the CLI of either declares tools through a config file, which is the thing a
-    managed policy refuses - and only a Rishi new enough to do it, which `tool_channel` on the chat
-    class is the marker for. A prediction, because `budget_for` has to size the tool list before
-    there is a chat to ask; the chat overrules it the moment one exists.
-    """
+def _agent_native(runtime, spec=None):
+    """Whether this harness will carry the tool schemas itself, for a spec shaped like this one.
+    Cursor will, through its SDK's custom tools, and only in `agent` mode """
+    if runtime != 'cursor': return False
     try:
-        m = importlib.import_module(f'rishi.{runtime}')
-        return bool(getattr(getattr(m, f'{runtime.title()}Chat', None), 'tool_channel', None)) and bool(m.sdk_available())
+        m = importlib.import_module('rishi.cursor')
+        cfg = getattr(spec, 'config', None) or {}
+        return (bool(getattr(m.CursorChat, 'tool_channel', None)) and bool(m.sdk_available(cfg.get('api_key')))
+                and m.sdk_mode(cursor_mode(cfg)) == 'agent')
     except Exception: return False
 
 def _cursor_available(): return _harness_available('rishi.cursor', 'cursor_bin')
@@ -495,7 +497,7 @@ def tool_channel(spec, chat=None):
     if (v := (env('TOOL_CHANNEL') or '').strip().lower()) in TOOL_CHANNELS: return v
     if (ch := getattr(chat, 'tool_channel', None)) in TOOL_CHANNELS: return ch
     mid = str(getattr(spec, 'model_id', spec) or '')
-    if (rt := getattr(spec, 'runtime', '')) in AGENTS: return 'native' if _agent_native(rt) else 'tags'
+    if (rt := getattr(spec, 'runtime', '')) in AGENTS: return 'native' if _agent_native(rt, spec) else 'tags'
     if mid in _forced_tags: return 'tags'
     return 'tags' if claude_tags(mid) else 'native'
 

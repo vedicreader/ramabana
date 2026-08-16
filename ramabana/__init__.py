@@ -4,7 +4,6 @@ Modules:
 
 - `ramabana.coding_patterns`: Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
 - `ramabana.mcp`: Ramabana's tools, and Ramabana's whole agent, as an MCP server.
-- `ramabana.runtime`: Everything that runs a model: native output capture, the context window, and the backend the harness talks to.
 - `ramabana.shop`: A trolley the agent can fill: `fossick.shop` behind a small interface, and the weekly grocery run it was written for.
 - `ramabana.testing`: The doubles: a host with no disk, backends with no model, and a script that behaves like a bad local engine.
 - `ramabana.vault`: Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing watches that put things back on the agent's desk."""

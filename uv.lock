@@ -945,7 +945,7 @@ wheels = [
 
 [[package]]
 name = "ddgs"
-version = "9.14.4"
+version = "9.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -954,9 +954,9 @@ dependencies = [
     { name = "lxml" },
     { name = "primp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/77/24/9d29eeb7dd4852c27c3673adcaf30c4dc55ced76b303c1fbb792ce7cae52/ddgs-9.14.4.tar.gz", hash = "sha256:f7b118a2b709a9e9c04a1dca6e96b98c25d4dfaca1a4b0a244d74454fcca48ef", size = 59742, upload-time = "2026-05-15T06:53:45.946Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/b6/b7f3118a3b0a285f54fb4e1289c39e3cba1944066828aa04af9cf80f878e/ddgs-9.15.0.tar.gz", hash = "sha256:12c4148da66525031214279d3ecb5170778a484f2616cac12667d0824818d07d", size = 40040, upload-time = "2026-08-16T05:20:55.574Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/5f/32de4d99220eb559b7b1cd1c529a1856efa8097f7a3e10b6c207aa95e36c/ddgs-9.14.4-py3-none-any.whl", hash = "sha256:acb084c34bf1110c974caf7e5e5a2c1973beb4bd9e170bfd191fe5ed2d2b2d6c", size = 70638, upload-time = "2026-05-15T06:53:44.761Z" },
+    { url = "https://files.pythonhosted.org/packages/66/00/401852478e2a6fff87fbcafe8c33d8e623643bba67905188b40581dcdbdd/ddgs-9.15.0-py3-none-any.whl", hash = "sha256:2c6cce11d8625a030ed471265230dd6d1f5e12a6efecde5dfa3a1b33882888e0", size = 50159, upload-time = "2026-08-16T05:20:54.359Z" },
 ]
 
 [[package]]
@@ -2093,7 +2093,7 @@ wheels = [
 
 [[package]]
 name = "koshas"
-version = "0.1.0"
+version = "0.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastprogress" },
@@ -2103,9 +2103,9 @@ dependencies = [
     { name = "pyskills" },
     { name = "watchfiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/72/51b6e130c73d92e7cba86903ed8aa6670a215297fe4b3ff9fd3b7b291afe/koshas-0.1.0.tar.gz", hash = "sha256:b8d0307596666963af98e429d7d5a2ea7b1a4455907627e81f9acb0fe8d5ad2f", size = 69114, upload-time = "2026-08-11T00:08:31.029Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0e/73/e016216532e3cd0bdba2ae80f39acb124043713119345f685ac9eac761a0/koshas-0.1.3.tar.gz", hash = "sha256:e84034d0e89f0a2635c06fb728e396dd8e3acdbcc97cd521e98531cc9b793ec8", size = 54652, upload-time = "2026-08-16T10:20:33.397Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/2b/70cd962ee0c12bfab12595a9c7b6d4aa375d76431631ce72f2b654ab0773/koshas-0.1.0-py3-none-any.whl", hash = "sha256:43b5ce9ad8fd6a76a7b40c0c54817a31b7045602d47d6fe4e4d9ea184d03e2c7", size = 63678, upload-time = "2026-08-11T00:08:29.567Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/c1/d8aa676158ffa067c1fbfff01ce27ec7e8b60838fc7ad17f004b5162ad64/koshas-0.1.3-py3-none-any.whl", hash = "sha256:d16f50a52a9c76048233641e92e1bf303f7e4e18701acdb6114873dbbab5cafb", size = 58952, upload-time = "2026-08-16T10:20:32.057Z" },
 ]
 
 [[package]]
@@ -4191,16 +4191,16 @@ wheels = [
 
 [[package]]
 name = "rishi"
-version = "0.1.14"
+version = "0.1.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastcore" },
     { name = "huggingface-hub" },
     { name = "safepyrun" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/30/e6/101103572a96a64681df4115ffd6bebc4fdd50d135cf7bdcb0683dda5bf8/rishi-0.1.14.tar.gz", hash = "sha256:8b08896bb7dcd38818e7780db09f1600bee51e80c800772ae71e270217241f1f", size = 82253, upload-time = "2026-08-15T07:31:28.761Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/7f/b97cb4d2c1e983140ace62ff649c6d33854339d74077a08187830e11e662/rishi-0.1.16.tar.gz", hash = "sha256:f796ab708ef9dfa09204829b148168e7edf3cc9013bb01e3137e6b8c340124f2", size = 85050, upload-time = "2026-08-16T11:15:54.681Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/3c/3230921a661f04db55f8433bfca3c8600f07eac3881ec2de11e2b3a2c7b9/rishi-0.1.14-py3-none-any.whl", hash = "sha256:48ac5c930ec1e48bf61a21f414ff660f62aa9f5ab97c9e950580e0425f2d1ff5", size = 91302, upload-time = "2026-08-15T07:31:27.406Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/d1/f58399a47dbfc56cd99c549a89180bcd28e4a56b3ee355d185888bad302a/rishi-0.1.16-py3-none-any.whl", hash = "sha256:3642985847eb64c6ddba3b544700d4d6add5548b326ea247c5436c92ce66f110", size = 94160, upload-time = "2026-08-16T11:15:53.061Z" },
 ]
 
 [package.optional-dependencies]

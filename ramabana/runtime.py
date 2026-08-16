@@ -1,115 +1,5 @@
 """Everything that runs a model: native output capture, the context window, and the backend the harness talks to.
 
-## Native output
-
-A local engine is a C++ library that writes to file descriptors 1 and 2 directly, so its
-complaints never pass through Python and never reach a log handler. When a turn fails
-because the model was handed more tokens than it can hold, the only evidence is on a
-descriptor. This section reads that evidence and keeps the one line worth showing.
-
-`captured` tees a descriptor rather than swallowing it: the bytes still reach the terminal
-they were going to, and a copy lands in a buffer. It is serialised on a class lock, since
-two threads redirecting descriptor 2 at the same time would restore each other's copies
-and permanently detach the real one.
-
-## Sizing a conversation
-
-Every budget here is a fraction of the window rather than a constant, because the same
-code serves a 4k local model and a 200k cloud one. A fixed 16k reserve against a 4k window
-makes every turn "due for compaction", which is how an agent ends up compacting a
-two-message conversation forever.
-
-## Reading a conversation
-
-Two backends are in play and their message shapes differ -- aidialog objects with
-`content` parts, and provider dicts. Everything that inspects history goes through `_text`,
-`_role` and `_calls` so the difference is confined to three functions.
-
-`serialise` renders history as the tagged block a summarizer reads, clipping tool results
-because they are almost all of the bulk and almost none of the meaning.
-
-The summarizer's own window is the small one, so `summarise_prompt` fits the request into
-a token budget rather than hoping. The instructions are never clipped away: an existing
-checkpoint gets at most a quarter of the request and the newest transcript gets the rest.
-
-`truncate_middle` keeps both ends of a value, since the informative parts of a path, an
-error or a diff are at its edges. `surgical_history` uses it to render old history as a
-compact DSL -- the deterministic alternative to summarising, for when no summarizer model
-is available or its output cannot be trusted.
-
-## Reorienting the model
-
-After its context is rewritten, a model is told what just happened. Every clause is here
-because leaving it out causes a specific failure: without the kernel sentence it re-imports
-and rebuilds data that is still live, without the skills sentence it works from a
-half-remembered skill, and without the last sentence it re-answers a question it already
-answered -- because a summary reads like an instruction to resume.
-
-## Notices on the way in
-
-A submitted prompt earns notices before it reaches the model. These are cheap string
-checks, and each one exists because of a failure people actually hit -- most of all the
-approval notice: a person who types "go" after a long exchange is approving the thing under
-discussion, not the four other things the model listed on the way there.
-
-## Notebook context, last mile
-
-A tagged notebook is sent whole whenever it fits. Only when it does not does the user's
-per-cell policy take effect: cells marked `discard` go first, then the oldest `auto` cells,
-and a `keep` cell is never dropped. The `fits` callable belongs to the backend, so the real
-window of the selected model decides -- not an estimate made here.
-
-## The compactor
-
-`Compactor` decides when to compact and does it. It is deliberately not a callback on
-either engine: compaction needs a second model call on a different, cheaper model, and then
-it has to replace the first model's history -- two things neither backend's callback system
-is shaped for. Keeping it out here also means the summary is available to write into the
-notebook, which is the point.
-
-## Answers, without the thinking
-
-A reasoning model emits `<think>...</think>` inline whenever the runtime does not separate it
-into a channel of its own. Every cheap job here reads a one-shot reply as data -- a label, a
-summary, a completion to insert -- so the thinking has to come off before the caller sees it.
-A classifier that returns the model's deliberation returns nothing.
-
-Some models never emit the opening tag at all, because their chat template writes it into the
-generation prompt and leaves the model to close it. That breaks any splitter looking for a
-`<think>` to begin with: the deliberation arrives as ordinary reply text, and only the closing
-tag comes back. It also happens once per *step*, so a turn that calls tools re-enters the
-thought after every call. `answer_only` handles a finished reply, `ThinkFilter` handles a
-streamed one, and the cheap jobs sidestep it entirely by asking not to think.
-
-## Usage
-
-`Usage` is one turn's token accounting, and it adds -- so a session total is `sum(usages)`
-and the same object renders the status bar.
-
-## Backend
-
-`Backend` is the harness's whole view of a model: start it, send to it, stream from it,
-count its tokens, replace its history. Nothing above this class knows whether the model is
-a local engine or an HTTP API.
-
-The contract that matters is that it does not raise. A model that cannot start, a turn that
-fails mid-stream and an engine that returns nothing all produce a readable note and a
-recorded problem, because the alternative is a traceback in a chat window.
-
-## RishiBackend
-
-Rishi runs every model, local or hosted, so there is one subclass. It translates a
-`ModelSpec` into rishi's `Chat`, adapts per-runtime quirks (litert wants its token ceiling
-and constrained decoding; MLX wants a separate completion-only conversation so a suggestion
-never sees prior suggestions), and converts rishi's usage into `Usage`.
-
-LiteRT models run on the GPU without being asked for it: rishi requests that backend by
-default and warns its way down to the CPU on a machine whose build has no delegate. So
-`RAMABANA_LITERT_BACKEND` is the way to *overrule* that -- `cpu` pins a model to the CPU,
-`gpu` asks for what rishi would have asked for anyway -- and an explicit `backend=` (or
-`eng_kw={'backend': ...}`) still takes precedence over both. `RISHI_LITERT_GPU=0` turns the
-default off at the layer that owns it.
-
 Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 
 # AUTOGENERATED! DO NOT EDIT! File to edit: ../nbs/01_runtime.ipynb.
@@ -127,7 +17,7 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
 import copy, os, re, sys, threading
 from contextlib import contextmanager
 from dataclasses import dataclass
-from .core import agent_err, env, force_tags, tool_channel
+from .core import agent_err, cursor_mode, env, force_tags, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # tail kept per call; an engine that logs a lot must not eat memory
@@ -887,6 +777,12 @@ class RishiBackend(Backend):
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         # only `remote` takes the keyword; for the local engines tag calls are the protocol
         if self.spec.runtime=='remote' and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
+        if self.spec.runtime=='cursor':
+            # Cursor runs a tool only in agent mode, and its custom tools cannot coexist with a
+            # built-in allowlist - so its own shell and editors come along, held by its sandbox
+            # rather than by our approvals. The alternative is tools that never run at all.
+            kw.setdefault('mode',cursor_mode(kw,bool(self.tools)))
+            if kw['mode']=='agent': kw.setdefault('sandbox','enabled')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
             # rishi takes backend itself; inside eng_kw it arrives twice and no litert model loads.
@@ -930,16 +826,7 @@ class RishiBackend(Backend):
     #: reason; the wording is the SDK's, and it arrives under several of these at once.
     MCP_REFUSED=('mcp','strict_mcp_config','allowed_tools','disallowed','not permitted','policy')
     def _recover(self,e):
-        """Learn that this model's wire tool channel is closed, so later turns stop trying it.
-
-        A managed configuration at one of the three documented paths is detected before the first
-        request, by `claude_tags`. One at a path nobody documented, a plugin that failed to
-        register, a version that dropped the field -- those are only ever learned from the failure
-        they cause, and learning it here is what keeps the cost at one turn instead of every turn.
-
-        The chat is rebuilt rather than reconfigured: `_runtime_kw` reads the channel when the
-        chat is constructed, so a live one goes on sending schemas that are already being refused.
-        """
+        "Learn that this model's wire tool channel is closed, so later turns stop trying it."
         if not self.tools or tool_channel(self.spec,self.chat)=='tags':return False
         if not any(s in f'{e}'.lower() for s in self.MCP_REFUSED):return False
         force_tags(self.spec.model_id,agent_err(e))
@@ -951,18 +838,7 @@ class RishiBackend(Backend):
         if hist:self.restore_hist(hist)
         return True
     def _check_reply(self,text):
-        """Report a tag call that came back as prose, which is what the tags channel costs.
-
-        On the wire a malformed call is a transport error and something raises. In the prompt it is
-        just text, and the failure is silent: `parse_tool_tags` matches complete blocks, so an
-        unclosed or misspelled tag stays in the reply and reads to the user as the model discussing
-        a call it never made.
-
-        This is a floor on how often the channel fails rather than a count of it. A well-formed
-        block holding bad JSON is dropped by `mk_tag_tc` and leaves nothing behind to find, and
-        counting those needs a hook rishi does not have yet. A number that is too low is still the
-        difference between knowing this channel is costing calls and guessing.
-        """
+        "Report a tag call that came back as prose, which is what the tags channel costs."
         if tool_channel(self.spec,self.chat)=='tags' and '<tool_call' in (text or ''):
             self.problem(f'{self.spec.name}: a <tool_call> block came back as prose rather than a '
                          'call, so this model is not punctuating the tags channel reliably')
@@ -970,20 +846,15 @@ class RishiBackend(Backend):
     def _stream(self,msg,**kw):
         kw=self._turn_kw(kw)
         if not self.prefilled_think:yield from self.chat(msg,stream=True,**kw); return
-        # the thought is indistinguishable from the reply until the close, so filter the raw
-        # chunks and hand the rest to rishi's own renderer
         from rishi.core import StreamFormatter
         f=ThinkFilter()
         yield from StreamFormatter().format_stream(f(self.chat(msg,stream='raw',**kw)))
-        # "returned nothing" is true but useless, so say what happened instead
         if f.thought and not f.answer:
             self.problem(f'{self.spec.name} spent the whole turn thinking ({f.thought} characters) '
                          'and never answered; route `turn` to a larger model, or raise its output cap')
     def _oneshot(self,prompt,sp,max_tokens):
-        # `think=False` everywhere: a cheap job's whole budget can be 32 tokens
         if self.spec.runtime!='mlx':
             return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
-        # a completion-only MLX conversation, rewritten in place so rishi can reuse the KV cache
         if getattr(self,'_oneshot_chat',None) is None:
             if not hasattr(self.chat,'engine'):   # nothing to share: a replayed chat has no engine
                 return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
@@ -1005,8 +876,7 @@ class RishiBackend(Backend):
         if (u:=getattr(self.chat,'use',None)) is None: return Usage(model=self.spec.model_id)
         return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
                      total=u.total_tokens,cached=u.cached_tokens,cost=u.cost,turns=u.n)
-    def _refresh(self):
-        self.chat.reconfigure(sp=self.sp,tools=self.tools)
+    def _refresh(self): self.chat.reconfigure(sp=self.sp,tools=self.tools)
 
 # Dead names from when llama.cpp and FastLLM were separate backends.
 def __getattr__(name):
