@@ -3924,7 +3924,7 @@ all = [
     { name = "jupyter-client" },
     { name = "mcp" },
     { name = "pyghostty" },
-    { name = "rishi", extra = ["copilot"] },
+    { name = "rishi", extra = ["all"] },
     { name = "teleprint" },
 ]
 cli = [
@@ -3942,7 +3942,7 @@ dev = [
     { name = "notebook" },
     { name = "pyghostty" },
     { name = "pytest" },
-    { name = "rishi", extra = ["all", "copilot"] },
+    { name = "rishi", extra = ["all"] },
     { name = "teleprint" },
 ]
 mcp = [
@@ -3989,10 +3989,10 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rgapi", specifier = ">=0.1.19" },
     { name = "rishi", specifier = ">=0.1.14" },
+    { name = "rishi", extras = ["all"], marker = "extra == 'all'" },
+    { name = "rishi", extras = ["all"], marker = "extra == 'dev'" },
     { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.18" },
-    { name = "rishi", extras = ["copilot"], marker = "extra == 'all'", specifier = ">=0.1.18" },
     { name = "rishi", extras = ["copilot"], marker = "extra == 'copilot'", specifier = ">=0.1.18" },
-    { name = "rishi", extras = ["copilot"], marker = "extra == 'dev'", specifier = ">=0.1.18" },
     { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.1" },
