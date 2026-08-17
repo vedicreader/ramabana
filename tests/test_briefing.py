@@ -209,9 +209,9 @@ def test_the_tool_channel_is_one_decision(monkeypatch):
     # An agent harness answers for itself. Only its SDK can carry the schemas -- either CLI would
     # have to declare them through a config file a managed policy refuses -- so without one the
     # answer is tags, and the spec alone can only predict which path a chat will take.
-    monkeypatch.setattr(_core, '_agent_native', lambda rt: False)
+    monkeypatch.setattr(_core, '_agent_native', lambda rt, spec=None: False)
     assert tool_channel(CURSOR) == 'tags' and tool_channel(CLAUDE) == 'tags'
-    monkeypatch.setattr(_core, '_agent_native', lambda rt: True)
+    monkeypatch.setattr(_core, '_agent_native', lambda rt, spec=None: True)
     assert tool_channel(CURSOR) == 'native' and tool_channel(CLAUDE) == 'native'
 
     # ...and a live chat overrules the prediction, because it is the thing that knows. A Claude
@@ -236,7 +236,7 @@ def test_the_claude_harness_is_the_way_in_a_managed_policy_leaves_open(monkeypat
     monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)
     assert tool_channel(CC) == 'native'        # the wire is open here, so the transport keeps it
     # ...and the harness has a channel of its own only where its SDK is installed to carry it
-    monkeypatch.setattr(_core, '_agent_native', lambda rt: False)
+    monkeypatch.setattr(_core, '_agent_native', lambda rt, spec=None: False)
     assert tool_channel(CLAUDE) == 'tags'
 
     assert CLAUDE.runtime == 'claude' and not CLAUDE.local   # the binary is local, the model is not
@@ -421,7 +421,7 @@ def test_the_tags_channel_hears_the_output_contract_after_the_tool_protocol():
     # stated rather than inherited: whether an agent harness is on tags now depends on which SDKs
     # this machine has, and that is not what this test is about
     import ramabana.core as _core
-    _real, _core._agent_native = _core._agent_native, lambda rt: False
+    _real, _core._agent_native = _core._agent_native, lambda rt, spec=None: False
     try:
         _output_contract_cases(native)
     finally: _core._agent_native = _real
