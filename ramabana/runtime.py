@@ -776,7 +776,7 @@ class RishiBackend(Backend):
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         # only `remote` takes the keyword; for the local engines tag calls are the protocol
-        if self.spec.runtime=='remote' and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
+        if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime=='cursor':
             # Cursor runs a tool only in agent mode, and its custom tools cannot coexist with a
             # built-in allowlist, so its own shell and editors come too, held by its sandbox and not

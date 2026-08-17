@@ -6,12 +6,13 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLAUDE', 'CLOUD', 'CURSOR',
-           'DFLT_AGENT_CTX', 'RUNTIMES', 'AGENTS', 'CUSTOM', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap',
-           'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
-           'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env', 'cursor_mode',
-           'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx', 'ModelSpec',
-           'prefix_typo', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'register_model',
-           'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
+           'DFLT_AGENT_CTX', 'RUNTIMES', 'AGENTS', 'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'MODELS', 'DFLT_LOCAL',
+           'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'SMALL_CTX', 'TOOL_MAX_FLOOR',
+           'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env',
+           'cursor_mode', 'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx',
+           'ModelSpec', 'copilot_catalog', 'prefix_typo', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget',
+           'budget_for', 'register_model', 'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel',
+           'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
@@ -90,9 +91,16 @@ CLAUDE = {f'claude/{mid}': mid for mid in (
 #: than the 32k local one, which would brief a frontier model frugally.
 DFLT_AGENT_CTX = 128_000
 #: Every runtime `register_model` accepts, as one name a host can read.
-RUNTIMES = ('litert', 'mlx', 'llama', 'cursor', 'claude', 'remote')
+RUNTIMES = ('litert', 'mlx', 'llama', 'cursor', 'claude', 'copilot', 'remote')
 #: The runtimes that are an agent harness rather than a completion endpoint.
 AGENTS = ('cursor', 'claude')
+#: The runtimes that answer over somebody else's network. Not `local`, and sized from a cloud table
+#: rather than from what this machine can hold.
+HOSTED = ('remote', 'copilot', *AGENTS)
+#: What to say when Copilot is asked for and cannot be reached. Both halves matter: the extra is
+#: not installed by default, and a subscription alone signs nobody in.
+COPILOT_UNAVAILABLE = ('copilot runtime is unavailable; install rishi[copilot], then sign in to '
+    'Copilot in an editor or run `python -c "from rishi.copilot import copilot_login; copilot_login()"`')
 CUSTOM = {}
 _RUNTIME_DEPS = {'litert': 'litert_lm', 'mlx': 'mlx_lm', 'llama': 'llama_cpp'}
 
@@ -124,11 +132,20 @@ def _agent_native(runtime, spec=None):
 def _cursor_available(): return _harness_available('rishi.cursor', 'cursor_bin')
 def _claude_available(): return _harness_available('rishi.claude', 'claude_bin')
 
+def _copilot_available():
+    """Whether Copilot can be reached: rishi imports it, and a GitHub OAuth token is on hand to
+    exchange. Reads the environment and the editor config files, and never the network."""
+    try:
+        m = importlib.import_module('rishi.copilot')
+        return bool(m.copilot_oauth())
+    except Exception: return False
+
 def runtime_available(runtime):
     "Whether Rishi's optional dependency for `runtime` can be reached. Never raises."
     if runtime == 'remote': return True
     if runtime == 'cursor': return _cursor_available()
     if runtime == 'claude': return _claude_available()
+    if runtime == 'copilot': return _copilot_available()
     try: return importlib.util.find_spec(_RUNTIME_DEPS[runtime]) is not None
     except (ImportError, KeyError, ValueError): return False
 
@@ -212,6 +229,7 @@ def auth_status():
     codex = bool(os.getenv('CODEX_AUTH_TOKEN') or _json_has(os.getenv('CODEX_AUTH_PATH', '~/.codex/auth.json'), 'tokens', 'access_token'))
     claude_transport, claude_error = _load_claude_transport()
     claude_login = _claude_login()
+    copilot = _copilot_available()
     return {
         'openai': {'available': bool(os.getenv('OPENAI_API_KEY')), 'source': 'OPENAI_API_KEY'},
         'codex': {'available': codex, 'source': 'Codex login' if codex else ''},
@@ -221,6 +239,8 @@ def auth_status():
                         'note': (f'Claude Code login found, but its FastLLM transport failed: {claude_error}'
                                  if claude_login and not claude_transport else '')},
         'gemini': {'available': bool(os.getenv('GEMINI_API_KEY')), 'source': 'GEMINI_API_KEY'},
+        'copilot': {'available': copilot,
+                    'source': 'GitHub Copilot sign-in' if copilot else ''},
     }
 
 # %% ../nbs/00_core.ipynb #56303cec
@@ -242,6 +262,11 @@ def _openai_models(include_legacy=False):
     legacy = re.compile(r'^gpt-4\.1(?:-mini|-nano)?$')
     return sorted({x for x in ids if (current.match(x) or (include_legacy and legacy.match(x))) and not re.search(r'-20\d\d-', x)})
 
+def _copilot_chat_models():
+    "Chat ids this Copilot plan can reach. Per-plan and it moves, so it is asked for, never tabled."
+    return [i for i, m in copilot_catalog().items()
+            if (m.get('capabilities') or {}).get('type') == 'chat']
+
 def available_models(include_legacy=False):
     "Models selectable here; specialized older generations appear only when requested."
     rows = []
@@ -255,6 +280,10 @@ def available_models(include_legacy=False):
     if runtime_available('claude'):
         rows += [{'value': name, 'label': mid, 'provider': 'claude',
                   'source': 'Claude Code (CLI or SDK)'} for name, mid in CLAUDE.items()]
+    if runtime_available('copilot'):
+        for model in _copilot_chat_models():
+            rows.append({'value': f'copilot/{model}', 'label': model, 'provider': 'copilot',
+                         'source': 'GitHub Copilot subscription'})
     auth = auth_status()
     if auth['openai']['available']:
         for model in _openai_models(include_legacy):
@@ -326,9 +355,29 @@ class ModelSpec:
     @property
     def runtime(self): return self.backend
     @property
-    def local(self): return self.backend not in ('remote', *AGENTS)
+    def local(self): return self.backend not in HOSTED
     def __str__(self): return f'{self.name} ({self.model_id})'
 
+
+_copilot_cat = (0., {})
+def copilot_catalog(ttl=300):
+    "Copilot's catalogue for this account, cached: `{id: entry}`, or `{}` when it cannot be reached."
+    global _copilot_cat
+    if (time.time() - _copilot_cat[0]) < ttl: return _copilot_cat[1]
+    try:
+        from rishi.copilot import copilot_catalog as cat
+        d = cat()
+    except Exception: d = {}
+    _copilot_cat = (time.time(), d)
+    return d
+
+def _copilot_ctx(model_id):
+    """Context window and a note for a Copilot model. Copilot reports its own, so nothing is guessed.
+    Reads the entry here rather than through `rishi.copilot.copilot_ctx`: the catalogue is already
+    in hand, and this then needs no rishi newer than the one that fetched it."""
+    lim = ((copilot_catalog().get(model_id) or {}).get('capabilities') or {}).get('limits') or {}
+    if (n := lim.get('max_prompt_tokens') or lim.get('max_context_window_tokens')): return int(n), ''
+    return _cloud_ctx(model_id)      # the same id under its own vendor is the next best answer
 
 def _cloud_ctx(model_id):
     "Context window and a note for a cloud model, from fastllm's tables; silent about failure."
@@ -357,10 +406,13 @@ def resolve(name, default_local=DFLT_LOCAL):
     if name in MODELS:
         backend, mid = MODELS[name]
         config = CUSTOM.get(name, {}).get('config', {})
-        if backend != 'remote':
+        if backend not in ('remote', 'copilot'):
             if not runtime_available(backend): raise RuntimeError(f'{backend} runtime is unavailable; install rishi[{backend}]')
             ctx = DFLT_AGENT_CTX if backend in AGENTS else local_ctx(name)
             return ModelSpec(name, backend, mid, ctx, config=config)
+        if backend == 'copilot':
+            ctx, note = _copilot_ctx(mid)
+            return ModelSpec(name, backend, mid, ctx, note, config)
         if mid.startswith('claude_code/'):
             ok, error = _load_claude_transport()
             if not ok: raise RuntimeError(f'Claude Code transport unavailable: {error}')
@@ -375,6 +427,10 @@ def resolve(name, default_local=DFLT_LOCAL):
         if runtime == 'claude_code':
             ok, error = _load_claude_transport()
             if not ok: raise RuntimeError(f'Claude Code transport unavailable: {error}')
+        if runtime == 'copilot':
+            if not runtime_available('copilot'): raise RuntimeError(COPILOT_UNAVAILABLE)
+            ctx, note = _copilot_ctx(model_id)
+            return ModelSpec(name, 'copilot', model_id, ctx, note)
         if runtime in ('litert', 'mlx', 'llama', *AGENTS):
             if not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; install rishi[{runtime}]')
             ctx = DFLT_AGENT_CTX if runtime in AGENTS else local_ctx(name)

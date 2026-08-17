@@ -35,8 +35,11 @@ dependencies = [
 [project.optional-dependencies]
 cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0"]
 mcp = ["mcp>=1.2"]
-all = ["ramabana[cli,mcp,pyrepl]"]
-dev = ["ramabana[all]", "rishi[all]>=0.1.14", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0"]
+# GitHub Copilot models. 0.1.18 is where rishi reads the editor sign-in ahead of a personal access
+# token, and where `copilot_catalog` reports each model's own context window.
+copilot = ["rishi[copilot]>=0.1.18"]
+all = ["ramabana[cli,mcp,pyrepl,copilot]"]
+dev = ["ramabana[all]", "rishi[all]>=0.1.18", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0"]
 pyrepl = [
     "ramabana[cli]",
     "dhrishti>=0.1.2",
