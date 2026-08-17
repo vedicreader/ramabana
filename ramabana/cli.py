@@ -104,6 +104,7 @@ options ↑/↓ move · enter choose · an option's own letter picks it · esc c
 python  /python takes the line · /agent hands it back · enter runs what compiles · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
 extra   /theme · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
+subagent /subagents shows whether delegated work may write · /subagents on|off changes it for this session
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
 
@@ -1330,6 +1331,7 @@ def main(
     approve: str = 'ask',                # ask | auto | off | none (gate nothing at all)
     web: bool = True,                    # let the web tools reach the network through fossick
     read_outside: bool = False,          # let reads name any path on this machine; writes stay inside
+    subagent_writes: bool = False,       # let delegated sub-agents write, run commands and run Python too
     vault: bool = False,                 # vishalakshi vault for what is read; not offered in python mode
     spec: bool = False,                 # enable OpenAPI, Azure and Google Discovery tools
     theme: str = 'auto',                 # auto | dark | light terminal palette
@@ -1365,7 +1367,8 @@ def main(
         print(e, file=sys.stderr)
         return 2
     agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault, spec=spec,
-                           read_outside=read_outside, max_tool_calls=max_tool_calls, max_steps=max_steps,
+                           read_outside=read_outside, subagent_writes=subagent_writes,
+                           max_tool_calls=max_tool_calls, max_steps=max_steps,
                            cfg=Path(cfg).expanduser() if cfg else None)
     if resume:
         try: agent.resume_session(resume)

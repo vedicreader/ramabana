@@ -9,12 +9,12 @@ __all__ = ['MAX_GREP_HITS', 'MAX_API', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 
            'MAX_VARS', 'LD_CHARS', 'GROUP', 'EXTRA_MODULES', 'MAX_SKILL_CHARS', 'SKILL_DESC_MAX', 'EVENTS',
            'MAX_TOOL_CHARS', 'MAX_HITS', 'GIT_READ_TOOLS', 'GIT_WRITE_TOOLS', 'GIT_TOOLS', 'WRITE_TOOLS', 'ERR',
            'RESPONSES_API', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'API_VENDORS', 'SUB_MAX_STEPS', 'SUB_SP',
-           'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied', 'ld_json', 'LocalHost', 'Skill', 'skill_dirs', 'discover',
-           'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'err', 'failed', 'clip', 'clip_lines', 'readable',
-           'code_tools', 'file_tools', 'notebook_tools', 'media_dir', 'mime_for', 'save_media', 'image_available',
-           'api_model', 'draws_itself', 'image_tools', 'web_tools', 'memory_tools', 'api_tools', 'watch_tools',
-           'session_tools', 'shell_tools', 'skill_tools', 'tools_for', 'read_only', 'sub_sp', 'delegate',
-           'delegate_many', 'named_skills', 'subagent_tools']
+           'SUB_WRITE_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied', 'ld_json', 'LocalHost', 'Skill', 'skill_dirs',
+           'discover', 'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'err', 'failed', 'clip', 'clip_lines',
+           'readable', 'code_tools', 'file_tools', 'notebook_tools', 'media_dir', 'mime_for', 'save_media',
+           'image_available', 'api_model', 'draws_itself', 'image_tools', 'web_tools', 'memory_tools', 'api_tools',
+           'watch_tools', 'session_tools', 'shell_tools', 'skill_tools', 'tools_for', 'sub_briefing', 'read_only',
+           'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, functools, json, mimetypes, os, re, runpy, shutil, threading, uuid
@@ -1954,13 +1954,34 @@ Its default scope is a sandbox that refuses most library calls; pass `scope='ove
 get the real interpreter. Use it rather than guessing at what is in memory."""
 
 
+#: Swapped in for the two read-only lines above when a session grants sub-agents writes.
+SUB_WRITE_SP = """- You have the delegating agent's write tools as well as its read tools: create and \
+edit files, run commands, run Python. Every call is recorded on the session and goes through the \
+approval policy the main agent answers to. A refusal comes back with a reason. Read it and change \
+the approach.
+- Write only what the task asked for. You cannot see the conversation that sent you. Anything \
+else you change is a change nobody reviewed.
+- Verify with the tool that proves it. Run the test. Read the file back. Report the evidence.
+- `run_python` shares the user's kernel namespace. Bind results to NEW names. You cannot rebind or \
+delete what the user made."""
+
+
+def sub_briefing(writes=False):
+    "The sub-agent standing instructions, with the read-only sentences swapped out when writes are on."
+    if not writes: return SUB_SP
+    keep = [ln for ln in SUB_SP.splitlines()
+            if not ln.startswith('- You cannot edit anything') and not ln.startswith('- `inspect_python`')]
+    return '\n'.join(keep).rstrip() + '\n' + SUB_WRITE_SP
+
+
 # A sub-agent does not spawn sub-agents: recursion here is a fan-out tree whose width nobody chose.
 NO_SUB = frozenset({'delegate_search', 'delegate_parallel'})
 
 # %% ../nbs/02_tools.ipynb #8ca3589d
-def read_only(tools, max_calls=None):
-    "The read-only tools a sub-agent may have, optionally behind a hard per-task call budget."
-    allowed = [t for t in tools if getattr(t, '__name__', '') not in (WRITE_TOOLS | NO_SUB)]
+def read_only(tools, max_calls=None, writes=False):
+    "The tools a sub-agent may have, optionally behind a hard per-task call budget."
+    blocked = NO_SUB if writes else (WRITE_TOOLS | NO_SUB)
+    allowed = [t for t in tools if getattr(t, '__name__', '') not in blocked]
     if max_calls is None: return allowed
     state, lock = {'n': 0}, threading.Lock()
 
@@ -1984,12 +2005,16 @@ def sub_sp(sp=SUB_SP, skills=()):
     return sp + '\n\n' + '\n\n'.join(f'## {s.name}\n\n{s.text()}' for s in skills)
 
 
-def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, skills=()):
+def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skills=(),
+             writes=False,      # hand over WRITE_TOOLS as well
+             approve=None):     # the gate those writes answer to, which `spawn` inherits none of
     "Ask `question` in a throwaway conversation on `backend`'s engine. Returns the answer text."
     sub = None
     try:
         # the tool wrappers are the hard stop: native engines own their own tool loop
-        sub = backend.spawn(sp=sub_sp(sp, skills), tools=read_only(tools, max_calls=max_steps * 4))
+        kw = {'approve': approve} if approve is not None else {}
+        sub = backend.spawn(sp=sub_sp(ifnone(sp, sub_briefing(writes)), skills),
+                            tools=read_only(tools, max_calls=max_steps * 4, writes=writes), **kw)
         if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
         return _delegate_result(sub.send(question))
     except Exception as e:
@@ -2000,12 +2025,15 @@ def delegate(backend, question, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, sk
             except Exception: pass
 
 # %% ../nbs/02_tools.ipynb #fe517832
-def delegate_many(backend, questions, tools=(), sp=SUB_SP, max_steps=SUB_MAX_STEPS, n_workers=4, skills=()):
+def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS, n_workers=4,
+                  skills=(), writes=False, approve=None):
     "Ask several questions; fan out with `fastcore.parallel` on cloud backends, serial on local."
     qs = L(questions)
     if not qs: return L()
-    def run(q): return delegate(backend, q, tools, sp, max_steps, skills)
-    if len(qs) == 1 or getattr(backend.spec, 'local', False) or n_workers < 2:
+    def run(q): return delegate(backend, q, tools, sp, max_steps, skills, writes, approve)
+    # writing sub-agents stay serial. `Approvals` holds one pending ask, and nobody can review
+    # concurrent edits to one workspace
+    if len(qs) == 1 or writes or getattr(backend.spec, 'local', False) or n_workers < 2:
         return L(run(q) for q in qs)
     return parallel(run, qs, n_workers=min(n_workers, len(qs)), threadpool=True)
 
@@ -2023,21 +2051,30 @@ def named_skills(get_skills, names):
                  f"{', '.join(s.name for s in every) or 'none'}]")
 
 
-def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=None):
+def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=None,
+                   get_writes=None,     # the session's sub-agent write toggle, read per call
+                   get_approve=None):   # the gate those writes answer to
     """The `delegate` tool, bound to whatever backend routing says sub-agents run on.
 
     Every argument is a callable, so a model switch mid-session is picked up. `get_tools` is the
     sub-agent model's tool list, not the turn model's.
     """
 
+    def _writes(): return bool(get_writes()) if get_writes is not None else False
+    def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
+
     def delegate_search(question: str, skills: str = '') -> str:
         """Hand a broad search question to a sub-agent and get back only its conclusion.
 
         Use this when answering would take many `search_code` / `view_file` / `read_url` /
         `inspect_python` calls whose results you do not need to keep -- "where else do we
-        do X", "which files import Y", "what shape is everything in this namespace". The
-        sub-agent has your read-only tools and none of your write tools, and its working is
-        discarded, so the cost to your context is one question and one answer.
+        do X", "which files import Y", "what shape is everything in this namespace". Its
+        working is discarded, so the cost to your context is one question and one answer.
+
+        The sub-agent has your read-only tools. Whether it also has your write tools is the
+        session's setting rather than yours. With sub-agent writes on it can edit, run commands
+        and run Python under the approval policy you answer to. The task you send may then ask
+        for a change. With them off it can only report.
 
         `skills` names skills from your skill index, comma separated, whose text the sub-agent
         should start with: name the one or two its task actually needs. You hold the index and
@@ -2049,7 +2086,8 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         b = get_backend()
         if b is None: return 'no model is available to delegate to'
         sk, note = named_skills(get_skills, skills)
-        return clip(delegate(b, question, get_tools(), skills=sk), MAX_TOOL_CHARS) + note
+        return clip(delegate(b, question, get_tools(), skills=sk, writes=_writes(),
+                             approve=_approve()), MAX_TOOL_CHARS) + note
 
     def delegate_parallel(questions: str, skills: str = '', cloud_model: str = '') -> str:
         """Hand several independent questions to sub-agents at once, and get back every answer.
@@ -2060,7 +2098,8 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         Use it when you have two or more questions that do not depend on each other. They
         run concurrently, each in its own throwaway conversation with your read-only tools,
         so three questions cost you three short answers rather than the sixty tool results
-        it would take to answer them yourself.
+        it would take to answer them yourself. With sub-agent writes on they run one after
+        another instead, because their approvals share one queue.
 
         `skills` names skills from your skill index, comma separated, given to every one of
         them. Use it when the questions share a subject; when they do not, ask them in separate
@@ -2080,7 +2119,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
             return err('could not parse questions', e)
         if not qs: return 'no questions given'
         sk, note = named_skills(get_skills, skills)
-        answers = delegate_many(b, qs, get_tools(), skills=sk)
+        answers = delegate_many(b, qs, get_tools(), skills=sk, writes=_writes(), approve=_approve())
         return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2) + note
 
     return [delegate_search, delegate_parallel]

@@ -56,6 +56,9 @@ ramabana = "ramabana._modidx:d"
 
 [project.entry-points.pyskills]
 coding_patterns = "ramabana.coding_patterns"
+theory = "ramabana.theory"
+write_prose = "ramabana.write_prose"
+write_docs = "ramabana.write_docs"
 
 [tool.nbdev]
 allowed_cell_metadata_keys = ["leela"]

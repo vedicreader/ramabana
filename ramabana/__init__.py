@@ -6,7 +6,10 @@ Modules:
 - `ramabana.mcp`: Ramabana's tools, and Ramabana's whole agent, as an MCP server.
 - `ramabana.shop`: A trolley the agent can fill: `fossick.shop` behind a small interface, and the weekly grocery run it was written for.
 - `ramabana.testing`: The doubles: a host with no disk, backends with no model, and a script that behaves like a bad local engine.
-- `ramabana.vault`: Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing watches that put things back on the agent's desk."""
+- `ramabana.theory`: Naur's programming-as-theory-building, in the sense this team uses the word.
+- `ramabana.vault`: Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing watches that put things back on the agent's desk.
+- `ramabana.write_docs`: The voiceless register for the prose that ships with code, adapted from Answer.AI's write_docs.
+- `ramabana.write_prose`: Anti-slop rules for narrative prose, adapted from Answer.AI's write_prose."""
 
 __version__ = "0.1.10"
 

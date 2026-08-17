@@ -603,6 +603,10 @@ RULES = (
                    '  documentation -- not for questions about this repository.'),
     ('memory_search', 'Before acting on a request, search Vishalakshi durable memory with `memory_search` when\n'
                       '  that tool is available; use stored preferences and relevant prior context.'),
+    ('read_skill', 'Before writing prose that ships with the work -- a docstring, a comment, a README, a\n'
+                   '  commit message, a PR description, a message to a colleague -- read the `write_docs`\n'
+                   '  skill. For narrative writing read `write_prose`, and for the design a codebase is\n'
+                   '  derived from, `theory`.'),
     ('delegate_parallel', 'When two or more questions are independent and each would take several tool calls,\n'
                           '  send them together with `delegate_parallel` rather than working through them yourself.'),
     (None, 'Make the change the user asked for and no other. Do not reformat, reorganise, or\n'
@@ -669,6 +673,8 @@ These apply on top of the rules above, and outrank them where they disagree.
 - Approval does not travel. Confirm before an action that is hard to reverse or that is visible outside this machine, and look at the target before you delete or overwrite it. If what you find contradicts how it was described, say that instead of proceeding.
 - There is no momentum. Never extend agreed work into new decisions, and when in doubt whether something was agreed, it was not. Approval for a downstream change does not cover an upstream one.
 - A question outranks the work in flight. Answer it in prose and end the turn. A question is never approval to continue and never an occasion to change code.
+- Never end a response by asking what to do next. Stating a recommendation or naming what remains undone is right; soliciting the next instruction takes agency from the user. Asking for their read on a direction is welcome; asking permission to proceed is not.
+- Do not work around a problem. Fix it at its source, or say what is blocking and stop. A broken tool comes before the work in flight, because every later task pays for it.
 - Correct the record. When an earlier claim of yours turns out to be wrong, say so plainly rather than moving quietly past it.
 - Before finalizing a turn, reflect on mistakes made during it. For each concrete mistake with a reusable correction, record the mistake and its fix in Vishalakshi with `remember`, so later work can avoid it.
 
@@ -895,6 +901,7 @@ class Agent:
                  ext_paths=(),
                  inline_skills=INLINE_SKILLS,
                  subagents=True,
+                 subagent_writes=False,     # sub-agents get the write tools too, behind the same approvals
                  local_multimodal=False,       # load LiteRT vision/audio encoders for local models
                  tool_max_len=MAX_TOOL_CHARS,
                  on_compact=None,
@@ -913,6 +920,7 @@ class Agent:
         self.routing = routing or Routing(turn=model)
         if model: self.routing.set(model)
         self.approvals, self.tool_max_len, self.subagents = approvals, tool_max_len, subagents
+        self.subagent_writes = bool(subagent_writes)
         self.local_multimodal = bool(local_multimodal)
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
         self._sp = sp
@@ -934,6 +942,7 @@ class Agent:
         self.note = 'not started'
         self._backends, self._skills, self._reg, self._tools = {}, None, None, None
         self._subtools = None    # built only when sub-agents run on a smaller model than the turn
+        self._subrec = None      # those tools recorded, for when sub-agents may write
         self._plain = []         # the unwrapped tools, which is what the briefing is written from
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self.lock = threading.Lock()
@@ -969,12 +978,16 @@ class Agent:
 
     def _sub_plain(self):
         "The tool list a sub-agent gets, sized to the model sub-agents run on."
+        # a writing sub-agent gets the recorded wrappers. Its edits then reach `calls`, `Activity`
+        # and the before-images `changes()` reads. A reading one cannot change anything
         b = self.subagent_budget
-        if b == self.budget: return self._plain
+        if b == self.budget: return self.tools if self.subagent_writes else self._plain
         if self._subtools is None:
             self._subtools = tools_for(self.host, lambda: self.skills, list(self.registry.tools),
                                        mx=b.tool_max, drop=b.drop)
-        return self._subtools
+        if not self.subagent_writes: return self._subtools
+        if self._subrec is None: self._subrec = [self._record(t) for t in self._subtools]
+        return self._subrec
 
     def spec_or_none(self, job='turn'):
         "`job`'s model spec, or `None` when its name does not resolve to one."
@@ -1002,7 +1015,9 @@ class Agent:
             extra = list(self.registry.tools)
             if self.subagents:
                 extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
-                                        lambda: self.skills, self._cloud_backend_or_none)
+                                        lambda: self.skills, self._cloud_backend_or_none,
+                                        lambda: self.subagent_writes,
+                                        lambda: self.approvals.gate if self.approvals is not None else None)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
             b = self.budget
             plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop,
@@ -1013,14 +1028,14 @@ class Agent:
 
     def reload(self):
         "Re-discover skills, extensions and tools. What a `/reload` command calls after editing them."
-        self._skills = self._reg = self._tools = self._subtools = None
+        self._skills = self._reg = self._tools = self._subtools = self._subrec = None
         for b in self._backends.values(): b.close()
         self._backends.clear()
         return self
 
     def refresh(self):
         "Re-discover skills, extensions and tools, and re-brief a running turn backend in place."
-        self._skills = self._reg = self._tools = self._subtools = None
+        self._skills = self._reg = self._tools = self._subtools = self._subrec = None
         spec = self.routing.spec('turn')
         b = self._backends.get((spec.backend, spec.model_id))
         if b is not None: b.refresh(self.system_prompt(), self.tools)
@@ -1176,7 +1191,7 @@ class Agent:
         spec = self.routing.set(name, job)
         # tools and briefing are sized to the turn model, so rebuild before `_be` briefs one
         if job == 'turn' and self.budget != before: self._tools = None
-        if job == 'subagent': self._subtools = None
+        if job == 'subagent': self._subtools = self._subrec = None
         new = (spec.backend, spec.model_id)
         if job == 'turn' and new != old:
             self._be('turn').resume_hist(history)
@@ -1185,6 +1200,15 @@ class Agent:
             self._backends.pop(old).close()
         self.note = f'{job} → {model_note(spec)}'
         return spec
+
+    def set_subagent_writes(self, enabled):
+        "Grant or withdraw sub-agent write access for this session."
+        enabled = bool(enabled)   # refused mid-turn: a running delegation holds its tool list already
+        if enabled == self.subagent_writes: return enabled
+        if self.busy: raise RuntimeError('cannot change sub-agent writes while the assistant is working')
+        self.subagent_writes = enabled
+        self.note = f'sub-agent writes {"on" if enabled else "off"}'
+        return enabled
 
     def set_local_multimodal(self, enabled):
         "Choose whether newly loaded LiteRT engines include media encoders."
@@ -1598,6 +1622,14 @@ class Agent:
             if not rows: return 'no models available'
             width = max(len(r['value']) for r in rows)
             return '\n'.join(f"{'*' if r['value'] == self.model.name else ' '} {r['value']:<{width}}  {r['provider']:<12} {r['source']}" for r in rows)
+        if name == 'subagents':
+            if arg:
+                want = arg.strip().lower()
+                if want not in ('on', 'off', 'read', 'write'): return "say /subagents on|off"
+                self.subagent_writes = want in ('on', 'write')
+            return ('sub-agents may write, run commands and run Python, behind this session\'s approvals'
+                    if self.subagent_writes else
+                    'sub-agents are read-only: they report what they found and change nothing')
         if name == 'cost': return repr(self.use)
         if name == 'compact':
             t = self.compact(arg)
@@ -1644,7 +1676,7 @@ class Agent:
     def commands(self):
         "Every command name, built-in and registered, for a help line or an autocomplete."
         return sorted({'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
-                       'plan', 'todos', 'todo', *self.registry.commands})
+                       'subagents', 'plan', 'todos', 'todo', *self.registry.commands})
 
 
 # %% ../nbs/03_agent.ipynb #15c8df1f

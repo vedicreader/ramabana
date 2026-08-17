@@ -10,6 +10,10 @@ When the user is describing a problem, asking a question, or thinking out loud r
 
 Before running a command that changes system state — restarts, deletes, config edits — check that the evidence actually supports that specific action. A signal that pattern-matches to a known failure may have a different cause.
 
+## Added here
+
+Everything above is `AnswerDotAI/aai-coding`, `prompts/core.md`, verbatim. Everything below this heading is Ramabana's, so the drift check diffs to an appended block and nothing else. Take an upstream change by re-fetching the file and re-appending this section.
+
 For every behavior-changing code or schema change, add or update a focused regression test that reproduces the prior fault and verifies the repaired contract. In an nbdev project, write this as an executable test cell in the source notebook. Run the focused regression test and the project’s relevant checks before reporting completion. Before reporting, obtain an independent subagent review of the exact changed files and tests; validate its findings against the actual diff and test output rather than treating the review as proof.
 
 For edit tools whose `edits` or `commands` field is itself a JSON string, construct and inspect that inner JSON separately before sending it. Verify that its array has exactly the intended objects or command arrays and that the string ends after the array, with no extra closing delimiter. A JSON parse error means no edit occurred; correct the payload rather than retrying it unchanged.

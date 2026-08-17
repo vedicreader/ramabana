@@ -391,6 +391,9 @@ def test_the_briefing_describes_only_the_tools_the_model_was_given():
     assert 'Start every user-facing response with what you plan to do or the next action.' in rules
     assert 'Before acting on a request, search Vishalakshi durable memory with `memory_search`' in rules
 
+    assert '`write_docs`' in A.work_rules(['read_skill']) and '`write_prose`' in A.work_rules(['read_skill'])
+    assert '`write_docs`' not in A.work_rules(['view_file'])
+
     h = FullHost(files={'a.py': 'x = 1\n'})
     sp = A.system_prompt(h, tools=tools_for(h))
     for t in {t.__name__ for t in tools_for(h)} & {n for n, _ in A.RULES if n}: assert t in sp
