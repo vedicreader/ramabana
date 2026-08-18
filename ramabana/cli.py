@@ -6,14 +6,14 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 
 # %% auto #0
 __all__ = ['DARK', 'LIGHT', 'THEMES', 'KAKU', 'GRUVBOX', 'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL',
-           'NOTIFY_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP',
-           'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING',
-           'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'APC_CHUNK',
-           'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'PYREPL_MODULES', 'set_theme', 'key_card', 'guide_text',
-           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
-           'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'draw_png', 'media_line',
-           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui',
-           'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
+           'NOTIFY_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'MAX_GROUP_ROWS', 'MOUSE_ON', 'MOUSE_OFF',
+           'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE',
+           'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'CELL_ASPECT',
+           'MAX_IMG_DRAW', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'PYREPL_MODULES', 'set_theme',
+           'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
+           'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'draw_png',
+           'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn',
+           'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -102,6 +102,12 @@ FOLD_STEP = 1
 STREAM_EVERY = 0.05
 #: How many recent calls the working footer names.
 ACT_TAIL = 3
+#: How many of a delegate's sub-calls its block shows while it runs. It is unfolded then, so that a
+#: person can watch the sub-agent work -- and a block that is both newest and growing pushes rows
+#: across the top edge, where Teleprint inks them for good. A 60-call fan-out would leave 40 rows of
+#: exactly the scattering this grouping exists to prevent. The rest are counted, and all of them stay
+#: in `source`, so search and copy still see the whole thing.
+MAX_GROUP_ROWS = 8
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 #: The commands this surface answers rather than handing to the agent. `Agent.commands` cannot know
 #: them, and without them Tab completed `/co` to `/compact` and `/cost` while `/copy` went unlisted.
@@ -486,7 +492,9 @@ async def run_turn(ui, prompt):
     ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
     # the turn owns this, not `stream`: a turn is many prose segments now, and each one of them
     # arrives with no block of its own, which is exactly the signal `stream` used to reset on
-    ui._reply, ui._seg, ui._seg_blk, ui._turn_at = '', '', None, time.monotonic()
+    ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
+    # the prompt block `submit` just printed: everything from here down belongs to this turn
+    ui._turn_at, ui._turn_from = time.monotonic(), next(reversed(ui.comp.blocks), 0)
     atts, ui.attachments = list(ui.attachments), []
     spec = ui.agent.model
     ask, media = prompt + media_note(atts, spec), media_parts(atts, spec)
@@ -534,7 +542,7 @@ class Ui:
         self.ask = None            # the `Ask` waiting on an answer, or None
         self.turn = None           # the running turn's task, or None
         self.acts = {}             # act id -> its block, for calls that have one of their own
-        self.by_id = {}            # act id -> the `Act`, so a group can redraw its parent's line
+        self.by_id = {}            # act id -> the `Act`, while it may still need redrawing
         self.kids = {}             # delegate act id -> the calls its sub-agent has made
         self.hint = ''
         self.mode = 'agent'        # 'python' once `enter_python` has a kernel
@@ -550,6 +558,8 @@ class Ui:
         self._seg_blk = None       # the block that segment grows in, or None between segments
         self._painted_at = 0.0     # when that segment last re-rendered, for `STREAM_EVERY`
         self._turn_at = 0.0        # when the running turn began, for the working footer's clock
+        self._turn_from = 0        # the block id the running turn started at, for `turn_blocks`
+        self._rendered = ''        # the segment text last actually rendered, so a flush is never wasted
         self._touched = 0.0        # when the transcript view last rebuilt, for `touch`
         self.history, self.history_at, self.draft = [], 0, ''
         self.menu = None            # the open `ChoiceMenu`, or None
@@ -591,6 +601,17 @@ class Ui:
             out.append(f'  · {self.mode}', style=GRUVBOX['aqua'] if self.mode == 'python' else GRUVBOX['blue'])
         return out
 
+    def turn_blocks(self):
+        """The blocks of the turn on screen: everything printed since its prompt went up.
+
+        Teleprint commits a block only when a borrow ends its epoch, which nothing in an ordinary
+        session does, so `not committed` is every block since startup rather than every block of
+        this turn. Folding or drilling by that reaches back through the whole session -- and
+        unfolding twenty turns of tool results at once pushes thousands of rows across the top
+        edge, where they ink into scrollback and no keystroke can take them back.
+        """
+        return [b for b in self.comp.blocks.values() if b.id >= self._turn_from and not b.committed]
+
     def drillable(self):
         """The foldable entries of the turn on screen, newest first: what alt+1..9 reaches.
 
@@ -599,8 +620,8 @@ class Ui:
         carry a digit is a bigger change to how the surface looks than a drill-in is worth. The
         numbers live in the footer instead, where the eye already is while a turn runs.
         """
-        return [b for b in reversed(list(self.comp.blocks.values()))
-                if not b.committed and b.tag in ('step', 'tool') and b.height > 1][:9]
+        return [b for b in reversed(self.turn_blocks())
+                if b.tag in ('step', 'tool') and b.height > 1][:9]
 
     def drill(self, n):
         "Toggle the `n`th newest foldable entry, counting from 1. False when there is no such entry."
@@ -626,12 +647,15 @@ class Ui:
         for a in acts[-ACT_TAIL:]:
             style = (GRUVBOX['yellow'] if not a.done else
                      GRUVBOX['gray'] if a.ok else GRUVBOX['red'])
-            blk = self.acts.get(a.parent_action_id or a.id)
+            # what it is nested *in*, not what it says its parent is: an act whose parent never
+            # got a block -- a replayed session, an overridden `_action_meta` -- has one of its own
+            parent = self.acts.get(a.parent_action_id) if a.parent_action_id else None
+            blk = parent if parent is not None else self.acts.get(a.id)
             n = nums.get(blk.id) if blk is not None else None
             t = Text(f'{n} ' if n else '  ', style=GRUVBOX['blue'] if n else GRUVBOX['gray'])
-            t.append(('  ' if a.parent_action_id else '') + a.line(), style=style)
+            t.append(('  ' if parent is not None else '') + a.line(), style=style)
             rows.append(t)
-        mine = [a for a in acts if not a.parent_action_id]
+        mine = [a for a in acts if not a.parent_action_id or a.parent_action_id not in self.acts]
         bits = [f'step {len(mine)}' if mine else 'thinking']
         if self._turn_at: bits.append(f'{time.monotonic() - self._turn_at:.0f}s')
         if (sub := len(acts) - len(mine)): bits.append(f'{sub} delegated')
@@ -645,6 +669,7 @@ class Ui:
             await asyncio.sleep(0.1)
             if self.turn is not None:
                 self.frame += 1
+                self.flush_stream()   # a model that stalls mid-prose must not leave its last words unseen
                 self.paint()
 
     ASKING, PY_LABEL, CONT = 'approve? [y/n/a, or a reason + enter] ', 'python › ', '...      '
@@ -775,8 +800,7 @@ class Ui:
         thirty whole redraws. So the caches are invalidated together and framed once.
         """
         self.flush_stream()
-        work = [b for b in self.comp.blocks.values()
-                if not b.committed and b.tag in ('step', 'tool') and b.height > 1]
+        work = [b for b in self.turn_blocks() if b.tag in ('step', 'tool') and b.height > 1]
         if not work: return False
         shut = not all(b.collapsed for b in work)
         for b in work:
@@ -807,6 +831,21 @@ class Ui:
         """
         return act.done and act.ok and blk.height > FOLD_TOOL
 
+    def start_turn(self, coro):
+        """Spawn a turn unless one is already running, and say whether it started.
+
+        Enter used to spawn a second `run_turn` over the top of the first. They share `_reply` and
+        the segment state, so the newcomer's reset wiped what the first had said and the two
+        interleaved in `/copy turn` and in the notebook log; the task handle was overwritten too,
+        so ctrl+c could only reach one of them.
+        """
+        if self.turn is not None:
+            coro.close()   # never awaited, so close it rather than leave asyncio complaining
+            self.note('a turn is running · ctrl+c stops it')
+            return False
+        self.turn = self.comp.spawn(coro, name='turn')
+        return True
+
     def _act(self, act):
         if act.parent_action_id and act.parent_action_id in self.acts: return self._nest(act)
         self.by_id[act.id] = act
@@ -824,6 +863,9 @@ class Ui:
             self.comp.set_body(blk, *body, source=src)
             blk.collapsed = self._folded(act, blk)
             self.comp.refresh_block(blk)
+            # a finished call with no children is never redrawn again, and its `Act` carries up to
+            # `MAX_DETAIL` of result text. `Activity` caps itself at `MAX_ACTS`; this must too
+            if act.done: self.by_id.pop(act.id, None)
         self.touch()
         self.paint()
 
@@ -842,11 +884,16 @@ class Ui:
 
     def _paint_group(self, pid):
         "Redraw a delegate and everything its sub-agent has done so far, as one foldable block."
+        if pid not in self.by_id: return   # its parent has been pruned; nothing left to redraw into
         act, blk, kids = self.by_id[pid], self.acts[pid], self.kids.get(pid, [])
         head = Text(act.line(), style=self._act_style(act))
         if kids: head.append(f'  · {len(kids)} call{"" if len(kids) == 1 else "s"}', style=GRUVBOX['gray'])
-        body = [head] + [Text('   ' + k.line(), style=self._act_style(k)) for k in kids]
+        shown, body = kids[-MAX_GROUP_ROWS:], [head]
+        if len(kids) > len(shown):
+            body.append(Text(f'   … {len(kids) - len(shown)} earlier', style=GRUVBOX['gray']))
+        body += [Text('   ' + k.line(), style=self._act_style(k)) for k in shown]
         if act.detail: body.append(Text(act.detail, style=GRUVBOX['gray']))
+        # `source` keeps every call, however few are drawn: search and copy read it, not the drawing
         src = '\n'.join([act.line()] + ['   ' + k.line() for k in kids] + ([act.detail] if act.detail else []))
         self.comp.set_body(blk, *body, source=src)
         blk.collapsed = self._folded(act, blk)   # unfolded while it runs: you watch the sub-agent work
@@ -948,8 +995,11 @@ class Ui:
             if not self._reply: return 'no turn to copy'
             text = self._reply
         else:
-            blk = next((b for b in reversed(list(self.comp.blocks.values())) if b.tag == tag), None)
-            if blk is None: return f'no {tag} block to copy'
+            # this turn's, not the session's: a turn that ended on a tool call leaves no `reply`
+            # block of its own, and falling through would put an older answer on the clipboard
+            # while the message claimed it was the last one
+            blk = next((b for b in reversed(self.turn_blocks()) if b.tag == tag), None)
+            if blk is None: return f'no {tag} block in this turn to copy'
             text = self.transcript.block_text(blk)
         self.comp.tty.write('\x1b]52;c;' + b64encode(text.encode()).decode() + '\x07')
         return f'copied {len(text)} chars of the last {tag}'
@@ -1141,11 +1191,17 @@ class Ui:
         return Text(text)
 
     def flush_stream(self):
-        "Render the open segment now, whatever `STREAM_EVERY` would have said. Every boundary calls it."
-        if self._seg_blk is None or not self._seg: return
+        """Render the open segment now, whatever `STREAM_EVERY` would have said. Every boundary calls it.
+
+        A no-op when the drawing already matches the model, which is what lets `animate` call it on
+        every frame: without a timer the last chunk before a stall stayed invisible for as long as
+        the model paused, and with one but no `_rendered` check it would re-render the whole reply
+        ten times a second for nothing.
+        """
+        if self._seg_blk is None or not self._seg or self._seg == self._rendered: return
         self.comp.set_body(self._seg_blk, self.reply(self._seg), source=self._seg)
         self.comp.refresh_block(self._seg_blk)
-        self._painted_at = time.monotonic()
+        self._rendered, self._painted_at = self._seg, time.monotonic()
         self.touch()
 
     def stream(self, blk, chunk):
@@ -1165,7 +1221,7 @@ class Ui:
         self._reply += chunk
         if self._seg_blk is None:
             self._seg_blk = self.say(self.reply(self._seg), 'reply', fold=None, source=self._seg)
-            self._painted_at = time.monotonic()
+            self._rendered, self._painted_at = self._seg, time.monotonic()
         else:
             self._seg_blk.source = self._seg    # cheap, and it is what `y` and `/copy` read
             if time.monotonic() - self._painted_at >= STREAM_EVERY: self.flush_stream()
@@ -1515,7 +1571,7 @@ async def amain(agent, hint='', python=False, attach=''):
             out = ui.on_key(k)
             if out == 'quit': return done.set()
             if out is not None:
-                ui.turn = comp.spawn(out, name='turn')
+                ui.start_turn(out)
                 ui.paint()
         comp.on_key = on_key
         comp.on_paste = ui.paste
