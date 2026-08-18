@@ -69,10 +69,9 @@ class MemHost(NullHost):
 
 # %% ../nbs/04_testing.ipynb #d107b5da
 class FullHost(LocalHost):
-    """A host with *every* capability present, over a throwaway folder.
+    """Provide every host capability in process over a temporary folder.
 
-    Each gap `LocalHost` leaves is filled with a small real implementation over in-process
-    state. The whole tool surface can be driven. Nothing here reaches the network.
+    The host uses supplied pages and local state. It never accesses the network.
     """
 
     def __init__(self, files=None, pages=None, root=None, terminal='', **kw):

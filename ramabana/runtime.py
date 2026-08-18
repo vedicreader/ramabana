@@ -39,7 +39,7 @@ def interesting(text, limit=4):
 
 # %% ../nbs/01_runtime.ipynb #c5fce893
 class _Tee:
-    "One redirected descriptor: everything through a pipe, out to the original, and into a buffer."
+    "Copy one redirected descriptor to its original destination and an in-memory buffer."
     def __init__(self, fd):
         self.fd, self.buf, self.thread = fd, bytearray(), None
         self.saved = self.r = self.w = None
@@ -61,7 +61,7 @@ class _Tee:
             try: os.write(self.saved, b)              # still goes where it was going
             except OSError: pass
     def stop(self):
-        # the real descriptor goes back first. A write during teardown lands somewhere real
+        # restore the descriptor before closing the pipe, so writes during teardown reach the original destination
         if self.saved is not None:
             try: os.dup2(self.saved, self.fd)
             except OSError: pass

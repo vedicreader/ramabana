@@ -1,4 +1,7 @@
 # Changelog
+## 0.1.17
+slopometer v2
+
 ## 0.1.16
 slopometer fixes
 

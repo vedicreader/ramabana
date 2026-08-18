@@ -17,7 +17,7 @@ grocery run it was written for.
 
 ## The tools
 
-Host methods that expose the trolley to the model.
+Cart tools expose search, add, remove and list operations to the model.
 
 ## The weekly shop
 
@@ -65,7 +65,7 @@ class Cart:
         raise NotImplementedError
 
     def add(self, item, qty=1, variant=None):
-        "Add `item` (an `i` from `find`, or a title) and verify it landed. Returns `{ok, item, ...}`."
+        "Add `item` (an `i` from `find`, or a title) and verify that the item appears in the cart. Returns `{ok, item, ...}`."
         raise NotImplementedError
 
     def lines(self):

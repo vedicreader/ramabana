@@ -106,8 +106,7 @@ def cursor_mode(config=None, tools=True):
     return (config or {}).get('mode') or ('agent' if tools else 'ask')
 
 def _agent_native(runtime, spec=None):
-    """Whether this harness will carry the tool schemas itself, for a spec shaped like this one.
-    Cursor will, through its SDK's custom tools, and only in `agent` mode """
+    """Whether Cursor carries tool schemas through its SDK in `agent` mode."""
     if runtime != 'cursor': return False
     try:
         m = importlib.import_module('rishi.cursor')

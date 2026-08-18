@@ -55,14 +55,7 @@ TOC_DEPTH = 2             # heading levels of a document's tree worth showing at
 
 
 def safe_shelf(name=None, dflt='store'):
-    """A shelf name as a SQL identifier.
-
-    A shelf is a table-name prefix. The name reaches raw SQL, and litesearch's entity
-    resolution has one unquoted statement that a hyphen breaks. Callers name shelves after
-    folders and branches, which carry hyphens and dots. This sanitises once at the boundary
-    instead of at every use. Belongs in vishalakshi with the rest of the shelf machinery. It is
-    here until there is a release to put it in.
-    """
+    "Return a valid SQL table-prefix identifier for a shelf name."
     return re.sub(r'[^a-z0-9_]+', '_', str(name or dflt).lower()).strip('_') or dflt
 
 # %% ../nbs/07_vault.ipynb #d2ba7a3a
