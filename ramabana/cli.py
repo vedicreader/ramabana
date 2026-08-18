@@ -6,13 +6,14 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 
 # %% auto #0
 __all__ = ['DARK', 'LIGHT', 'THEMES', 'KAKU', 'GRUVBOX', 'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL',
-           'NOTIFY_EVERY', 'MOUSE_ON', 'MOUSE_OFF', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA',
-           'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM',
-           'MAX_IMG_COLS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'PYREPL_MODULES', 'set_theme', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths',
-           'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics',
-           'png_size', 'img_cells', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option',
-           'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
+           'NOTIFY_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP',
+           'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING',
+           'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'APC_CHUNK',
+           'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'PYREPL_MODULES', 'set_theme', 'key_card', 'guide_text',
+           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'draw_png', 'media_line',
+           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui',
+           'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -84,6 +85,7 @@ def _theme_parts(palette):
         'ask': (Text('◆ ', style=f"bold {palette['yellow']}"), Text('  ')),
         'plan': (Text('▸ ', style=f"bold {palette['yellow']}"), Text('  ')),
         'note': (Text('· ', style=palette['gray']), Text('  ')),
+        'step': (Text('┆ ', style=palette['gray']), Text('  ')),
         'error': (Text('× ', style=f"bold {palette['red']}"), Text('  ')),
     }
     return markdown, gutters
@@ -92,18 +94,31 @@ def _theme_parts(palette):
 MARKDOWN_THEME, GUTTERS = _theme_parts(GRUVBOX)
 
 FOLD, FOLD_TOOL, NOTIFY_EVERY = 12, 1, 0.08
+#: A narration step folds to its first line once a tool call has ended it: the working reads as
+#: one row per step, and the answer -- the segment no call ever ended -- is the only prose left open.
+FOLD_STEP = 1
+#: How often a growing reply re-renders. Its `source` is written on every chunk regardless, so
+#: search and copy never lag the model; only the Rich pass over the accumulated Markdown is spaced out.
+STREAM_EVERY = 0.05
+#: How many recent calls the working footer names.
+ACT_TAIL = 3
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
+#: The commands this surface answers rather than handing to the agent. `Agent.commands` cannot know
+#: them, and without them Tab completed `/co` to `/compact` and `/cost` while `/copy` went unlisted.
+SURFACE_COMMANDS = ('agent', 'attach', 'copy', 'detach', 'exit', 'guide', 'help', 'join', 'kernels',
+                    'mouse', 'paste', 'promote', 'python', 'quit', 'theme', 'vars')
 
-HELP = """normal  enter send · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold · ctrl+c stop · ctrl+d quit
+HELP = """normal  enter send · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
+timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
 transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
 edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
 media   drop or paste a path to attach · @path in a prompt · /attach PATH · /detach [N] · ctrl+v or /paste clipboard image
-copy    select with the mouse as in any scrollback · /copy the last reply · ctrl+r then y for any block
+copy    select with the mouse as in any scrollback · /copy the last reply · /copy turn for all of it · ctrl+r then y for any block
 approve y approve · n refuse · a approve all · ctrl+y approve with a note · or type a reason and press enter to refuse
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · enter runs what compiles · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
-extra   /theme · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
+extra   /theme · /mouse to click blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
 subagent /subagents shows whether delegated work may write · /subagents on|off changes it for this session
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
@@ -121,6 +136,10 @@ MODES
   /python  /agent  /vars  /promote NAME
   Python enter runs complete code; tab completes; ctrl+c interrupts.
   The agent reads your namespace but writes only to its own overlay.
+READING A TURN
+  Narration, calls and the answer land in the order they happened.
+  ctrl+o folds or opens all the working; alt+1..9 opens one entry.
+  ctrl+r browses, searches and copies blocks; /mouse to click them.
 WORK
   /plan  /todo  /sessions  /resume [ID|latest]  /model [NAME]
   --max-tool-calls auto|N  --max-steps auto|N  /tool-budget  /steps
@@ -465,6 +484,9 @@ async def run_turn(ui, prompt):
     """
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
     ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
+    # the turn owns this, not `stream`: a turn is many prose segments now, and each one of them
+    # arrives with no block of its own, which is exactly the signal `stream` used to reset on
+    ui._reply, ui._seg, ui._seg_blk, ui._turn_at = '', '', None, time.monotonic()
     atts, ui.attachments = list(ui.attachments), []
     spec = ui.agent.model
     ask, media = prompt + media_note(atts, spec), media_parts(atts, spec)
@@ -480,6 +502,8 @@ async def run_turn(ui, prompt):
         while (chunk := await q.get()) is not None: blk = ui.stream(blk, chunk)
     finally:
         ui.turn = None
+        ui.flush_stream()          # the throttle may still owe the last chunk a render
+        ui._seg_blk = None         # the answer is final: no later chunk grows it
         ui.show_media(ui.agent.last_media)
         for p in ui.agent.problems: ui.say(Text(p), 'error')
         ui.agent.clear_problems()
@@ -509,7 +533,9 @@ class Ui:
         self.buf = Buffer()
         self.ask = None            # the `Ask` waiting on an answer, or None
         self.turn = None           # the running turn's task, or None
-        self.acts = {}             # act id -> its block
+        self.acts = {}             # act id -> its block, for calls that have one of their own
+        self.by_id = {}            # act id -> the `Act`, so a group can redraw its parent's line
+        self.kids = {}             # delegate act id -> the calls its sub-agent has made
         self.hint = ''
         self.mode = 'agent'        # 'python' once `enter_python` has a kernel
         self.kernel = None         # the owner's `pyrepl.Kernel`, or None
@@ -519,13 +545,18 @@ class Ui:
         self.desc = []             # 'name -> type' for the live names among the candidates
         self.attachments = []      # `Attachment`s the next prompt carries
         self.frame = 0             # animated status frame. Advanced only while a turn runs
-        self._reply = ''           # the reply text so far. A streamed block repaints whole
+        self._reply = ''           # every word this turn has said, for the notebook log and `/copy`
+        self._seg = ''             # the current prose segment: the text of one step of the timeline
+        self._seg_blk = None       # the block that segment grows in, or None between segments
+        self._painted_at = 0.0     # when that segment last re-rendered, for `STREAM_EVERY`
+        self._turn_at = 0.0        # when the running turn began, for the working footer's clock
         self._touched = 0.0        # when the transcript view last rebuilt, for `touch`
         self.history, self.history_at, self.draft = [], 0, ''
         self.menu = None            # the open `ChoiceMenu`, or None
         self.menu_prompt = ''       # the line it is asking about
         self.complete = None        # slash-command `CompletionMenu`, or None
         self.show_plan = bool(agent.plan)  # plan tooltip above the tail
+        self.mouse = False         # whether the main screen takes the mouse. `/mouse` toggles it
         self.transcript = TranscriptView(comp, self.tail)
         agent.activity.on_change = self.on_act
         agent.on_plan = self.on_plan
@@ -559,6 +590,53 @@ class Ui:
         if self.kernel is not None:
             out.append(f'  · {self.mode}', style=GRUVBOX['aqua'] if self.mode == 'python' else GRUVBOX['blue'])
         return out
+
+    def drillable(self):
+        """The foldable entries of the turn on screen, newest first: what alt+1..9 reaches.
+
+        Teleprint has its own alt-digit numbering, but it stamps the digit into the gutter and needs
+        one at least three glyphs wide; these gutters are two, and widening every one of them to
+        carry a digit is a bigger change to how the surface looks than a drill-in is worth. The
+        numbers live in the footer instead, where the eye already is while a turn runs.
+        """
+        return [b for b in reversed(list(self.comp.blocks.values()))
+                if not b.committed and b.tag in ('step', 'tool') and b.height > 1][:9]
+
+    def drill(self, n):
+        "Toggle the `n`th newest foldable entry, counting from 1. False when there is no such entry."
+        blocks = self.drillable()
+        if not 1 <= n <= len(blocks): return False
+        self.comp.toggle(blocks[n - 1])
+        self.touch(now=True)
+        return True
+
+    def working(self):
+        """Where the model is at: the last few calls, then one line of totals. Only while a turn runs.
+
+        This is the part of the surface you watch rather than read. It sits in the tail, directly
+        above the prompt, so it is always in the same place and never scrolls; and because tail rows
+        never ink, none of it survives into the transcript to be scrolled past later. `Activity`
+        already scopes itself to the turn, so `since()` is this turn's calls and nothing older.
+        """
+        if self.turn is None and not self.agent.busy: return []
+        acts = self.agent.activity.since()
+        nums = {b.id: i + 1 for i, b in enumerate(self.drillable())}
+        rows = []
+        for a in acts[-ACT_TAIL:]:
+            style = (GRUVBOX['yellow'] if not a.done else
+                     GRUVBOX['gray'] if a.ok else GRUVBOX['red'])
+            blk = self.acts.get(a.parent_action_id or a.id)
+            n = nums.get(blk.id) if blk is not None else None
+            t = Text(f'{n} ' if n else '  ', style=GRUVBOX['blue'] if n else GRUVBOX['gray'])
+            t.append(('  ' if a.parent_action_id else '') + a.line(), style=style)
+            rows.append(t)
+        mine = [a for a in acts if not a.parent_action_id]
+        bits = [f'step {len(mine)}' if mine else 'thinking']
+        if self._turn_at: bits.append(f'{time.monotonic() - self._turn_at:.0f}s')
+        if (sub := len(acts) - len(mine)): bits.append(f'{sub} delegated')
+        if (n := sum(1 for a in acts if not a.done)) > 1: bits.append(f'{n} in flight')
+        rows.append(Text('  ' + ' · '.join(bits), style=GRUVBOX['gray']))
+        return rows
 
     async def animate(self):
         "Repaint the live tail while a turn is running. The transcript remains untouched."
@@ -623,7 +701,13 @@ class Ui:
         Teleprint rebuilds the whole model to do it, which is far too much work to repeat per
         streamed chunk. Growing bodies are rate-limited. `now` is for a block that has just
         been printed, and for the end of a turn: neither should ever wait.
+
+        `now` settles the throttled reply render too. `STREAM_EVERY` leaves the open segment's *body*
+        behind the model, not merely its cache, and the transcript view renders bodies -- so a
+        boundary that skipped this would show a reply a chunk short of what the model has said. That
+        is the lag both throttles exist to hide. `flush_stream` bounces back here once, un-nowed.
         """
+        if now: self.flush_stream()
         if not self.transcript.active: return
         t = time.monotonic()
         if not now and t - self._touched < NOTIFY_EVERY: return
@@ -631,7 +715,7 @@ class Ui:
         self.transcript.notify()
 
 
-    def say(self, body, kind='reply', fold=FOLD, source=None):
+    def say(self, body, kind='reply', fold=FOLD, source=None, pad=False):
         """Print one block. Strings stay literal. Explicit Rich renderables keep their styling.
 
         `source` is the text this block *is*, which is what search matches and what `y` and
@@ -639,13 +723,16 @@ class Ui:
         reply arrives wrapped to the terminal, indented by its gutter, and stripped of the
         fences that made its code paste-able. So every block states its own source, and a
         plain string or `Text` states it for free.
+
+        `pad` is Teleprint's one blank presentation row. A turn opens with one, so a long session
+        reads as turns rather than as an unbroken column of rows.
         """
         if source is None:
             if isinstance(body, str): source = body
             elif isinstance(body, Text): source = body.plain
         body = Text(body) if isinstance(body, str) else body
         blk = self.comp.print_block(body, gutter=GUTTERS.get(kind, GUTTERS['reply']),
-                                    tag=kind, collapse_at=fold, source=source)
+                                    tag=kind, collapse_at=fold, source=source, pad=pad)
         self.touch(now=True)
         return blk
 
@@ -654,24 +741,114 @@ class Ui:
         self.say(Text(text), kind, fold=None)
         return None
 
+    def _close_seg(self):
+        """End the open prose segment, so whatever comes next is printed below it rather than above.
+
+        Teleprint orders blocks by creation and only the newest may grow, so a block opened by the
+        turn's first chunk stays above every tool call the turn goes on to make. Growing one block
+        for a whole turn therefore renders the narration in one place and the calls in another. A
+        segment per step is what puts them back in the order the work happened.
+
+        A step that a call has ended is working rather than answer: it is retagged `step` and folded
+        to its first line. The answer is the segment no call ever ended, which is why it is the one
+        still tagged `reply` when the turn finishes -- and so the one `/copy` reaches for.
+        """
+        blk = self._seg_blk
+        if blk is None: return
+        self.flush_stream()
+        self._seg_blk, self._seg = None, ''
+        blk.tag, blk.gutter, blk.collapse_at = 'step', GUTTERS['step'], FOLD_STEP
+        if blk.height > FOLD_STEP: blk.collapsed = True
+        self.comp.refresh_block(blk)
+
+    def fold_work(self):
+        """Open every step and every call of the turn on screen, or shut them all again. Which of the
+        two it did is the return value.
+
+        The resting state is shut, so this is mostly "show me the whole working", and pressing it
+        again puts the timeline back. Anything part-open -- a few calls drilled into from the
+        transcript -- shuts. Ctrl-O used to reach the newest block alone, which after a long turn is
+        the least interesting one on screen.
+
+        Teleprint has no batch refresh: `refresh_block` frames per block, which for thirty calls is
+        thirty whole redraws. So the caches are invalidated together and framed once.
+        """
+        work = [b for b in self.comp.blocks.values()
+                if not b.committed and b.tag in ('step', 'tool') and b.height > 1]
+        if not work: return False
+        shut = not all(b.collapsed for b in work)
+        for b in work:
+            b.collapsed = shut
+            self.comp._dirty(b)
+        self.comp._frame()
+        self.touch(now=True)
+        return shut
+
     def on_act(self, act):
         "Called twice per tool call, from the model's thread: once running, once finished."
         self._post(self._act, act)
 
+    def _act_style(self, act):
+        """Blue while it runs, green when it worked, red when it did not.
+
+        Keyed on `done` rather than on `ok`, which is `True` from the moment an `Act` is built: a
+        call in flight used to be painted in the colour of one that had already succeeded.
+        """
+        return GRUVBOX['blue'] if not act.done else GRUVBOX['green'] if act.ok else GRUVBOX['red']
+
+    def _folded(self, act, blk):
+        """Whether a finished call should fold to its summary row.
+
+        `set_body` re-measures but does not re-decide, so this is asked again every time a body
+        lands. A failure never folds: an error you have to go and expand is the one thing on the
+        surface nobody wants hidden. Nor does a call still running, so its progress stays on show.
+        """
+        return act.done and act.ok and blk.height > FOLD_TOOL
+
     def _act(self, act):
-        color = GRUVBOX['blue'] if act.ok is None else GRUVBOX['green'] if act.ok else GRUVBOX['red']
-        line = Text(act.line(), style=color)
-        src = act.line() if not act.detail else f'{act.line()}\n{act.detail}'
+        if act.parent_action_id and act.parent_action_id in self.acts: return self._nest(act)
+        self.by_id[act.id] = act
         blk = self.acts.get(act.id)
         if blk is None:
-            self.acts[act.id] = self.say(line, 'tool', source=src)
+            self._close_seg()   # the prose that introduced this call is finished; the call goes under it
+            line = Text(act.line(), style=self._act_style(act))
+            self.acts[act.id] = self.say(line, 'tool', source=act.line())
             return self.paint()
-        body = [line] if not act.detail else [line, Text(act.detail, style=GRUVBOX['gray'])]
-        self.comp.set_body(blk, *body, source=src)
-        blk.collapsed = blk.height > FOLD_TOOL   # `set_body` re-measures but does not re-decide
-        self.comp.refresh_block(blk)
+        if act.id in self.kids: self._paint_group(act.id)   # a delegate redraws with its children
+        else:
+            line = Text(act.line(), style=self._act_style(act))
+            src = act.line() if not act.detail else f'{act.line()}\n{act.detail}'
+            body = [line] if not act.detail else [line, Text(act.detail, style=GRUVBOX['gray'])]
+            self.comp.set_body(blk, *body, source=src)
+            blk.collapsed = self._folded(act, blk)
+            self.comp.refresh_block(blk)
         self.touch()
         self.paint()
+
+    def _nest(self, act):
+        """A sub-agent's call, folded into the delegate that asked for it rather than printed beside it.
+
+        Three sub-agents' calls used to land as siblings of the caller's own, in one flat run with
+        nothing saying whose they were -- which is most of why a delegating turn reads as the same
+        search over and over. `Act` has carried `parent_action_id` the whole time; nothing rendered it.
+        """
+        kids = self.kids.setdefault(act.parent_action_id, [])
+        if not any(k.id == act.id for k in kids): kids.append(act)
+        self._paint_group(act.parent_action_id)
+        self.touch()
+        return self.paint()
+
+    def _paint_group(self, pid):
+        "Redraw a delegate and everything its sub-agent has done so far, as one foldable block."
+        act, blk, kids = self.by_id[pid], self.acts[pid], self.kids.get(pid, [])
+        head = Text(act.line(), style=self._act_style(act))
+        if kids: head.append(f'  · {len(kids)} call{"" if len(kids) == 1 else "s"}', style=GRUVBOX['gray'])
+        body = [head] + [Text('   ' + k.line(), style=self._act_style(k)) for k in kids]
+        if act.detail: body.append(Text(act.detail, style=GRUVBOX['gray']))
+        src = '\n'.join([act.line()] + ['   ' + k.line() for k in kids] + ([act.detail] if act.detail else []))
+        self.comp.set_body(blk, *body, source=src)
+        blk.collapsed = self._folded(act, blk)   # unfolded while it runs: you watch the sub-agent work
+        self.comp.refresh_block(blk)
 
 
     def on_ask(self, ask):
@@ -760,11 +937,18 @@ class Ui:
         The transcript view's `y` copies the block under its cursor. This is the same reach
         for the case that is nearly always wanted. The answer that just arrived. Without
         leaving the prompt to get it.
+
+        `/copy turn` is the other thing worth wanting: every word the last turn said, narration
+        included, which since a turn became a timeline is no longer any one block.
         """
         tag = (tag or 'reply').strip() or 'reply'
-        blk = next((b for b in reversed(list(self.comp.blocks.values())) if b.tag == tag), None)
-        if blk is None: return f'no {tag} block to copy'
-        text = self.transcript.block_text(blk)
+        if tag == 'turn':   # every word of the turn, which a timeline has spread over several blocks
+            if not self._reply: return 'no turn to copy'
+            text = self._reply
+        else:
+            blk = next((b for b in reversed(list(self.comp.blocks.values())) if b.tag == tag), None)
+            if blk is None: return f'no {tag} block to copy'
+            text = self.transcript.block_text(blk)
         self.comp.tty.write('\x1b]52;c;' + b64encode(text.encode()).decode() + '\x07')
         return f'copied {len(text)} chars of the last {tag}'
 
@@ -782,7 +966,8 @@ class Ui:
         text = self.buf.text
         if not text.startswith('/') or ' ' in text: return None
         prefix = text[1:].lower()
-        hits = [f'/{n}' for n in self.agent.commands() if n.startswith(prefix)]
+        names = {*self.agent.commands(), *SURFACE_COMMANDS}
+        hits = sorted(f'/{n}' for n in names if n.startswith(prefix))
         return hits or None
 
     def _refresh_complete(self):
@@ -827,7 +1012,7 @@ class Ui:
         if not line.startswith('/') and (opts := options_for(line)) is not None:
             self.menu_prompt, self.menu = line, ChoiceMenu(*opts)
             return None
-        self.say(Text(line), 'user')
+        self.say(Text(line), 'user', pad=True)   # one blank row: a session reads as turns
         if line in ('/quit', '/exit', '/q'): return 'quit'
         if line == '/kernels':
             from ramabana.pyrepl import sessions
@@ -851,6 +1036,7 @@ class Ui:
         if name == '/detach': return self.note(self.detach(arg))
         if name == '/paste': return self.note(self.attach_clipboard())
         if name == '/copy': return self.note(self.copy_last(arg))
+        if name == '/mouse': return self.note(self.set_mouse(arg))
         if line.startswith('/'):
             out = self.agent.command(line)
             kind = 'plan' if name in ('/plan', '/todo', '/todos') and out is not None else (
@@ -918,6 +1104,8 @@ class Ui:
         if k.name == 'ctrl+c':
             if self.turn is not None:
                 self.agent.cancel()
+                self.flush_stream()   # keep what it managed to say...
+                self._seg_blk = None  # ...but nothing later may grow it from above this note
                 self.say(Text('stopping'), 'note')
             self.buf.clear()
             return self.paint()
@@ -929,8 +1117,10 @@ class Ui:
             self.note(self.attach_clipboard())
             return self.paint()
         if k.name == 'ctrl+o':
-            live = [b for b in self.comp.blocks.values() if not b.committed and b.height > 1]
-            if live: self.comp.toggle(live[-1])
+            self.fold_work()
+            return self.paint()
+        if k.name.startswith('alt+') and k.name[4:].isdigit() and k.name[4:] != '0':
+            self.drill(int(k.name[4:]))
             return self.paint()
         if k.name == 'tab' and self.buf.text.startswith('/') and self.complete is None:
             self._refresh_complete()
@@ -944,14 +1134,40 @@ class Ui:
             self._suggest_soon()
         self.paint()
 
-    def stream(self, blk, chunk):
-        "Grow the reply as the model produces it, repainting the block from its whole text."
-        self._reply = (self._reply + chunk) if blk is not None else chunk
-        if blk is None: return self.say(Text(self._reply), 'reply', fold=None)
-        self.comp.set_body(blk, Text(self._reply), source=self._reply)
-        self.comp.refresh_block(blk)
+    def reply(self, text):
+        "How a model reply renders. Plain here; the Markdown layer below patches it."
+        return Text(text)
+
+    def flush_stream(self):
+        "Render the open segment now, whatever `STREAM_EVERY` would have said. Every boundary calls it."
+        if self._seg_blk is None or not self._seg: return
+        self.comp.set_body(self._seg_blk, self.reply(self._seg), source=self._seg)
+        self.comp.refresh_block(self._seg_blk)
+        self._painted_at = time.monotonic()
         self.touch()
-        return blk
+
+    def stream(self, blk, chunk):
+        """Grow one segment of the turn's timeline, opening a block wherever a call ended the last one.
+
+        `blk` is the caller's idea of where the reply is going and `None` asks for a fresh segment. A
+        segment that `_close_seg` has ended since the last chunk starts one too, which is what puts
+        the prose written after a tool call underneath that call instead of above it.
+
+        The model text is written on every chunk, so what search matches and `y` copies is never
+        behind the model. Only the Rich pass over it is spaced out, by `STREAM_EVERY`: re-rendering
+        the whole accumulated Markdown per chunk costs time quadratic in the length of the reply.
+        """
+        if blk is None: self._seg_blk = None
+        if self._seg_blk is None: self._seg = ''
+        self._seg += chunk
+        self._reply += chunk
+        if self._seg_blk is None:
+            self._seg_blk = self.say(self.reply(self._seg), 'reply', fold=None, source=self._seg)
+            self._painted_at = time.monotonic()
+        else:
+            self._seg_blk.source = self._seg    # cheap, and it is what `y` and `/copy` read
+            if time.monotonic() - self._painted_at >= STREAM_EVERY: self.flush_stream()
+        return self._seg_blk
 
 # %% ../nbs/05_cli.ipynb #64a54061
 @patch
@@ -978,6 +1194,7 @@ def tail(self:Ui):
     if self.hint: rows.append(Text(' ' + self.hint, style=GRUVBOX['gray']))
     chips = self.attach_row()
     if chips is not None: rows.append(chips)
+    rows += self.working()     # last, so "where is it now" is always the row above what you type
     rows.append(self.prompt())
     before = Text(self._prefixed(self.buf.text[:self.buf.cursor]))
     rendered = self.comp.console.render_lines(before, pad=False)
@@ -1013,14 +1230,49 @@ _core_on_key = Ui.on_key
 @patch
 def enter_transcript(self:Ui):
     "Open the browsing view, borrowing the mouse for exactly as long as it is up."
+    self.flush_stream()   # it renders bodies, so a throttled segment must land before it reads them
     self.comp.tty.write(MOUSE_ON)
     self.transcript.enter()
 
 @patch
 def leave_transcript(self:Ui):
-    "Close the browsing view and give the mouse back to the terminal."
+    "Close the browsing view and give the mouse back, unless `/mouse` says it is this surface's."
     self.transcript.leave()
-    self.comp.tty.write(MOUSE_OFF)
+    if not self.mouse: self.comp.tty.write(MOUSE_OFF)
+
+@patch
+def set_mouse(self:Ui, want=''):
+    """Take the mouse on the main screen, or give it back to the terminal. Off by default.
+
+    Off is not timidity. With mouse reporting on, the terminal stops doing drag-selection itself and
+    selecting text needs its own override -- shift-drag nearly everywhere, but not everywhere -- and
+    a surface that silently breaks selection to buy a click is a bad trade to make for someone. On,
+    Teleprint's own click-to-toggle folds whatever block the click landed in, and the wheel opens
+    the browsing view, where the mouse has always worked.
+    """
+    want = (want or '').strip().lower()
+    if want not in ('', 'on', 'off', 'toggle', 'yes', 'no'): return 'usage: /mouse [on|off]'
+    self.mouse = not self.mouse if want in ('', 'toggle') else want in ('on', 'yes')
+    if not self.transcript.active: self.comp.tty.write(MOUSE_ON if self.mouse else MOUSE_OFF)
+    return ('mouse on: click a block to fold it, wheel up to browse; shift-drag still selects'
+            if self.mouse else 'mouse off: selection belongs to the terminal again')
+
+@patch
+def on_mouse(self:Ui, ev):
+    """Who owns the mouse: the browsing view while it is up, this surface only when `/mouse` says so.
+
+    Returning False hands the event back to Teleprint, whose own default is exactly what is wanted
+    here -- a click folds the block under it. Only the wheel needs saying, because the main screen
+    is write-once and has nothing of its own to scroll: rolling up on it opens the view that does.
+    """
+    if self.transcript.active: return self.transcript.on_mouse(ev)
+    # reporting is off, so nothing should arrive; what does is in flight from the moment the view
+    # turned it on, and folding a main-screen block with a click meant for the view is not wanted
+    if not self.mouse: return True
+    if ev.press and ev.btn == 64:      # wheel up: the main screen is write-once, so go where it is not
+        self.enter_transcript()
+        return True
+    return ev.press and ev.btn == 65   # wheel down at the tail: there is nothing below to go to
 
 @patch
 def on_key(self:Ui, k):
@@ -1065,17 +1317,6 @@ def paste(self:Ui, text):
 def reply(self:Ui, text):
     "A model reply rendered as GitHub Dark Markdown, including syntax-highlighted code."
     return Markdown(text, code_theme='github-dark', style=GRUVBOX['fg1'])
-
-@patch
-def stream(self:Ui, blk, chunk):
-    "Grow and repaint one Markdown reply, keeping the model's own Markdown as its copy source."
-    self._reply = (self._reply + chunk) if blk is not None else chunk
-    body = self.reply(self._reply)
-    if blk is None: return self.say(body, 'reply', fold=None, source=self._reply)
-    self.comp.set_body(blk, body, source=self._reply)
-    self.comp.refresh_block(blk)
-    self.touch()
-    return blk
 
 # %% ../nbs/05_cli.ipynb #pymode01
 #: What python mode needs installed. `Kernel` imports `jupyter_client` and its bootstrap imports
@@ -1255,7 +1496,8 @@ async def amain(agent, hint='', python=False, attach=''):
     """The tty loop: one terminal, one event loop, one place that owns the keyboard.
 
     Bracketed paste on, mouse reporting off: the main screen is the terminal's to select from.
-    `Ui.enter_transcript` borrows the mouse for the browsing view and gives it straight back.
+    `Ui.enter_transcript` borrows the mouse for the browsing view and gives it straight back, and
+    `/mouse` lends it to the main screen for anyone who would rather click a block than select one.
     """
     tty = RealTty()
     tty.write('\x1b[?2004h')  # bracketed paste
@@ -1276,7 +1518,7 @@ async def amain(agent, hint='', python=False, attach=''):
         comp.on_key = on_key
         comp.on_paste = ui.paste
         comp.on_resize = lambda: (comp.resize(), ui.paint())
-        comp.on_mouse = ui.transcript.on_mouse
+        comp.on_mouse = ui.on_mouse
         brand = Text('RAMABANA', style=f"bold {GRUVBOX['fg0']}")
         brand.append(f"  {agent.note}", style=GRUVBOX['gray'])
         ui.say(brand, 'note', fold=None, source='RAMABANA')
