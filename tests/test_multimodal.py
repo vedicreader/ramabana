@@ -447,3 +447,36 @@ def test_the_mime_of_a_file_with_no_signature_falls_back_to_its_name(tmp_path):
     p.write_bytes(b'RIFF\x00\x00\x00\x00WEBPVP8 ')
     assert mime_for(p) == 'image/webp'
     assert mime_for(tmp_path/'missing.png') == 'image/png'
+
+from ramabana.testing import FakeBackend
+
+
+def _be(ctx=128_000):
+    "A backend with no chat behind it, which is the shape every fit check is made in."
+    return FakeBackend(ModelSpec('m', 'remote', 'm', ctx))
+
+
+def test_image_bytes_in_a_pending_message_are_not_charged_as_their_own_repr():
+    be = _be()
+    assert be.pending_tokens([os.urandom(120_000), 'what is this?']) < 5_000
+
+
+def test_the_fit_check_admits_a_screenshot_that_leaves_the_window_room():
+    assert _be().fits([os.urandom(1_200_000), 'describe this'])
+
+
+def test_the_text_beside_a_picture_is_still_measured():
+    assert not _be().fits([os.urandom(1_000), 'x' * 600_000])
+
+
+def test_a_picture_costs_the_same_however_the_caller_shaped_it():
+    """Raw bytes and already-built content parts are the same picture.
+
+    `_parts` only knew bytes and paths, so a caller that had already run its message through
+    `mk_oai_content` handed over a dict, which was stringified -- base64 and all -- and charged as
+    text. The repr bug again, one shape along.
+    """
+    from rishi.core import mk_oai_msg
+    be, img = _be(), b'\x89PNG\r\n\x1a\n' + bytes(120_000)
+    assert be.pending_tokens(mk_oai_msg([img, 'what is this?'])['content']) == \
+           be.pending_tokens([img, 'what is this?'])

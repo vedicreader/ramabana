@@ -7,17 +7,17 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 # %% auto #0
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
-           'ACTION_NOTICE', 'MAX_STEPS', 'ONESHOT_TOKENS', 'interesting', 'captured', 'capture', 'estimate_tokens',
-           'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle',
-           'surgical_history', 'reorient', 'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor',
-           'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend', 'use_chat', 'RishiBackend',
-           'make_backend']
+           'ACTION_NOTICE', 'MAX_STEPS', 'ONESHOT_TOKENS', 'IMG_TOKENS', 'interesting', 'captured', 'capture',
+           'estimate_tokens', 'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt',
+           'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
+           'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
+           'use_chat', 'RishiBackend', 'make_backend', 'Run', 'current_run', 'run_context']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
-import copy, os, re, sys, threading
+import contextvars, copy, os, re, sys, threading, time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from .core import agent_err, cursor_mode, env, force_tags, tool_channel
+from .core import agent_err, env, force_tags, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # tail kept per call. An engine that logs a lot must not eat memory
@@ -592,13 +592,31 @@ class Usage:
     def dict(self): return dict(self.__dict__)
 
 # %% ../nbs/01_runtime.ipynb #af66f277
+IMG_TOKENS = 1024
+
+#: What a built OpenAI content part calls a picture and a sound, so one that has already been
+#: through `mk_oai_content` is charged as media rather than stringified base64.
+_MEDIA_PARTS = ('image_url', 'input_audio')
+
+def _parts(msg):
+    "An outgoing message as its text and its media count."
+    ps = list(msg) if isinstance(msg,(list,tuple)) else [msg]
+    txt,n = [],0
+    for p in ps:
+        if isinstance(p,(bytes,bytearray,os.PathLike)): n += 1
+        elif isinstance(p,dict) and p.get('type') in _MEDIA_PARTS: n += 1
+        elif isinstance(p,dict) and p.get('type') == 'text': txt.append(str(p.get('text','')))
+        else: txt.append(str(p))
+    return '\n'.join(txt), n
+
+# %% ../nbs/01_runtime.ipynb #197644e7
 class Backend:
     kind='?'
     def __init__(self,spec,sp='',tools=(),approve=None,tool_max_len=None,shared=False,**kw):
         self.spec,self.sp,self.tools,self.approve=spec,sp,list(tools),approve
         self.tool_max_len,self.shared,self.kw=tool_max_len,shared,kw
         self.chat,self.use,self.note=None,Usage(model=spec.model_id),'not started'
-        self.problems,self.last_native,self._tried=[], '', False
+        self.problems,self.last_native,self._tried,self.run=[], '', False, None
         self._resume_hist=None
         self.lock=threading.Lock()
     @property
@@ -654,31 +672,42 @@ class Backend:
         try:f()
         except Exception as e:self._failed('could not be stopped',e); return False
         return True
-    def send(self,msg,**kw):
+    def send(self,msg,run=None,**kw):
         if self.start() is None:return self.note
         with self.lock:
-            for again in (True,False):
-                try:
-                    out=self._send(msg,**kw); self.use=self._usage()
-                    self._check_reply(out)
-                    return out or self._empty()
-                except Exception as e:
-                    if not (again and self._recover(e)):return self._failed('failed',e)
-    def stream(self,msg,**kw):
+            self.run=run
+            try:
+                for again in (True,False):
+                    try:
+                        out=self._send(msg,**kw)
+                        if run is not None and run.cancelled:return ''
+                        self.use=self._usage(); self._check_reply(out)
+                        return out or self._empty()
+                    except Exception as e:
+                        if run is not None and run.cancelled:return ''
+                        if not (again and self._recover(e)):return self._failed('failed',e)
+            finally:self.run=None
+    def stream(self,msg,run=None,**kw):
         if self.start() is None:yield self.note; return
         with self.lock:
-            for again in (True,False):
-                n,buf=0,[]
-                try:
-                    for c in self._stream(msg,**kw): n+=len(c or ''); buf.append(c or ''); yield c
-                    self.use=self._usage()
-                    self._check_reply(''.join(buf))
-                    if not n:yield self._empty(True)
-                    return
-                except Exception as e:
-                    # only before anything reached the screen: a retry cannot unsay a chunk
-                    if not (again and not n and self._recover(e)):
-                        yield f'\n\n{self._failed("failed",e)}'; return
+            self.run=run
+            try:
+                for again in (True,False):
+                    n,buf=0,[]
+                    try:
+                        for c in self._stream(msg,**kw):
+                            if run is not None and run.cancelled:return
+                            n+=len(c or ''); buf.append(c or ''); yield c
+                        if run is not None and run.cancelled:return
+                        self.use=self._usage(); self._check_reply(''.join(buf))
+                        if not n:yield self._empty(True)
+                        return
+                    except Exception as e:
+                        if run is not None and run.cancelled:return
+                        # only before anything reached the screen: a retry cannot unsay a chunk
+                        if not (again and not n and self._recover(e)):
+                            yield f'\n\n{self._failed("failed",e)}'; return
+            finally:self.run=None
     def _recover(self,e):
         "Fix what made `e` happen, if this backend knows how. One retry is worth taking. No by default."
         return False
@@ -732,8 +761,12 @@ class Backend:
     @property
     def pct_full(self):return self.used_tokens/max(self.spec.ctx,1)
     def pending_tokens(self,msg):
-        try:return self.count_tokens(self.chat.render(msg)) if self.chat and hasattr(self.chat,'render') else self.count_tokens(str(msg))+8
-        except Exception:return self.count_tokens(str(msg))+8
+        "Tokens the pending message adds. Media is charged `IMG_TOKENS`, never its repr."
+        try:
+            if self.chat and hasattr(self.chat,'render'):return self.count_tokens(self.chat.render(msg))
+        except Exception:pass
+        text,media = _parts(msg)
+        return self.count_tokens(text)+8+IMG_TOKENS*media
     def projected_tokens(self,msg):return self.used_tokens+self.pending_tokens(msg)
     def fits(self,msg,reserve=None):
         if not self.spec.ctx:return True
@@ -780,12 +813,6 @@ class RishiBackend(Backend):
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         # only `remote` takes the keyword. For the local engines tag calls are the protocol
         if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
-        if self.spec.runtime=='cursor':
-            # Cursor runs a tool only in agent mode, and its custom tools cannot coexist with a
-            # built-in allowlist. Its own shell and editors come too, held by its sandbox and not
-            # by our approvals. The alternative is tools that never run.
-            kw.setdefault('mode',cursor_mode(kw,bool(self.tools)))
-            if kw['mode']=='agent': kw.setdefault('sandbox','enabled')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
             # rishi takes backend itself. Inside eng_kw it arrives twice and no litert model loads.
@@ -892,3 +919,133 @@ def __getattr__(name):
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
 def make_backend(spec,**kw):return RishiBackend(spec,**kw)
+
+# %% ../nbs/01_runtime.ipynb #dfaf99f8
+@dataclass
+class Run:
+    "A foreground or delegated model call with bounded cancellation."
+    id: str
+    kind: str = 'root'
+    question: str = ''
+    model: str = ''
+    parent: object = None
+    grace: float = 0.25
+    state: str = 'pending'
+    started: float = 0.
+    ended: float = 0.
+    backend: object = None
+
+    def __post_init__(self):
+        import threading
+        self.children, self._lock, self._done = [], threading.RLock(), threading.Event()
+        if self.parent is not None: self.parent.children.append(self)
+
+    @property
+    def terminal(self): return self.state in ('completed', 'cancelled', 'detached', 'terminated', 'failed')
+    @property
+    def cancelled(self): return self.state in ('cancelling', 'cancelled', 'detached', 'terminated')
+
+    def child(self, question='', model=''):
+        import uuid
+        return Run(f'run_{uuid.uuid4().hex[:12]}', 'child', question, model, self, self.grace)
+
+    def start(self, backend=None):
+        import time
+        with self._lock:
+            if self.state != 'pending': return False
+            self.state, self.backend, self.started = 'running', backend, time.time()
+            return True
+
+    def attach(self, backend):
+        with self._lock:
+            self.backend = backend
+            cancelled = self.cancelled
+        if cancelled and backend is not None:
+            threading.Thread(target=lambda: backend.cancel(), daemon=True).start()
+        return not cancelled
+
+    def finish(self, state='completed'):
+        import time
+        with self._lock:
+            if self.terminal: return self
+            self.state = 'cancelled' if self.cancelled else state
+            self.ended = time.time(); self._done.set()
+        return self
+
+    def _mark_cancel(self):
+        """Mark this run and every descendant cancelled, and return the backends left to stop.
+
+        Marking is the whole pass, and stopping is the pass after. Stopping a backend releases the
+        worker blocked on it, and that worker takes the next queued child at once -- so marking and
+        stopping in one pass let a released worker start a sibling the pass had not reached, and a
+        cancelled run went on spawning the sub-agents it was cancelled to prevent.
+        """
+        with self._lock:
+            if self.terminal: return []
+            # a pending run has nothing of its own to stop, but what it started still does
+            pending = self.state == 'pending'
+            self.state = 'cancelling'
+            children, backend = list(self.children), None if pending else self.backend
+        if pending: self.finish('cancelled')
+        out = [] if backend is None else [backend]
+        for child in children: out += child._mark_cancel()
+        return out
+
+    def request_cancel(self):
+        for backend in self._mark_cancel():
+            threading.Thread(target=lambda b=backend: b.cancel(), daemon=True).start()
+        return self
+
+    def terminate(self):
+        with self._lock:
+            if self.state in ('completed', 'cancelled', 'terminated', 'failed'): return self
+            children, backend = list(self.children), self.backend
+        for child in children: child.terminate()
+        if backend is not None:
+            f = getattr(backend, 'terminate', None) or getattr(backend, 'close', None)
+            if f is not None: threading.Thread(target=f, daemon=True).start()
+        with self._lock:
+            self.state, self.ended = 'terminated', time.time(); self._done.set()
+        return self
+
+    def wait(self, grace=None):
+        import time
+        end = time.monotonic() + (self.grace if grace is None else max(0, grace))
+        for child in list(self.children):
+            left = max(0, end - time.monotonic())
+            child._done.wait(left)
+            if not child.terminal: child.detach()
+        left = max(0, end - time.monotonic())
+        self._done.wait(left)
+        if not self.terminal: self.detach()
+        return self
+
+    def detach(self):
+        import time
+        with self._lock:
+            if self.terminal: return self
+            self.state, self.ended = 'detached', time.time(); self._done.set()
+        for child in list(self.children):
+            if not child.terminal: child.detach()
+        return self
+
+    def cancel(self, grace=None): return self.request_cancel().wait(grace)
+
+    def dict(self):
+        return {'id': self.id, 'parent_id': getattr(self.parent, 'id', None), 'kind': self.kind,
+                'question': self.question, 'model': self.model, 'state': self.state,
+                'started': self.started, 'ended': self.ended,
+                'children': [child.dict() for child in self.children]}
+
+
+# %% ../nbs/01_runtime.ipynb #ed8be042
+_current_run = contextvars.ContextVar('ramabana_run', default=None)
+
+def current_run(): return _current_run.get()
+
+@contextmanager
+def run_context(run):
+    token = _current_run.set(run)
+    try: yield run
+    finally: _current_run.reset(token)
+

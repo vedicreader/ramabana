@@ -497,9 +497,18 @@ async def run_turn(ui, prompt):
         except Exception as e: loop.call_soon_threadsafe(q.put_nowait, agent_err(e))
         finally: loop.call_soon_threadsafe(q.put_nowait, None)
     threading.Thread(target=pump, daemon=True).start()
-    blk = None
+    blk, run = None, None
     try:
-        while (chunk := await q.get()) is not None: blk = ui.stream(blk, chunk)
+        while True:
+            try: chunk = await asyncio.wait_for(q.get(), .05)
+            except asyncio.TimeoutError:
+                run = run or ui.agent.run()
+                if run is not None and run.terminal: break
+                continue
+            if chunk is None:break
+            run = run or ui.agent.run()
+            if run is not None and run.cancelled:break
+            blk = ui.stream(blk, chunk)
     finally:
         ui.turn = None
         ui.flush_stream()          # the throttle may still owe the last chunk a render
@@ -557,6 +566,7 @@ class Ui:
         self.complete = None        # slash-command `CompletionMenu`, or None
         self.show_plan = bool(agent.plan)  # plan tooltip above the tail
         self.mouse = False         # whether the main screen takes the mouse. `/mouse` toggles it
+        self._stop_at, self._stop_count, self._stop_run = 0., 0, ''
         self.transcript = TranscriptView(comp, self.tail)
         agent.activity.on_change = self.on_act
         agent.on_plan = self.on_plan
@@ -1711,3 +1721,45 @@ def submit(self:Ui):
         bits = line.split()
         return self.apply_theme(bits[1] if len(bits) == 2 else '') if len(bits) <= 2 else self.note('usage: /theme [auto|dark|light]', 'error')
     return _submit_theme(self)
+
+# %% ../nbs/05_cli.ipynb #1ddde063
+@patch
+def stop(self:Ui):
+    "Escalate repeated Ctrl-C from cancellation to termination to exit."
+    now = time.monotonic()
+    if now - self._stop_at > self.agent.cancel_grace:
+        self._stop_count, self._stop_run = 0, ''
+    self._stop_at, self._stop_count = now, self._stop_count + 1
+    if self._stop_count >= 3:return 'quit'
+    if self.turn is not None:
+        self.flush_stream()   # keep what it managed to say...
+        self._seg_blk = None  # ...but nothing later may grow it from above the note
+    run = self.agent.run(self._stop_run) if self._stop_run else self.agent.run()
+    if run is None:
+        self._stop_count, self._stop_run = 0, ''
+        return self.note('idle')
+    self._stop_run = run.id
+    if self._stop_count == 2:
+        self.note('terminating')
+        fn = lambda: self.agent.terminate(run.id)
+    else:
+        self.note('cancelling')
+        fn = lambda: self.agent.cancel(run.id)
+    def work():
+        state = fn()['state']
+        self._post(self.note, state)
+    threading.Thread(target=work, daemon=True).start()
+    return self.paint()
+
+
+# %% ../nbs/05_cli.ipynb #f4851c99
+_ui_on_key = Ui.on_key
+
+@patch
+def on_key(self:Ui, k):
+    if (k.name == 'ctrl+c' and self.mode != 'python' and self.ask is None
+            and (self.turn is not None or self._stop_count)):
+        self.buf.clear()
+        return self.stop()
+    return _ui_on_key(self, k)
+

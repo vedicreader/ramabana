@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from fastcore.basics import patch
 from .core import agent_err, available_models, budget_for, JOBS, Routing, model_note, tool_channel
-from .runtime import Usage, make_backend, Compactor, compact_notebook_context, notices_block
+from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from .tools import (mime_for, MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
                             find, load, skill_index, subagent_tools, tools_for)
 
@@ -1911,3 +1911,162 @@ Agent.command = _command_limits
 _agent_commands_limits = Agent.commands
 def _commands_limits(self): return sorted(set(_agent_commands_limits(self)) | {'tool-budget', 'steps'})
 Agent.commands = _commands_limits
+
+# %% ../nbs/03_agent.ipynb #1c649440
+_agent_status, _agent_command = Agent.status, Agent.command
+
+#: Seconds a cancelled run is given to stop before terminating. A class attribute, so it is set
+#: on any `Agent` before a run exists and survives a caller raising it.
+Agent.cancel_grace = .25
+
+def _run_store(self):
+    if not hasattr(self, '_runs'):
+        self._runs, self._runs_lock, self._foreground = {}, threading.RLock(), ''
+    return self._runs
+
+@patch
+def runs(self:Agent, active=False):
+    "Return registered root and child runs."
+    with getattr(self, '_runs_lock', threading.RLock()):
+        roots = list(_run_store(self).values())
+        rows = [r.dict() for r in roots if not active or not r.terminal]
+    return rows
+
+@patch
+def run(self:Agent, run_id=''):
+    "Find a registered run, or the foreground root when `run_id` is empty."
+    roots = list(_run_store(self).values())
+    if not run_id: run_id = self._foreground
+    def walk(r):
+        if r.id == run_id:return r
+        return next((hit for child in r.children if (hit := walk(child)) is not None), None)
+    return next((hit for root in roots if (hit := walk(root)) is not None), None)
+
+@patch
+def _new_run(self:Agent, prompt):
+    _run_store(self)
+    with self._runs_lock:
+        current = self.run()
+        if current is not None and not current.terminal: raise RuntimeError('the assistant is already running')
+        r = Run(f'run_{uuid.uuid4().hex[:12]}', question=str(prompt), model=self.model.name,
+                grace=self.cancel_grace)
+        self._runs[r.id], self._foreground = r, r.id
+        for old in list(self._runs)[:-100]: self._runs.pop(old, None)
+        return r
+
+@patch
+def _release_run(self:Agent, run):
+    if run.state not in ('detached', 'terminated'): return
+    for key, backend in list(self._backends.items()):
+        if backend is run.backend: self._backends.pop(key, None)
+
+@patch
+def ask(self:Agent, prompt, **kw):
+    "One registered turn. Cancelled output is not persisted."
+    run = self._new_run(prompt)
+    if self.start() is None: run.finish('failed'); return self.note
+    backend = self._be('turn')
+    if not run.start(backend): return run.dict()
+    try:
+        with run_context(run):
+            outgoing = self._prepare(prompt)
+            text = backend.send(outgoing, run=run, **kw)
+        if run.cancelled:return run.finish().dict()
+        run.finish()
+        return self._finish(text, prompt)
+    except Exception as e:
+        if run.cancelled:return run.finish().dict()
+        run.finish('failed')
+        self.note = f'the assistant failed ({agent_err(e)})'
+        self._remember(prompt, self.note, agent_err(e))
+        return self.note
+
+@patch
+def stream(self:Agent, prompt, **kw):
+    "One registered turn as markdown chunks. Cancelled output is not persisted."
+    run = self._new_run(prompt)
+    if self.start() is None:
+        run.finish('failed'); yield self.note; return
+    backend = self._be('turn')
+    if not run.start(backend): return
+    try:
+        with run_context(run):
+            outgoing, out = self._prepare(prompt), []
+            for chunk in backend.stream(outgoing, run=run, **kw):
+                if run.cancelled:break
+                out.append(chunk); yield chunk
+        if not run.cancelled:
+            run.finish(); self._finish(''.join(out), prompt)
+        else: run.finish()
+    except Exception as e:
+        if run.cancelled:run.finish(); return
+        run.finish('failed')
+        self.note = f'the assistant failed ({agent_err(e)})'
+        self._remember(prompt, self.note, agent_err(e))
+        yield f'\n\n{self.note}'
+
+@patch
+def cancel(self:Agent, run_id='', grace=None):
+    "Cancel one run, or the foreground root, and return its structured terminal state."
+    run = self.run(run_id)
+    if run is None:return {'id': run_id or None, 'state': 'idle', 'children': []}
+    if self.approvals is not None:self.approvals.cancel_all('the run was cancelled')
+    run.cancel(self.cancel_grace if grace is None else grace)
+    self._release_run(run)
+    return run.dict()
+
+@patch
+def terminate(self:Agent, run_id=''):
+    "Request resource termination for one run without waiting on the provider."
+    run = self.run(run_id)
+    if run is None:return {'id': run_id or None, 'state': 'idle', 'children': []}
+    run.terminate(); self._release_run(run)
+    return run.dict()
+
+@patch
+def status(self:Agent):
+    out = _agent_status(self)
+    out['runs'] = self.runs(active=True)
+    out['busy'] = bool(out['runs'])
+    return out
+
+@patch
+def command(self:Agent, line):
+    raw = (line or '').strip().lstrip('/')
+    name, _, arg = raw.partition(' ')
+    if name == 'stop': return json.dumps(self.cancel(arg.strip()), ensure_ascii=False)
+    if name == 'runs': return json.dumps(self.runs(active=arg.strip() != 'all'), ensure_ascii=False)
+    return _agent_command(self, line)
+
+
+# %% ../nbs/03_agent.ipynb #933c9a3d
+_agent_record = Agent._record
+
+@patch
+def _record(self:Agent, f):
+    wrapped = _agent_record(self, f)
+    @functools.wraps(wrapped)
+    def call(*a, **kw):
+        run = current_run()
+        if run is not None and run.cancelled:return 'Run cancelled; this tool call was not started.'
+        return wrapped(*a, **kw)
+    return call
+
+
+# %% ../nbs/03_agent.ipynb #50e37dec
+_agent_commands_runs, _agent_close_runs = Agent.commands, Agent.close
+
+@patch
+def commands(self:Agent): return sorted(set(_agent_commands_runs(self)) | {'stop', 'runs'})
+
+@patch
+def close(self:Agent):
+    "Cancel active runs before closing their backends."
+    backends = list(self._backends.values())
+    for row in self.runs(active=True): self.cancel(row['id'])
+    evicted = [b for b in backends if all(b is not live for live in self._backends.values())]
+    _agent_close_runs(self)
+    for backend in evicted:
+        try: backend.close()
+        except Exception: pass
+

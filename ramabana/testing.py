@@ -220,6 +220,7 @@ class FakeBackend(Backend):
     def _stream(self, msg, **kw):
         for w in self._send(msg, **kw).split(' '): yield w + ' '
 
+    def count_tokens(self, text): return max(1, (len(str(text or '')) + 3) // 4)
     def _oneshot(self, prompt, sp, max_tokens): return f'ONESHOT:{prompt[:40]}'
     def _usage(self):
         # cumulative, the way a real chat's counters are: `Backend.send` assigns rather than adds

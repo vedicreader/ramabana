@@ -226,14 +226,13 @@ def test_the_tools_travel_in_the_system_prompt_when_the_wire_is_closed(monkeypat
 
 def test_a_tag_tool_call_comes_back_as_a_real_tool_call():
     "The reply is text either way; what changed is that rishi now reads the calls out of it."
-    from aidialog.msg_parts import Msg, Part, PartType
+    from aidialog.msg_parts import Msg, Text
     import rishi.remote as remote
 
     class Comp:
         tool_calls, finish_reason, model, usage = None, 'stop', 'claude-sonnet-5', None
-        message = Msg(role='assistant', content=[Part(
-            type=PartType.text,
-            text='Looking now.\n<tool_call>\n{"name":"search_code","arguments":{"query":"rrf"}}\n</tool_call>')])
+        message = Msg(role='assistant', content=[Text(
+            'Looking now.\n<tool_call>\n{"name":"search_code","arguments":{"query":"rrf"}}\n</tool_call>')])
 
     res = remote.norm_completion(Comp())
     assert res['content'] == 'Looking now.'
