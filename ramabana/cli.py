@@ -1076,12 +1076,10 @@ class Ui:
             return self.paint()
         if k.name == 'ctrl+d' and not self.buf.text: return 'quit'
         if k.name == 'ctrl+c':
-            if self.turn is not None:
-                self.agent.cancel()
-                self.flush_stream()   # keep what it managed to say...
-                self._seg_blk = None  # ...but nothing later may grow it from above this note
-                self.say(Text('stopping'), 'note')
             self.buf.clear()
+            # One implementation of stopping, in `stop`: this branch and the `on_key` that wraps it
+            # each grew their own, and the seal that keeps late text below the note reached only one.
+            if self.turn is not None: return self.stop()
             return self.paint()
         if k.name == 'enter':
             coro = self.submit()
