@@ -3997,7 +3997,7 @@ requires-dist = [
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'pyrepl'", specifier = ">=0.1.1" },
     { name = "toolslm", specifier = ">=0.3.48" },
-    { name = "vishalakshi", specifier = ">=0.1.7" },
+    { name = "vishalakshi", specifier = ">=0.1.11" },
 ]
 provides-extras = ["all", "cli", "copilot", "dev", "mcp", "pyrepl"]
 
@@ -4796,7 +4796,6 @@ version = "0.27.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
-    { name = "colorama", marker = "python_version < '0'" },
     { name = "rich" },
     { name = "shellingham" },
 ]
@@ -4992,7 +4991,7 @@ wheels = [
 
 [[package]]
 name = "vishalakshi"
-version = "0.1.10"
+version = "0.1.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastcore" },
@@ -5005,9 +5004,9 @@ dependencies = [
     { name = "rgapi" },
     { name = "rishi", extra = ["litert", "remote"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/86/b2/51a40854cba4b43d32466a60b9fd7ea47e4daa1b3aa48ee91f7d8c84394b/vishalakshi-0.1.10.tar.gz", hash = "sha256:163e94eb6d52744bc35aa0fff7e49c5c13a3b7ee4b3e275356d70d1883ec3cae", size = 92489, upload-time = "2026-08-18T00:13:59.607Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0c/4b/cf4ee3eb2ad0811588b705f614bcbb16d17a65ed19cfd86d36a84b73c95d/vishalakshi-0.1.11.tar.gz", hash = "sha256:dd327891524f8f818742384517c4c05eb03794caf5b9c8db979dc6e5cb45816c", size = 94315, upload-time = "2026-08-18T22:47:25.206Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/89/b018921990b323d5d3a4d629be2ca9090ea6a456d8e5cecdabb99de3039a/vishalakshi-0.1.10-py3-none-any.whl", hash = "sha256:92aa057fcd3570f02cbab443dc946c90453d11187755190700e7e8f66b8c8f22", size = 99312, upload-time = "2026-08-18T00:13:58.416Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/46/fd6860469d922b12a2e13ce592be9fa09283f1529bcaf5baee0d1c8055b4/vishalakshi-0.1.11-py3-none-any.whl", hash = "sha256:b64bb271744c257eb638248ce6049691089de1c00e7254a914be400a4ea4da81", size = 101327, upload-time = "2026-08-18T22:47:23.768Z" },
 ]
 
 [[package]]

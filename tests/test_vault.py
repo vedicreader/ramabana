@@ -50,6 +50,11 @@ def private_host(tmp_path):
     return h
 
 
+def private_node(host, title='invoice 4471'):
+    "The one section of the private document, by node id."
+    return host.vault.doc(title)['id'] + '#0'
+
+
 # -- watches ---------------------------------------------------------------------------
 
 def test_the_watch_and_memory_groups_arrive_with_a_vault_and_never_raise_without_one(host):
@@ -211,3 +216,62 @@ def test_ask_memory_appears_only_for_a_host_that_can_ask_and_says_what_to_ask_ne
     out = {t.__name__: t for t in tools_for(host)}['ask_memory']('what is on invoice 4471?')
     assert 'One invoice, 240.00 GBP' in out
     assert 'answered on a local model' in out and 'instruction=' in out
+
+
+# -- when retrieval itself would leave the machine --------------------------------------
+
+def test_retrieval_carries_no_policy_unless_the_host_was_given_one(tmp_path):
+    "The default is what it always was, so raising the floor changes nothing for an existing caller."
+    host = private_host(tmp_path)
+    assert host._policy() == ('off', False)
+    assert 'ada@example.com' in str(host.memory_read(private_node(host)))
+
+
+@pytest.mark.parametrize('act', ['redact', 'refuse'])
+def test_a_policy_reaches_every_tool_that_returns_section_text(tmp_path, act):
+    """`ask` was the only one that had a gate, so these four handed raw sections to the turn model.
+
+    Vishalakshi applies the policy; the host only carries it.
+    """
+    host = private_host(tmp_path)
+    host.pii = act
+    nid = private_node(host)
+    for got in (host.memory_read(nid), host.memory_search('invoice 4471'),
+                host.search('invoice 4471'), host.memory_tree()):
+        assert 'ada@example.com' not in str(got)
+        assert '020 7946 0958' not in str(got)
+
+
+def test_a_gated_section_says_why_its_text_is_missing(tmp_path):
+    "`_sect` keeps `pii`, or a caller cannot tell a withheld section from an empty one."
+    host = private_host(tmp_path)
+    host.pii = 'refuse'
+    hit = next((r for r in host.memory_search('invoice 4471')['results'] if r.get('pii')), None)
+    assert hit and sorted(hit['pii']) == ['card', 'email', 'phone']
+
+
+def test_the_policy_is_read_per_call(tmp_path):
+    "A browser changes it while a session runs, and the host outlives the request that changed it."
+    host, choice = private_host(tmp_path), ['off']
+    host.pii = lambda: choice[0]
+    nid = private_node(host)
+    assert 'ada@example.com' in str(host.memory_read(nid))
+    choice[0] = 'refuse'
+    assert 'ada@example.com' not in str(host.memory_read(nid))
+
+
+def test_a_policy_that_cannot_be_read_keeps_the_gate_shut_without_failing(tmp_path):
+    host = private_host(tmp_path)
+    host.pii = lambda: (_ for _ in ()).throw(RuntimeError('the panel is mid-write'))
+    assert host._policy() == ('off', False)
+    assert host.memory_read(private_node(host))       # and the turn still gets an answer
+
+
+def test_titled_names_gate_only_when_asked_for(tmp_path):
+    host = private_host(tmp_path)
+    host.vault.note('Dr Charles Babbage signed the minutes.', title='minutes')
+    nid = host.vault.doc('minutes')['id'] + '#0'
+    host.pii = 'refuse'
+    assert 'Babbage' in str(host.memory_read(nid))     # a name is not looked for by default
+    host.pii_ner = True
+    assert 'Babbage' not in str(host.memory_read(nid))

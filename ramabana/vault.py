@@ -71,7 +71,7 @@ def _trim(node, depth=TOC_DEPTH):
 
 def _sect(s):
     "One retrieved section, cut to what a model needs: what it says, where it is, how to read it."
-    return {k: s[k] for k in ('node_id', 'doc_id', 'title', 'breadcrumb', 'text') if k in s}
+    return {k: s[k] for k in ('node_id', 'doc_id', 'title', 'breadcrumb', 'text', 'pii') if k in s}
 
 
 def _fed_hit(h):
@@ -105,9 +105,11 @@ class VaultHost(LocalHost):
                  remember_reads=True,   # file what `read_url` fetches. The next session has it
                  warm=True,             # open the vault in the background at construction
                  mk_chat=None,          # build the vault's chats with this. None -> vishalakshi's own
+                 pii=None,              # `off|redact|refuse` for what retrieval returns, or a callable for one
+                 pii_ner=None,          # gate on titled names too. A callable, like `pii`, is read per call
                  **kwargs):             # forwarded to `LocalHost`
         super().__init__(roots, **kwargs)
-        self.mk_chat = mk_chat
+        self.mk_chat, self.pii, self.pii_ner = mk_chat, pii, pii_ner
         import threading
         self.shelf = safe_shelf(shelf) if shelf else None
         self._vault, self._vlock, self._vthread = vault, threading.Lock(), None
@@ -143,6 +145,15 @@ class VaultHost(LocalHost):
         "Return the `Vault`, opening it on first use."
         return self._open()
 
+    def _policy(self):
+        """`(pii, pii_ner)` for this call. The host asks a function now rather than at construction,
+        because the policy changes while a session runs. `off` is the default, and a function that
+        raises falls back to it."""
+        def val(x):
+            try: return x() if callable(x) else x
+            except Exception: return None
+        return (val(self.pii) or 'off'), bool(val(self.pii_ner))
+
     def connect(self, wait=False):
         "Rebuild the entity graph in a background thread."
         if self._cthread is None or not self._cthread.is_alive():
@@ -157,19 +168,25 @@ class VaultHost(LocalHost):
 
     def memory_search(self, query, limit=MEM_SECTIONS):
         "Return matching sections and related sections."
-        c = self.vault.context(str(query), sections=int(limit), related=max(2, int(limit) // 2))
+        pii, ner = self._policy()
+        c = self.vault.context(str(query), sections=int(limit), related=max(2, int(limit) // 2),
+                               pii=pii, pii_ner=ner)
         return dict(query=c.query, encoder=c.encoder,
                     results=[_sect(s) for s in c.results],
                     related=[dict(_sect(s), via=s.get('via')) for s in c.related])
 
     def memory_tree(self, document=''):
         "Return the memory heading tree, optionally narrowed by title or document id."
-        toc, d = self.vault.toc(), str(document).strip().lower()
+        # every node is titled by the opening of its section, so the tree carries section text
+        pii, ner = self._policy()
+        toc, d = self.vault.toc(pii=pii, pii_ner=ner), str(document).strip().lower()
         if d: toc = [t for t in toc if d in str(t.get('title', '')).lower() or d == t.get('doc_id')]
         return [dict(doc_id=t.get('doc_id'), title=t.get('title'), source=t.get('source'),
                      pages=t.get('pages'), tree=_trim(t.get('tree'))) for t in toc]
 
-    def memory_read(self, node_id): return self.vault.read(str(node_id))
+    def memory_read(self, node_id):
+        pii, ner = self._policy()
+        return self.vault.read(str(node_id), pii=pii, pii_ner=ner)
 
     def memory_topics(self, limit=12):
         m = self.vault.map()
@@ -187,9 +204,10 @@ class VaultHost(LocalHost):
         A vault that will not open degrades to `LocalHost.search`.
         """
         if not self.federate: return super().search(query, limit)
+        pii, ner = self._policy()
         try:
             r = self.vault.federate(str(query), limit=int(limit), prose=True, repo=True,
-                                    grep=True, dir=self.roots[0])
+                                    grep=True, dir=self.roots[0], pii=pii, pii_ner=ner)
         except Exception as e:
             self._legs = {'federate_error': agent_err(e)}
             return super().search(query, limit)
@@ -227,9 +245,10 @@ class VaultHost(LocalHost):
         text, instead of a summary of pages nobody kept.
         """
         v, q = self.vault, str(query)
+        pii, ner = self._policy()
         r = v.web(q, n=5)
         self.connect()            # the graph is what `related` walks. Rebuild after the batch, off the turn
-        c = v.context(q, sections=MEM_SECTIONS, related=4)
+        c = v.context(q, sections=MEM_SECTIONS, related=4, pii=pii, pii_ner=ner)
         head = f'searched the web for {q!r}; filed {len(r.added)} of {r.n_found} sources in the vault'
         return '\n\n'.join([head] + [f"## {s['breadcrumb']}\n\n{s['text']}" for s in c.results])
 
