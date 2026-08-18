@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from .core import agent_err, cursor_mode, env, force_tags, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
-MAX_KEEP = 8_000        # tail kept per call; an engine that logs a lot must not eat memory
+MAX_KEEP = 8_000        # tail kept per call. An engine that logs a lot must not eat memory
 _NOISE = ('created tensorflow lite', 'xnnpack delegate', 'metal delegate', 'tflite','loading model', 'initialized', 'gpu delegate', 'w0000', 'i0000')
 _SIGNAL = ('error', 'fail', 'exceed', 'exceeds', 'too long', 'out of memory', 'oom','invalid', 'refus', 'cannot', 'unsupported', 'abort')
 
@@ -36,7 +36,6 @@ def interesting(text, limit=4):
         if any(n in low for n in _NOISE): continue
         if any(g in low for g in _SIGNAL): out.append(s)
     return uniqueify(out)[-limit:]
-
 
 # %% ../nbs/01_runtime.ipynb #c5fce893
 class _Tee:
@@ -62,7 +61,7 @@ class _Tee:
             try: os.write(self.saved, b)              # still goes where it was going
             except OSError: pass
     def stop(self):
-        # the real descriptor goes back first, so a write during teardown lands somewhere real
+        # the real descriptor goes back first. A write during teardown lands somewhere real
         if self.saved is not None:
             try: os.dup2(self.saved, self.fd)
             except OSError: pass
@@ -82,7 +81,7 @@ class captured:
     def __init__(self, fds=(1, 2), enabled=None):
         self.fds = fds
         self.text = ''
-        # through `env`, so the switch follows whatever prefix this application named
+        # through `env`. The switch follows whatever prefix this application named
         self.enabled = ((env('NO_NATIVE_CAPTURE') or '').lower() not in ('1', 'true', 'yes')
                         if enabled is None else enabled)
         self._tees, self._held = [], False
@@ -200,7 +199,7 @@ def serialise(msgs, mx=2000):
 
 
 def split_previous(msgs):
-    "`(previous_summary_or_None, remaining_msgs)` -- so an update updates rather than re-summarises."
+    "`(previous_summary_or_None, remaining_msgs)`. So an update updates rather than re-summarises."
     if not msgs: return None, msgs
     t = _text(msgs[0])
     if _role(msgs[0]) == 'user' and t.startswith(SUMMARY_PREFIX):
@@ -399,7 +398,7 @@ def notices_block(prompt):
 
 # %% ../nbs/01_runtime.ipynb #45fad4d6
 def compact_notebook_context(prompt, fits):
-    "Reduce a tagged notebook only when `prompt` does not fit; a `keep` cell is never removed."
+    "Reduce a tagged notebook only when `prompt` does not fit. A `keep` cell is never removed."
     if not isinstance(prompt, str) or fits(prompt): return prompt
     match = re.search(r'<notebook(?P<attrs>[^>]*)>\n?(?P<body>.*?)\n?</notebook>', prompt, re.S)
     if not match: return prompt
@@ -473,7 +472,7 @@ class Compactor:
 
     def compact(self, backend, summariser, extra='', summary_ctx=0, summary_output=1024,
                 summary_count=None):
-        "Summarise `backend`'s conversation with `summariser(prompt, sp)` and replace it; the summary, or `''`."
+        "Summarise `backend`'s conversation with `summariser(prompt, sp)` and replace it. The summary, or `''`."
         msgs = list(backend.hist or [])
         if not msgs:
             self.note = 'nothing to compact'
@@ -533,7 +532,6 @@ def answer_only(text):
     if '<think>' in out: out = out.partition('<think>')[0]
     return out.strip()
 
-
 # %% ../nbs/01_runtime.ipynb #b3f10a21
 def prefills_think(chat):
     "Does this model's chat template open a `<think>` block and leave the model to close it?"
@@ -545,7 +543,7 @@ def prefills_think(chat):
 
 
 class ThinkFilter:
-    "Drop a template-opened thinking block out of a raw chunk stream; a tool call re-arms it."
+    "Drop a template-opened thinking block out of a raw chunk stream. A tool call re-arms it."
     TAG = '</think>'
 
     def __init__(self): self.thinking, self.buf, self.thought, self.answer = True, '', 0, 0
@@ -566,7 +564,6 @@ class ThinkFilter:
             self.thinking, out, self.buf = False, self.buf[k + len(self.TAG):].lstrip('\n'), ''
             if out: self.answer += len(out); yield {'content': [{'type': 'text', 'text': out}]}
 
-
 # %% ../nbs/01_runtime.ipynb #e4819aa1
 MAX_STEPS = 40
 ONESHOT_TOKENS = 1024     # a cheap job's default output cap
@@ -581,7 +578,7 @@ class Usage:
         return Usage(model=o.model or self.model,**{k:getattr(self,k)+getattr(o,k) for k in fs})
     def __radd__(self,o): return self if o in (None,0) else self+o
     def __sub__(self,o):
-        "What this counter has added since `o`. A backend counts cumulatively; a turn is a delta."
+        "What this counter has added since `o`. A backend counts cumulatively. A turn is a delta."
         if o is None: return self
         fs=('input','output','total','cached','cache_write','reasoning','cost','turns')
         return Usage(model=self.model or o.model, **{k:max(0, getattr(self,k)-getattr(o,k)) for k in fs})
@@ -683,7 +680,7 @@ class Backend:
                     if not (again and not n and self._recover(e)):
                         yield f'\n\n{self._failed("failed",e)}'; return
     def _recover(self,e):
-        "Fix what made `e` happen, if this backend knows how, so one retry is worth taking. No by default."
+        "Fix what made `e` happen, if this backend knows how. One retry is worth taking. No by default."
         return False
     def _check_reply(self,text):
         "Look at a finished reply for a failure the transport could not raise. Nothing by default."
@@ -775,23 +772,23 @@ class RishiBackend(Backend):
         return self._prefill
     @property
     def tool_channel(self):
-        "Where this backend's tool schemas actually travel; the chat answers once there is one."
+        "Where this backend's tool schemas actually travel. The chat answers once there is one."
         return tool_channel(self.spec,self.chat)
     def _runtime_kw(self):
         import os
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
-        # only `remote` takes the keyword; for the local engines tag calls are the protocol
+        # only `remote` takes the keyword. For the local engines tag calls are the protocol
         if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime=='cursor':
             # Cursor runs a tool only in agent mode, and its custom tools cannot coexist with a
-            # built-in allowlist, so its own shell and editors come too, held by its sandbox and not
+            # built-in allowlist. Its own shell and editors come too, held by its sandbox and not
             # by our approvals. The alternative is tools that never run.
             kw.setdefault('mode',cursor_mode(kw,bool(self.tools)))
             if kw['mode']=='agent': kw.setdefault('sandbox','enabled')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
-            # rishi takes backend itself; inside eng_kw it arrives twice and no litert model loads.
+            # rishi takes backend itself. Inside eng_kw it arrives twice and no litert model loads.
             if 'backend' not in eng and 'backend' not in kw and (backend := env('LITERT_BACKEND')):
                 from litert_lm import Backend as LB
                 backends = {'cpu': LB.CPU, 'gpu': LB.GPU}
@@ -817,7 +814,7 @@ class RishiBackend(Backend):
         return type(self)(self.spec,sp=sp,tools=tools,tool_max_len=self.tool_max_len,
                           max_steps=self.max_steps,shared=True,**shared,**kw)
     def _turn_kw(self, kw):
-        "Apply hosted turn controls at the layer Rishi owns; Chat.__call__ only accepts generation controls."
+        "Apply hosted turn controls at the layer Rishi owns. Chat.__call__ only accepts generation controls."
         kw = dict(kw or {})
         effort = kw.pop('reasoning_effort', None)
         if effort is not None and hasattr(self.chat, 'reasoning_effort'):
@@ -832,7 +829,7 @@ class RishiBackend(Backend):
     #: reason; the wording is the SDK's, and it arrives under several of these at once.
     MCP_REFUSED=('mcp','strict_mcp_config','allowed_tools','disallowed','not permitted','policy')
     def _recover(self,e):
-        "Learn that this model's wire tool channel is closed, so later turns stop trying it."
+        "Learn that this model's wire tool channel is closed. Later turns stop trying it."
         if not self.tools or tool_channel(self.spec,self.chat)=='tags':return False
         if not any(s in f'{e}'.lower() for s in self.MCP_REFUSED):return False
         force_tags(self.spec.model_id,agent_err(e))
@@ -873,12 +870,12 @@ class RishiBackend(Backend):
         # always an explicit cap: this conversation is reused across jobs
         return resp_text(c._model_step(max_tokens or ONESHOT_TOKENS))
     def _replace_hist(self,summary,keep):
-        # a replayed conversation has neither; `Compactor` catches the refusal and says so
+        # a replayed conversation has neither. `Compactor` catches the refusal and says so
         if not hasattr(self.chat,'_recreate_conv'):
             raise RuntimeError(f'{type(self.chat).__name__} cannot have its history replaced')
         self.chat.hist[:]=self.chat.mk_msgs([summary,*keep]); self.chat._recreate_conv()
     def _usage(self):
-        # a replay spent no tokens, so zeros are the truthful answer
+        # a replay spent no tokens. Zeros are the truthful answer
         if (u:=getattr(self.chat,'use',None)) is None: return Usage(model=self.spec.model_id)
         return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
                      total=u.total_tokens,cached=u.cached_tokens,cost=u.cost,turns=u.n)

@@ -177,7 +177,7 @@ class Kernel:
             try: self.kc.stop_channels()
             except Exception: pass
         if self.km and self.km.has_kernel:
-            # a dhrishti kernel may never agree to `now=False`, so the ask has a deadline
+            # a dhrishti kernel may never agree to `now=False`. The ask has a deadline
             try: await asyncio.wait_for(self.km.shutdown_kernel(now=False), timeout)
             except Exception:
                 try: await self.km.shutdown_kernel(now=True)
@@ -206,7 +206,7 @@ class DhrishtiHost(LocalHost):
         self.agent_log = Path(log) if log else None   # None, not `Path('')`, which is truthy
 
     def run_python(self, code):
-        return self.inspect_python(code, 'overlay')   # always the overlay; scope is model-settable
+        return self.inspect_python(code, 'overlay')   # always the overlay. Scope is model-settable
 
     def inspect_python(self, code, scope='isolated'):
         if scope not in self.scopes: return f'this host only honours {self.scopes}'
@@ -252,7 +252,7 @@ class DhrishtiHost(LocalHost):
         for group in result.get('groups', []):
             for node in group.get('nodes', []):
                 if name := node.get('name'):
-                    value = node.get('value')   # falsy is still a value; only a missing key is not
+                    value = node.get('value')   # falsy is still a value. Only a missing key is not
                     out[name] = str(value if value is not None else (node.get('type') or ''))
         return out
 
@@ -264,7 +264,7 @@ def annotate(matches, described):
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0901
 def _ambiguous(attach, cands):
-    "Error text for a name that matches more than one live session -- list them, do not pick."
+    "Error text for a name that matches more than one live session. List them, do not pick."
     rows = '; '.join(f"{e.get('name')} (cwd={e.get('cwd')}, port={e.get('port')})" for e in cands)
     return f'{attach!r} matches more than one live dhrishti session, refusing to guess which: {rows}'
 
@@ -283,7 +283,7 @@ def find_session(attach):
         if len(prefixed) > 1: raise RuntimeError(_ambiguous(attach, prefixed))
         hit = prefixed[0] if prefixed else None
     if hit is None and attach:
-        # The whole basename, not a substring, so 'leela' does not also match 'old-leela-backup'.
+        # The whole basename, not a substring. 'leela' does not also match 'old-leela-backup'.
         by_cwd = [e for e in entries if Path(str(e.get('cwd') or '')).name == attach]
         if len(by_cwd) > 1: raise RuntimeError(_ambiguous(attach, by_cwd))
         hit = by_cwd[0] if by_cwd else None
@@ -302,7 +302,7 @@ def sessions():
     dupes = {n for n, *_ in rows if sum(1 for m, *_ in rows if m == n) > 1}
     out = []
     for name, cwd, port, base in sorted(rows):
-        # a name shared by two live sessions cannot resolve, so show what does
+        # a name shared by two live sessions cannot resolve. Show what does
         out.append(f'{base if name in dupes else name:<34} {cwd}  :{port}')
     return '\n'.join(out)
 
@@ -313,7 +313,7 @@ def hl(src):
     if not src: return Text('')
     try:
         from rich.syntax import Syntax
-        # `highlight` appends a newline; it is built for whole files
+        # `highlight` appends a newline. It is built for whole files
         out = Syntax(src, 'python', theme='gruvbox-dark').highlight(src)
         while out.plain.endswith('\n'): out.right_crop(1)
         return out if out.plain == src else Text(src)
@@ -326,7 +326,7 @@ def _compile_state(src, symbol):
         code = codeop.compile_command(str(src), '<pyrepl>', symbol)
         return ('complete' if code is not None else 'incomplete'), ''
     except SyntaxError as e: return 'invalid', f'{e.msg} (line {e.lineno})'
-    except Exception as e: return 'complete', agent_err(e)   # not ours to judge; let the kernel say
+    except Exception as e: return 'complete', agent_err(e)   # not ours to judge. Let the kernel say
 
 def _judge(src):
     "The prompt's verdict on `src`, and what objected when it was rejected."
@@ -344,7 +344,7 @@ def _syntax_note(src):
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0952
 def promote(base, name):
-    "Adopt an agent-layer variable into the owner namespace; own-kernel mode only."
+    "Adopt an agent-layer variable into the owner namespace. Own-kernel mode only."
     if not base: return 'no kernel of our own; promote from the surface that started the session'
     from dhrishti.serving import owner_token
     port = int(str(base).rsplit(':', 1)[-1])

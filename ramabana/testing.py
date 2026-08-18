@@ -28,13 +28,13 @@ SCRIPTED = ModelSpec('scripted', 'scripted', 'scripted/model', ctx=8000)
 
 # %% ../nbs/04_testing.ipynb #2ce479ad
 class MemHost(NullHost):
-    "A host whose folders live in a dict, so the file tools can be driven without touching disk."
+    "A host whose folders live in a dict. The file tools can be driven without touching disk."
 
     def __init__(self, files=None, root='/proj', commands=None):
         super().__init__([root])
         self.files, self.root = dict(files or {}), root
         self.ran, self.cmds = [], []
-        # `{command: (exit_code, output)}`; anything not scripted exits 0 with no output
+        # `{command: (exit_code, output)}`. Anything not scripted exits 0 with no output
         self.commands = dict(commands or {})
 
     def run_cmd(self, command, cwd=None, timeout=120):
@@ -72,7 +72,7 @@ class FullHost(LocalHost):
     """A host with *every* capability present, over a throwaway folder.
 
     Each gap `LocalHost` leaves is filled with a small real implementation over in-process
-    state, so the whole tool surface can be driven. Nothing here reaches the network.
+    state. The whole tool surface can be driven. Nothing here reaches the network.
     """
 
     def __init__(self, files=None, pages=None, root=None, terminal='', **kw):
@@ -88,7 +88,7 @@ class FullHost(LocalHost):
         self.remembered = {}      # doc_id -> (title, url, markdown)
         self.notes = []           # everything `note` was told, for a test to assert on
 
-    # -- the web, without a network -----------------------------------------
+
     def web_search(self, query, n=20):
         q = str(query).lower()
         hits = [(url, text) for url, text in self.pages.items()
@@ -103,7 +103,7 @@ class FullHost(LocalHost):
         return AttrDict(text=text, url=str(url))
 
     def research(self, query):
-        "Read every page that matches, into one cited digest -- what a real research pass returns."
+        "Read every page that matches, into one cited digest. What a real research pass returns."
         hits = self.web_search(query)
         if not hits: return ''
         parts = []
@@ -115,7 +115,7 @@ class FullHost(LocalHost):
     @property
     def research_note(self): return f'{len(self.pages)} page(s) in this host'
 
-    # -- research memory, as a real tree ------------------------------------
+
     def _sections(self, text):
         "A markdown document split at its headings, which is the unit memory recalls."
         out, head, body = [], '', []
@@ -167,15 +167,15 @@ class FullHost(LocalHost):
     def memory_forget(self, doc_id):
         return self.remembered.pop(str(doc_id), None) is not None
 
-    # -- the parts a terminal cannot have ------------------------------------
+
     @property
     def scopes(self):
-        "Both, so the overlay branch of `inspect_python` has somewhere to be tested."
+        "Both. The overlay branch of `inspect_python` has somewhere to be tested."
         return ('isolated', 'overlay')
 
     def inspect_python(self, code, scope='isolated'):
-        """Isolated runs on a copy; overlay runs against the real namespace but refuses to move
-        anything already in it -- the same guarantee an IDE's AST policy gives, enforced by
+        """Isolated runs on a copy. Overlay runs against the real namespace but refuses to move
+        anything already in it. The same guarantee an IDE's AST policy gives, enforced by
         restoring every pre-existing binding afterwards.
         """
         if scope != 'overlay': return super().inspect_python(code, scope)
@@ -195,7 +195,7 @@ class FullHost(LocalHost):
 
 # %% ../nbs/04_testing.ipynb #83abeaab
 class FakeBackend(Backend):
-    "A backend over a scripted list of replies, so a turn can be driven with no model at all."
+    "A backend over a scripted list of replies. A turn can be driven with no model at all."
 
     kind = 'fake'
 
@@ -207,7 +207,7 @@ class FakeBackend(Backend):
     def _start(self): return self
     def _close(self): pass
     def cancel(self):
-        # this double is its own chat, so the inherited `cancel` would call itself
+        # this double is its own chat. The inherited `cancel` would call itself
         self.cancelled = True
         return True
 
@@ -265,8 +265,8 @@ CHATS = Path(ramabana.__file__).parent.parent/'chatcache'
 def recorded(path=None, record=None):
     """Replay recorded model answers for the duration, instead of calling a model.
 
-    `record=True` -- or `$RISHI_RECORD_CHAT` -- lets a miss reach a real model; without it a miss
-    raises. A streamed turn is a generator, so nothing records it and `stream` reaches the model.
+    `record=True`. Or `$RISHI_RECORD_CHAT`. Lets a miss reach a real model. Without it a miss
+    raises. A streamed turn is a generator. Nothing records it and `stream` reaches the model.
     """
     from rishi.core import CachedChat
     from ramabana.runtime import use_chat
@@ -310,14 +310,14 @@ class MutteringBackend(Backend):
 
 # %% ../nbs/04_testing.ipynb #51f402c1
 class Step:
-    "One thing a scripted model does: call a tool -- through the real tool list -- or say something."
+    "One thing a scripted model does: call a tool. Through the real tool list. Or say something."
 
     def __init__(self, text='', tool=None, pause=0.0):
         self.text, self.tool, self.pause = text, tool, pause
 
 
 class ScriptedBackend(Backend):
-    "Plays a list of `Step`s, streaming its words one at a time; `token_delay` is what a screenshot needs."
+    "Plays a list of `Step`s, streaming its words one at a time. `token_delay` is what a screenshot needs."
 
     kind = 'scripted'
 

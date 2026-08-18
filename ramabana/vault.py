@@ -3,44 +3,32 @@ watches that put things back on the agent's desk.
 
 ## Why a vault
 
-`LocalHost` can already read the web and index the repo, and neither survives the process. A
-page read in one session is gone by the next, and the code index and the reading are two
-unrelated stores that never see each other's results.
+`LocalHost` can already read the web and index the repo, and neither survives the process. A page read in one session is gone by the next, and the code index and the reading are two unrelated stores that never see each other's results.
 
-A [vishalakshi](https://vedicreader.github.io/vishalakshi/) `Vault` is one SQLite file holding
-both. Putting it behind `Host` buys three things the harness cannot get any other way:
+A [vishalakshi](https://vedicreader.github.io/vishalakshi/) `Vault` is one SQLite file holding both. Putting it behind `Host` buys three things the harness cannot get any other way:
 
 - **`memory_search` actually has something to search.** `LocalHost` raises
-  `NotImplementedError` for the whole memory group, so `tools_for` drops it. With a vault the
-  five memory tools appear, and they answer from everything ever read.
+`NotImplementedError` for the whole memory group. `tools_for` drops it. With a vault the five memory tools appear, and they answer from everything ever read.
 - **One ranking instead of three.** `search_code` fuses the vault's prose, kosha's identifiers
-  and ripgrep's literals through `federate`. The legs share no vector space, so they are merged
-  by rank rather than by distance.
-- **Standing interests.** A vault has watches, so `watch_tools` appears too: the agent can
-  arrange to re-read a page next week, or be reminded of something it worked out today.
+and ripgrep's literals through `federate`. The legs share no vector space. They are merged by rank rather than by distance.
+- **Standing interests.** A vault has watches. `watch_tools` appears too: the agent can
+arrange to re-read a page next week, or be reminded of something it worked out today.
 
 ## The host
 
-`VaultHost` is `LocalHost` plus a vishalakshi vault. Construction opens the vault in a
-background thread for the same reason the kosha sync does: the first touch must not block
-`tools_for` while an embedding model loads. Capabilities advertise memory and watches by
-construction rather than by probing.
+`VaultHost` is `LocalHost` plus a vishalakshi vault. Construction opens the vault in a background thread for the same reason the kosha sync does: the first touch must not block `tools_for` while an embedding model loads. Capabilities advertise memory and watches by construction rather than by probing.
 
 ## Memory
 
-The five memory tools appear once a vault is present. Search returns whole sections plus
-graph neighbours; read, tree, topics and forget are thin wrappers over the vault.
+The five memory tools appear once a vault is present. Search returns whole sections plus graph neighbours. Read, tree, topics and forget are thin wrappers over the vault.
 
 ## Federated search
 
-`search` asks the vault for prose, kosha for identifiers and ripgrep for literals, then
-fuses the legs with `litesearch.rrf_all` through `Vault.federate`. A vault that will not open
-falls back to `LocalHost.search`.
+`search` asks the vault for prose, kosha for identifiers and ripgrep for literals, then fuses the legs with `litesearch.rrf_all` through `Vault.federate`. A vault that will not open falls back to `LocalHost.search`.
 
 ## Watches and reminders
 
-Standing interests live in the vault. `poll` fires what is due without rebuilding the entity
-graph on the turn; `connect` does that rebuild in the background.
+Standing interests live in the vault. `poll` fires what is due without rebuilding the entity graph on the turn. `connect` does that rebuild in the background.
 
 ## Using it
 
@@ -60,7 +48,6 @@ from fastcore.parallel import startthread
 from .core import AgentError, agent_err
 from .tools import Hit, LocalHost, clip
 
-
 # %% ../nbs/07_vault.ipynb #8d87918f
 DFLT_VAULT = None         # Vault(None) -> ~/.vishalakshi/vault.db, same as the CLI
 MEM_SECTIONS = 6          # operative sections a memory search returns
@@ -70,14 +57,13 @@ TOC_DEPTH = 2             # heading levels of a document's tree worth showing at
 def safe_shelf(name=None, dflt='store'):
     """A shelf name as a SQL identifier.
 
-    A shelf is a table-name prefix, so the name reaches raw SQL, and litesearch's entity
+    A shelf is a table-name prefix. The name reaches raw SQL, and litesearch's entity
     resolution has one unquoted statement that a hyphen breaks. Callers name shelves after
-    folders and branches, which carry hyphens and dots, so this sanitises once at the boundary
-    instead of at every use. Belongs in vishalakshi with the rest of the shelf machinery; it is
+    folders and branches, which carry hyphens and dots. This sanitises once at the boundary
+    instead of at every use. Belongs in vishalakshi with the rest of the shelf machinery. It is
     here until there is a release to put it in.
     """
     return re.sub(r'[^a-z0-9_]+', '_', str(name or dflt).lower()).strip('_') or dflt
-
 
 # %% ../nbs/07_vault.ipynb #d2ba7a3a
 def _trim(node, depth=TOC_DEPTH):
@@ -98,8 +84,8 @@ def _sect(s):
 def _fed_hit(h):
     """One federated row as a `Hit`, keeping the handle that reopens it.
 
-    The legs return different things -- a repo hit is a file and a line, a prose hit is a
-    section of something read months ago -- so `symbol` carries whichever identifier the
+    The legs return different things. A repo hit is a file and a line, a prose hit is a
+    section of something read months ago. So `symbol` carries whichever identifier the
     follow-up tool needs: a `mod_name` for `symbols`, a `node_id` for `memory_read`.
     """
     where = str(h.get('where') or h.get('ref') or '')
@@ -110,22 +96,22 @@ def _fed_hit(h):
 
 # %% ../nbs/07_vault.ipynb #bc5c6436
 class VaultHost(LocalHost):
-    "`LocalHost` with a vishalakshi vault: durable memory, `Vault.federate` search, watches."
+    "A `LocalHost` with durable memory, federated search and watches."
 
     @property
     def capabilities(self):
-        "Memory and watches, by construction: a `VaultHost` is the host that has a vault."
+        "Report memory and watch support."
         return {**super().capabilities, 'memory': True, 'watch': True}
 
     @delegates(LocalHost.__init__)
     def __init__(self,
                  roots=('.',),          # the folders the agent is confined to
                  vault=DFLT_VAULT,      # a `Vault`, a path to one, or None for ~/.vishalakshi/vault.db
-                 shelf=None,            # the shelf writes land on; None -> the vault's main store
+                 shelf=None,            # the shelf writes land on. None -> the vault's main store
                  federate=True,         # fuse vault prose into `search_code` alongside kosha and ripgrep
-                 remember_reads=True,   # file what `read_url` fetches, so the next session has it
+                 remember_reads=True,   # file what `read_url` fetches. The next session has it
                  warm=True,             # open the vault in the background at construction
-                 mk_chat=None,          # build the vault's chats with this; None -> vishalakshi's own
+                 mk_chat=None,          # build the vault's chats with this. None -> vishalakshi's own
                  **kwargs):             # forwarded to `LocalHost`
         super().__init__(roots, **kwargs)
         self.mk_chat = mk_chat
@@ -136,9 +122,9 @@ class VaultHost(LocalHost):
         self._legs, self._cthread = None, None
         if warm: self.open_vault()
 
-    # -- the vault itself ----------------------------------------------------
+
     def open_vault(self, wait=False):
-        "Open the vault in a daemon thread, once. `wait=True` for a caller that needs it now."
+        "Open the vault once in a daemon thread; join it when `wait=True`."
         if self._vthread is None or not self._vthread.is_alive():
             self._vthread = startthread(lambda: self._open(), daemon=True)
             self._vthread.name = 'ramabana-vault'
@@ -146,14 +132,9 @@ class VaultHost(LocalHost):
         return self
 
     def _open(self):
-        """The shelf this host writes to, opened once under a lock.
+        """Open the write shelf once under a lock.
 
-        The lock matters on first open, not just for tidiness: two threads reaching a brand-new
-        shelf would both try to create its FTS shadow tables.
-
-        A shelf is opened through the root vault so it inherits the registered encoder rather than
-        loading a second one. Reads are unaffected either way -- `federate` and `Vault.context`
-        already fan out across every populated shelf, so partitioning writes never narrows recall.
+        The lock prevents concurrent creation of the FTS shadow tables. Opening a shelf through the root vault reuses its encoder.
         """
         with self._vlock:
             v = self._vault
@@ -166,11 +147,11 @@ class VaultHost(LocalHost):
 
     @property
     def vault(self):
-        "The `Vault`, opened on first use."
+        "Return the `Vault`, opening it on first use."
         return self._open()
 
     def connect(self, wait=False):
-        "Rebuild the entity graph `related` walks, off the turn, once at a time."
+        "Rebuild the entity graph in a background thread."
         if self._cthread is None or not self._cthread.is_alive():
             def run():
                 try: self.vault.connect()
@@ -180,21 +161,16 @@ class VaultHost(LocalHost):
         if wait: self._cthread.join()
         return self
 
-    # -- durable research memory --------------------------------------------
-    def memory_search(self, query, limit=MEM_SECTIONS):
-        """Whole sections, plus what they connect to.
 
-        `related` is the part worth having: sections reached along the entity graph or by
-        embedding similarity rather than by matching the query. It is how a search finds the
-        note you forgot you wrote.
-        """
+    def memory_search(self, query, limit=MEM_SECTIONS):
+        "Return matching sections and related sections."
         c = self.vault.context(str(query), sections=int(limit), related=max(2, int(limit) // 2))
         return dict(query=c.query, encoder=c.encoder,
                     results=[_sect(s) for s in c.results],
                     related=[dict(_sect(s), via=s.get('via')) for s in c.related])
 
     def memory_tree(self, document=''):
-        "The heading tree of everything remembered; `document` narrows to one title or doc id."
+        "Return the memory heading tree, optionally narrowed by title or document id."
         toc, d = self.vault.toc(), str(document).strip().lower()
         if d: toc = [t for t in toc if d in str(t.get('title', '')).lower() or d == t.get('doc_id')]
         return [dict(doc_id=t.get('doc_id'), title=t.get('title'), source=t.get('source'),
@@ -211,7 +187,7 @@ class VaultHost(LocalHost):
         self.vault.forget(str(doc_id))
         return True
 
-    # -- seeing the code -----------------------------------------------------
+
     def search(self, query, limit=20):
         """Prose, kosha and ripgrep in one ranking via `Vault.federate` (`litesearch.rrf_all`).
 
@@ -233,13 +209,12 @@ class VaultHost(LocalHost):
         if not self._legs: return 'federated: vault prose, kosha index, ripgrep'
         return 'federated: ' + ', '.join(f'{k}={v}' for k, v in self._legs.items())
 
-    # -- reading the web -----------------------------------------------------
+
     def read_url(self, url, remember=True):
         """Read a page, and keep it unless asked not to.
 
-        `remember=False` is honoured literally -- the page is fetched and returned and never
-        touches the vault, which is what it is for. Filing failing is not a read failing, so
-        the text is returned either way.
+        `remember=False` is honoured literally. The page is fetched and returned and never
+        touches the vault, which is what it is for. Filing failing is not a read failing. The text is returned either way.
         """
         d = super().read_url(url, remember=remember)
         if d is not None and remember and self.remember_reads:
@@ -254,13 +229,13 @@ class VaultHost(LocalHost):
         """Search, read every source into the vault, then answer out of the vault.
 
         One network pass rather than two: `Vault.web` *is* fossick's `research` with the sources
-        kept, so the digest is assembled by asking the vault the same question immediately
+        kept. The digest is assembled by asking the vault the same question immediately
         afterwards. What the model reads and what a later session can recall are then the same
         text, instead of a summary of pages nobody kept.
         """
         v, q = self.vault, str(query)
         r = v.web(q, n=5)
-        self.connect()            # the graph is what `related` walks; rebuild after the batch, off the turn
+        self.connect()            # the graph is what `related` walks. Rebuild after the batch, off the turn
         c = v.context(q, sections=MEM_SECTIONS, related=4)
         head = f'searched the web for {q!r}; filed {len(r.added)} of {r.n_found} sources in the vault'
         return '\n\n'.join([head] + [f"## {s['breadcrumb']}\n\n{s['text']}" for s in c.results])
@@ -271,7 +246,7 @@ class VaultHost(LocalHost):
         `mk_chat` lends the session's chat factory so the vault does not load a second engine
         from `$VISHALAKSHI_MODEL`. `pii` is stripped: a tool argument must not be able to send
         retrieved private sections to a hosted API. `instruction` is what a second turn carries,
-        and it travels as itself rather than as `sp`; the comment below says why.
+        and it travels as itself rather than as `sp`. The comment below says why.
         """
         kw.pop('pii', None)
         if self.mk_chat is not None: kw.setdefault('mk_chat', self.mk_chat)
@@ -281,7 +256,7 @@ class VaultHost(LocalHost):
     @property
     def research_note(self): return f'fossick, filed in {Path(self.vault.path).name}'
 
-    # -- standing interests --------------------------------------------------
+
     def remember(self, text, title=None, tags=()):
         return self.vault.note(str(text), title=title, tags=list(tags or []))
 
@@ -297,7 +272,7 @@ class VaultHost(LocalHost):
         """Fire everything due. `connect=False`: the graph rebuild is the expensive part.
 
         `Vault.poll` rebuilds the entity graph when anything succeeded, which reads the whole
-        store -- right for a nightly cron, wrong for a tool call the user is waiting on. So
+        store. Right for a nightly cron, wrong for a tool call the user is waiting on. So
         the tick returns as soon as the watches have run, and the rebuild it earned goes to
         `connect`, which is a background thread and coalesces with `research`'s.
         """
@@ -309,4 +284,3 @@ class VaultHost(LocalHost):
     def watch_actions(self):
         from vishalakshi.acquire import ACTIONS
         return ACTIONS
-

@@ -193,7 +193,7 @@ class GitGateway:
             if not FOREIGN_LOCK.search(p.stderr or ''): break
             time.sleep(LOCK_BACKOFF * 2 ** attempt)
         if check and p.returncode:
-            # Both streams: git diagnoses on stderr and names the files on stdout. stderr leads.
+            # Both streams: git diagnoses on stderr and names the files on stdout. Stderr leads.
             message = '\n'.join(x for x in ((p.stderr or '').strip(), (p.stdout or '').strip())
                                 if x) or f'git exited {p.returncode}'
             if FOREIGN_LOCK.search(message):
@@ -223,7 +223,7 @@ class GitGateway:
             tmp.replace(path)
         except OSError: pass
     def safepoint(self, root, op):
-        "Where the repository is, without touching it -- None when no snapshot can be taken."
+        "Where the repository is, without touching it. None when no snapshot can be taken."
         head = self.run(root, 'rev-parse', 'HEAD', check=False)
         head = head.stdout.strip() if not head.returncode else ''
         if not head: return None
@@ -291,7 +291,7 @@ def _run(cwd, *args, check=True, input=None, timeout=30, kind=None):
     return gateway().run(cwd, *args, check=check, input=input, timeout=timeout, kind=kind)
 
 def _conflict_blocks(text):
-    "Marker spans with their ours/theirs payload; malformed markers remain ordinary text."
+    "Marker spans with their ours/theirs payload. Malformed markers remain ordinary text."
     out, pos = [], 0
     while True:
         start = text.find('<<<<<<< ', pos)
@@ -371,7 +371,7 @@ def _remote_web_url(raw):
     return ''
 
 def _track_counts(track):
-    "`[ahead 2, behind 1]` as `(2, 1)`, so a branch row can say how far each way it has run."
+    "`[ahead 2, behind 1]` as `(2, 1)`. A branch row can say how far each way it has run."
     counts = dict(re.findall(r'(ahead|behind) (\d+)', track or ''))
     return int(counts.get('ahead', 0)), int(counts.get('behind', 0))
 
@@ -463,7 +463,7 @@ class GitRepo:
             _invalidate(self.root)
     AUTOSTASH_REF = 'refs/leela/autostash'
     def _set_aside(self, op):
-        "Snapshot the dirty tree and clear it, returning the commit -- or `''` if it was clean."
+        "Snapshot the dirty tree and clear it, returning the commit. Or `''` if it was clean."
         if not self._blocking_changes(): return ''
         created = self._ask('stash', 'create')
         if not created: return ''
@@ -471,7 +471,7 @@ class GitRepo:
         _run(self.root, 'reset', '--hard', check=False)
         return created
     def _bring_back(self, oid):
-        "Reapply a set-aside tree; returns a note when it would not go back on cleanly."
+        "Reapply a set-aside tree. Returns a note when it would not go back on cleanly."
         applied = _run(self.root, 'stash', 'apply', '--index', oid, check=False)
         if applied.returncode:
             _run(self.root, 'reset', '--hard', check=False)
@@ -513,7 +513,7 @@ class GitRepo:
                 raise failure
             return self._outcome(op, point, message, note, bool(aside))
     def _outcome(self, op, point, message='', note='', set_aside=False):
-        "What one mutation left the repository as -- the response every mutation returns."
+        "What one mutation left the repository as. The response every mutation returns."
         changes = self._changes_uncached()
         after = self._ask('rev-parse', '--short', 'HEAD')
         out = {
@@ -1347,7 +1347,7 @@ def _replay(self: GitRepo, onto, commits):
     for n, row in enumerate(commits):
         tree, files, clashed = self._merge_tree(head, row['oid'], self._ask('rev-parse', f'{row["oid"]}^'))
         if clashed: return {'oid': row['short'], 'subject': row['subject']}, n, files
-        # Each result wrapped back into a commit, so the next step replays onto what the last left.
+        # Each result wrapped back into a commit. The next step replays onto what the last left.
         head = _run(self.root, '-c', 'user.name=leela', '-c', 'user.email=leela@localhost',
                     'commit-tree', tree, '-p', head, '-m', row['subject']).stdout.strip() or head
     return None, len(commits), []

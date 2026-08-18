@@ -3,14 +3,9 @@ grocery run it was written for.
 
 ## A cart, as an interface
 
-`Host` is the harness's one dependency on the world, and a shopping session does not belong in
-it: an agent editing a repo has no business holding a trolley, and most hosts have no browser to
-hold one with. So a cart is an *extension* -- registered through `Registry.tool`, dropped into a
-config directory, absent unless someone asked for it.
+`Host` is the harness's one dependency on the world, and a shopping session does not belong in it: an agent editing a repo has no business holding a trolley, and most hosts have no browser to hold one with. A cart is an *extension*. Registered through `Registry.tool`, dropped into a config directory, absent unless someone asked for it.
 
-`Cart` is the interface, for the same reason `Host` is one. `FossickCart` drives a real
-logged-in Chrome. `FakeCart` is an in-memory double, which is what the tests and the worked
-example below run against -- filling a real trolley is not something a doc build should do.
+`Cart` is the interface, for the same reason `Host` is one. `FossickCart` drives a real logged-in Chrome. `FakeCart` is an in-memory double, which is what the tests and the worked example below run against. Filling a real trolley is not something a doc build should do.
 
 ## The real one
 
@@ -42,7 +37,7 @@ from .core import AgentError, agent_err
 from .tools import clip, err
 
 # %% ../nbs/08_shop.ipynb #aa16daf7
-MAX_PRODUCTS = 24        # products listed back per search; a supermarket page holds far more
+MAX_PRODUCTS = 24        # products listed back per search. A supermarket page holds far more
 SHOP_PORT = 9223         # fossick's persistent debug Chrome
 SHOP_TOUT = 180
 
@@ -56,7 +51,7 @@ class Cart:
     """One shopping session: find things, put them in, read the trolley back.
 
     Every method may raise, and the tools in `cart_tools` catch and report rather than let an
-    exception end a turn -- the same contract `Host` has. The trolley is the source of truth:
+    exception end a turn. The same contract `Host` has. The trolley is the source of truth:
     `add` is expected to *verify* that the cart moved rather than trust that a click worked,
     because an agent that believes it bought milk is worse than one that says it is not sure.
     """
@@ -66,7 +61,7 @@ class Cart:
         raise NotImplementedError
 
     def find(self, query, limit=MAX_PRODUCTS):
-        "Search the current store. Returns `[{i, title, price, url}]`; `i` is what `add` takes."
+        "Search the current store. Returns `[{i, title, price, url}]`. `i` is what `add` takes."
         raise NotImplementedError
 
     def add(self, item, qty=1, variant=None):
@@ -88,7 +83,7 @@ class Cart:
 
 # %% ../nbs/08_shop.ipynb #c5569e86
 class FossickCart(Cart):
-    "Real Chrome trolley via `fossick.shop`; session opens on first use and is reused."
+    "Real Chrome trolley via `fossick.shop`. Session opens on first use and is reused."
 
     def __init__(self, port=SHOP_PORT, tout=SHOP_TOUT, headless=None):
         store_attr()
@@ -161,10 +156,10 @@ class FakeCart(Cart):
         return self._found
 
     def _match(self, want):
-        """Index against the last search; a title against the whole store.
+        """Index against the last search. A title against the whole store.
 
-        The real one re-reads the products on the page for every add, so a title that is not in
-        the last search still resolves as long as the store stocks it -- which is what lets an
+        The real one re-reads the products on the page for every add. A title that is not in
+        the last search still resolves as long as the store stocks it. Which is what lets an
         agent add by the exact title it just read back. An index cannot work that way: it only
         means anything relative to the search that produced it.
         """
@@ -219,9 +214,9 @@ def cart_tools(cart):
         except Exception as e: return err(f'could not open {url}', e)
 
     def cart_find(query: str, limit: int = 10) -> str:
-        """Search the store you are on. Returns numbered products; the number is what `cart_add` takes.
+        """Search the store you are on. Returns numbered products. The number is what `cart_add` takes.
 
-        Search one item at a time and read the titles back before adding -- supermarket search
+        Search one item at a time and read the titles back before adding. Supermarket search
         is fuzzy, and 'milk' matches oat milk, condensed milk and a milk frother.
         """
         try:
@@ -234,8 +229,7 @@ def cart_tools(cart):
         """Put a product in the trolley. `item` is a number from `cart_find`, or an exact title.
 
         The result says whether the trolley actually moved. `ok=false` means it did not and the
-        item is NOT in the cart; `ok=null` means the site gave no signal to check against, so
-        confirm with `cart_show` before telling the user it is done.
+        item is NOT in the cart. `ok=null` means the site gave no signal to check against. Confirm with `cart_show` before telling the user it is done.
         """
         try:
             r = cart.add(item, qty=int(qty), variant=variant or None)

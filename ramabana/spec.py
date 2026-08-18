@@ -17,7 +17,6 @@ from fastcore.meta import delegates
 from .core import AgentError, agent_err
 from .tools import LocalHost
 
-
 # %% ../nbs/10_spec.ipynb #spec06
 MAX_OPS = 400          # a spec larger than this is a catalogue, not a working surface
 class SpecError(AgentError): "A specification could not be read, or an operation could not be called."
@@ -80,9 +79,9 @@ def load_spec(src, timeout=30):
 
 def norm_paths(spec):
     """`spec` with `x-ms-paths` folded into `paths`.
-    Swagger 2.0 cannot express two operations that differ only by query string, so Azure puts
+    Swagger 2.0 cannot express two operations that differ only by query string. Azure puts
     those under `x-ms-paths` instead. Azure Blob Storage declares sixty of them and leaves `paths`
-    empty, which read as a spec with no operations at all -- the whole of Azure's data plane
+    empty, which read as a spec with no operations at all. The whole of Azure's data plane
     looked like an empty document. `paths` wins a collision, being the standard key.
     """
     extra = spec.get('x-ms-paths') or {}
@@ -122,14 +121,13 @@ def parse_ops(spec):
                   for op in parsed.ops]
     return parsed
 
-
 # %% ../nbs/10_spec.ipynb #spec07
 class SpecHost(LocalHost):
     "`LocalHost` plus named API specs (OpenAPI / Discovery / GraphQL) loaded on demand."
 
     @property
     def capabilities(self):
-        "Advertise `api`; never probe — that needs a loaded spec."
+        "Advertise `api`. Never probe — that needs a loaded spec."
         return {**super().capabilities, 'api': True}
 
     @delegates(LocalHost.__init__)
@@ -180,7 +178,7 @@ class SpecHost(LocalHost):
         return name, self.specs[name]
 
     def _page(self, rows, limit=None, offset=0):
-        "One page of `rows`. `limit=0` is every one; `None` takes the host's own default."
+        "One page of `rows`. `limit=0` is every one. `None` takes the host's own default."
         n = self.max_ops if limit is None else limit
         offset = max(0, int(offset or 0))
         return rows[offset:] if not n else rows[offset:offset + int(n)]
@@ -200,7 +198,7 @@ class SpecHost(LocalHost):
         return len(self.api_ops(group=group, name=name, match=match, limit=0))
 
     def api_creds(self, name, headers=None):
-        "Set what is sent with calls to one spec and nothing else; `headers=None` clears it."
+        "Set what is sent with calls to one spec and nothing else. `headers=None` clears it."
         if headers: self._creds[str(name)] = dict(headers)
         else: self._creds.pop(str(name), None)
         self._clients.pop(str(name), None)   # a built client captured the old headers
@@ -240,7 +238,6 @@ def _in_groups(client, operation):
         except Exception: continue
         if callable(fn): return fn
 
-
 # %% ../nbs/10_spec.ipynb #c3179865
 def _head(s):
     "A heading: no underscores, first character uppercase."
@@ -278,4 +275,3 @@ def spec_markdown(host, name=''):
         out += [f"## {_head(group) or 'Operations'}", '']
         out += [op_markdown(r) for r in rows if r.get('group') == group]
     return title, '\n'.join(out)
-

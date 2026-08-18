@@ -28,10 +28,9 @@ from fastcore.foundation import L
 from fastcore.parallel import parallel, startthread
 from .core import AgentError, agent_err, spec_caps
 
-
 # %% ../nbs/02_tools.ipynb #561c4516
-MAX_GREP_HITS = 60  # exact matches one `grep` returns; part of the Host contract
-MAX_API = 200       # public names one `public_api` listing returns; part of the same contract
+MAX_GREP_HITS = 60  # exact matches one `grep` returns. Part of the Host contract
+MAX_API = 200       # public names one `public_api` listing returns. Part of the same contract
 
 class Hit(AttrDict):
     "One `Host.search` hit: path, line, symbol, text."
@@ -39,12 +38,11 @@ class Hit(AttrDict):
         super().__init__(path=path, line=line, symbol=symbol, text=text)
     def __repr__(self): return f'{self.path}:{self.line}  {self.symbol}  {self.text}'
 
-
 # %% ../nbs/02_tools.ipynb #4c397f68
 class Host:
-    "The application under an agent. Every method may raise; absent ones raise `NotImplementedError`."
+    "The application under an agent. Every method may raise. Absent ones raise `NotImplementedError`."
 
-    # -- where it is allowed to be -------------------------------------------
+
     @property
     def roots(self):
         "The open folders, as absolute paths. The agent is told about these and confined to them."
@@ -54,7 +52,7 @@ class Host:
         """The single chokepoint: resolve `path`, refuse anything outside `roots`, return a `Path`.
 
         `reading=True` says the caller will only *read* what comes back, and it is the one case a
-        host may answer for a path outside `roots` -- see `LocalHost(read_outside=)`.
+        host may answer for a path outside `roots`. See `LocalHost(read_outside=)`.
         """
         raise NotImplementedError
 
@@ -74,13 +72,13 @@ class Host:
         "One file as a single diffable document, `''` when it does not exist yet, None on error."
         raise NotImplementedError
 
-    # -- seeing the code -----------------------------------------------------
+
     def search(self, query, limit=20):
         "Search the code index for `query`, returning `Hit`s. Semantic if an index exists, literal if not."
         raise NotImplementedError
 
     def peers(self, path, line, limit=20):
-        "Code shaped like whatever is defined at `path`:`line` -- every place a pattern was already used."
+        "Code shaped like whatever is defined at `path`:`line`. Every place a pattern was already used."
         raise NotImplementedError
 
     def symbols(self, path):
@@ -105,13 +103,13 @@ class Host:
         "Which engine answered, and anything it wants to say about why. Shown when a search finds nothing."
         return ''
 
-    # -- reading the web -----------------------------------------------------
+
     def web_search(self, query, n=20):
-        "Search the web; returns objects with `.title` and `.url`."
+        "Search the web. Returns objects with `.title` and `.url`."
         raise NotImplementedError
 
     def read_url(self, url, remember=True):
-        "One page as markdown; `remember=False` keeps sensitive/low-quality results ephemeral."
+        "One page as markdown. `remember=False` keeps sensitive/low-quality results ephemeral."
         raise NotImplementedError
 
     def research(self, query):
@@ -121,13 +119,13 @@ class Host:
     @property
     def research_note(self): return ''
 
-    # -- durable research memory --------------------------------------------
+
     def memory_search(self, query, limit=8):
         "Search remembered pages as whole tree sections, returning structured rows."
         raise NotImplementedError
 
     def memory_tree(self, document=''):
-        "The heading tree for remembered documents; an empty document lists every root."
+        "The heading tree for remembered documents. An empty document lists every root."
         raise NotImplementedError
 
     def memory_read(self, node_id):
@@ -146,7 +144,7 @@ class Host:
         "Answer `question` out of remembered research, with citations, as a dict."
         raise NotImplementedError
 
-    # -- standing interests --------------------------------------------------
+
     # What the agent arranged to read *later*: a watch is a job the host re-runs on an
     # interval, `poll` is the tick, and a reminder is a watch that files its own text.
     def remember(self, text, title=None, tags=()):
@@ -174,7 +172,7 @@ class Host:
         "The `action` values this host's `watch` will accept."
         return ('remind',)
 
-    # -- notebooks -----------------------------------------------------------
+
     # No notebook representation here: exhash addresses cells by path and id without one,
     # so only the two operations that need to know what a notebook *is* are delegated.
     def nb_cells(self, path):
@@ -185,7 +183,7 @@ class Host:
         "Insert a cell (-1 appends), creating the notebook if needed. Returns the new cell's id."
         raise NotImplementedError
 
-    # -- the live session ----------------------------------------------------
+
     def run_python(self, code):
         """Run `code` in the user's live namespace under whatever restrictions the host imposes.
 
@@ -200,12 +198,12 @@ class Host:
         Two scopes, both protecting the owner's variables, by different means:
 
         - `'isolated'` runs in an allowlist sandbox on a *copy*. Attribute reads and builtins
-          work; most library method calls are refused. The default, and it needs no trust.
+          work. Most library method calls are refused. The default, and it needs no trust.
         - `'overlay'` runs the real interpreter against the real namespace under an AST policy:
           read anything, bind names in the agent's own layer, never delete, rebind or mutate
-          the owner's. `list(df.columns)` works here; in the sandbox it does not.
+          the owner's. `list(df.columns)` works here. In the sandbox it does not.
 
-        A host may refuse `'overlay'` -- see `scopes`.
+        A host may refuse `'overlay'`. See `scopes`.
         """
         raise NotImplementedError
 
@@ -216,7 +214,7 @@ class Host:
 
     @property
     def kernel_kind(self):
-        "What runs the live namespace. `'ipymini'` inspects while a cell is busy; anything else queues."
+        "What runs the live namespace. `'ipymini'` inspects while a cell is busy. Anything else queues."
         return 'ipykernel'
 
     @property
@@ -230,7 +228,7 @@ class Host:
         "What the IDE's terminal has printed. Read-only: this shows what the user ran, it cannot run anything."
         raise NotImplementedError
 
-    # -- running a command ---------------------------------------------------
+
     def run_cmd(self, command, cwd=None, timeout=120):
         """Run `command` in a shell and return `(exit_code, combined_output)`.
 
@@ -251,30 +249,30 @@ class Host:
         "How commands are run here (the interpreter, the default directory), or why they are not."
         return ''
 
-    # -- what this host can do -----------------------------------------------
+
     @property
     def capabilities(self):
         """Which tool groups this host supports, for the ones it can answer without proving it.
 
-        `{group: bool}` for the groups this host *knows* its answer to; anything absent is
+        `{group: bool}` for the groups this host *knows* its answer to. Anything absent is
         probed with a harmless call instead. The names are the tool group functions:
         `notebook`, `web`, `memory`, `watch`, `session`, `shell`.
         """
         return {}
 
-    # -- the person ----------------------------------------------------------
+
     @property
     def approvals(self):
         "The `Approvals` this host uses to put a write in front of a person, or None to approve everything."
         return None
 
     def note(self, text):
-        "Tell the user something out of band (a status line). Never blocks; a host may drop it."
+        "Tell the user something out of band (a status line). Never blocks. A host may drop it."
         pass
 
 # %% ../nbs/02_tools.ipynb #2760c808
 class NullHost(Host):
-    "A host with nothing behind it: every capability absent, so the harness runs bare in a test."
+    "A host with nothing behind it: every capability absent. The harness runs bare in a test."
 
     def __init__(self, roots=()): self._roots = [str(r) for r in roots]
 
@@ -328,9 +326,9 @@ SKIP_DIRS = frozenset({'.git', '.hg', '.svn', '__pycache__', '.venv', 'venv', 'n
 SKIP_SUFFIXES = frozenset({'.pyc', '.pyo', '.so', '.dylib', '.dll', '.a', '.o', '.zip', '.gz',
                            '.whl', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.parquet',
                            '.sqlite', '.db', '.bin', '.safetensors', '.gguf'})
-MAX_FILE = 2_000_000      # bytes; a file larger than this is data, not source
+MAX_FILE = 2_000_000      # bytes. A file larger than this is data, not source
 MAX_VARS = 200
-LD_CHARS = 4000           # of a page's JSON-LD to keep; enough for a product, not a catalogue
+LD_CHARS = 4000           # of a page's JSON-LD to keep. Enough for a product, not a catalogue
 
 _LD = re.compile(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>', re.S | re.I)
 
@@ -351,7 +349,7 @@ def _md_doc(d):
     return '\n'.join(head + [''] + [body]).strip() if head else body.strip()
 
 def _fuse(legs, limit):
-    "Merge ranked `Hit` lists with `litesearch.rrf_all`; identity is `path:line`."
+    "Merge ranked `Hit` lists with `litesearch.rrf_all`. Identity is `path:line`."
     legs = [list(l) for l in legs if l]
     if not legs: return []
     if len(legs) == 1: return legs[0][:limit]
@@ -369,7 +367,7 @@ def _fuse(legs, limit):
     return [by_key[r['_fid']] for r in fused if r.get('_fid') in by_key]
 
 def ld_json(html):
-    "The `schema.org` JSON-LD blocks in `html` -- where a page states its price, author or rating."
+    "The `schema.org` JSON-LD blocks in `html`. Where a page states its price, author or rating."
     out = []
     for m in _LD.finditer(html or ''):
         try: out.append(json.loads(m.group(1)))
@@ -381,13 +379,13 @@ class LocalHost(Host):
 
     def __init__(self,
                  roots=('.',),          # the folders the agent is confined to
-                 ns=None,               # the live namespace; a fresh dict when None
+                 ns=None,               # the live namespace. A fresh dict when None
                  approvals=None,        # an `Approvals`, or None to gate nothing
                  note=None,             # callable for out-of-band status lines
                  web=True,              # wire the web tools to fossick when it is installed
                  index=True,            # start a Kosha sync for every open root
                  rerank=True,           # reorder Kosha's hits with its flashrank cross-encoder
-                 rerank_model=None,     # flashrank model name; None is its fast default
+                 rerank_model=None,     # flashrank model name. None is its fast default
                  read_outside=False,    # let read-only tools name any path on this machine
                  deny=DENY):            # what `read_outside` still refuses to open
         self._roots = [str(Path(r).expanduser().resolve()) for r in roots]
@@ -401,8 +399,8 @@ class LocalHost(Host):
         if index: self.sync_index()
 
     def sync_index(self, wait=False, force=False, graph=True):
-        "Run `Kosha.sync` for every open root, once, in a daemon thread; each root publishes as it returns."
-        # `_semantic` queries `Kosha.context(graph=True)`, so an ordinary sync has to build one
+        "Run `Kosha.sync` for every open root, once, in a daemon thread. Each root publishes as it returns."
+        # `_semantic` queries `Kosha.context(graph=True)`. An ordinary sync has to build one
         if self._index_thread is None or not self._index_thread.is_alive():
             def run():
                 try:
@@ -443,7 +441,7 @@ class LocalHost(Host):
     def roots(self): return list(self._roots)
 
     def check(self, path, must_exist=False, reading=False):
-        "Resolve `path`; refuse outside `roots` (unless `read_outside` and `reading`). Walks stay confined."
+        "Resolve `path`. Refuse outside `roots` (unless `read_outside` and `reading`). Walks stay confined."
         p = Path(path).expanduser()
         if not self._roots: raise AgentError(f'{NO_ROOTS}: {p}')  # empty roots must refuse, not IndexError
         if not p.is_absolute(): p = Path(self._roots[0])/p
@@ -509,7 +507,7 @@ class LocalHost(Host):
         try: return p.read_text(encoding='utf-8')
         except Exception: return None
 
-    # -- seeing the code -----------------------------------------------------
+
     def _rg(self, query, limit, regex=False, ignore_case=False, path_filter='', per_file=5, every_file=False):
         "Search through `rgapi.rg`. `every_file=True` matches what `walk` yields, hidden files included."
         try: from rgapi import rg
@@ -541,7 +539,7 @@ class LocalHost(Host):
         return hits
 
     def grep(self, pattern, path_filter='', regex=True, ignore_case=False, limit=MAX_GREP_HITS):
-        "Exact matching through ripgrep. None when `rgapi` is unavailable; the tool then reads files itself."
+        "Exact matching through ripgrep. None when `rgapi` is unavailable. The tool then reads files itself."
         return self._rg(pattern, limit, regex=regex, ignore_case=ignore_case,
                         path_filter=path_filter, per_file=None, every_file=True)
 
@@ -549,7 +547,7 @@ class LocalHost(Host):
         "One Kosha context call, reordered by its cross-encoder when reranking is on and working."
         if self.rerank:
             try: return call(rerank=True, rerank_model=self.rerank_model, **kw)
-            except Exception as e:   # flashrank fetches its model on first use; fall back once
+            except Exception as e:   # flashrank fetches its model on first use. Fall back once
                 self.rerank = False
                 self._rerank_note = f'; reranking off ({agent_err(e)})'
         return call(**kw)
@@ -600,7 +598,7 @@ class LocalHost(Host):
         if not (query or '').strip(): return []
         rg = self._rg(query, limit)
         if (hits := _fuse([self._semantic(query, limit), rg or []], limit)): return hits
-        # `_rg` is None when rgapi is unavailable; `[]` when it ran and found nothing.
+        # `_rg` is None when rgapi is unavailable. `[]` when it ran and found nothing.
         return [] if rg is not None else self._scan(query, limit)
 
     @property
@@ -667,7 +665,7 @@ class LocalHost(Host):
         return [h for h in self.search(leaf, limit * 2)
                 if not (str(h.path) == str(p) and h.line == int(line))][:limit]
 
-    # -- notebooks -----------------------------------------------------------
+
     def nb_cells(self, path):
         from fastcore.nbio import read_nb
         nb = read_nb(self.check(path, must_exist=True, reading=True))
@@ -684,7 +682,7 @@ class LocalHost(Host):
         write_nb(nb, p)
         return cell['id']
 
-    # -- the live session ----------------------------------------------------
+
     def _exec(self, code, ns):
         "Run `code` in `ns`, returning printed output plus the last expression's value."
         import contextlib, io
@@ -704,7 +702,7 @@ class LocalHost(Host):
         except Exception as e: return f'{agent_err(e)}'
 
     def inspect_python(self, code, scope='isolated'):
-        "Run `code` against a *copy* of the namespace, so nothing the user made can move."
+        "Run `code` against a *copy* of the namespace. Nothing the user made can move."
         if scope not in self.scopes: return f'this host only honours {self.scopes}'
         try: return self._exec(code, dict(self.ns))
         except Exception as e: return f'{agent_err(e)}'
@@ -717,12 +715,12 @@ class LocalHost(Host):
     @property
     def kernel_kind(self): return 'inprocess'
 
-    # -- running a command ---------------------------------------------------
+
     def run_cmd(self, command, cwd=None, timeout=120):
         """Run `command` in a shell under one of the open folders.
 
-        Started in its own process group, and the *group* is killed on timeout, so a command
-        that spawns children cannot leave one behind. stdout and stderr are interleaved.
+        Started in its own process group, and the *group* is killed on timeout. A command
+        that spawns children cannot leave one behind. Stdout and stderr are interleaved.
         """
         import subprocess
         if not str(command or '').strip(): return 0, ''   # the capability probe
@@ -758,7 +756,7 @@ class LocalHost(Host):
         "What this process has printed, when the application records it in `transcript`."
         return '\n'.join(str(x) for x in self.transcript[-int(lines):])
 
-    # -- the web -------------------------------------------------------------
+
     def _fossick(self):
         if not self.web: raise NotImplementedError
         try:
@@ -770,7 +768,7 @@ class LocalHost(Host):
         "Search the web through fossick. An empty query answers `[]`: that is how `tools_for` probes."
         fossick = self._fossick()
         if not str(query).strip(): return []
-        rows = fossick.search(str(query), n=int(n))   # `n` to fossick; its own default is 10
+        rows = fossick.search(str(query), n=int(n))   # `n` to fossick. Its own default is 10
         return [AttrDict(title=str(r.get('title', '')), url=str(r.get('href') or r.get('url', ''))) for r in rows]
 
     #: Below this many extracted chars, treat a 200 as an empty shell and escalate past fossick `auto`.
@@ -814,7 +812,7 @@ class LocalHost(Host):
     @property
     def research_note(self): return 'fossick' if self.web else 'web access is switched off'
 
-    # -- the person ----------------------------------------------------------
+
     @property
     def approvals(self): return self._approvals
 
@@ -823,7 +821,6 @@ class LocalHost(Host):
         if self._note:
             try: self._note(str(text))
             except Exception: pass
-
 
 # %% ../nbs/02_tools.ipynb #7fe5525c
 GROUP,EXTRA_MODULES,MAX_SKILL_CHARS = 'pyskills',('exhash.skill',),20_000
@@ -888,7 +885,7 @@ def _pyskills():
     return out
 
 def skill_dirs(roots=(), cfg=None):
-    "Where SKILL.md files are looked for, in increasing precedence: user first, so a project can override."
+    "Where SKILL.md files are looked for, in increasing precedence: user first. A project can override."
     from pathlib import Path
     ds = []
     if cfg is not None: ds.append(Path(cfg)/'skills')
@@ -915,7 +912,7 @@ def _md_skills(d):
     return out
 
 def discover(roots=(), cfg=None, extra=()):
-    "Every skill available to this agent -- pyskills, then `skill_dirs`, then `extra` -- later winning."
+    "Every skill available to this agent. Pyskills, then `skill_dirs`, then `extra`. Later winning."
     by_name = {}
     for s in _pyskills(): by_name[s.name] = s
     for d in skill_dirs(roots, cfg):
@@ -924,7 +921,7 @@ def discover(roots=(), cfg=None, extra=()):
     return sorted(by_name.values(), key=lambda s: s.name)
 
 # %% ../nbs/02_tools.ipynb #bfaf4907
-SKILL_DESC_MAX = 160   # per skill, so one verbose description cannot crowd out the rest
+SKILL_DESC_MAX = 160   # per skill. One verbose description cannot crowd out the rest
 
 def _clip_desc(s, n=SKILL_DESC_MAX):
     "One line, clipped at a word boundary: in the index a description only has to be pickable."
@@ -965,14 +962,14 @@ class Registry:
         self.approve = None
         self.notes = []          # one line per extension: loaded, or why not
 
-    # -- registration --------------------------------------------------------
+
     def tool(self, f):
         "Add a tool, as a decorator: a plain function with type hints and the docstring the model reads."
         self.tools.append(f)
         return f
 
     def skill(self, name, text, description=''):
-        "Add a skill the discovery pass would not find -- a file, a string, anything callable."
+        "Add a skill the discovery pass would not find. A file, a string, anything callable."
         s = Skill(name=name, source='ext', description=description or _describe(text if isinstance(text, str) else ''),
                   where='extension', _text=text)
         self.skills.append(s)
@@ -994,7 +991,7 @@ class Registry:
         self.approve = fn
         return fn
 
-    # -- dispatch ------------------------------------------------------------
+
     def fire(self, event, *args, **kw):
         "Run every hook for `event`, swallowing failures. Returns how many ran cleanly."
         n = 0
@@ -1014,7 +1011,7 @@ def ext_dirs(roots=(), cfg=None, project=False):
 
 
 def load(reg, roots=(), cfg=None, project=False, paths=()):
-    "Run every extension found, calling its `setup(reg)`; a file with no `setup` is left alone."
+    "Run every extension found, calling its `setup(reg)`. A file with no `setup` is left alone."
     files = []
     for d in ext_dirs(roots, cfg, project):
         if Path(d).is_dir(): files += sorted(p for p in Path(d).glob('*.py') if not p.name.startswith('_'))
@@ -1040,20 +1037,20 @@ def load(reg, roots=(), cfg=None, project=False, paths=()):
     return reg
 
 # %% ../nbs/02_tools.ipynb #faa16c87
-MAX_TOOL_CHARS = 6000   # chars per tool result, budgeted for the smallest model; see `Agent(tool_max_len=)`
+MAX_TOOL_CHARS = 6000   # chars per tool result, budgeted for the smallest model. See `Agent(tool_max_len=)`
 MAX_HITS = 20
 
-# Rehearsing a merge is not approving one, so the git tools split before `WRITE_TOOLS` uses them.
+# Rehearsing a merge is not approving one. The git tools split before `WRITE_TOOLS` uses them.
 GIT_READ_TOOLS = ('git_status', 'git_divergence', 'git_rebase_preview')
 GIT_WRITE_TOOLS = frozenset({'git_remote', 'git_checkout'})
 GIT_TOOLS = (*GIT_READ_TOOLS, *sorted(GIT_WRITE_TOOLS))
 
-# The tools that change something on disk, in the live session, or on the machine -- see `Approvals`.
+# The tools that change something on disk, in the live session, or on the machine. See `Approvals`.
 WRITE_TOOLS = frozenset({'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell',
                          'run_python', 'run_shell', 'memory_forget', 'create_skill',
                          'cancel_watch', 'cart_add', 'cart_remove'}) | GIT_WRITE_TOOLS
 
-# Every tool failure starts with this: no engine carries an `is_error` flag, so the flag is in the text.
+# Every tool failure starts with this: no engine carries an `is_error` flag. The flag is in the text.
 ERR = 'ERROR: '
 
 
@@ -1068,7 +1065,7 @@ def failed(result):
 
 
 def clip(s, n=MAX_TOOL_CHARS, more=''):
-    "Truncate a tool result to `n` chars; a caller with a way to resume passes it as `more`."
+    "Truncate a tool result to `n` chars. A caller with a way to resume passes it as `more`."
     s = str(s)
     if len(s) <= n: return s
     cut = s[:n]
@@ -1082,7 +1079,7 @@ def clip_lines(lines, start=1, n=MAX_TOOL_CHARS, more='', empty='(nothing)'):
     """Render `lines` within the budget, and say which line to resume from.
 
     One line longer than the whole budget is cut by characters instead, and the notice says
-    characters, so the model is not invited to resume at the same too-long line.
+    characters. The model is not invited to resume at the same too-long line.
     """
     lines = list(lines)
     if not lines: return empty
@@ -1122,7 +1119,7 @@ def _takes_reading(cls):
 
 
 def readable(host, path, must_exist=False):
-    "Resolve a path a tool is only going to read; a host that predates the `reading` flag never sees it."
+    "Resolve a path a tool is only going to read. A host that predates the `reading` flag never sees it."
     if _takes_reading(type(host)): return host.check(path, must_exist=must_exist, reading=True)
     return host.check(path, must_exist=must_exist)
 
@@ -1184,7 +1181,7 @@ def code_tools(host, mx=MAX_TOOL_CHARS):
         return clip(f'[{host.search_note}]\n' + '\n'.join(rows), mx)
 
     def similar_code(path: str, line: int = 1) -> str:
-        "Find code shaped like the function at `path`:`line` -- every place a pattern was already used."
+        "Find code shaped like the function at `path`:`line`. Every place a pattern was already used."
         hits = host.peers(str(readable(host, path)), int(line), limit=MAX_HITS)
         if not hits: return f'nothing similar ({host.search_note})'
         return clip('\n'.join(f'{h.path}:{h.line}  {h.symbol or ""}  {h.text}' for h in hits), mx)
@@ -1205,10 +1202,10 @@ def code_tools(host, mx=MAX_TOOL_CHARS):
         """Find every line in the open folders matching `pattern`, exactly.
 
         The literal counterpart to `search_code`, and not a replacement for it. Use
-        `search_code` for "how does this work" -- it is a semantic index and it covers
+        `search_code` for "how does this work". It is a semantic index and it covers
         installed packages. Use `grep` when you know the string: a symbol you are about to
         rename, an error message, an import, a call site you must not miss. An index answers
-        with what is *like* the query; this answers with what *is* the query, which is what
+        with what is *like* the query. This answers with what *is* the query, which is what
         a rename or an audit needs.
 
         `path_filter` is a substring of the path (`tests/`, `.py`). Set `regex=False` to
@@ -1249,7 +1246,7 @@ def code_tools(host, mx=MAX_TOOL_CHARS):
         """List one directory: its subdirectories, then its files with sizes.
 
         For finding your way around. `list_files` walks everything and `grep` reads
-        everything; this just says what is here, which is usually the cheaper question.
+        everything. This just says what is here, which is usually the cheaper question.
         Empty `path` lists each open folder.
         """
         roots = ([readable(host, path)] if str(path or '').strip()
@@ -1278,7 +1275,7 @@ def code_tools(host, mx=MAX_TOOL_CHARS):
         try: api = host.public_api(package)
         except Exception as e: return err(f'cannot list the API of {package}', e)
         if not api:
-            # the index answered, so this is not a missing index; say what it does not cover
+            # the index answered. This is not a missing index. Say what it does not cover
             return (f'nothing public indexed for {package!r}. The index covers installed packages and '
                     f'the open folders, not the stdlib')
         rows = [f'{h.symbol}  {h.path}:{h.line}  {h.text}' for h in api]
@@ -1344,7 +1341,7 @@ def file_tools(host, mx=MAX_TOOL_CHARS):
         """Read a file as `lineno|hash|content` lines. Optionally limit to lines `start`..`end`.
 
         Always read this way before editing: `edit_file` addresses lines by the exact
-        hashes this returns, so the view is also the address book.
+        hashes this returns. The view is also the address book.
         """
         from exhash import lnhashview_file
         p = readable(host, path)
@@ -1360,22 +1357,22 @@ def file_tools(host, mx=MAX_TOOL_CHARS):
           [{"oldText": "def old(a):", "newText": "def new(a, b):"},
            {"oldText": "return a", "newText": "return a + b"}]
 
-        Rules, all of them checked *before* anything is written, so a rejected edit leaves
+        Rules, all of them checked *before* anything is written. A rejected edit leaves
         the file exactly as it was:
 
         - Every `oldText` must appear **exactly once** in the file. If it appears twice,
-          include more surrounding lines until it is unique -- do not guess which one.
+          include more surrounding lines until it is unique. Do not guess which one.
         - Every `oldText` is matched against the file as it is **now**, not against the
           result of the earlier edits in the same call. Overlapping or nested spans are
-          refused; merge them into one edit instead.
+          refused. Merge them into one edit instead.
         - Keep `oldText` as short as it can be while still unique. Do not paste a whole
           function to change one line of it.
-        - An empty `oldText` is refused. To create a file use `create_file`; to append,
+        - An empty `oldText` is refused. To create a file use `create_file`. To append,
           include the last existing line in `oldText`.
 
         This and `edit_file` do the same job by different addresses: `edit_file` names
         lines by hash, which catches a stale read but costs a `view_file` before every
-        edit and again after each one. Prefer this for ordinary edits; prefer `edit_file`
+        edit and again after each one. Prefer this for ordinary edits. Prefer `edit_file`
         when you must be certain the line you are changing is the line you read.
         """
         p = host.check(path)
@@ -1400,7 +1397,7 @@ def file_tools(host, mx=MAX_TOOL_CHARS):
         from `view_file`, e.g.
           [["12|a1b2|", "s", "old text", "new text"],
            ["30|9f3c|", "a", "a new line appended after line 30"]]
-        Every address's hash is checked immediately before it runs, so an edit built on a
+        Every address's hash is checked immediately before it runs. An edit built on a
         stale view fails instead of damaging the wrong line. Nothing is written unless
         every command succeeds.
         """
@@ -1552,26 +1549,25 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
         if not media: return err('the model returned no image', 'the reply carried no picture')
         try: out = [save_media(m, session, 'generated') for m in media]
         except Exception as e: return err('could not save the image', e)
-        # the model is told the path; `on_media` is what puts the picture on the user's screen,
+        # the model is told the path. `on_media` is what puts the picture on the user's screen,
         # since a tool result is text and a frontend cannot draw a filename
         if on_media: on_media(out)
         return clip('\n'.join(str(p) for p in out))
 
     return [generate_image]
 
-
 # %% ../nbs/02_tools.ipynb #53642256
 def web_tools(host, mx=MAX_TOOL_CHARS):
     "The web, for the questions whose answer depends on current documentation."
 
     def web_search(query: str) -> str:
-        "Search the web. Returns titles and urls; follow up with `read_url` on the useful ones."
+        "Search the web. Returns titles and urls. Follow up with `read_url` on the useful ones."
         docs = host.web_search(query, n=MAX_HITS)
         if not docs: return f'no results ({host.research_note})'
         return clip('\n'.join(f'{d.title}\n  {d.url}' for d in docs))
 
     def read_url(url: str, remember: bool = True) -> str:
-        """Read one web page as markdown; a GitHub file, an arxiv paper or a YouTube
+        """Read one web page as markdown. A GitHub file, an arxiv paper or a YouTube
         transcript is read as what it is rather than as the page around it.
 
         It enters durable research memory by default. Pass `remember=False` for sensitive,
@@ -1581,7 +1577,7 @@ def web_tools(host, mx=MAX_TOOL_CHARS):
         return clip(d.text if d else f'could not read {url} ({host.research_note})')
 
     def research(query: str) -> str:
-        "Search the web and read the top results into one cited digest. Slower than `web_search`; use for depth."
+        "Search the web and read the top results into one cited digest. Slower than `web_search`. Use for depth."
         return clip(host.research(query) or f'nothing found ({host.research_note})')
 
     return [web_search, read_url, research]
@@ -1626,9 +1622,9 @@ def memory_tools(host, mx=MAX_TOOL_CHARS):
         trade `delegate_search` makes. `document` narrows it to one remembered document by title
         or id.
 
-        Some of what the vault holds is private -- a statement, a medical letter, an exported
+        Some of what the vault holds is private. A statement, a medical letter, an exported
         chat. Those are answered by a model on this machine that is instructed not to repeat any
-        personal detail to you, so what you get back is shape and quantity: how many, what kind,
+        personal detail to you. What you get back is shape and quantity: how many, what kind,
         which period, whether two things agree. It will tell you what it is holding and what
         instruction would let it answer usefully. Send that back as `instruction` and it gets
         another turn on the same material.
@@ -1651,14 +1647,13 @@ def memory_tools(host, mx=MAX_TOOL_CHARS):
     def memory_forget(doc_id: str) -> str:
         """Purge one bad, sensitive, stale or irrelevant remembered document by id.
 
-        This removes its tree, chunks and ANN entries. Use only when the user requests it;
-        do not silently curate their memory.
+        This removes its tree, chunks and ANN entries. Use only when the user requests it. Do not silently curate their memory.
         """
         try: return 'forgot document' if host.memory_forget(doc_id) else 'document was not forgotten'
         except Exception as e: return err('memory purge failed', e)
 
     tools = [memory_search, memory_tree, memory_read, memory_topics, memory_forget]
-    # `ask` is a model call rather than a lookup, so it is not part of the group
+    # `ask` is a model call rather than a lookup. It is not part of the group
     if _supports(host, 'ask'): tools.insert(4, ask_memory)
     return tools
 
@@ -1680,7 +1675,7 @@ def api_tools(host, mx=MAX_TOOL_CHARS):
 
         Narrow with `group` or `match` first: a real API has hundreds of operations, and
         reading all of them is not how you find the one you want. One page comes back at a
-        time; `api_load` says how many there are in total, and `offset` walks the rest.
+        time. `api_load` says how many there are in total, and `offset` walks the rest.
         """
         try:
             rows = host.api_ops(group, name, match, offset=offset)
@@ -1703,7 +1698,6 @@ def api_tools(host, mx=MAX_TOOL_CHARS):
 
     return [api_load, api_ops, api_call]
 
-
 # %% ../nbs/02_tools.ipynb #f91b907d
 def watch_tools(host, mx=MAX_TOOL_CHARS):
     "Standing interests: what to put back on the desk later, and what has come due now."
@@ -1711,7 +1705,7 @@ def watch_tools(host, mx=MAX_TOOL_CHARS):
     def remember(text: str, title: str = '', tags: str = '') -> str:
         """Write a conclusion into durable memory so a later session finds it.
 
-        For what you worked out, not for what you read -- `read_url` already files pages.
+        For what you worked out, not for what you read. `read_url` already files pages.
         `tags` is a comma-separated list.
         """
         try:
@@ -1723,7 +1717,7 @@ def watch_tools(host, mx=MAX_TOOL_CHARS):
     def set_reminder(text: str, every: str = '1w', note: str = '') -> str:
         """Come back to `text` every `every` ('30m', '6h', '1d', '1w').
 
-        The reminder files itself into memory when it comes due, so it surfaces in
+        The reminder files itself into memory when it comes due. It surfaces in
         `memory_search` and in `poll_watches` rather than needing a notification channel.
         """
         try:
@@ -1732,7 +1726,7 @@ def watch_tools(host, mx=MAX_TOOL_CHARS):
         except Exception as e: return err('could not set reminder', e)
 
     def watch_url(url: str, every: str = '1d', note: str = '') -> str:
-        "Re-read `url` every `every` and file each version in memory, so changes are visible over time."
+        "Re-read `url` every `every` and file each version in memory. Changes are visible over time."
         try:
             w = host.watch(url, action='url', every=every, note=note or None)
             return f"watching {url} as {w['id']}, every {every}"
@@ -1749,7 +1743,7 @@ def watch_tools(host, mx=MAX_TOOL_CHARS):
         except Exception as e: return err('could not list watches', e)
 
     def cancel_watch(watch_id: str) -> str:
-        "Delete one watch by id. Only when the user asks; do not silently curate their reminders."
+        "Delete one watch by id. Only when the user asks. Do not silently curate their reminders."
         try:
             host.unwatch(watch_id)
             return f'cancelled {watch_id}'
@@ -1781,8 +1775,8 @@ def session_tools(host, mx=MAX_TOOL_CHARS):
     def run_python(code: str) -> str:
         """Run Python in the user's live kernel namespace.
 
-        Read any variable freely; bind results to NEW names so they survive to the next
-        call. Mutating or deleting the user's variables is refused -- rebind instead
+        Read any variable freely. Bind results to NEW names so they survive to the next
+        call. Mutating or deleting the user's variables is refused. Rebind instead
         (`df2 = df.drop(...)`). Call `list_vars` first if you do not know what is there.
         """
         try: return clip(host.run_python(code))
@@ -1792,18 +1786,18 @@ def session_tools(host, mx=MAX_TOOL_CHARS):
     def inspect_python(code: str, scope: str = 'isolated') -> str:
         """Look at the user's live variables by running Python that cannot change them.
 
-        Two scopes. Both leave the user's variables exactly as they were; they differ in
-        how much Python you get, so pick by what the question needs:
+        Two scopes. Both leave the user's variables exactly as they were. They differ in
+        how much Python you get. Pick by what the question needs:
 
         - `scope='isolated'` (default) runs in an allowlist sandbox on a copy. Attribute
-          reads and builtins work -- `df.shape`, `len(df)`, `type(x).__name__` -- and most
+          reads and builtins work. `df.shape`, `len(df)`, `type(x).__name__`. And most
           library method calls are refused. Costs nothing to be wrong about.
         - `scope='overlay'` runs the real interpreter against the real namespace. Library
           calls work: `list(df.columns)`, `df.head(3).to_dict()`, `model.summary()`. Names
           you bind persist into your own layer for later calls. You still cannot delete,
-          rebind or mutate anything the user made -- that is refused, with an explanation.
+          rebind or mutate anything the user made. That is refused, with an explanation.
 
-        Start isolated; move to overlay when the sandbox refuses something you need. Neither
+        Start isolated. Move to overlay when the sandbox refuses something you need. Neither
         needs approval, and both run while one of the user's cells is still going. For work
         that must land in the *user's* namespace, use `run_python` instead.
         """
@@ -1812,7 +1806,7 @@ def session_tools(host, mx=MAX_TOOL_CHARS):
         except Exception as e: return err('inspection failed', e)
 
     def read_terminal(lines: int = 200) -> str:
-        """Read what the IDE's terminal has printed -- a failing build, a stack trace, a test run.
+        """Read what the IDE's terminal has printed. A failing build, a stack trace, a test run.
 
         This is *read only*: it shows what the user ran, and cannot run anything. Use it
         when they mention an error they are looking at rather than asking them to paste it.
@@ -1830,19 +1824,19 @@ def shell_tools(host, mx=MAX_TOOL_CHARS):
         """Run one shell command in the project and return its exit code and output.
 
         This is how you check your work, and you are expected to use it: after an edit, run
-        the tests; after a change to a signature, run the type checker or the linter the
-        project already uses; before saying something passes, make it pass here. A claim
+        the tests. After a change to a signature, run the type checker or the linter the
+        project already uses. Before saying something passes, make it pass here. A claim
         with no command behind it is a guess, and will be read as one.
 
         - stdout and stderr come back interleaved, as a person would see them, with the
           exit code on the first line. A non-zero exit is a *result*: read the output and
           fix the cause, do not run it again unchanged.
         - `cwd` defaults to the first open folder and must stay inside the open folders.
-        - `timeout` is in seconds; the command is killed when it expires. Do not start
+        - `timeout` is in seconds. The command is killed when it expires. Do not start
           servers, watchers, REPLs, or anything else that does not exit on its own.
-        - Use the project's own commands -- the ones in its README, `pyproject.toml`, or
-          `Makefile` -- rather than a global tool that may not be what it uses.
-        - This may be put to the user for approval, so send one purposeful command rather
+        - Use the project's own commands. The ones in its README, `pyproject.toml`, or
+          `Makefile`. Rather than a global tool that may not be what it uses.
+        - This may be put to the user for approval. Send one purposeful command rather
           than a chain of exploratory ones.
         """
         cmd = str(command or '').strip()
@@ -1877,8 +1871,7 @@ def skill_tools(host, get_skills, mx=MAX_TOOL_CHARS):
         """Create a reusable project skill at `.agents/skills/NAME/SKILL.md`.
 
         Use this only when the user asks to preserve repeatable project know-how as a
-        skill, not for ordinary task notes. `name` must be lowercase kebab-case;
-        `description` says when it applies; `instructions` is the complete Markdown body.
+        skill, not for ordinary task notes. `name` must be lowercase kebab-case. `description` says when it applies. `instructions` is the complete Markdown body.
         Existing skills are never overwritten. Run `/reload` after creation to make the
         current agent advertise it immediately.
         """
@@ -1927,7 +1920,7 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_s
     # declared, never probed: `api_ops` raises for a missing spec, not a missing capability
     if 'api' not in drop and _declared(host, 'api'): tools += api_tools(host, mx)
     if 'session' not in drop and _has(host, 'session', lambda: host.list_vars(), lambda: host.terminal_text(1)): tools += session_tools(host, mx)
-    shell = _declared(host, 'shell')   # `run_cmd` has no harmless probe; `_supports` asks instead
+    shell = _declared(host, 'shell')   # `run_cmd` has no harmless probe. `_supports` asks instead
     if 'shell' not in drop and (_supports(host, 'run_cmd', lambda: host.run_cmd('')) if shell is None else shell):
         tools += shell_tools(host, mx)
     if get_skills is not None and 'skill' not in drop: tools += skill_tools(host, get_skills, mx)
@@ -2027,7 +2020,7 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
 # %% ../nbs/02_tools.ipynb #fe517832
 def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS, n_workers=4,
                   skills=(), writes=False, approve=None):
-    "Ask several questions; fan out with `fastcore.parallel` on cloud backends, serial on local."
+    "Ask several questions. Fan out with `fastcore.parallel` on cloud backends, serial on local."
     qs = L(questions)
     if not qs: return L()
     def run(q): return delegate(backend, q, tools, sp, max_steps, skills, writes, approve)
@@ -2056,7 +2049,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
                    get_approve=None):   # the gate those writes answer to
     """The `delegate` tool, bound to whatever backend routing says sub-agents run on.
 
-    Every argument is a callable, so a model switch mid-session is picked up. `get_tools` is the
+    Every argument is a callable. A model switch mid-session is picked up. `get_tools` is the
     sub-agent model's tool list, not the turn model's.
     """
 
@@ -2067,9 +2060,9 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         """Hand a broad search question to a sub-agent and get back only its conclusion.
 
         Use this when answering would take many `search_code` / `view_file` / `read_url` /
-        `inspect_python` calls whose results you do not need to keep -- "where else do we
+        `inspect_python` calls whose results you do not need to keep. "where else do we
         do X", "which files import Y", "what shape is everything in this namespace". Its
-        working is discarded, so the cost to your context is one question and one answer.
+        working is discarded. The cost to your context is one question and one answer.
 
         The sub-agent has your read-only tools. Whether it also has your write tools is the
         session's setting rather than yours. With sub-agent writes on it can edit, run commands
@@ -2078,7 +2071,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
         `skills` names skills from your skill index, comma separated, whose text the sub-agent
         should start with: name the one or two its task actually needs. You hold the index and
-        it does not, so this is the only way it gets a skill without spending a step reading
+        it does not. This is the only way it gets a skill without spending a step reading
         one. Leave it empty when the task needs no particular skill.
 
         Ask one self-contained question. The sub-agent cannot see this conversation.
@@ -2096,16 +2089,15 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
           ["which files import fastllm?", "where is compaction triggered?", "what is df's shape?"]
 
         Use it when you have two or more questions that do not depend on each other. They
-        run concurrently, each in its own throwaway conversation with your read-only tools,
-        so three questions cost you three short answers rather than the sixty tool results
+        run concurrently, each in its own throwaway conversation with your read-only tools. Three questions cost you three short answers rather than the sixty tool results
         it would take to answer them yourself. With sub-agent writes on they run one after
         another instead, because their approvals share one queue.
 
         `skills` names skills from your skill index, comma separated, given to every one of
-        them. Use it when the questions share a subject; when they do not, ask them in separate
+        them. Use it when the questions share a subject. When they do not, ask them in separate
         `delegate_search` calls so each gets only what its own task needs.
 
-        `cloud_model` optionally selects one configured remote model for this fan-out; it does not
+        `cloud_model` optionally selects one configured remote model for this fan-out. It does not
         change the session's turn or default sub-agent model. Every question must be self-contained:
         a sub-agent cannot see this conversation or the other questions.
         """
@@ -2133,4 +2125,3 @@ def _delegate_result(text):
     if len(words) >= 12 and max(words.count(w) for w in set(words)) > max(8, len(words) // 4):
         return 'Delegated inspection failed: repetitive output was discarded as unreliable.'
     return text
-

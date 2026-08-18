@@ -8,10 +8,7 @@
 <img src="media/rama-arrow.png" alt="rama's arrow" width="96" />
 </p>
 
-The brain of a coding agent: policy, tools, memory, and routing, with no editor attached.
-Hosts speak one protocol. Models arrive through [rishi](https://github.com/vedicreader/rishi)
-(LiteRT, MLX, llama.cpp, Cursor, hosted APIs). A terminal app and an MCP server ship as frontends
-on that same host.
+The brain of a coding agent: policy, tools, memory, and routing, with no editor attached. Hosts speak one protocol. Models arrive through [rishi](https://github.com/vedicreader/rishi) (LiteRT, MLX, llama.cpp, Cursor, hosted APIs). A terminal app and an MCP server ship as frontends on that same host.
 
 <p align="center">
 
@@ -48,10 +45,7 @@ a.ask('where is the compaction threshold?')
 
 One notebook per module: the page you read is the module you import.
 
-[core](00_core.ipynb) · [runtime](01_runtime.ipynb) · [tools](02_tools.ipynb) ·
-[agent](03_agent.ipynb) · [cli](05_cli.ipynb) · [mcp](06_mcp.ipynb) ·
-[vault](07_vault.ipynb) · [pyrepl](11_pyrepl.ipynb) ·
-[docs](https://vedicreader.github.io/ramabana/)
+[core](00_core.ipynb) · [runtime](01_runtime.ipynb) · [tools](02_tools.ipynb) · [agent](03_agent.ipynb) · [cli](05_cli.ipynb) · [mcp](06_mcp.ipynb) · [vault](07_vault.ipynb) · [pyrepl](11_pyrepl.ipynb) · [docs](https://vedicreader.github.io/ramabana/)
 
 ``` sh
 uv sync --all-extras --group dev

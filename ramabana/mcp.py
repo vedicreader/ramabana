@@ -2,33 +2,21 @@
 
 ## The server
 
-With an agent, the tools mounted here are the very objects a turn gets -- the recorded
-wrappers, so a client's call lands in the same activity feed and the same `changes()` a turn
-does. `functools.wraps` in `Agent._record` kept their signatures and docstrings, and that is
-exactly what FastMCP reads to build a schema, so there is no second description of any tool
-anywhere and nothing to drift. Without an agent the tools are built straight off the host.
+With an agent, the tools mounted here are the very objects a turn gets. The recorded wrappers. A client's call lands in the same activity feed and the same `changes()` a turn does. `functools.wraps` in `Agent._record` kept their signatures and docstrings, and that is exactly what FastMCP reads to build a schema. There is no second description of any tool anywhere and nothing to drift. Without an agent the tools are built straight off the host.
 
-`readonly` defaults to True because the client is another agent whose approval UI this server
-does not control. Writes are one flag away, and should be gated the usual way when they are
-mounted.
+`readonly` defaults to True because the client is another agent whose approval UI this server does not control. Writes are one flag away, and should be gated the usual way when they are mounted.
 
 ## Skills as resources
 
-Skills are resources rather than tools, because that is what they are: text a client can
-read, not a call with an effect. The index is one resource and each skill is another, so a
-client can list what is available and fetch only the one it needs -- the same economy
-`read_skill` gives a model in a turn.
+Skills are resources rather than tools, because that is what they are: text a client can read, not a call with an effect. The index is one resource and each skill is another. A client can list what is available and fetch only the one it needs. The same economy `read_skill` gives a model in a turn.
 
 ## The agent as one tool
 
-With an agent passed in, the server also offers `ask`: a whole Ramabana turn behind a single
-call. The client spends one question and one answer; the tool loop, the tool results and the
-compaction all happen on this side and are discarded.
+With an agent passed in, the server also offers `ask`: a whole Ramabana turn behind a single call. The client spends one question and one answer. The tool loop, the tool results and the compaction all happen on this side and are discarded.
 
 ## Running it
 
-`ramabana-mcp` on the command line. `--model` is what turns the `ask` tool on: without a
-model there is nothing to delegate to, so the server offers tools only.
+`ramabana-mcp` on the command line. `--model` is what turns the `ask` tool on: without a model there is nothing to delegate to. The server offers tools only.
 
 Docs: https://vedicreader.github.io/ramabana/mcp.html.md"""
 
@@ -60,7 +48,7 @@ returns just its answer."""
 
 
 def _annotate(name):
-    "MCP's hints about a tool, so a client can style and gate it without guessing from the name."
+    "MCP's hints about a tool. A client can style and gate it without guessing from the name."
     return ToolAnnotations(readOnlyHint=name not in UNSAFE,
                            destructiveHint=name in WRITE_TOOLS,
                            idempotentHint=name not in WRITE_TOOLS,
@@ -70,13 +58,13 @@ def _annotate(name):
 def server(host=None, agent=None, name='ramabana', readonly=True, delegate=True, **kw):
     """An MCP server over one host's tools, and optionally over Ramabana's own agent.
 
-    The tools are the same objects the model gets in a turn, so FastMCP reads their own
+    The tools are the same objects the model gets in a turn. FastMCP reads their own
     signatures. `readonly` by default: the client is an agent whose approval UI is not ours.
     """
     host = host if host is not None else LocalHost()
     mcp = FastMCP(name, instructions=INSTRUCTIONS, **kw)
     skills = discover(host.roots, getattr(agent, 'cfg', None)) if agent is None else agent.skills
-    # the agent's own recorded tools when there is one, so a client's call reaches its feed
+    # the agent's own recorded tools when there is one. A client's call reaches its feed
     every = agent.tools if agent is not None else tools_for(host, get_skills=lambda: skills)
     mounted = []
     for tool in every:
@@ -87,7 +75,7 @@ def server(host=None, agent=None, name='ramabana', readonly=True, delegate=True,
 
     @mcp.resource('skill://{name}', mime_type='text/markdown')
     def skill(name: str) -> str:
-        "One skill in full, by name -- the same text `read_skill` returns in a turn."
+        "One skill in full, by name. The same text `read_skill` returns in a turn."
         s = find(skills, name)
         return f'no skill matching {name!r}' if s is None else s.text()
 
@@ -115,9 +103,9 @@ def _mount_ask(mcp, agent):
         """Hand a whole task to Ramabana's agent and get back only its answer.
 
         Use this when answering would take many tool calls whose results you do not need to
-        keep -- "where else do we do X", "what does this module actually do", "make this
+        keep. "where else do we do X", "what does this module actually do", "make this
         change and tell me what you changed". Ramabana runs its own tool loop with its own
-        model, so this costs you one question and one answer.
+        model. This costs you one question and one answer.
 
         Ask one self-contained task: this agent cannot see your conversation.
         """
@@ -127,15 +115,15 @@ def _mount_ask(mcp, agent):
 @call_parse
 def main(
     root: str = '.',                 # folders to serve, comma separated
-    model: str = None,               # the model `ask` runs on; omit to serve tools only
+    model: str = None,               # the model `ask` runs on. Omit to serve tools only
     write: bool = False,             # mount the write tools too
     web: bool = True,                # let the web tools reach the network through fossick
-    read_outside: bool = False,      # let reads name any path on this machine; writes stay inside
+    read_outside: bool = False,      # let reads name any path on this machine. Writes stay inside
     vault: bool = False,             # keep what is read in a vishalakshi vault, for the next session
     transport: str = 'stdio',        # stdio | sse | streamable-http
     cfg: str = None,                 # config dir, for skills and extensions
 ):
-    "Serve Ramabana's tools over MCP."
+    "Serve Ramabana tools over MCP."
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     if model:
         agent, host = mk_agent(roots, model=model, approve='none', web=web, vault=vault,

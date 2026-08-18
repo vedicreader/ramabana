@@ -53,12 +53,12 @@ LIGHT = {
 }
 THEMES = {'dark': DARK, 'light': LIGHT}
 KAKU = DARK
-GRUVBOX = KAKU  # compatibility name for extensions; updated by set_theme
+GRUVBOX = KAKU  # compatibility name for extensions. Updated by set_theme
 ACTIVE_THEME = 'dark'
 
 
 def set_theme(name='dark'):
-    "Select the active semantic palette; `auto` safely falls back to dark in a terminal."
+    "Select the active semantic palette. `auto` safely falls back to dark in a terminal."
     global ACTIVE_THEME, GRUVBOX, MARKDOWN_THEME, GUTTERS
     name = str(name or 'dark').lower()
     if name == 'auto': name = 'dark'
@@ -106,7 +106,6 @@ plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t sho
 extra   /theme · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
 subagent /subagents shows whether delegated work may write · /subagents on|off changes it for this session
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
-
 
 # %% ../nbs/05_cli.ipynb #buildstamp
 BUILD = datetime.fromtimestamp(Path(__file__).stat().st_mtime).strftime('%H:%M') if '__file__' in dir() else ''
@@ -169,7 +168,7 @@ MEDIA = {
     '.flac': ('audio', 'audio/flac'), '.aac':  ('audio', 'audio/aac'),
 }
 
-MAX_MEDIA = 20 << 20   # bytes; past this a dropped file is a mistake, not an attachment
+MAX_MEDIA = 20 << 20   # bytes. Past this a dropped file is a mistake, not an attachment
 MAX_ATTACH = 8         # attachments on one prompt
 
 #: How to ask a platform for a picture on the clipboard, in the order to try. Each writes PNG
@@ -189,8 +188,7 @@ def _human(n):
 def media_path(s):
     """One path in whatever shape a terminal delivered it, or None.
 
-    A file dropped on a prompt arrives as a bare path, a quoted path, a `file://` URI, or --
-    on macOS -- with its spaces backslash-escaped, and some terminals wrap the whole thing in
+    A file dropped on a prompt arrives as a bare path, a quoted path, a `file://` URI, or. On macOS. With its spaces backslash-escaped, and some terminals wrap the whole thing in
     brackets. Only the first of those shapes used to attach anything, which is why dropping a
     picture on the prompt usually typed a path instead of attaching one.
     """
@@ -207,7 +205,7 @@ def is_media(p):
 def media_paths(text):
     """Every media file a paste names, or nothing when the paste is anything else.
 
-    A paste attaches only when it is *nothing but* paths, so dropping three pictures attaches
+    A paste attaches only when it is *nothing but* paths. Dropping three pictures attaches
     three while prose that mentions `docs/shot.png` in passing stays prose.
     """
     raw = str(text).strip().strip('[]').strip()
@@ -228,7 +226,7 @@ TRAILING = '?!,;:.)]}\'"'
 def attach_refs(text):
     """Media named `@path` inside a typed prompt.
 
-    A reference at the end of a sentence carries the sentence's punctuation, so trailing marks
+    A reference at the end of a sentence carries the sentence's punctuation. Trailing marks
     come off one at a time until what is left names a file: `@shot.png?` is a question about a
     picture rather than a path to one.
     """
@@ -247,8 +245,8 @@ def attach_refs(text):
 def clipboard_png():
     """A picture on the system clipboard as PNG bytes, or None when there is not one.
 
-    Bracketed paste carries text and only text, so a copied *image* never arrives as input at
-    all -- which is why pasting a screenshot into the prompt appeared to do nothing. Asking
+    Bracketed paste carries text and only text. A copied *image* never arrives as input at
+    all. Which is why pasting a screenshot into the prompt appeared to do nothing. Asking
     the platform for it is the only route to the gesture.
     """
     for cmd in CLIP_IMAGE:
@@ -276,7 +274,7 @@ class Attachment:
     def __repr__(self): return f'Attachment({self.kind} {self.label()})'
 
 def sendable(atts, spec=None):
-    "The attachment kinds `spec`'s model can be sent. Pictures always; sound where it can hear."
+    "The attachment kinds `spec`'s model can be sent. Pictures always. Sound where it can hear."
     kinds = {'image'}
     if spec is None or accepts(spec, 'audio'): kinds.add('audio')
     return kinds
@@ -326,7 +324,7 @@ def png_size(path):
     """`(width, height)` in pixels from a PNG's IHDR, or `None`.
 
     `fastcore.xtras.image_size` is the obvious home for this and cannot be used: its `_png_size`
-    and `_gif_size` both read a `head` that is never bound, so every PNG raises `NameError` and
+    and `_gif_size` both read a `head` that is never bound. Every PNG raises `NameError` and
     only the JPEG branch works."""
     try: b = Path(path).read_bytes()[:24]
     except OSError: return None
@@ -347,12 +345,11 @@ APC_CHUNK = 4096
 def draw_png(path, cols=MAX_IMG_COLS):
     """The escape that draws `path` at the cursor, or `''`.
 
-    A *direct* placement, not the unicode-placeholder kind. Placeholders are the tidier idea --
-    the image is ordinary text, so it survives a repaint -- but the terminals this runs in ignore
-    `U=1` and print `U+10EEEE` as a missing glyph, so every picture arrived with a block of tofu
+    A *direct* placement, not the unicode-placeholder kind. Placeholders are the tidier idea. The image is ordinary text. It survives a repaint. But the terminals this runs in ignore
+    `U=1` and print `U+10EEEE` as a missing glyph. Every picture arrived with a block of tofu
     behind it. Direct placement is what they actually implement.
 
-    `C=1` keeps the cursor where it was, so the caller decides how many rows the image occupies
+    `C=1` keeps the cursor where it was. The caller decides how many rows the image occupies
     rather than the terminal moving the cursor out from under the compositor."""
     if not kitty_graphics() or Path(path).suffix.lower() != '.png': return ''
     if not (cr := img_cells(path, cols)): return ''
@@ -369,9 +366,8 @@ def media_line(path):
     "What the transcript says about a saved picture when it cannot draw it."
     return f'![{Path(path).name}]({path})' if kitty_graphics() else f'saved  {path}'
 
-
 # %% ../nbs/05_cli.ipynb #2a893877
-MAX_FILE_ATTACH = 120_000  # characters; enough source to be useful without consuming a whole turn
+MAX_FILE_ATTACH = 120_000  # characters. Enough source to be useful without consuming a whole turn
 def file_refs(text):
     "Relative paths named as `@path` in a prompt, with sentence punctuation removed."
     out = []
@@ -397,7 +393,6 @@ def file_note(atts):
     if not files: return ''
     return '\n\n<attached-files>\n' + '\n\n'.join(f'<file path="{a.path}">\n{a.data}\n</file>' for a in files) + '\n</attached-files>'
 
-
 # %% ../nbs/05_cli.ipynb #07ecef35
 @dataclass
 class Option:
@@ -405,7 +400,7 @@ class Option:
     key: str                # the letter that picks it directly
     label: str              # one word, in the column
     note: str = ''          # what choosing it means, in a few more
-    suffix: str = ''        # appended to the prompt; `None` drops the prompt instead
+    suffix: str = ''        # appended to the prompt. `None` drops the prompt instead
 
 REFACTOR = (
     Option('a', 'apply', 'edit the files, then run the project’s checks',
@@ -461,7 +456,7 @@ class ChoiceMenu:
 async def run_turn(ui, prompt):
     """One turn, streamed into the transcript.
 
-    The agent's `stream` is a blocking generator on the model's own thread, so the chunks
+    The agent's `stream` is a blocking generator on the model's own thread. The chunks
     come back over a queue rather than being awaited: the loop has to stay free the whole
     time, or an approval could never be answered and a tool call could never repaint.
 
@@ -498,12 +493,12 @@ async def run_turn(ui, prompt):
 class Ui:
     """The terminal surface: a transcript of blocks, a status bar, and one line to type in.
 
-    Every method here is synchronous and free of tty work, so the whole surface can be
-    driven in a test against an emulated terminal -- which is why the async loop below is
+    Every method here is synchronous and free of tty work. The whole surface can be
+    driven in a test against an emulated terminal. Which is why the async loop below is
     as small as it is.
 
     Callbacks arrive from the model's worker thread (`Activity.on_change`, `Approvals`), and
-    a compositor may only be touched from the loop thread, so everything they do goes
+    a compositor may only be touched from the loop thread. Everything they do goes
     through `_post`. Without a loop registered it calls straight through, which is what
     makes the synchronous tests possible.
     """
@@ -519,12 +514,12 @@ class Ui:
         self.mode = 'agent'        # 'python' once `enter_python` has a kernel
         self.kernel = None         # the owner's `pyrepl.Kernel`, or None
         self.attached = ''
-        self._join_ask = ''        # the session /join asked about; the same one again means yes
+        self._join_ask = ''        # the session /join asked about. The same one again means yes
         self._suggesting = False   # one completion in flight at a time
         self.desc = []             # 'name -> type' for the live names among the candidates
         self.attachments = []      # `Attachment`s the next prompt carries
-        self.frame = 0             # animated status frame; advanced only while a turn runs
-        self._reply = ''           # the reply text so far, so a streamed block repaints whole
+        self.frame = 0             # animated status frame. Advanced only while a turn runs
+        self._reply = ''           # the reply text so far. A streamed block repaints whole
         self._touched = 0.0        # when the transcript view last rebuilt, for `touch`
         self.history, self.history_at, self.draft = [], 0, ''
         self.menu = None            # the open `ChoiceMenu`, or None
@@ -541,7 +536,7 @@ class Ui:
         if self.loop is None: return fn(*a)
         self.loop.call_soon_threadsafe(fn, *a)
 
-    # -- the tail ------------------------------------------------------------
+
     SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 
     def status(self):
@@ -566,7 +561,7 @@ class Ui:
         return out
 
     async def animate(self):
-        "Repaint the live tail while a turn is running; the transcript remains untouched."
+        "Repaint the live tail while a turn is running. The transcript remains untouched."
         while True:
             await asyncio.sleep(0.1)
             if self.turn is not None:
@@ -615,7 +610,7 @@ class Ui:
     def paint(self):
         """Repaint the live tail, and the browsing view when it is the surface on screen.
 
-        `set_tail` goes model-only while the transcript view owns the tty, so without the
+        `set_tail` goes model-only while the transcript view owns the tty. Without the
         second call the status bar and the composer would sit frozen for as long as it is up.
         """
         rows, cursor = self.tail()
@@ -626,7 +621,7 @@ class Ui:
         """New or changed blocks: a following transcript view tracks them, as `less +F` would.
 
         Teleprint rebuilds the whole model to do it, which is far too much work to repeat per
-        streamed chunk, so growing bodies are rate-limited. `now` is for a block that has just
+        streamed chunk. Growing bodies are rate-limited. `now` is for a block that has just
         been printed, and for the end of a turn: neither should ever wait.
         """
         if not self.transcript.active: return
@@ -635,14 +630,14 @@ class Ui:
         self._touched = t
         self.transcript.notify()
 
-    # -- the transcript ------------------------------------------------------
+
     def say(self, body, kind='reply', fold=FOLD, source=None):
-        """Print one block. Strings stay literal; explicit Rich renderables keep their styling.
+        """Print one block. Strings stay literal. Explicit Rich renderables keep their styling.
 
         `source` is the text this block *is*, which is what search matches and what `y` and
-        `/copy` yield. Without it Teleprint falls back to scraping the rendering, so a copied
+        `/copy` yield. Without it Teleprint falls back to scraping the rendering. A copied
         reply arrives wrapped to the terminal, indented by its gutter, and stripped of the
-        fences that made its code paste-able -- so every block states its own source, and a
+        fences that made its code paste-able. So every block states its own source, and a
         plain string or `Text` states it for free.
         """
         if source is None:
@@ -655,7 +650,7 @@ class Ui:
         return blk
 
     def note(self, text, kind='note'):
-        "Print one unfolded `kind` block and stay on this side of the model; always None."
+        "Print one unfolded `kind` block and stay on this side of the model. Always None."
         self.say(Text(text), kind, fold=None)
         return None
 
@@ -678,7 +673,7 @@ class Ui:
         self.touch()
         self.paint()
 
-    # -- approvals -----------------------------------------------------------
+
     def on_ask(self, ask):
         "A write is waiting on a person. Print what it would do, and take over the input line."
         self._post(self._ask, ask)
@@ -708,7 +703,7 @@ class Ui:
         note, self.buf.text = self.buf.text.strip(), ''
         return self.agent.approvals.answer(self.ask.id, ok, note, session=session)
 
-    # -- attachments ---------------------------------------------------------
+
     def attach(self, path):
         "Attach one media file to the next prompt, or say why it cannot be attached."
         p = media_path(path)
@@ -762,8 +757,8 @@ class Ui:
     def copy_last(self, tag='reply'):
         """Put the newest `tag` block on the system clipboard with OSC 52, from the prompt.
 
-        The transcript view's `y` copies the block under its cursor; this is the same reach
-        for the case that is nearly always wanted -- the answer that just arrived -- without
+        The transcript view's `y` copies the block under its cursor. This is the same reach
+        for the case that is nearly always wanted. The answer that just arrived. Without
         leaving the prompt to get it.
         """
         tag = (tag or 'reply').strip() or 'reply'
@@ -773,7 +768,7 @@ class Ui:
         self.comp.tty.write('\x1b]52;c;' + b64encode(text.encode()).decode() + '\x07')
         return f'copied {len(text)} chars of the last {tag}'
 
-    # -- input ---------------------------------------------------------------
+
     def on_plan(self, plan):
         "Repaint when the model (or a slash command) mutates the checklist."
         self.show_plan = bool(plan)
@@ -798,14 +793,14 @@ class Ui:
         self.complete = CompletionMenu(self.buf, hits, start=0, show=8)
 
     def guide(self):
-        "The walkthrough behind `/guide`; a subclass adds its own surface to it."
+        "The walkthrough behind `/guide`. A subclass adds its own surface to it."
         return GUIDE
 
     def submit(self):
         """Handle the typed line. Returns a coroutine for a turn, `'quit'`, or None when it was handled here.
 
-        Most slash commands are answered by the agent, so every command the IDE has works
-        here too -- there is one implementation of `/model`, and it is not in a frontend. The
+        Most slash commands are answered by the agent. Every command the IDE has works
+        here too. There is one implementation of `/model`, and it is not in a frontend. The
         ones kept here are the ones about this surface: its keys, its clipboard, its
         attachments, its mode. All of them are recognised *before* the options row, or a
         `/model` with the word "refactor" in it would open a menu instead of running.
@@ -826,7 +821,7 @@ class Ui:
             return self._promote(parts[1])
         if self.mode == 'python' and not line.startswith('/'):
             from ramabana.pyrepl import hl
-            # the raw buffer, not the stripped line, so an indented paste keeps its first row
+            # the raw buffer, not the stripped line. An indented paste keeps its first row
             self.say(hl(src), 'user', source=src)
             return self.run_code(src)
         if not line.startswith('/') and (opts := options_for(line)) is not None:
@@ -958,16 +953,15 @@ class Ui:
         self.touch()
         return blk
 
-
 # %% ../nbs/05_cli.ipynb #64a54061
 @patch
 def show_media(self: Ui, media, session=''):
     """Save the pictures a turn generated and name them in the transcript.
 
     Drawing them inline is off: a kitty placement lands at the cursor, which after a paint is the
-    input line, and the next frame erases it -- a blank gap where a picture should be. Placing it
+    input line, and the next frame erases it. A blank gap where a picture should be. Placing it
     where the block actually is needs the compositor to say which screen row that block occupies,
-    and to re-place it on every frame. teleprint has no API for either, so this saves the file and
+    and to re-place it on every frame. Teleprint has no API for either. This saves the file and
     prints the path until it does. `draw_png` is the escape that will be used then."""
     for m in media or []:
         try: p = save_media(m, session or getattr(self.agent, 'session_dir', '') or '.')
@@ -975,7 +969,6 @@ def show_media(self: Ui, media, session=''):
             self.say(Text(f'could not save generated media ({agent_err(e)})'), 'error')
             continue
         self.say(Text(media_line(p)), 'note')
-
 
 # %% ../nbs/05_cli.ipynb #280bb985
 @patch
@@ -1031,7 +1024,7 @@ def leave_transcript(self:Ui):
 
 @patch
 def on_key(self:Ui, k):
-    "Give transcript navigation priority; keep prompt recall on Ctrl-P/Ctrl-N."
+    "Give transcript navigation priority. Keep prompt recall on Ctrl-P/Ctrl-N."
     view = self.transcript
     if view.active:
         if view.on_key(k): return None
@@ -1129,7 +1122,7 @@ async def enter_python(self:Ui):
 
 @patch
 async def attach_session(self:Ui, name):
-    "Point the agent's Python at a dhrishti session someone else owns; we start nothing and own no prompt."
+    "Point the agent's Python at a dhrishti session someone else owns. We start nothing and own no prompt."
     from ramabana.pyrepl import DhrishtiHost, find_session
     old, base = self.agent.host, find_session(name)
     self.use_host(DhrishtiHost(old.roots, base, approvals=old.approvals, web=old.web,
@@ -1169,7 +1162,7 @@ def on_output(self:Ui, output):
 @patch
 async def _complete(self:Ui, insert):
     """List what the kernel would complete. `insert` is tab: typing must not rewrite the buffer.
-    `CompletionMenu` owns the span, so tab cycles and shift+tab goes back. `desc` is a separate
+    `CompletionMenu` owns the span. Tab cycles and shift+tab goes back. `desc` is a separate
     line because cycling writes the highlighted match into the buffer and a type would go in too.
     """
     from ramabana.pyrepl import annotate
@@ -1226,9 +1219,9 @@ def mk_host(roots=('.',),
             read_outside=False):     # let the read-only tools name any path on this machine
     """The host both frontends run on: `LocalHost`, plus a vault and an API spec when asked.
 
-    `SpecHost` had no way of being built before this -- nothing constructed one, so `api_load`
+    `SpecHost` had no way of being built before this. Nothing constructed one. `api_load`
     and `api_call` were unreachable from either frontend. Both mixins cooperate through `super()`,
-    in `__init__` and in `capabilities`, so asking for both is one class with both capability
+    in `__init__` and in `capabilities`. Asking for both is one class with both capability
     sets rather than a choice between them.
     """
     bases = []
@@ -1310,7 +1303,6 @@ async def amain(agent, hint='', python=False, attach=''):
         agent.close()
         if ui is not None and ui.kernel is not None: await ui.kernel.shutdown()
 
-
 # %% ../nbs/05_cli.ipynb #b6d74293
 def ask_once(agent, prompt):
     "One turn with no terminal at all, for a pipe or a script. Returns the exit code."
@@ -1323,14 +1315,14 @@ def ask_once(agent, prompt):
 # %% ../nbs/05_cli.ipynb #ce629efa
 @call_parse(pos=['prompt'])
 def main(
-    prompt: str = '',                    # one turn and exit; omit for the interactive session
+    prompt: str = '',                    # one turn and exit. Omit for the interactive session
     root: str = '.',                     # folders the agent may touch, comma separated
-    model: str = None,                   # the turn model; the routing default when omitted
+    model: str = None,                   # the turn model. The routing default when omitted
     approve: str = 'ask',                # ask | auto | off | none (gate nothing at all)
     web: bool = True,                    # let the web tools reach the network through fossick
-    read_outside: bool = False,          # let reads name any path on this machine; writes stay inside
+    read_outside: bool = False,          # let reads name any path on this machine. Writes stay inside
     subagent_writes: bool = False,       # let delegated sub-agents write, run commands and run Python too
-    vault: bool = False,                 # vishalakshi vault for what is read; not offered in python mode
+    vault: bool = False,                 # vishalakshi vault for what is read. Not offered in python mode
     spec: bool = False,                 # enable OpenAPI, Azure and Google Discovery tools
     theme: str = 'auto',                 # auto | dark | light terminal palette
     max_tool_calls: str = 'auto',         # auto | 20..400 tool calls per turn
@@ -1339,9 +1331,9 @@ def main(
     resume: str = '',                    # saved session id/prefix, or 'latest'
     python: bool = False,                # start in python mode, on a kernel of your own
     attach: str = '',                  # join a live session; --kernels lists them
-    kernels: bool = False,               # list live sessions and exit                    # a live dhrishti session by name or base URL; agent only
+    kernels: bool = False,               # list live sessions and exit
 ):
-    "Ramabana in a terminal: a coding agent over the folders you name, and a Python prompt in it."
+    "Run Ramabana as a terminal agent or Python prompt."
     if kernels:
         from ramabana.pyrepl import sessions
         print(sessions())
@@ -1351,7 +1343,7 @@ def main(
         return 2
     if attach:
         from ramabana.pyrepl import find_session
-        # resolved before any terminal exists, so a name that does not resolve is just a message
+        # Resolve before terminal setup so failure can print normally.
         try: attach = find_session(attach)
         except ModuleNotFoundError:
             print("--attach needs the pyrepl extra: pip install 'ramabana[pyrepl]'", file=sys.stderr)
@@ -1453,7 +1445,6 @@ async def run_turn(ui, prompt):
     for ref in file_refs(prompt): ui.attach_file(ref)
     return await _core_run_turn_files(ui, prompt)
 
-
 # %% ../nbs/05_cli.ipynb #79efe696
 @patch
 def apply_theme(self:Ui, name=''):
@@ -1476,4 +1467,3 @@ def submit(self:Ui):
         bits = line.split()
         return self.apply_theme(bits[1] if len(bits) == 2 else '') if len(bits) <= 2 else self.note('usage: /theme [auto|dark|light]', 'error')
     return _submit_theme(self)
-

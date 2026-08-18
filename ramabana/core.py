@@ -31,11 +31,7 @@ def agent_err(e):
 
 def use_env_prefix(prefix, fallback=None):
     """Name the environment variables this application reads, most specific first.
-
-    `leela.agent` is an alias for this package rather than a copy of it, and leela's users
-    already have `$LEELA_MODEL` set. Calling `use_env_prefix('LEELA_', 'RAMABANA_')` at
-    startup makes that the one that wins inside leela, without making leela's name the
-    primary namespace for everything else built on this core.
+    `use_env_prefix('LEELA_', 'RAMABANA_')`
     """
     global ENV_PREFIX, ENV_FALLBACK
     ENV_PREFIX = prefix if prefix.endswith('_') else prefix + '_'
@@ -156,7 +152,7 @@ def _json_has(path, *keys):
     except Exception: return False
 
 def _claude_login():
-    "Only status metadata; credentials never leave Claude Code or enter Leela."
+    "Only status metadata. Credentials never leave Claude Code or enter Leela."
     if not shutil.which('claude'): return False
     try:
         p = subprocess.run(['claude', 'auth', 'status', '--json'], capture_output=True, text=True, timeout=3)
@@ -174,7 +170,7 @@ def _install_toolslm_funccall():
     sys.modules['toolslm.funccall'] = funccall
     toolslm.funccall = funccall
     return funccall
-    
+
 def _managed_claude_mcp():
     "Whether this machine has an organisation-controlled Claude Code MCP configuration."
     paths = [Path('/Library/Application Support/ClaudeCode/managed-mcp.json'),
@@ -237,7 +233,7 @@ def auth_status():
 # %% ../nbs/00_core.ipynb #56303cec
 _oai_cache = (0.0, [])
 def _openai_models(include_legacy=False):
-    "Canonical models the current OpenAI key can list; older coding models are opt-in."
+    "Canonical models the current OpenAI key can list. Older coding models are opt-in."
     global _oai_cache
     ids = _oai_cache[1] if (time.time() - _oai_cache[0]) < 300 else None
     if not (key := os.getenv('OPENAI_API_KEY')): return []
@@ -266,12 +262,12 @@ def copilot_catalog(ttl=300):
     return d
 
 def _copilot_chat_models():
-    "Chat ids this Copilot plan can reach. Per-plan and it moves, so it is asked for, never tabled."
+    "Chat ids this Copilot plan can reach. Per-plan and it moves. It is asked for, never tabled."
     return [i for i, m in copilot_catalog().items()
             if (m.get('capabilities') or {}).get('type') == 'chat']
 
 def available_models(include_legacy=False):
-    "Models selectable here; specialized older generations appear only when requested."
+    "Models selectable here. Specialized older generations appear only when requested."
     rows = []
     for runtime, models in (('litert', LOCAL), ('mlx', MLX), ('llama', LLAMA)):
         if not runtime_available(runtime): continue
@@ -353,7 +349,7 @@ class ModelSpec:
     model_id: str             # what the backend is given
     ctx: int = 128_000        # context window in tokens
     note: str = ''            # anything worth showing about how this was resolved
-    config: dict = field(default_factory=dict, compare=False) # runtime options; never persisted secrets
+    config: dict = field(default_factory=dict, compare=False) # runtime options. Never persisted secrets
 
     @property
     def runtime(self): return self.backend
@@ -362,7 +358,7 @@ class ModelSpec:
     def __str__(self): return f'{self.name} ({self.model_id})'
 
 def _copilot_ctx(model_id):
-    """Context window and a note for a Copilot model. Copilot reports its own, so nothing is guessed.
+    """Context window and a note for a Copilot model. Copilot reports its own. Nothing is guessed.
     Reads the entry here rather than through `rishi.copilot.copilot_ctx`: the catalogue is already
     in hand, and this then needs no rishi newer than the one that fetched it."""
     lim = ((copilot_catalog().get(model_id) or {}).get('capabilities') or {}).get('limits') or {}
@@ -370,7 +366,7 @@ def _copilot_ctx(model_id):
     return _cloud_ctx(model_id)      # the same id under its own vendor is the next best answer
 
 def _cloud_ctx(model_id):
-    "Context window and a note for a cloud model, from fastllm's tables; silent about failure."
+    "Context window and a note for a cloud model, from fastllm's tables. Silent about failure."
     try:
         from fastllm.types import get_model_info
         v, _, m = model_id.partition('/')
@@ -431,7 +427,7 @@ def resolve(name, default_local=DFLT_LOCAL):
 
 @functools.lru_cache(maxsize=256)
 def _caps(model_id, runtime):
-    "`rishi.model_caps`, memoised; `None` where rishi predates it."
+    "`rishi.model_caps`, memoised. `None` where rishi predates it."
     try:
         from rishi.core import model_caps
         return model_caps(model_id, runtime=runtime)
@@ -455,7 +451,7 @@ def model_note(spec):
 
 # %% ../nbs/00_core.ipynb #4e529923
 SMALL_CTX = 24_000       # at or below this window, a model is briefed frugally
-TOOL_MAX_FLOOR = 1500    # chars; below this a file view stops being a file view
+TOOL_MAX_FLOOR = 1500    # chars. Below this a file view stops being a file view
 FRUGAL_DROP = ('memory', 'web')
 
 @dataclass(frozen=True)
@@ -487,10 +483,9 @@ def budget_for(spec, tool_max, channel='native'):
                   f'{ctx//1000}k window: no inlined skills, no {"/".join(FRUGAL_DROP)} tools, '
                   f'tool results clipped to {mx} chars')
 
-
 # %% ../nbs/00_core.ipynb #3e2adbad
 def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):
-    "Register a configurable model alias for this process; persistence belongs to the host app."
+    "Register a configurable model alias for this process. Persistence belongs to the host app."
     name, model_id = (name or '').strip(), (model_id or '').strip()
     if model_id.startswith(('https://huggingface.co/', 'http://huggingface.co/')):
         model_id = model_id.split('huggingface.co/', 1)[1].strip('/').split('/tree/', 1)[0]
@@ -500,7 +495,7 @@ def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model
         from rishi.core import resolve_runtime
         runtime, model_id = resolve_runtime(model_id)
     # `RUNTIMES`, not a literal: `cursor` has to be here or `register_model('grok', 'grok-4.5')`
-    # fails after `resolve_runtime` correctly infers it -- rejecting the answer it just asked for.
+    # fails after `resolve_runtime` correctly infers it. Rejecting the answer it just asked for.
     if runtime not in RUNTIMES: raise ValueError(f'unknown runtime {runtime!r}')
     if runtime != 'remote' and not runtime_available(runtime):
         raise RuntimeError(f'{runtime} runtime is unavailable; install rishi[{runtime}]')
@@ -520,14 +515,14 @@ _forced_tags = {}   # model_id -> why its wire tool channel is closed on this ma
 
 
 def force_tags(model_id, why=''):
-    "Record that this model's tools cannot travel on the wire here, so later turns stop trying."
+    "Record that this model's tools cannot travel on the wire here. Later turns stop trying."
     why = why or 'the wire tool channel was refused'
     _forced_tags[str(model_id)] = why
     return why
 
 
 def forget_forced_tags():
-    "Forget what was learned about wire channels, so a fixed configuration is tried again."
+    "Forget what was learned about wire channels. A fixed configuration is tried again."
     _forced_tags.clear()
 
 
@@ -536,7 +531,7 @@ def tool_channel(spec, chat=None):
     system prompt. Takes a `ModelSpec` or a bare model id, and the live chat when there is one.
 
     A chat is the authority. An agent runtime decides its own channel from the path it took and from
-    what the harness accepted, so no property of the spec can be sure -- a Claude chat that opened an
+    what the harness accepted. No property of the spec can be sure. A Claude chat that opened an
     MCP server and had it refused is on tags now, and only it knows. Without one this predicts, which
     is all `budget_for` can have: it sizes the tool list, and the tool list is what builds the chat.
     """
@@ -546,7 +541,6 @@ def tool_channel(spec, chat=None):
     if (rt := getattr(spec, 'runtime', '')) in AGENTS: return 'native' if _agent_native(rt, spec) else 'tags'
     if mid in _forced_tags: return 'tags'
     return 'tags' if claude_tags(mid) else 'native'
-
 
 # %% ../nbs/00_core.ipynb #e81acb32
 @dataclass
@@ -607,7 +601,7 @@ class Routing:
         return spec
 
     def backends(self):
-        "The distinct backend/model pairs this policy needs, so an engine is built once and shared."
+        "The distinct backend/model pairs this policy needs. An engine is built once and shared."
         out = set()
         for j in JOBS:
             try: s = self.spec(j)

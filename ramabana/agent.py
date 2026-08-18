@@ -27,8 +27,8 @@ from .tools import (mime_for, MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, disco
 MAX_DETAIL = 4000     # chars of a tool result kept for the fold
 MAX_ACTS = 500        # a very long turn should not grow without bound
 RESUME_DETAIL = 600   # chars of a replayed tool result: a resume rebuilds every turn at once
-MAX_CHECKPOINTS = 20  # turn boundaries kept for `fork`; each one is a whole conversation
-POLL_EVERY = 900      # seconds between automatic `Host.poll` ticks; a turn is what triggers one
+MAX_CHECKPOINTS = 20  # turn boundaries kept for `fork`. Each one is a whole conversation
+POLL_EVERY = 900      # seconds between automatic `Host.poll` ticks. A turn is what triggers one
 
 #: Characters of the open folders `changes()` will hold in order to watch a shell command.
 #: A command names no files, so the only way to know what it moved is to have read them
@@ -130,7 +130,6 @@ def summarise(tool, args):
     inner = ', '.join(f'{k}={_s(v, 30)!r}' for k, v in a.items())
     return f'{tool}({inner})'
 
-
 # %% ../nbs/03_agent.ipynb #9ab2cd3c
 @dataclass
 class Act:
@@ -163,7 +162,7 @@ class Act:
         return self
 
     def line(self):
-        "The single line: icon, what it did, and how long -- or an hourglass while it runs."
+        "The single line: icon, what it did, and how long. Or an hourglass while it runs."
         if not self.done: return f'⏳ {self.summary}'
         tail = f'  ({self.secs:.1f}s)' if self.secs >= 0.5 else ''
         return f'{"" if self.ok else "⚠️ "}{self.icon} {self.summary}{tail}'
@@ -240,7 +239,7 @@ class Activity:
         try: self.on_change(act)
         except Exception: pass
 
-    # -- reading it ----------------------------------------------------------
+
     def mark(self, turn_id=''):
         "Remember where the stream is now and bind new actions to one durable turn id."
         self._mark = len(self.acts)
@@ -270,7 +269,7 @@ class Activity:
 DENIED = 'Denied by human operator'
 
 DFLT_TIMEOUT = 300      # seconds to wait for a person before giving up on one request
-MAX_PREVIEW = 2000      # chars of "what would change"; a person will not read more
+MAX_PREVIEW = 2000      # chars of "what would change". A person will not read more
 
 
 def _args(args):
@@ -329,7 +328,7 @@ def _summary(name, args):
 # %% ../nbs/03_agent.ipynb #cad351c6
 @dataclass
 class Ask:
-    "One request, and the person's answer to it; `answer` is None while it is pending."
+    "One request, and the person's answer to it. `answer` is None while it is pending."
     tool: str
     args: dict = field(default_factory=dict)
     summary: str = ''
@@ -344,7 +343,7 @@ class Ask:
     def pending(self): return self.answer is None
 
     def __bool__(self):
-        "Truthy exactly when approved, so an `Ask` *is* the approval decision."
+        "Truthy exactly when approved. An `Ask` *is* the approval decision."
         return self.answer is True
 
     def dict(self):
@@ -367,7 +366,7 @@ class Ask:
 
 # %% ../nbs/03_agent.ipynb #53d05cb9
 def ask_md(ask):
-    "An approval request as markdown -- what a person reads, and what is saved in the notebook."
+    "An approval request as markdown. What a person reads, and what is saved in the notebook."
     body = ask.preview.strip()
     fence = '```\n' + body + '\n```\n\n' if body else ''
     return (f'**🔐 approval needed -- `{ask.tool}`**\n\n{ask.summary}\n\n{fence}'
@@ -383,21 +382,21 @@ class Approvals:
     "The queue of one, and the thread handshake behind it. One request at a time."
 
     def __init__(self,
-                 tools=(),                  # tool names that need approval; everything else runs
+                 tools=(),                  # tool names that need approval. Everything else runs
                  mode='ask',                # 'ask' | 'auto' (approve everything) | 'off' (refuse everything)
                  timeout=DFLT_TIMEOUT,
                  host=None,                 # for previews that need to look at disk
                  on_ask=None,               # called with the `Ask` when one is raised
                  on_answer=None):           # called with the `Ask` when it is answered
         self.tools, self.mode, self.timeout, self.host = frozenset(tools), mode, timeout, host
-        # the application's recorder; frontends register through `listen` instead, so neither unhooks the other
+        # the application's recorder. Frontends register through `listen` instead. Neither unhooks the other
         self.on_ask, self.on_answer = on_ask, on_answer
         self.current = None                 # the `Ask` in flight, or None
         self.history = []                   # every `Ask` this session, answered or not
         self._watchers = []                 # (on_ask, on_answer) per registered frontend
         self._lock = threading.Lock()
 
-    # -- the frontend side ---------------------------------------------------
+
     @property
     def listeners(self): return len(self._watchers)
 
@@ -428,11 +427,11 @@ class Approvals:
         return a if (a is not None and a.pending) else None
 
     def answer(self, id, ok, note='', session=False):
-        "Answer the pending request; optionally approve all later writes this session."
+        "Answer the pending request. Optionally approve all later writes this session."
         a = self.current
         if a is None or a.id != id or not a.pending: return None
         if ok and session: self.mode = 'auto'   # only an approval may turn the policy off
-        # record and notify before waking the model thread, so a recorder finishes first
+        # record and notify before waking the model thread. A recorder finishes first
         a.answer, a.note = bool(ok), note or ''
         if ok and session and not a.note: a.note = 'approved for the rest of this session'
         self._notify('answer', a)
@@ -446,11 +445,11 @@ class Approvals:
         return a
 
     def cancel_all(self, note='the turn was cancelled'):
-        "Refuse anything in flight, so a stopped turn does not leave a worker thread parked."
+        "Refuse anything in flight. A stopped turn does not leave a worker thread parked."
         a = self.pending
         if a is not None: self.answer(a.id, False, note)
 
-    # -- the model side ------------------------------------------------------
+
     def gate(self, tool_call):
         "The `approve(tool_call)` both backends call. Blocks the model's thread."
         return self.request(*_tc(tool_call))
@@ -494,7 +493,7 @@ INLINE_SKILLS = ('exhash', 'coding_patterns')
 
 
 def tool_plan(prompt):
-    "A small deterministic routing step before the model sees a turn; never another model call."
+    "A small deterministic routing step before the model sees a turn. Never another model call."
     p = str(prompt or '').lower()
     repo = ('this repo', 'repository', 'codebase', 'implementation', 'implemented',
             'default model', 'config', 'source code', 'where is', 'which file', ' method',
@@ -521,7 +520,7 @@ def request_text(prompt):
 
 # %% ../nbs/03_agent.ipynb #fdd81169
 def prompt_directives(prompt, tools=(), skills=()):
-    "Explicit `/tool` and `/skill-name` mentions in an ordinary prompt; known names only."
+    "Explicit `/tool` and `/skill-name` mentions in an ordinary prompt. Known names only."
     text = str(prompt or '')
     tool_names = {getattr(t, '__name__', ''): t for t in tools}
     skill_names = {s.name.lower(): s for s in skills}
@@ -537,7 +536,7 @@ def prompt_directives(prompt, tools=(), skills=()):
     return requested, loaded
 
 # %% ../nbs/03_agent.ipynb #4d102b68
-MAX_CONTEXT_FILE = 8000     # chars of one AGENTS.md; past this it is documentation, not instructions
+MAX_CONTEXT_FILE = 8000     # chars of one AGENTS.md. Past this it is documentation, not instructions
 CONTEXT_FILES = ('AGENTS.md', '.agents/AGENTS.md', '.leela/AGENTS.md')
 
 def project_context(host, mx=MAX_CONTEXT_FILE):
@@ -562,7 +561,7 @@ def project_context(host, mx=MAX_CONTEXT_FILE):
             '\n</project_context>')
 
 
-# The briefing's working rules, tagged with the tool each is about; `None` always applies.
+# The briefing's working rules, tagged with the tool each is about. `None` always applies.
 RULES = (
     (None, 'Act on the user’s verb. “Create”, “run”, “fix”, “add” and “as NAME” request a\n'
            '  result, not a plan: use the tool that produces it, verify it, then report what exists.\n'
@@ -630,7 +629,7 @@ OUTPUT_CONTRACT = ('\n\n<output-contract>Reply in plain sentences: no headings, 
 
 
 def work_rules(names=()):
-    "The briefing's rules, keeping those whose tool is on the table; empty `names` filters nothing."
+    "The briefing's rules, keeping those whose tool is on the table. Empty `names` filters nothing."
     names = set(names or ())
     return '\n'.join(f'- {text}' for tool, text in RULES if not names or tool is None or tool in names)
 
@@ -642,7 +641,7 @@ def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=()):
     if getattr(host, 'read_outside', False):   # only when the host says so
         roots += ('\n  Reads may name any path on this machine. Writing, running commands and\n'
                   '  listing files stay inside the folders above.')
-    conc = (   # claimed only where it is true'\n  Your kernel runs each inspection in its own subshell, so this works while one '
+    conc = (   # claimed only where it is true'\n  Your kernel runs each inspection in its own subshell. This works while one '
             "of the user's cells is still running." if getattr(host, 'concurrent', False) else '')
     live = ('' if 'inspect_python' not in names and names else
             '\n- To *look at* live state, prefer `inspect_python`: neither of its scopes can change\n'
@@ -695,7 +694,7 @@ class Todo:
     text: str
     status: str = 'pending'   # pending | active | done | cancelled
     note: str = ''
-    owner: str = ''           # '' = main agent; a label when a sub-agent owns it
+    owner: str = ''           # '' = main agent. A label when a sub-agent owns it
 
     def __post_init__(self):
         if self.status not in TODO_STATUSES:
@@ -881,17 +880,16 @@ def plan_tools(get_plan, save=None):
 
     return [set_plan, add_todo, update_todo, list_plan]
 
-
 # %% ../nbs/03_agent.ipynb #083961a6
 class Agent:
     "The IDE's agent: a routed chat whose tools are the host's own capabilities."
 
     def __init__(self,
                  host,
-                 model=None,                # the turn model; None takes the routing default
+                 model=None,                # the turn model. None takes the routing default
                  routing=None,
                  sp=None,                   # override the whole briefing
-                 approvals=None,            # an `Approvals`; None means nothing is gated
+                 approvals=None,            # an `Approvals`. None means nothing is gated
                  cfg=None,                  # config dir, for skills and extensions
                  compact=True,              # compact automatically at the threshold
                  compact_strategy='summary', # 'summary' model checkpoint | 'surgical' deterministic DSL
@@ -928,7 +926,7 @@ class Agent:
         self.activity = Activity(on_change=on_activity)   # the live account of what it is doing
         self.plan = Plan()       # durable checklist for stop/start and sub-agent bites
         self.on_plan = None      # frontend hook: callable(plan) after every mutation
-        self.calls = []          # (tool, args) per call this session -- what the UI shows as activity
+        self.calls = []          # (tool, args) per call this session. What the UI shows as activity
         self.history = []        # inspectable user/assistant turns, including the chosen tool plan
         self._load_history()
         self._load_plan()
@@ -937,7 +935,7 @@ class Agent:
         self._tool_calls_turn = 0 # backend-independent guard for local/native tool loops
         self.max_tool_calls = 80
         self.use = Usage()       # this session's total, across every model it routed to
-        self.turn_use = Usage()  # the completed foreground turn only; persisted with history
+        self.turn_use = Usage()  # the completed foreground turn only. Persisted with history
         self._usage_seen = {}    # backend cumulative counters already folded into `use`
         self.note = 'not started'
         self._backends, self._skills, self._reg, self._tools = {}, None, None, None
@@ -947,7 +945,7 @@ class Agent:
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self.lock = threading.Lock()
 
-    # -- what it knows -------------------------------------------------------
+
     @property
     def skills(self):
         "Every discovered skill, found once. Includes anything an extension registered."
@@ -971,7 +969,7 @@ class Agent:
 
     @property
     def subagent_budget(self):
-        "What the sub-agent model can afford; usually not the turn model's."
+        "What the sub-agent model can afford. Usually not the turn model's."
         spec = self.spec_or_none('subagent')
         if spec is None: return self.budget
         return budget_for(spec, self.tool_max_len, tool_channel(spec))
@@ -1004,7 +1002,7 @@ class Agent:
 
     @property
     def budget(self):
-        "What the turn model can afford to be told -- see `core.budget_for`."
+        "What the turn model can afford to be told. See `core.budget_for`."
         spec = self.spec_or_none()        # an unresolved name costs no tools and no channel
         return budget_for(spec, self.tool_max_len, tool_channel(spec))
 
@@ -1053,7 +1051,7 @@ class Agent:
                      'resume from the active item rather than rewriting the plan.')
         return system_prompt(self.host, self.skills, inline, tools=self._plain, extra=extra)
 
-    # -- recording -----------------------------------------------------------
+
     def _record(self, f):
         "Wrap one tool so its call is logged and its damage is measurable."
         name = getattr(f, '__name__', '?')
@@ -1074,7 +1072,7 @@ class Agent:
                     if p not in self.before: self.before[p] = self.host.text_at(p) or ''
                 elif name == 'run_shell': self.snapshot_tree()
             try: out = f(*a, **kw)
-            except NotImplementedError as e:   # a raise ends the turn; a readable failure does not
+            except NotImplementedError as e:   # a raise ends the turn. A readable failure does not
                 self.activity.finish(act, agent_err(e), ok=False)
                 return err(f'{name} is not available here', e)
             except Exception as e:
@@ -1086,11 +1084,11 @@ class Agent:
         return wrapper
 
     def _action_meta(self, name, args):
-        "Frontend-independent identity metadata for a call; applications may override."
+        "Frontend-independent identity metadata for a call. Applications may override."
         return {'turn_id': self.current_turn_id, 'branch_id': self.current_branch_id}
 
     def snapshot_tree(self):
-        "Read the open folders once per turn, so `changes()` can tell what a shell command moved."
+        "Read the open folders once per turn. `changes()` can tell what a shell command moved."
         if self._walked: return True
         try: paths = [str(p) for p in self.host.walk()]
         except Exception as e:
@@ -1124,7 +1122,7 @@ class Agent:
                 if (now := self.host.text_at(p)): out[p] = ('', now)
         return out
 
-    # -- backends ------------------------------------------------------------
+
     def _be(self, job='turn'):
         "The backend for `job`, built on first use and shared by every job on the same model."
         spec = self.routing.spec(job)
@@ -1176,20 +1174,20 @@ class Agent:
         return b
 
     def retry(self):
-        "Forget a previous failure, so a model that has since downloaded or been keyed is picked up."
+        "Forget a previous failure. A model that has since downloaded or been keyed is picked up."
         b = self._be('turn')
         b.retry()
         return self.start()
 
     def set_model(self, name, job='turn'):
-        "Point `job` at `name`; a turn-model change carries the live conversation with it."
+        "Point `job` at `name`. A turn-model change carries the live conversation with it."
         if self.busy: raise RuntimeError('cannot change model while the assistant is working')
         previous = self.routing.spec(job)
         old = (previous.backend, previous.model_id)
         history = self._backends[old].snapshot_hist() if job == 'turn' and old in self._backends else []
         before = self.budget
         spec = self.routing.set(name, job)
-        # tools and briefing are sized to the turn model, so rebuild before `_be` briefs one
+        # tools and briefing are sized to the turn model. Rebuild before `_be` briefs one
         if job == 'turn' and self.budget != before: self._tools = None
         if job == 'subagent': self._subtools = self._subrec = None
         new = (spec.backend, spec.model_id)
@@ -1237,14 +1235,14 @@ class Agent:
         return True
 
     def _spec_for(self, model=None):
-        "The `ModelSpec` a lent factory should build on; `None` means the cheap jobs' model."
+        "The `ModelSpec` a lent factory should build on. `None` means the cheap jobs' model."
         if model:
             try: return self.routing._resolve(str(model))
             except Exception: return None   # never substituted for a name asked for by name
         b = self._be_or_none('oneshot')
         return None if b is None or b.chat is None else b.spec
 
-    # -- standing interests --------------------------------------------------
+
     def poll_watches(self, force=False):
         "Fire whatever the host has due, in a daemon thread, at most every `poll_every` seconds."
         import time
@@ -1256,7 +1254,7 @@ class Agent:
 
         def run():
             try: r = self.host.poll() or {}
-            except NotImplementedError: return           # no watches here; nothing to say about it
+            except NotImplementedError: return           # no watches here. Nothing to say about it
             except Exception as e: return self.host.note(f'could not poll watches: {agent_err(e)}')
             if r.get('ran'): self.host.note(f"{r['ran']} of {r.get('checked', 0)} watches fired; see memory_search")
         from fastcore.parallel import startthread
@@ -1264,7 +1262,7 @@ class Agent:
         self._poll_thread.name = 'ramabana-poll'
         return self._poll_thread
 
-    # -- turns ---------------------------------------------------------------
+
     def _prepare(self, prompt):
         "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
         self.before.clear()                    # `changes()` reports this turn, not the session
@@ -1277,7 +1275,7 @@ class Agent:
         self.activity.mark(self.current_turn_id) # and so does `turn_md()`
         self.checkpoints[self.current_turn_id] = {'before': self._be('turn').snapshot_hist(),
                                                   'branch_id': self.current_branch_id}
-        # each checkpoint is a whole conversation, so the dict stays bounded
+        # each checkpoint is a whole conversation. The dict stays bounded
         for old in list(self.checkpoints)[:-MAX_CHECKPOINTS]: self.checkpoints.pop(old, None)
         self.registry.fire('before_turn', self, prompt)
         self.poll_watches()
@@ -1292,7 +1290,7 @@ class Agent:
         self._turn_plan = {'route': route, 'text': plan,
                            'tools': [name for name, _ in requested],
                            'skills': [skill.name for skill in loaded]}
-        # planning has teeth: safe query tools run before generation, so the model gets evidence
+        # planning has teeth: safe query tools run before generation. The model gets evidence
         preflights = []
         first = {'repo': 'search_code', 'web': 'web_search'}.get(route)
         if first: preflights.append((first, request))
@@ -1312,7 +1310,7 @@ class Agent:
         b = self._be('turn')
         # measure the pending message too: a pasted notebook can cross the limit in one turn
         if self.compactor.auto and (self.compactor.due(b) or not b.fits(outgoing)): self.compact()
-        # only when the turn cannot fit; compaction cannot shrink the pending message
+        # only when the turn cannot fit. Compaction cannot shrink the pending message
         if not b.fits(outgoing): outgoing = compact_notebook_context(outgoing, b.fits)
         if not b.fits(outgoing):
             projected = b.projected_tokens(outgoing)
@@ -1379,9 +1377,9 @@ class Agent:
         turns = [t for t in self.history if t.get('session') == picked['id']]
         canonical = []
         # A resume rebuilds context from the durable log, not from a snapshot. The persisted args
-        # and results are already clipped, so they go back as text rather than as provider tool
+        # and results are already clipped. They go back as text rather than as provider tool
         # calls: that shape would assert a fidelity the record does not have, and its id and JSON
-        # validation differs per backend -- for calls a local model may never have numbered.
+        # validation differs per backend. For calls a local model may never have numbered.
         for turn in turns:
             canonical.append({'role': 'user', 'content': str(turn.get('prompt', ''))})
             body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
@@ -1413,7 +1411,7 @@ class Agent:
 
     def _finish(self, text, prompt=''):
         b = self._be('turn')
-        # a backend counts cumulatively, so fold in each backend's delta
+        # a backend counts cumulatively. Fold in each backend's delta
         turn_use = Usage(model=b.use.model)
         backends = list(self._backends.items())
         if all(backend is not b for _, backend in backends):
@@ -1463,7 +1461,7 @@ class Agent:
     def compose(self, prompt, context='', screen='', image=None, context_path=''):
         "One message from what the frontend can supply: the notebook, the screen as text, the screen as a picture."
         parts = []
-        # a text-only LiteRT engine cannot accept image parts, so leave a truthful marker
+        # a text-only LiteRT engine cannot accept image parts. Leave a truthful marker
         local_text_only = bool(image) and self.model.runtime == 'litert' and not self.local_multimodal
         if local_text_only: parts.append('[Image attachment omitted: local multimodal is disabled.]')
         if context:
@@ -1478,7 +1476,7 @@ class Agent:
         return [*media, ask]
 
     def ask_with(self, prompt, context='', screen='', image=None, context_path='', **kw):
-        "One turn with the frontend's context attached. Blocking; see `stream_with` for the live one."
+        "One turn with the frontend's context attached. Blocking. See `stream_with` for the live one."
         return self.ask(self.compose(prompt, context, screen, image, context_path), **kw)
 
     def stream_with(self, prompt, context='', screen='', image=None, context_path='', **kw):
@@ -1489,7 +1487,7 @@ class Agent:
         """Stop the turn in flight, and say whether there was one to stop.
 
         The answer is about the turn, not about the backend. A caller asking "did I stop anything?"
-        wants to know whether the assistant was working; a backend that took the request but cannot
+        wants to know whether the assistant was working. A backend that took the request but cannot
         abort a completion already in flight has still stopped the turn at its next step.
         """
         running = self.busy
@@ -1519,7 +1517,7 @@ class Agent:
         branch['revision'] = str(text)
         return branch
 
-    # -- the cheap jobs ------------------------------------------------------
+
     def oneshot(self, prompt, sp='', job='oneshot', max_tokens=None):
         "A question on whichever model `job` routes to, in a conversation that is thrown away."
         b = self._be_or_none(job)
@@ -1553,7 +1551,7 @@ class Agent:
         self.note = self.compactor.note
         return text
 
-    # -- what to show --------------------------------------------------------
+
     @property
     def pct_full(self):
         try: return self._be('turn').pct_full
@@ -1685,11 +1683,10 @@ class Agent:
         return sorted({'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
                        'subagents', 'plan', 'todos', 'todo', *self.registry.commands})
 
-
 # %% ../nbs/03_agent.ipynb #15c8df1f
 @patch
 def _drew(self: Agent, paths):
-    "Record pictures a tool wrote this turn, so a frontend can show them."
+    "Record pictures a tool wrote this turn. A frontend can show them."
     self._drawn = getattr(self, '_drawn', []) + list(paths)
 
 @patch(as_prop=True)
@@ -1697,7 +1694,7 @@ def last_media(self: Agent):
     """Pictures from the newest turn, as `{'mime','data'}` dicts.
 
     Two routes produce one: the model returns the image on its response, or a tool writes a file
-    and returns its path. A frontend cannot draw a filename, so both arrive here."""
+    and returns its path. A frontend cannot draw a filename. Both arrive here."""
     be = self._be('turn')
     m = next((m for m in reversed(list(be.hist if be else []))
               if isinstance(m, dict) and m.get('role') == 'assistant'), None)
@@ -1755,7 +1752,7 @@ CTX_BEFORE, CTX_AFTER = 2000, 600   # chars of surrounding code sent as context
 
 
 def _strip_echo(before, out):
-    "Drop a re-emitted tail of `before` from the front of `out` -- models like to restate the line they continue."
+    "Drop a re-emitted tail of `before` from the front of `out`. Models like to restate the line they continue."
     tail = before[-200:]
     for n in range(len(tail), 0, -1):
         if out.startswith(tail[-n:]): return out[n:]
@@ -1763,7 +1760,7 @@ def _strip_echo(before, out):
 
 # %% ../nbs/03_agent.ipynb #35da5eee
 def _fence_tail(text):
-    "What follows an *unterminated* fence, or None -- everything before the opener is prose."
+    "What follows an *unterminated* fence, or None. Everything before the opener is prose."
     if '```' not in text: return None
     head, _, rest = text.rpartition('```')
     if '```' in head and head.count('```') % 2: return None   # a complete block: fenced_blocks has it
@@ -1801,7 +1798,7 @@ class Completer:
         support = ''
         if context: support += f'<related_code>\n{context[-6000:]}\n</related_code>\n'
         if variables: support += f'<runtime_variables>\n{variables[:4000]}\n</runtime_variables>\n'
-        # whatever the application pinned to completion; a host that keeps none has no `ws`
+        # whatever the application pinned to completion. A host that keeps none has no `ws`
         try: memory = self.a.ws.agent_memory_context('completion', max_chars=6000)
         except Exception: memory = ''
         if memory: support += f'<user_memory>\n{memory}\n</user_memory>\n'
@@ -1837,7 +1834,6 @@ def _cloud_backend_or_none(self:Agent, model):
         backend = self._backends[key]
         return backend if backend.start() is not None else None
     except Exception: return None
-
 
 # %% ../nbs/03_agent.ipynb #46f071e0
 _TOOL_MIN, _TOOL_MAX = 20, 400
@@ -1893,4 +1889,3 @@ Agent.command = _command_limits
 _agent_commands_limits = Agent.commands
 def _commands_limits(self): return sorted(set(_agent_commands_limits(self)) | {'tool-budget', 'steps'})
 Agent.commands = _commands_limits
-

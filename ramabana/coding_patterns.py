@@ -4,7 +4,7 @@ Read this before writing, reviewing, refactoring, or assessing code. These are A
 
 ## Improve shared tooling
 
-A finished task helps once. A better tool helps every later task, every later session and every agent, and ergonomics count as much as capability. Most code you have read was written by people who put up with tool friction rather than fix it, so the workaround is your default. Here the tools are ours and one edit away. When repository-owned tooling grates, fix it or say so. Never quietly work around it, and do not expand the current task without the user's agreement.
+A finished task helps once. A better tool helps every later task, every later session and every agent, and ergonomics count as much as capability. Most code you have read was written by people who put up with tool friction rather than fix it. The workaround is your default. Here the tools are ours and one edit away. When repository-owned tooling grates, fix it or say so. Never quietly work around it, and do not expand the current task without the user's agreement.
 
 ## Read before writing
 
@@ -32,7 +32,7 @@ A flag, redirect or pipe states that this one call has a requirement the default
 
 - Wanting the same flag on every run means a missing configuration line. Promote it and go back to the bare command: `pytest --timeout 300` on every run becomes `timeout = 300` under `[tool.pytest.ini_options]`.
 - Do not check-then-apply when applying is the goal. Apply formatters when formatting is the goal, and reserve check-only modes for final verification and CI.
-- Run commands and read their complete output. Never pipe diagnostics through `head`, `tail` or any filter that hides failures. The truncation is decided before the output exists, so it hides the surprises worth seeing. Never merge stderr into stdout with `2>&1`. Separated, a crash is unmissable.
+- Run commands and read their complete output. Never pipe diagnostics through `head`, `tail` or any filter that hides failures. The truncation is decided before the output exists. It hides the surprises worth seeing. Never merge stderr into stdout with `2>&1`. Separated, a crash is unmissable.
 - Where output genuinely cannot come back inline, redirect stdout and stderr to separate files and read both.
 - A real one-off requirement gets its flag once, with the reason stated alongside, and disappears again on the next call.
 
@@ -44,7 +44,7 @@ Where `**kwargs` passes through to a known callable with useful named parameters
 
 ## Raw strings by default
 
-Write any non-trivial string literal as a raw string: regexes, prompt and skill text, code or markup inside strings, paths with escapes, and anything multi-line. In a plain string a stray backslash-n or backslash-d either errors or silently corrupts. Each miss costs a round trip to diagnose and another to fix. The `r` costs nothing when no escapes are present, so make it the default rather than the exception.
+Write any non-trivial string literal as a raw string: regexes, prompt and skill text, code or markup inside strings, paths with escapes, and anything multi-line. In a plain string a stray backslash-n or backslash-d either errors or silently corrupts. Each miss costs a round trip to diagnose and another to fix. The `r` costs nothing when no escapes are present. Make it the default rather than the exception.
 
 The exception is a skill body, which is an exported markdown cell and reaches the module as a plain docstring that nbdev writes without the `r`. Spell escapes out in words there rather than showing them literally.
 
@@ -58,10 +58,10 @@ All code costs something to write, maintain and read. Tests cost most. Every tes
 
 Wiring and orchestration get no tests: re-exports, delegations, one-line glue, and functions that only sequence calls to other tools. A test there asserts that Python works and pins down internals we may want to change. The strong tell is a test that needs recording fakes or mock collaborators to reach the code, which tests a transcript of the implementation rather than logic. Extract the logic into a small pure function and test that, or do not test at all.
 
-For a behaviour change, work red-green: write the test first, run it to see it fail, make the change, run it again to see it pass. A regression test has to fail for the reported bug before the fix and pass after it. In notebooks there are no separate test cells, so the red-green check applies to the assertion you actually added or revised.
+For a behaviour change, work red-green: write the test first, run it to see it fail, make the change, run it again to see it pass. A regression test has to fail for the reported bug before the fix and pass after it. In notebooks there are no separate test cells. The red-green check applies to the assertion you actually added or revised.
 
 - Prefer as few tests as possible. One test that walks through many checks is more readable and faster than many small ones.
-- A check worth keeping goes in a test file or a notebook cell, never left as an ad-hoc command. In a notebook the checks made while exploring often are the narrative, so they stay as example cells.
+- A check worth keeping goes in a test file or a notebook cell, never left as an ad-hoc command. In a notebook the checks made while exploring often are the narrative. They stay as example cells.
 - Assert the logic, not incidentals. Check what the behaviour guarantees, never byte-exact renderings, exact reprs or field order. A test comparing a whole output string locks in formatting decisions that were never the point. Never use a test to lock in behaviour unless that exact behaviour is part of the contract.
 - Do not run slow or network-touching suites until finishing a session, or after a change likely to affect them.
 
