@@ -9,8 +9,8 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX',
            'DFLT_AGENT_CTX', 'RUNTIMES', 'AGENTS', 'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'MODELS', 'DFLT_LOCAL',
            'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'SMALL_CTX', 'TOOL_MAX_FLOOR',
            'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'agent_err', 'use_env_prefix', 'env',
-           'cursor_mode', 'runtime_available', 'claude_tags', 'auth_status', 'available_models', 'local_ctx',
-           'ModelSpec', 'copilot_catalog', 'prefix_typo', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget',
+           'cursor_mode', 'runtime_available', 'claude_tags', 'auth_status', 'copilot_catalog', 'available_models',
+           'local_ctx', 'ModelSpec', 'prefix_typo', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget',
            'budget_for', 'register_model', 'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel',
            'Routing']
 
@@ -86,19 +86,10 @@ CLAUDE = {f'claude/{mid}': mid for mid in (
     'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'claude-fable-5',
     'claude-opus-4-8', 'claude-sonnet-4-6')}
 
-#: Neither agent harness reports a window, and a good deal of every turn is the harness's own
-#: prompt -- roughly 16k for Cursor, 50k for Claude Code. 128k is the `ModelSpec` default rather
-#: than the 32k local one, which would brief a frontier model frugally.
 DFLT_AGENT_CTX = 128_000
-#: Every runtime `register_model` accepts, as one name a host can read.
 RUNTIMES = ('litert', 'mlx', 'llama', 'cursor', 'claude', 'copilot', 'remote')
-#: The runtimes that are an agent harness rather than a completion endpoint.
 AGENTS = ('cursor', 'claude')
-#: The runtimes that answer over somebody else's network. Not `local`, and sized from a cloud table
-#: rather than from what this machine can hold.
 HOSTED = ('remote', 'copilot', *AGENTS)
-#: What to say when Copilot is asked for and cannot be reached. Both halves matter: the extra is
-#: not installed by default, and a subscription alone signs nobody in.
 COPILOT_UNAVAILABLE = ('copilot runtime is unavailable; install rishi[copilot], then sign in to '
     'Copilot in an editor or run `python -c "from rishi.copilot import copilot_login; copilot_login()"`')
 CUSTOM = {}
@@ -262,6 +253,18 @@ def _openai_models(include_legacy=False):
     legacy = re.compile(r'^gpt-4\.1(?:-mini|-nano)?$')
     return sorted({x for x in ids if (current.match(x) or (include_legacy and legacy.match(x))) and not re.search(r'-20\d\d-', x)})
 
+_copilot_cat = (0., {})
+def copilot_catalog(ttl=300):
+    "Copilot's catalogue for this account, cached: `{id: entry}`, or `{}` when it cannot be reached."
+    global _copilot_cat
+    if (time.time() - _copilot_cat[0]) < ttl: return _copilot_cat[1]
+    try:
+        from rishi.copilot import copilot_catalog as cat
+        d = cat()
+    except Exception: d = {}
+    _copilot_cat = (time.time(), d)
+    return d
+
 def _copilot_chat_models():
     "Chat ids this Copilot plan can reach. Per-plan and it moves, so it is asked for, never tabled."
     return [i for i, m in copilot_catalog().items()
@@ -357,19 +360,6 @@ class ModelSpec:
     @property
     def local(self): return self.backend not in HOSTED
     def __str__(self): return f'{self.name} ({self.model_id})'
-
-
-_copilot_cat = (0., {})
-def copilot_catalog(ttl=300):
-    "Copilot's catalogue for this account, cached: `{id: entry}`, or `{}` when it cannot be reached."
-    global _copilot_cat
-    if (time.time() - _copilot_cat[0]) < ttl: return _copilot_cat[1]
-    try:
-        from rishi.copilot import copilot_catalog as cat
-        d = cat()
-    except Exception: d = {}
-    _copilot_cat = (time.time(), d)
-    return d
 
 def _copilot_ctx(model_id):
     """Context window and a note for a Copilot model. Copilot reports its own, so nothing is guessed.

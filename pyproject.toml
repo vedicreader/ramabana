@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     "exhash>=0.4.9",
     "fastcore>=2.1.16",
-    "rishi>=0.1.14",
+    "rishi>=0.1.19",
     "fossick>=0.1.11",
     "koshas>=0.0.31",
     "litesearch>=0.1.1",
@@ -30,6 +30,7 @@ dependencies = [
     "vishalakshi>=0.1.7",
     "fastspec>=0.2.1",
     "pyyaml>=6.0",
+    "toolslm>=0.3.48",
 ]
 
 [project.optional-dependencies]

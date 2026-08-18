@@ -1486,9 +1486,16 @@ class Agent:
         return self.stream(self.compose(prompt, context, screen, image, context_path), **kw)
 
     def cancel(self):
-        "Stop the turn in flight, and release anyone waiting on an approval for it."
+        """Stop the turn in flight, and say whether there was one to stop.
+
+        The answer is about the turn, not about the backend. A caller asking "did I stop anything?"
+        wants to know whether the assistant was working; a backend that took the request but cannot
+        abort a completion already in flight has still stopped the turn at its next step.
+        """
+        running = self.busy
         if self.approvals is not None: self.approvals.cancel_all('the turn was stopped')
-        return bool(self._be('turn').cancel())
+        self._be('turn').cancel()
+        return running
 
     def close(self):
         for b in list(self._backends.values()):

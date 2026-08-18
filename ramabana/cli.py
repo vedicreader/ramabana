@@ -923,9 +923,7 @@ class Ui:
         if k.name == 'ctrl+c':
             if self.turn is not None:
                 self.agent.cancel()
-                self.turn.cancel()
-                self.turn = None
-                self.say(Text('stopped'), 'note')
+                self.say(Text('stopping'), 'note')
             self.buf.clear()
             return self.paint()
         if k.name == 'enter':

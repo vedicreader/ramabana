@@ -648,9 +648,15 @@ class Backend:
             except Exception:pass
             self.chat=None
     def cancel(self):
+        "Ask this backend's chat to stop the turn in flight."
         if not self.chat:return False
-        try:self.chat.cancel(); return True
-        except Exception:return False
+        f=getattr(self.chat,'cancel',None)
+        if f is None:
+            self.problem(f'{self.spec.name} cannot be stopped mid-turn')
+            return False
+        try:f()
+        except Exception as e:self._failed('could not be stopped',e); return False
+        return True
     def send(self,msg,**kw):
         if self.start() is None:return self.note
         with self.lock:
