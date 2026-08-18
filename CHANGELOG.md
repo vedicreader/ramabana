@@ -1,23 +1,93 @@
 # Changelog
-0.1.15
-agent cancel
-0.1.14:
-release
 
-copilot access
-subagent write access and bettwer tool call instructions
-release
-tool_channel asks the live chat, so an agent harness carrying tools natively is no longer sized and briefed as if it were on tags
-openapi spec changes 
-release
-allow max tool calls auto
-image support and openapi spec support
+## 0.1.15
 
-make system prompts tighter and show one line tool calls
+### Packaging
 
-kosha sync made faster
+- Source distributions now contain the package, README and project metadata only. Notebooks and tests are no longer included.
 
-Shri Rama jayam. Ramabana relase
+## 0.1.14
+
+### Fixed
+
+- The `all` extra now installs `rishi[all]`, including every Rishi backend. The `copilot` extra remains available separately.
+
+## 0.1.13
+
+### Changed
+
+- Refreshed the resolved development dependencies.
+
+## 0.1.12
+
+### Added
+
+- Added GitHub Copilot as a runtime. Ramabana detects an existing Copilot sign-in, lists the models available to the account and uses each model's reported context window.
+
+## 0.1.11
+
+### Added
+
+- Published `theory`, `write_prose` and `write_docs` as pyskills, and refreshed `coding_patterns`.
+- Added optional write access for sub-agents. Sub-agent writes use the parent session's approval policy.
+
+### Fixed
+
+- Resumed sessions now retain tool calls and tool results instead of restoring only the visible transcript.
+
+## 0.1.10
+
+### Changed
+
+- `tool_channel` now asks the live chat whether tools are native or tag-based. Tool budgets and briefings no longer treat native Cursor and Claude tools as tag tools.
+- Cursor and Claude Code runtime configuration now follows the capabilities reported by their active transports.
+
+### Fixed
+
+- Git rebase previews are treated as reads and no longer block unrelated requests behind the write queue.
+
+## 0.1.9
+
+- Version-only release.
+
+## 0.1.8
+
+- Version-only release.
+
+## 0.1.7
+
+### Added
+
+- Added Git status, divergence, rebase preview, remote synchronization and branch checkout tools. Git operations use rehearsed safepoints before changing a branch.
+
+### Changed
+
+- Tool-call limits can now be selected automatically from the active model and task.
+
+## 0.1.6
+
+### Added
+
+- Added multimodal input for images and audio, generated-image tools, runtime capability reporting and image blocks in the terminal transcript.
+- Added OpenAPI specifications as dynamically loaded tool groups.
+
+### Fixed
+
+- Generated images now reach the transcript during the turn and render as complete, non-folding blocks.
+
+## 0.1.4
+
+### Changed
+
+- Tightened the agent system prompts and rendered tool calls on one line.
+
+## 0.1.3
+
+### Changed
+
+- Kosha index synchronization now runs in parallel.
+
+## 0.1.2
 
 Half the sandbox, a row of options, and the terminal app's hands back -- plus a pass over
 everything the harness was leaving on the table in the four libraries underneath it.
