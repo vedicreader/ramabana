@@ -67,13 +67,13 @@ def _harness_chat(cls, hist, billed=260_915, sp='BRIEFING'):
     """A real `rishi` harness chat with no CLI behind it.
 
     `__new__` rather than the constructor: what is under test is the window read-out, and building
-    one properly wants a Claude Code login and a `cursor-agent` binary that CI has neither of.
+    one properly wants a Claude Code login that CI does not have.
     """
     chat = cls.__new__(cls)
     chat.hist, chat.sp, chat.toolspecs, chat._ctx_tokens = list(hist), sp, [], billed
-    # `CursorChat.token_count` renders the prompt, which asks the chat which channel its tools are
-    # on, which reads these. Without them it raises, `used_tokens` swallows that and answers with
-    # the bill -- so the read-out under test here silently was not being read at all.
+    # `token_count` renders the prompt, which asks the chat which channel its tools are on, which
+    # reads these. Without them it raises, `used_tokens` swallows that and answers with the bill
+    # -- so the read-out under test here silently was not being read at all.
     chat.via, chat.mode = 'cli', ''
     return chat
 
@@ -86,17 +86,14 @@ def test_an_agent_harness_reports_occupancy_rather_than_what_the_turn_was_billed
     the wrong one for the window. Measured on one real turn it over-stated a two-message
     conversation by 6.6x, and it never came back down when history was replaced, so compaction
     could not clear it and the turn refused itself with `input is too large` over a nearly empty
-    context. `cursor-agent` reports no usage at all, so the same reading sat at zero for the whole
-    session and compaction never fired once. Fixed in rishi 0.1.12, which is the floor; this is
+    context. Fixed in rishi 0.1.12, which is the floor; this is
     here so a downgrade or a regression there fails loudly rather than as a stuck agent.
     """
     from rishi.claude import ClaudeChat
-    from rishi.cursor import CursorChat
     claude = ModelSpec('claude/claude-sonnet-5', 'claude', 'claude-sonnet-5', 128_000)
-    cursor = ModelSpec('opus5', 'cursor', 'claude-opus-5', 128_000)
 
     hist = [{'role': 'user', 'content': 'hello'}, {'role': 'assistant', 'content': 'hi'}]
-    for cls, spec in ((ClaudeChat, claude), (CursorChat, cursor)):
+    for cls, spec in ((ClaudeChat, claude),):
         b = runtime.Backend(spec)
         b.chat = _harness_chat(cls, hist)
         assert b.used_tokens < 1000, cls.__name__          # what the window holds, not the bill

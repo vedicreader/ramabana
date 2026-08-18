@@ -17,7 +17,7 @@ __all__ = ['MAX_GREP_HITS', 'MAX_API', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 
            'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
-import ast, functools, json, mimetypes, os, re, runpy, shutil, threading, uuid
+import ast, concurrent.futures, functools, json, mimetypes, os, re, runpy, shutil, threading, time, uuid
 from base64 import b64decode
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +27,7 @@ from fastcore.docments import frontmatter
 from fastcore.foundation import L
 from fastcore.parallel import parallel, startthread
 from .core import AgentError, agent_err, spec_caps
+from .runtime import Run, current_run, run_context
 
 # %% ../nbs/02_tools.ipynb #561c4516
 MAX_GREP_HITS = 60  # exact matches one `grep` returns. Part of the Host contract
@@ -1998,19 +1999,32 @@ def sub_sp(sp=SUB_SP, skills=()):
     return sp + '\n\n' + '\n\n'.join(f'## {s.name}\n\n{s.text()}' for s in skills)
 
 
+def _stopped(run):
+    "A stopped delegation answers in text: a dict would reach the model as its own repr."
+    return f'The delegated question was stopped ({run.state}) before it answered.'
+
+
 def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skills=(),
              writes=False,      # hand over WRITE_TOOLS as well
-             approve=None):     # the gate those writes answer to, which `spawn` inherits none of
+             approve=None,      # the gate those writes answer to, which `spawn` inherits none of
+             run=None):         # a pre-registered child run
     "Ask `question` in a throwaway conversation on `backend`'s engine. Returns the answer text."
     sub = None
+    run = run or Run(f'run_{uuid.uuid4().hex[:12]}', 'child', str(question), backend.spec.name, current_run())
+    if not run.start(): return _stopped(run)
     try:
         # the tool wrappers are the hard stop: native engines own their own tool loop
         kw = {'approve': approve} if approve is not None else {}
         sub = backend.spawn(sp=sub_sp(ifnone(sp, sub_briefing(writes)), skills),
                             tools=read_only(tools, max_calls=max_steps * 4, writes=writes), **kw)
         if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
-        return _delegate_result(sub.send(question))
+        if not run.attach(sub): return _stopped(run)
+        with run_context(run): out = _delegate_result(sub.send(question, run=run))
+        if run.cancelled: return _stopped(run.finish())
+        run.finish()
+        return out
     except Exception as e:
+        run.finish('failed')
         return err('delegation failed', e)
     finally:
         if sub is not None:
@@ -2019,16 +2033,39 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
 
 # %% ../nbs/02_tools.ipynb #fe517832
 def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS, n_workers=4,
-                  skills=(), writes=False, approve=None):
-    "Ask several questions. Fan out with `fastcore.parallel` on cloud backends, serial on local."
+                  skills=(), writes=False, approve=None, parent=None):
+    "Ask several questions. Register every child before starting serial or parallel workers."
     qs = L(questions)
     if not qs: return L()
-    def run(q): return delegate(backend, q, tools, sp, max_steps, skills, writes, approve)
+    parent = parent or current_run()
+    runs = [Run(f'run_{uuid.uuid4().hex[:12]}', 'child', str(q), backend.spec.name, parent,
+                getattr(parent, 'grace', .25)) for q in qs]
+    def run(item):
+        q, child = item
+        if child.cancelled:return _stopped(child)
+        return delegate(backend, q, tools, sp, max_steps, skills, writes, approve, child)
+    items = list(zip(qs, runs))
     # writing sub-agents stay serial. `Approvals` holds one pending ask, and nobody can review
     # concurrent edits to one workspace
-    if len(qs) == 1 or writes or getattr(backend.spec, 'local', False) or n_workers < 2:
-        return L(run(q) for q in qs)
-    return parallel(run, qs, n_workers=min(n_workers, len(qs)), threadpool=True)
+    workers = 1 if writes or getattr(backend.spec, 'local', False) else min(n_workers, len(qs))
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers))
+    futures = [ex.submit(run, item) for item in items]
+    try:
+        while True:
+            if all(f.done() for f in futures):break
+            if parent is not None and parent.cancelled:
+                concurrent.futures.wait(futures, timeout=getattr(parent, 'grace', .25))
+                break
+            time.sleep(.005)
+        out = []
+        for child, future in zip(runs, futures):
+            if future.done():
+                try:out.append(future.result())
+                except Exception as e:out.append(err('delegation failed', e))
+            else:
+                child.detach(); out.append(_stopped(child))
+        return L(out)
+    finally:ex.shutdown(wait=False, cancel_futures=True)
 
 # %% ../nbs/02_tools.ipynb #906e7f69
 def named_skills(get_skills, names):

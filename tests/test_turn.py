@@ -4,6 +4,8 @@ The activity feed and the usage counters are what a person reads a turn through,
 block is about whether they tell the truth -- a tool that claimed success and changed nothing must
 not appear in the diff, and a backend that counts cumulatively must not charge turn one twice.
 """
+from dataclasses import replace
+
 from ramabana import agent, core
 from ramabana.runtime import Usage
 from ramabana.testing import MemHost, ScriptedBackend, Step, fake_agent
@@ -146,6 +148,9 @@ def test_an_attached_image_survives_the_tool_plan():
     arrive as several hundred single-character parts."""
     a, be = fake_agent(replies=['a screenshot of a traceback'])
     a.local_multimodal = True
+    # a window a model that can see actually has: `SPEC` is 1k, and one picture is priced
+    # at `IMG_TOKENS` however small its bytes are, so the fit check would reject the turn
+    be.spec = replace(be.spec, ctx=128_000)
     a.ask(a.compose('what is in this image?', image=b'\x89PNG-not-really'))
     sent = be.sent[-1]
     assert isinstance(sent, list) and len(sent) == 2

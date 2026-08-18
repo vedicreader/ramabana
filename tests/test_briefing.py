@@ -18,7 +18,6 @@ from ramabana.tools import LocalHost, Skill, _delegate_result, clip_lines, named
 SMALL = ModelSpec('gemma-e2b', 'litert', 'litert-community/x', 16_384)   # the local default
 BIG = ModelSpec('sonnet', 'remote', 'claude-sonnet-4-5', 200_000)
 CC = ModelSpec('cc', 'remote', 'claude_code/claude-sonnet-5', 200_000)
-CURSOR = ModelSpec('opus5', 'cursor', 'claude-opus-5', 200_000)
 #: The same model as `CC`, reached through Claude Code itself rather than FastLLM's transport.
 CLAUDE = ModelSpec('claude/claude-sonnet-5', 'claude', 'claude-sonnet-5', 128_000)
 
@@ -206,22 +205,17 @@ def test_the_tool_channel_is_one_decision(monkeypatch):
     assert tool_channel(CLAUDE) == 'native'
     monkeypatch.delenv('RAMABANA_TOOL_CHANNEL')
 
-    # An agent harness answers for itself. Only its SDK can carry the schemas -- either CLI would
-    # have to declare them through a config file a managed policy refuses -- so without one the
-    # answer is tags, and the spec alone can only predict which path a chat will take.
-    monkeypatch.setattr(_core, '_agent_native', lambda rt, spec=None: False)
-    assert tool_channel(CURSOR) == 'tags' and tool_channel(CLAUDE) == 'tags'
-    monkeypatch.setattr(_core, '_agent_native', lambda rt, spec=None: True)
-    assert tool_channel(CURSOR) == 'native' and tool_channel(CLAUDE) == 'native'
+    # An agent harness answers for itself: its one channel for a tool it did not ship with is an
+    # MCP server, which a managed policy refuses, so the answer is tags and does not vary.
+    assert tool_channel(CLAUDE) == 'tags'
 
     # ...and a live chat overrules the prediction, because it is the thing that knows. A Claude
     # chat that opened an MCP server and had it refused is on tags now; nothing about the spec says so.
     class _Chat:
         def __init__(self, ch): self.tool_channel = ch
     assert tool_channel(CLAUDE, _Chat('tags')) == 'tags'
-    assert tool_channel(CURSOR, _Chat('native')) == 'native'
-    assert tool_channel(CLAUDE, _Chat('nonsense')) == 'native'   # not a channel; the prediction stands
-    assert tool_channel(CLAUDE, None) == 'native'
+    assert tool_channel(CLAUDE, _Chat('nonsense')) == 'tags'   # not a channel; the prediction stands
+    assert tool_channel(CLAUDE, None) == 'tags'
 
 
 def test_the_claude_harness_is_the_way_in_a_managed_policy_leaves_open(monkeypatch):
@@ -235,9 +229,7 @@ def test_the_claude_harness_is_the_way_in_a_managed_policy_leaves_open(monkeypat
     import ramabana.core as _core
     monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)
     assert tool_channel(CC) == 'native'        # the wire is open here, so the transport keeps it
-    # ...and the harness has a channel of its own only where its SDK is installed to carry it
-    monkeypatch.setattr(_core, '_agent_native', lambda rt, spec=None: False)
-    assert tool_channel(CLAUDE) == 'tags'
+    assert tool_channel(CLAUDE) == 'tags'      # ...and the harness has no channel of its own at all
 
     assert CLAUDE.runtime == 'claude' and not CLAUDE.local   # the binary is local, the model is not
     assert CLAUDE.model_id == 'claude-sonnet-5'              # the `claude/` prefix is rishi's, not the id's
@@ -421,20 +413,14 @@ def test_the_tags_channel_hears_the_output_contract_after_the_tool_protocol():
     the turn is the only position later than that. Every other channel already has a system
     message and is left alone."""
     native = ModelSpec('gpt', 'remote', 'gpt-5.6', 200_000)
-    # stated rather than inherited: whether an agent harness is on tags now depends on which SDKs
-    # this machine has, and that is not what this test is about
-    import ramabana.core as _core
-    _real, _core._agent_native = _core._agent_native, lambda rt, spec=None: False
-    try:
-        _output_contract_cases(native)
-    finally: _core._agent_native = _real
+    _output_contract_cases(native)
 
     # It restates the briefing's own rule rather than introducing a second instruction system.
     assert 'plain sentences' in A.work_rules() and 'plain sentences' in A.OUTPUT_CONTRACT
 
 
 def _output_contract_cases(native):
-    for spec, tagged in ((CURSOR, True), (CLAUDE, True), (native, False)):
+    for spec, tagged in ((CLAUDE, True), (native, False)):
         a, be = fake_agent(replies=['done'])
         a.routing.spec = lambda job='turn', fallback=True, _s=spec: _s
         a.ask('what does budget_for decide?')
@@ -519,3 +505,43 @@ def test_a_delegated_question_runs_on_a_thrown_away_conversation_with_the_scope_
     assert 'scope' in inspect.signature(sub['inspect_python']).parameters
     sub['inspect_python'](code='list(df.columns)', scope='overlay')
     assert h.calls == [('list(df.columns)', 'overlay')]
+
+
+def test_the_friendly_claude_names_route_to_the_harness_not_the_mcp_transport():
+    """`sonnet`, `opus`, `fable` and the bare `claude-*` names used to resolve to `claude_code/...`.
+
+    That transport runs Claude Code as a full agent, so its own Read, Grep and Bash stayed live
+    beside ramabana's tag-protocol tools and the model mixed the two namespaces up -- "I need to
+    retry with the correct search tool since my previous call used a wrong tool name". The
+    `claude/` route strips the harness back to a model, which is the one that answers.
+    """
+    from ramabana.core import MODELS
+    for name, mid in (('sonnet', 'claude-sonnet-5'), ('opus', 'claude-opus-5'),
+                      ('fable', 'claude-fable-5'), ('claude-sonnet-5', 'claude-sonnet-5')):
+        assert MODELS[name] == ('claude', mid), f'{name} -> {MODELS[name]}'
+    assert not any(str(mid).startswith('claude_code/') for _, mid in MODELS.values())
+
+
+def test_a_bare_agent_model_id_answers_the_channel_its_spec_would(monkeypatch):
+    """`tool_channel` takes "a `ModelSpec` or a bare model id", and the two disagreed.
+
+    A bare id has no `runtime`, so an agent harness's id fell past the `AGENTS` branch to a default
+    that only recognises the `claude_code/` prefix, and `claude/...` predicted `native` where its
+    own spec said `tags`. `budget_for` sizes the tool list on that prediction.
+    """
+    assert tool_channel('claude/claude-sonnet-5') == tool_channel(CLAUDE) == 'tags'
+
+
+def test_an_agent_harness_is_held_to_what_it_can_afford_to_resend():
+    """Deliberately not the model's own window, which is 8x larger.
+
+    `rishi.claude` carries no session state: each turn renders the whole
+    conversation to a text prompt and sends it again. So the ceiling is what is affordable to
+    re-send every turn, not what the model could hold -- at the tables' 1M figure ramabana
+    compacts at 983,616 tokens and re-sends that much per turn, which is the hang. Claude Code's
+    own session window is smaller than the model's besides.
+    """
+    from ramabana.core import DFLT_AGENT_CTX, _cloud_ctx, resolve
+    assert _cloud_ctx('claude-sonnet-5')[0] > DFLT_AGENT_CTX      # the tables do know a bigger one
+    for name in ('sonnet', 'opus', 'claude/claude-opus-5'):
+        assert resolve(name).ctx == DFLT_AGENT_CTX, name
