@@ -604,6 +604,7 @@ class Ui:
 
     def drill(self, n):
         "Toggle the `n`th newest foldable entry, counting from 1. False when there is no such entry."
+        self.flush_stream()
         blocks = self.drillable()
         if not 1 <= n <= len(blocks): return False
         self.comp.toggle(blocks[n - 1])
@@ -773,6 +774,7 @@ class Ui:
         Teleprint has no batch refresh: `refresh_block` frames per block, which for thirty calls is
         thirty whole redraws. So the caches are invalidated together and framed once.
         """
+        self.flush_stream()
         work = [b for b in self.comp.blocks.values()
                 if not b.committed and b.tag in ('step', 'tool') and b.height > 1]
         if not work: return False
