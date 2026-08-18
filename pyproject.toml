@@ -68,7 +68,7 @@ allowed_cell_metadata_keys = ["leela"]
 packages = ["ramabana"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/ramabana", "/nbs", "/tests", "/CHANGELOG.md", "/README.md", "/pyproject.toml"]
+include = ["/ramabana", "/README.md", "/pyproject.toml"]
 
 [tool.hatch.version]
 path = "ramabana/__init__.py"
