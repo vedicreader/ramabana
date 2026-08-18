@@ -973,13 +973,10 @@ class Run:
         return self
 
     def _mark_cancel(self):
-        """Mark this run and every descendant cancelled, and return the backends left to stop.
-
-        Marking is the whole pass, and stopping is the pass after. Stopping a backend releases the
-        worker blocked on it, and that worker takes the next queued child at once -- so marking and
-        stopping in one pass let a released worker start a sibling the pass had not reached, and a
-        cancelled run went on spawning the sub-agents it was cancelled to prevent.
-        """
+        "Mark this run and every descendant cancelled, and return the backends left to stop."
+        # Marking is the whole pass and stopping is the pass after: stopping a backend releases the worker
+        # blocked on it, which takes the next queued child at once -- so marking and stopping together let a
+        # released worker start a sibling, and a cancelled run went on spawning what it was cancelled to stop.
         with self._lock:
             if self.terminal: return []
             # a pending run has nothing of its own to stop, but what it started still does

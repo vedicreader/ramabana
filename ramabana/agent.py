@@ -1095,12 +1095,9 @@ class Agent:
 
     @property
     def _delegating(self):
-        """The delegate calls whose sub-agents are running on this thread, innermost last.
-
-        Per thread because `delegate_many` fans out over a threadpool. It only fans out for
-        *reading* sub-agents, which are not recorded at all, so in practice the recorded path is
-        serial -- but a stack that is wrong under concurrency is not worth the saving.
-        """
+        "The delegate calls whose sub-agents are running on this thread, innermost last."
+        # Per thread because `delegate_many` fans out over a threadpool. It only fans out for *reading*
+        # sub-agents, which are not recorded, but a stack wrong under concurrency is not worth the saving.
         if not hasattr(self._nested, 'stack'): self._nested.stack = []
         return self._nested.stack
 

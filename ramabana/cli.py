@@ -602,13 +602,9 @@ class Ui:
         return out
 
     def drillable(self):
-        """The foldable entries of the turn on screen, newest first: what alt+1..9 reaches.
-
-        Teleprint has its own alt-digit numbering, but it stamps the digit into the gutter and needs
-        one at least three glyphs wide; these gutters are two, and widening every one of them to
-        carry a digit is a bigger change to how the surface looks than a drill-in is worth. The
-        numbers live in the footer instead, where the eye already is while a turn runs.
-        """
+        "The foldable entries of the turn on screen, newest first: what alt+1..9 reaches."
+        # Teleprint stamps its own alt-digit into the gutter and wants three glyphs; these are two, so
+        # the numbers live in the footer rather than widening every gutter on the surface.
         return [b for b in reversed(list(self.comp.blocks.values()))
                 if not b.committed and b.tag in ('step', 'tool') and b.height > 1][:9]
 
@@ -622,13 +618,8 @@ class Ui:
         return True
 
     def working(self):
-        """Where the model is at: the last few calls, then one line of totals. Only while a turn runs.
-
-        This is the part of the surface you watch rather than read. It sits in the tail, directly
-        above the prompt, so it is always in the same place and never scrolls; and because tail rows
-        never ink, none of it survives into the transcript to be scrolled past later. `Activity`
-        already scopes itself to the turn, so `since()` is this turn's calls and nothing older.
-        """
+        "Where the model is at: the last few calls, then one line of totals. Only while a turn runs."
+        # In the tail, so it never scrolls; tail rows never ink, so none of it reaches the transcript.
         if self.turn is None and not self.agent.busy: return []
         acts = self.agent.activity.since()
         nums = {b.id: i + 1 for i, b in enumerate(self.drillable())}
@@ -727,17 +718,10 @@ class Ui:
 
 
     def say(self, body, kind='reply', fold=FOLD, source=None, pad=False):
-        """Print one block. Strings stay literal. Explicit Rich renderables keep their styling.
-
-        `source` is the text this block *is*, which is what search matches and what `y` and
-        `/copy` yield. Without it Teleprint falls back to scraping the rendering. A copied
-        reply arrives wrapped to the terminal, indented by its gutter, and stripped of the
-        fences that made its code paste-able. So every block states its own source, and a
-        plain string or `Text` states it for free.
-
-        `pad` is Teleprint's one blank presentation row. A turn opens with one, so a long session
-        reads as turns rather than as an unbroken column of rows.
-        """
+        "Print one block. Strings stay literal. Explicit Rich renderables keep their styling."
+        # `source` is the text the block *is* -- what search matches and `y` and `/copy` yield. Without
+        # it Teleprint scrapes the rendering, which comes back wrapped, indented and stripped of fences.
+        # `pad` is the one blank presentation row that makes a session read as turns.
         if source is None:
             if isinstance(body, str): source = body
             elif isinstance(body, Text): source = body.plain
@@ -753,17 +737,11 @@ class Ui:
         return None
 
     def _close_seg(self):
-        """End the open prose segment, so whatever comes next is printed below it rather than above.
-
-        Teleprint orders blocks by creation and only the newest may grow, so a block opened by the
-        turn's first chunk stays above every tool call the turn goes on to make. Growing one block
-        for a whole turn therefore renders the narration in one place and the calls in another. A
-        segment per step is what puts them back in the order the work happened.
-
-        A step that a call has ended is working rather than answer: it is retagged `step` and folded
-        to its first line. The answer is the segment no call ever ended, which is why it is the one
-        still tagged `reply` when the turn finishes -- and so the one `/copy` reaches for.
-        """
+        "End the open prose segment, so what comes next prints below it rather than above."
+        # Teleprint orders blocks by creation and only the newest may grow, so one block grown across a
+        # turn puts all narration above all calls. A segment per step restores the order.
+        # A segment a call has ended is retagged `step`; the answer is the one no call ever ended, which
+        # is why it is still `reply` at the end and the one `/copy` reaches for.
         blk = self._seg_blk
         if blk is None: return
         self.flush_stream()
@@ -773,17 +751,9 @@ class Ui:
         self.comp.refresh_block(blk)
 
     def fold_work(self):
-        """Open every step and every call of the turn on screen, or shut them all again. Which of the
-        two it did is the return value.
-
-        The resting state is shut, so this is mostly "show me the whole working", and pressing it
-        again puts the timeline back. Anything part-open -- a few calls drilled into from the
-        transcript -- shuts. Ctrl-O used to reach the newest block alone, which after a long turn is
-        the least interesting one on screen.
-
-        Teleprint has no batch refresh: `refresh_block` frames per block, which for thirty calls is
-        thirty whole redraws. So the caches are invalidated together and framed once.
-        """
+        "Open every step and call of the turn on screen, or shut them all again; returns which it did."
+        # Anything part-open shuts. `refresh_block` frames per block, so the caches are invalidated
+        # together and framed once rather than thirty whole redraws for thirty calls.
         self.flush_stream()
         work = [b for b in self.comp.blocks.values()
                 if not b.committed and b.tag in ('step', 'tool') and b.height > 1]
@@ -801,20 +771,15 @@ class Ui:
         self._post(self._act, act)
 
     def _act_style(self, act):
-        """Blue while it runs, green when it worked, red when it did not.
-
-        Keyed on `done` rather than on `ok`, which is `True` from the moment an `Act` is built: a
-        call in flight used to be painted in the colour of one that had already succeeded.
-        """
+        "Blue while it runs, green when it worked, red when it did not."
+        # On `done`, not `ok`: `ok` is True from the moment an `Act` is built, so a call in flight used
+        # to wear the colour of one that had already succeeded.
         return GRUVBOX['blue'] if not act.done else GRUVBOX['green'] if act.ok else GRUVBOX['red']
 
     def _folded(self, act, blk):
-        """Whether a finished call should fold to its summary row.
-
-        `set_body` re-measures but does not re-decide, so this is asked again every time a body
-        lands. A failure never folds: an error you have to go and expand is the one thing on the
-        surface nobody wants hidden. Nor does a call still running, so its progress stays on show.
-        """
+        "Whether a finished call should fold to its summary row."
+        # Asked again on every body, since `set_body` re-measures but does not re-decide. A failure never
+        # folds, nor does a call still running: the error and the progress are what must stay on show.
         return act.done and act.ok and blk.height > FOLD_TOOL
 
     def _act(self, act):
@@ -838,12 +803,9 @@ class Ui:
         self.paint()
 
     def _nest(self, act):
-        """A sub-agent's call, folded into the delegate that asked for it rather than printed beside it.
-
-        Three sub-agents' calls used to land as siblings of the caller's own, in one flat run with
-        nothing saying whose they were -- which is most of why a delegating turn reads as the same
-        search over and over. `Act` has carried `parent_action_id` the whole time; nothing rendered it.
-        """
+        "A sub-agent's call, folded into the delegate that asked for it rather than printed beside it."
+        # `Act` has carried `parent_action_id` all along and nothing rendered it, so three sub-agents'
+        # calls landed flat beside the caller's with nothing saying whose they were.
         kids = self.kids.setdefault(act.parent_action_id, [])
         if not any(k.id == act.id for k in kids): kids.append(act)
         self._paint_group(act.parent_action_id)
@@ -1159,16 +1121,11 @@ class Ui:
         self.touch()
 
     def stream(self, blk, chunk):
-        """Grow one segment of the turn's timeline, opening a block wherever a call ended the last one.
-
-        `blk` is the caller's idea of where the reply is going and `None` asks for a fresh segment. A
-        segment that `_close_seg` has ended since the last chunk starts one too, which is what puts
-        the prose written after a tool call underneath that call instead of above it.
-
-        The model text is written on every chunk, so what search matches and `y` copies is never
-        behind the model. Only the Rich pass over it is spaced out, by `STREAM_EVERY`: re-rendering
-        the whole accumulated Markdown per chunk costs time quadratic in the length of the reply.
-        """
+        "Grow one segment of the turn's timeline, opening a block where a call ended the last one."
+        # `blk=None`, or a segment `_close_seg` has ended, starts a fresh one -- which is what puts prose
+        # written after a tool call underneath it.
+        # The model text is written every chunk so search and `y` are never behind; only the Rich pass is
+        # spaced by `STREAM_EVERY`, re-rendering the whole Markdown per chunk being quadratic.
         if blk is None: self._seg_blk = None
         if self._seg_blk is None: self._seg = ''
         self._seg += chunk
@@ -1254,14 +1211,10 @@ def leave_transcript(self:Ui):
 
 @patch
 def set_mouse(self:Ui, want=''):
-    """Take the mouse on the main screen, or give it back to the terminal. Off by default.
-
-    Off is not timidity. With mouse reporting on, the terminal stops doing drag-selection itself and
-    selecting text needs its own override -- shift-drag nearly everywhere, but not everywhere -- and
-    a surface that silently breaks selection to buy a click is a bad trade to make for someone. On,
-    Teleprint's own click-to-toggle folds whatever block the click landed in, and the wheel opens
-    the browsing view, where the mouse has always worked.
-    """
+    "Take the mouse on the main screen, or give it back to the terminal. Off by default."
+    # Off is not timidity: with reporting on, the terminal stops drag-selecting and selection needs
+    # its own override -- shift-drag nearly everywhere, but not everywhere. Breaking selection to buy
+    # a click is a bad trade. On, a click folds the block under it and the wheel opens the view.
     want = (want or '').strip().lower()
     if want not in ('', 'on', 'off', 'toggle', 'yes', 'no'): return 'usage: /mouse [on|off]'
     self.mouse = not self.mouse if want in ('', 'toggle') else want in ('on', 'yes')
@@ -1271,12 +1224,10 @@ def set_mouse(self:Ui, want=''):
 
 @patch
 def on_mouse(self:Ui, ev):
-    """Who owns the mouse: the browsing view while it is up, this surface only when `/mouse` says so.
-
-    Returning False hands the event back to Teleprint, whose own default is exactly what is wanted
-    here -- a click folds the block under it. Only the wheel needs saying, because the main screen
-    is write-once and has nothing of its own to scroll: rolling up on it opens the view that does.
-    """
+    "Who owns the mouse: the browsing view while it is up, this surface only when `/mouse` says so."
+    # False hands the event back to Teleprint, whose default -- a click folds the block under it --
+    # is what is wanted. Only the wheel needs saying: the main screen is write-once and has nothing
+    # of its own to scroll, so rolling up opens the view that does.
     if self.transcript.active: return self.transcript.on_mouse(ev)
     # reporting is off, so nothing should arrive; what does is in flight from the moment the view
     # turned it on, and folding a main-screen block with a click meant for the view is not wanted
