@@ -11,7 +11,7 @@ import pytest
 from ramabana import agent, core
 from ramabana.agent import Agent
 from ramabana.core import (DEFAULT_POLICY, LOCAL, MODELS, ONESHOT_JOBS, ModelSpec, Routing,
-                           available_models, prefix_typo, register_model, resolve)
+                           available_models, register_model, resolve)
 from ramabana.runtime import RishiBackend, make_backend
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 
@@ -88,22 +88,15 @@ def test_a_name_is_resolved_or_refused_but_never_guessed():
         assert isinstance(make_backend(resolve(name)), RishiBackend)
 
 
-def test_a_runtime_misspelled_for_a_vendor_is_caught_where_it_was_typed():
-    """`claude-code/...` is the one slip a vendor fall-through cannot absorb.
+def test_an_unknown_prefix_is_read_as_a_vendor_and_handed_to_remote():
+    """The fall-through every `vendor/model` spec depends on.
 
-    It is not a vendor, so it was handed to `remote`, which asked for an `ANTHROPIC_API_KEY` that
-    nothing about the request needed -- a credentials error three layers from a hyphen. Only the
-    `-`/`_` class of slip is caught: every other prefix is still a real spec taken at face value,
-    which is what `openai/gpt-5.6` depends on.
+    `prefix_typo` used to catch the one slip this cannot absorb -- `claude-code/` for
+    `claude_code/` -- but no runtime prefix contains a `-` or `_` any more, so there is nothing
+    left for it to catch and it went with the transport it was written for.
     """
-    with pytest.raises(KeyError, match='claude_code/claude-opus-5'):
-        resolve('claude-code/claude-opus-5')
-    assert prefix_typo('claude-code') == 'claude_code' and prefix_typo('claude_code') is None
-    assert prefix_typo('openai') is None and prefix_typo('my-vendor') is None
-    assert resolve('openai/gpt-5.6').backend == 'remote'      # a vendor still falls through
-
-
-# -- changing the turn model -----------------------------------------------------------
+    assert resolve('openai/gpt-5.6').backend == 'remote'
+    assert resolve('claude/claude-sonnet-5').backend == 'claude'
 
 def test_changing_the_turn_model_carries_the_conversation_and_is_refused_mid_turn(monkeypatch):
     "A new Rishi backend starts lazily with the old backend's canonical history, copied not shared."
@@ -160,70 +153,6 @@ def test_saved_options_and_engine_selection_reach_rishi(monkeypatch):
 
 # -- the Claude Code transport ---------------------------------------------------------
 
-def test_the_claude_code_transport_loads_without_rearranging_toolslm():
-    """The shim writes into `sys.modules`, which is a process-wide edit to another package, so it
-    must happen when the transport is loaded and not when this library is imported -- importing
-    ramabana to read one constant rearranged `toolslm` for every other consumer in the process.
-    """
-    ok, error = core._load_claude_transport()
-    assert ok, error
-    from fastllm.acomplete import api_registry
-    assert api_registry.get('claude_code') is not None
-
-    child('import sys, ramabana\n'
-          "assert 'toolslm.funccall' not in sys.modules, 'importing ramabana installed the shim'\n")
-    child('import ramabana.core as core\n'          # loading the transport installs it
-          'ok, err = core._load_claude_transport()\nassert ok, err\n'
-          'from toolslm.funccall import mk_ns\nimport fastllm.chat\n')
-    child('import sys, ramabana.core as core\n'     # and so does reaching it through a model
-          "core.resolve('claude_code/claude-sonnet-5')\n"
-          "assert 'toolslm.funccall' in sys.modules\n")
-
-
-def test_a_blocking_call_consumes_the_stream_only_transport():
-    "FastLLM's Claude Code transport is stream-only, and `Agent.ask` is not."
-
-    class Chat:
-        def __call__(self, msg, stream=False, **kw):
-            assert stream is True
-            return iter(('hello ', 'from claude'))
-
-    be = RishiBackend(ModelSpec('claude', 'remote', 'claude_code/claude-sonnet-4-6'))
-    be.chat, be._tried = Chat(), True
-    assert be._send('hi') == 'hello from claude'
-
-
-def test_the_tools_travel_in_the_system_prompt_when_the_wire_is_closed(monkeypatch):
-    "Managed Claude Code closes MCP tools; schemas go in the system prompt with `tool_mode='tags'`."
-    from fastllm.acomplete import api_registry
-
-    def search_code(query: str) -> str:
-        "Search the codebase."
-        return ''
-
-    spec = ModelSpec('claude', 'remote', 'claude_code/claude-sonnet-5', 200_000)
-    # Both halves are stated. Whether this machine carries an organisation's managed config is
-    # not the harness's business, and on one that does the unmanaged half read as a code failure.
-    monkeypatch.setattr(core, '_managed_claude_mcp', lambda: False)
-    assert core.claude_tags(spec.model_id) is False            # unmanaged: the native path
-    assert RishiBackend(spec)._runtime_kw().get('tool_mode') is None
-
-    monkeypatch.setattr(core, '_managed_claude_mcp', lambda: True)
-    assert core.claude_tags(spec.model_id) is True
-    be = RishiBackend(spec, sp='You are Ramabana.', tools=[search_code])
-    assert be._runtime_kw()['tool_mode'] == 'tags'
-    kw = be.start()._kw()
-    assert 'tools' not in kw                                   # the channel policy closed
-    assert '<tools>' in kw['system'] and '"search_code"' in kw['system']
-
-    core._load_claude_transport()                              # and the strip keeps the tools now
-    payload = api_registry['claude_code'].mk_payload([], 'claude-sonnet-5', system=kw['system'])
-    assert payload['options'].mcp_servers == {}
-    assert payload['options'].strict_mcp_config is False
-    assert '<tools>' in payload['options'].system_prompt
-    assert core.claude_tags('openai/gpt-5.6') is False          # not Claude Code: native as before
-
-
 def test_a_tag_tool_call_comes_back_as_a_real_tool_call():
     "The reply is text either way; what changed is that rishi now reads the calls out of it."
     from aidialog.msg_parts import Msg, Text
@@ -248,3 +177,17 @@ def test_ramabana_does_not_import_leela():
            for n, line in enumerate(f.read_text().splitlines(), 1)
            if line.startswith(('from leela', 'import leela'))]
     assert not bad, 'ramabana must not import from leela:\n' + '\n'.join(bad)
+
+
+def test_a_retired_prefix_says_where_the_model_went():
+    """An id from an old config must not be read as a vendor.
+
+    `claude_code/...` and `cursor/...` both routed somewhere once. With the prefixes gone they fell
+    through to `remote` as if `claude_code` were a vendor, which asks for an API key nothing about
+    the request needs -- a credentials error several layers from the cause.
+    """
+    with pytest.raises(KeyError, match='claude/'):
+        resolve('claude_code/claude-sonnet-5')
+    with pytest.raises(KeyError, match='removed'):
+        resolve('cursor/composer-2.5')
+    assert resolve('openai/gpt-5.6').backend == 'remote'      # a real vendor still falls through

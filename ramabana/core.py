@@ -8,11 +8,11 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD', 'CLAUDE_MODELS',
            'CLAUDE', 'CLAUDE_ALIASES', 'DFLT_AGENT_CTX', 'RUNTIMES', 'AGENTS', 'HOSTED', 'COPILOT_UNAVAILABLE',
            'CUSTOM', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES',
-           'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError',
-           'agent_err', 'use_env_prefix', 'env', 'runtime_available', 'claude_tags', 'auth_status', 'copilot_catalog',
-           'available_models', 'local_ctx', 'ModelSpec', 'prefix_typo', 'resolve', 'spec_caps', 'accepts', 'model_note',
-           'Budget', 'budget_for', 'register_model', 'unregister_model', 'force_tags', 'forget_forced_tags',
-           'tool_channel', 'Routing']
+           'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError',
+           'agent_err', 'use_env_prefix', 'env', 'runtime_available', 'auth_status', 'copilot_catalog',
+           'available_models', 'local_ctx', 'ModelSpec', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget',
+           'budget_for', 'register_model', 'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel',
+           'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
@@ -71,10 +71,7 @@ CLAUDE_MODELS = ('claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'claude
                  'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-opus-4-6')
 CLAUDE = {f'claude/{mid}': mid for mid in CLAUDE_MODELS}
 
-#: The same models under their bare names and the short aliases. These routed to FastLLM's
-#: `claude_code/` transport, which runs Claude Code as a full agent: its own Read, Grep and Bash
-#: stayed live beside ramabana's tag-protocol tools, and the model mixed the two namespaces up.
-#: `rishi.claude` strips the harness back to a model, so that is where every Claude name goes now.
+#: The same models under their bare names and the short aliases.
 CLAUDE_ALIASES = {**{mid: mid for mid in CLAUDE_MODELS},
                   'sonnet': 'claude-sonnet-5', 'opus': 'claude-opus-5', 'fable': 'claude-fable-5'}
 
@@ -138,71 +135,17 @@ def _claude_login():
     except Exception: return False
 
 
-def _install_toolslm_funccall():
-    "Expose fastcore's replacement under the module name python-fastllm 0.0.36 imports."
-    try: return importlib.import_module('toolslm.funccall')
-    except ModuleNotFoundError as e:
-        if e.name != 'toolslm.funccall': raise
-    import toolslm
-    funccall = importlib.import_module('fastcore.funccall')
-    sys.modules['toolslm.funccall'] = funccall
-    toolslm.funccall = funccall
-    return funccall
-
-def _managed_claude_mcp():
-    "Whether this machine has an organisation-controlled Claude Code MCP configuration."
-    paths = [Path('/Library/Application Support/ClaudeCode/managed-mcp.json'),
-             Path('/etc/claude-code/managed-mcp.json')]
-    if appdata := os.getenv('PROGRAMDATA'):
-        paths.append(Path(appdata)/'ClaudeCode'/'managed-mcp.json')
-    return any(path.exists() for path in paths)
-
-def _claude_payload_compat(transport):
-    "Make FastLLM's Claude Code payload legal wherever its MCP channel is closed."
-    mk_payload = transport.mk_payload
-    if getattr(mk_payload, '_ramabana_enterprise_mcp', False): return
-    def compatible_payload(*args, **kwargs):
-        payload = mk_payload(*args, **kwargs)
-        options = payload['options']
-        # the transport answers for `claude_code/` only, and carries the bare id in the options
-        if tool_channel(f'claude_code/{getattr(options, "model", "")}') == 'tags':
-            options.strict_mcp_config = False
-            options.mcp_servers = {}
-            options.allowed_tools = []
-        return payload
-    compatible_payload._ramabana_enterprise_mcp = True
-    transport.mk_payload = compatible_payload
-
-
-def claude_tags(model_id):
-    "Whether this model's tools have to travel in the system prompt rather than over MCP."
-    if (v := (env('CLAUDE_TAG_TOOLS') or '').strip().lower()) in ('1', 'true', 'yes'): return True
-    if v in ('0', 'false', 'no'): return False
-    return str(model_id or '').startswith('claude_code/') and _managed_claude_mcp()
-
-def _load_claude_transport():
-    "Load and verify FastLLM's Claude Code plugin."
-    try:
-        _install_toolslm_funccall()
-        from fastllm.acomplete import api_registry
-        _claude_payload_compat(api_registry['claude_code'])
-        return True, ''
-    except Exception as e: return False, agent_err(e)
-
 def auth_status():
     'Credential sources FastLLM can use, without reading or returning any secret.'
     codex = bool(os.getenv('CODEX_AUTH_TOKEN') or _json_has(os.getenv('CODEX_AUTH_PATH', '~/.codex/auth.json'), 'tokens', 'access_token'))
-    claude_transport, claude_error = _load_claude_transport()
-    claude_login = _claude_login()
+    claude_login = _claude_login() and _claude_available()
     copilot = _copilot_available()
     return {
         'openai': {'available': bool(os.getenv('OPENAI_API_KEY')), 'source': 'OPENAI_API_KEY'},
         'codex': {'available': codex, 'source': 'Codex login' if codex else ''},
         'anthropic': {'available': bool(os.getenv('ANTHROPIC_API_KEY')), 'source': 'ANTHROPIC_API_KEY'},
-        'claude_code': {'available': claude_login and claude_transport,
-                        'source': ('Claude Code login' if claude_login and claude_transport else ''),
-                        'note': (f'Claude Code login found, but its FastLLM transport failed: {claude_error}'
-                                 if claude_login and not claude_transport else '')},
+        'claude': {'available': claude_login,
+                   'source': 'Claude Code login' if claude_login else ''},
         'gemini': {'available': bool(os.getenv('GEMINI_API_KEY')), 'source': 'GEMINI_API_KEY'},
         'copilot': {'available': copilot,
                     'source': 'GitHub Copilot sign-in' if copilot else ''},
@@ -265,7 +208,7 @@ def available_models(include_legacy=False):
                          'source': auth['openai']['source']})
     try:
         from fastllm.types import model_info_registry
-        vendors = ('openai', 'codex', 'claude_code', 'gemini')
+        vendors = ('openai', 'codex', 'gemini')
         for vendor in vendors:
             if not auth.get(vendor, {}).get('available'): continue
             for v, model in model_info_registry:
@@ -278,7 +221,7 @@ def available_models(include_legacy=False):
         catalog = set()
         try:
             from fastllm.types import model_info_registry
-            catalog = {model for vendor, model in model_info_registry if vendor in ('anthropic', 'claude_code') and model.startswith('claude-')}
+            catalog = {model for vendor, model in model_info_registry if vendor == 'anthropic' and model.startswith('claude-')}
         except Exception: pass
         catalog.update(model.split('/', 1)[1] for model in CLOUD.values() if model.startswith('anthropic/'))
         for model in sorted(catalog): rows.append({'value': f'anthropic/{model}', 'label': model,
@@ -353,13 +296,13 @@ def _cloud_ctx(model_id):
 
 # %% ../nbs/00_core.ipynb #1d37d28a
 #: Prefixes that name a runtime or a transport rather than a vendor, in the spelling that works.
-PREFIXES = (*RUNTIMES, 'claude_code')
+PREFIXES = RUNTIMES
 
-def prefix_typo(prefix):
-    "The known prefix `prefix` is a `-`/`_` slip of, or None."
-    key = str(prefix or '').replace('-', '_')
-    return next((p for p in PREFIXES if p != prefix and p.replace('-', '_') == key), None)
-
+#: Prefixes that used to route somewhere and no longer do, and what to say about each. Without
+#: this an id left in a config is read as a vendor and handed to `remote`, which asks for an API
+#: key nothing about the request needs: a credentials error several layers from the cause.
+RETIRED = {'claude_code': 'use `claude/` instead -- the same models, through Claude Code itself',
+           'cursor': 'the Cursor backend was removed'}
 
 def resolve(name, default_local=DFLT_LOCAL):
     'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec.'
@@ -377,20 +320,11 @@ def resolve(name, default_local=DFLT_LOCAL):
         if backend == 'copilot':
             ctx, note = _copilot_ctx(mid)
             return ModelSpec(name, backend, mid, ctx, note, config)
-        if mid.startswith('claude_code/'):
-            ok, error = _load_claude_transport()
-            if not ok: raise RuntimeError(f'Claude Code transport unavailable: {error}')
         ctx, note = _cloud_ctx(mid)
         return ModelSpec(name, backend, mid, ctx, note, config)
     if '/' in name:
         runtime, model_id = name.split('/', 1)
-        if (fix := prefix_typo(runtime)): raise KeyError(
-            f'{name!r}: nothing is spelled {runtime!r} -- did you mean {fix}/{model_id}? An unknown '
-            'prefix is read as a vendor and handed to `remote`, which then asks for an API key you '
-            'do not need, so the slip surfaces as a credentials error three layers from the typo.')
-        if runtime == 'claude_code':
-            ok, error = _load_claude_transport()
-            if not ok: raise RuntimeError(f'Claude Code transport unavailable: {error}')
+        if runtime in RETIRED: raise KeyError(f'{name!r}: the {runtime!r} prefix was removed -- {RETIRED[runtime]}')
         if runtime == 'copilot':
             if not runtime_available('copilot'): raise RuntimeError(COPILOT_UNAVAILABLE)
             ctx, note = _copilot_ctx(model_id)
@@ -517,13 +451,13 @@ def tool_channel(spec, chat=None):
     if (ch := getattr(chat, 'tool_channel', None)) in TOOL_CHANNELS: return ch
     mid = str(getattr(spec, 'model_id', spec) or '')
     # a bare id carries its runtime in the prefix, and nowhere else: without this an agent
-    # harness's id fell through to a default that only knows `claude_code/`
+    # harness's id fell through to the default for a hosted model
     rt = getattr(spec, 'runtime', '') or (mid.split('/', 1)[0] if '/' in mid else '')
     # an agent harness has no native channel: its only way to carry a tool it did not ship with
     # is an MCP server, and a managed configuration refuses even the in-process kind
     if rt in AGENTS: return 'tags'
     if mid in _forced_tags: return 'tags'
-    return 'tags' if claude_tags(mid) else 'native'
+    return 'native'
 
 # %% ../nbs/00_core.ipynb #e81acb32
 @dataclass

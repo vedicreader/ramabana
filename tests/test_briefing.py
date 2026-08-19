@@ -17,26 +17,9 @@ from ramabana.tools import LocalHost, Skill, _delegate_result, clip_lines, named
 
 SMALL = ModelSpec('gemma-e2b', 'litert', 'litert-community/x', 16_384)   # the local default
 BIG = ModelSpec('sonnet', 'remote', 'claude-sonnet-4-5', 200_000)
-CC = ModelSpec('cc', 'remote', 'claude_code/claude-sonnet-5', 200_000)
-#: The same model as `CC`, reached through Claude Code itself rather than FastLLM's transport.
+#: Claude Code itself, through `rishi.claude`.
 CLAUDE = ModelSpec('claude/claude-sonnet-5', 'claude', 'claude-sonnet-5', 128_000)
 
-
-def _claude_transport():
-    """`_claude_payload_compat` applied to a stand-in transport; returns a fresh payload's options.
-
-    A stand-in rather than FastLLM's: what is under test is the gate, and the real one needs the
-    Claude Agent SDK installed and a login to build a payload at all.
-    """
-    from types import SimpleNamespace
-    def mk_payload(*a, **kw):
-        return {'prompt': '', 'options': SimpleNamespace(
-            model=CC.model_id.split('/', 1)[1], mcp_servers={'ramabana': object()},
-            allowed_tools=['mcp__ramabana__search_code'], strict_mcp_config=True)}
-    t = SimpleNamespace(mk_payload=mk_payload)
-    from ramabana.core import _claude_payload_compat
-    _claude_payload_compat(t)
-    return lambda: t.mk_payload()['options']
 
 RESEARCH = {'web_search', 'read_url', 'research', 'memory_search', 'memory_read',
             'memory_tree', 'memory_topics', 'memory_forget'}
@@ -183,23 +166,19 @@ def test_the_tool_channel_is_one_decision(monkeypatch):
     """`native` is the default and better wherever the wire is open. A refused channel is
     remembered per model so the lesson costs one turn rather than every turn, and the environment
     forces either for a machine broken in a way nothing here detects."""
-    # `native` is the default *where the wire is open*, so say that rather than inheriting it:
-    # this machine's own Claude Code config would otherwise decide the answer.
-    import ramabana.core as _core
-    monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)
-    assert tool_channel(BIG) == 'native' and tool_channel(CC) == 'native'
+    other = ModelSpec('gpt', 'remote', 'gpt-5.6', 200_000)
+    assert tool_channel(BIG) == 'native' and tool_channel(other) == 'native'
     try:
-        force_tags(CC.model_id, 'MCP refused by policy')
-        assert tool_channel(CC) == 'tags'
-        assert tool_channel(BIG) == 'native'             # per model, not a global switch
+        force_tags(BIG.model_id, 'the wire refused the tool schemas')
+        assert tool_channel(BIG) == 'tags'
+        assert tool_channel(other) == 'native'           # per model, not a global switch
     finally:
         forget_forced_tags()
-    assert tool_channel(CC) == 'native'                  # a fixed configuration is tried again
+    assert tool_channel(BIG) == 'native'                 # a fixed configuration is tried again
 
     monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'tags')
     assert tool_channel(BIG) == 'tags'
     monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'native')
-    assert tool_channel(CC) == 'native'
     # The override reaches an agent harness too, which it did not before: it is the answer for a
     # machine broken in a way nothing here detects, and those machines run agent harnesses as well.
     assert tool_channel(CLAUDE) == 'native'
@@ -218,54 +197,10 @@ def test_the_tool_channel_is_one_decision(monkeypatch):
     assert tool_channel(CLAUDE, None) == 'tags'
 
 
-def test_the_claude_harness_is_the_way_in_a_managed_policy_leaves_open(monkeypatch):
-    """Two ways to reach Claude, and only one of them an enterprise policy can close.
-
-    `claude_code/...` goes through FastLLM's transport, which declares tools as an in-process MCP
-    server -- the thing a managed configuration forbids. `claude/...` drives Claude Code itself and
-    never opens one, so it is on the tags channel unconditionally rather than on discovery of a
-    config file at one of three paths.
-    """
-    import ramabana.core as _core
-    monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)
-    assert tool_channel(CC) == 'native'        # the wire is open here, so the transport keeps it
-    assert tool_channel(CLAUDE) == 'tags'      # ...and the harness has no channel of its own at all
-
-    assert CLAUDE.runtime == 'claude' and not CLAUDE.local   # the binary is local, the model is not
-    assert CLAUDE.model_id == 'claude-sonnet-5'              # the `claude/` prefix is rishi's, not the id's
-
-
-def test_the_claude_payload_is_stripped_for_every_reason_the_wire_is_shut(monkeypatch):
-    """The other half of the tags decision, and the half that used to be missed.
-
-    Moving the schemas into the prompt is not enough on its own: the in-process MCP server stays
-    in the payload and a managed policy refuses it anyway. Gating the strip on the config probe
-    alone meant the two ways of reaching tags that the probe cannot see -- the override that
-    exists for a policy at an undocumented path, and a refusal already learned from a failure --
-    moved the schemas and then failed exactly as they had before."""
-    import ramabana.core as _core
-    monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)
-    mk = _claude_transport()
-    assert mk().mcp_servers and mk().strict_mcp_config is True   # wire open: untouched
-
-    for shut, undo in ((lambda: monkeypatch.setenv('RAMABANA_CLAUDE_TAG_TOOLS', '1'),
-                        lambda: monkeypatch.delenv('RAMABANA_CLAUDE_TAG_TOOLS')),
-                       (lambda: monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: True),
-                        lambda: monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)),
-                       (lambda: force_tags(CC.model_id, 'refused mid-turn'), forget_forced_tags)):
-        shut()
-        try:
-            o = mk()
-            assert o.mcp_servers == {} and o.allowed_tools == [] and o.strict_mcp_config is False
-        finally: undo()
-
-
 def test_a_refused_wire_channel_is_learned_once_and_the_turn_still_answers(monkeypatch):
     """The case detection cannot reach. A policy at a path the three-path probe does not know is
     only ever learned from the failure it causes, and an agent that has to be told by hand is one
     that sat there with no tools until somebody read the source. One turn pays for the lesson."""
-    import ramabana.core as _core
-    monkeypatch.setattr(_core, '_managed_claude_mcp', lambda: False)
     calls = []
 
     class Refusing(runtime.RishiBackend):
@@ -276,12 +211,12 @@ def test_a_refused_wire_channel_is_learned_once_and_the_turn_still_answers(monke
             if calls[-1] == 'native': raise RuntimeError('mcp_servers disallowed by policy')
             return 'answered'
 
-    b = Refusing(CC, tools=[lambda: None])
+    b = Refusing(BIG, tools=[lambda: None])
     try:
         assert b.send('hi') == 'answered'
         assert calls == ['native', 'tags']         # tried the wire, learned, and finished the turn
         assert any('travel in the system prompt' in p for p in b.problems)
-        assert tool_channel(CC) == 'tags'          # and the next turn does not try the wire again
+        assert tool_channel(BIG) == 'tags'         # and the next turn does not try the wire again
     finally: forget_forced_tags()
 
 
@@ -310,11 +245,11 @@ def test_a_tag_call_that_came_back_as_prose_is_reported(monkeypatch):
     class Clean(Tagged):
         def _send(self, msg, **kw): return 'the answer, with no tags in it'
 
-    sent = Tagged(CC); sent.send('go')
+    sent = Tagged(CLAUDE); sent.send('go')
     assert any('came back as prose' in p for p in sent.problems), sent.problems
-    streamed = Tagged(CC); ''.join(streamed.stream('go'))
+    streamed = Tagged(CLAUDE); ''.join(streamed.stream('go'))
     assert any('came back as prose' in p for p in streamed.problems), streamed.problems
-    clean = Clean(CC); clean.send('go')
+    clean = Clean(CLAUDE); clean.send('go')
     assert not clean.problems
 
 

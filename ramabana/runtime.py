@@ -828,10 +828,6 @@ class RishiBackend(Backend):
         return kw
     def _start(self):
         from rishi import Chat
-        # a hand-built `ModelSpec` never passed through `resolve`, which installs this shim
-        if self.spec.model_id.startswith('claude_code/'):
-            from .core import _install_toolslm_funccall
-            _install_toolslm_funccall()
         return (_MK_CHAT or Chat)(self.spec.model_id,runtime=self.spec.runtime,sp=self.sp,tools=self.tools,
                     approve=self.approve,tool_max_len=self.tool_max_len,max_steps=self.max_steps,
                     ctx_limit=self.spec.ctx,**self._runtime_kw())
@@ -848,8 +844,6 @@ class RishiBackend(Backend):
             self.chat.reasoning_effort = effort
         return kw
     def _send(self,msg,**kw):
-        # FastLLM's Claude Code transport is stream-only
-        if self.spec.model_id.startswith('claude_code/'): return answer_only(''.join(self._stream(msg, **kw)))
         from rishi.core import resp_text
         return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
     #: What a transport says when it will not carry the tool schemas. An enterprise policy is the

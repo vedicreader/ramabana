@@ -20,10 +20,6 @@ from .agent import Agent
 
 # %% ../nbs/04_testing.ipynb #cbdc4d5f
 SPEC = ModelSpec('fake', 'fake', 'fake/model', ctx=1000)
-
-#: `ScriptedBackend`'s own spec, kept distinct because it is used for screenshots rather
-#: than for tests -- a capture of the IDE should not have "fake" written across the status
-#: bar, and its window has to be big enough that compaction does not fire mid-screenshot.
 SCRIPTED = ModelSpec('scripted', 'scripted', 'scripted/model', ctx=8000)
 
 # %% ../nbs/04_testing.ipynb #2ce479ad
