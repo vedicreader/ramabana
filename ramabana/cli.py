@@ -6,14 +6,14 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 
 # %% auto #0
 __all__ = ['DARK', 'LIGHT', 'THEMES', 'KAKU', 'GRUVBOX', 'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL',
-           'NOTIFY_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'MAX_GROUP_ROWS', 'MOUSE_ON', 'MOUSE_OFF',
-           'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE',
-           'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'CELL_ASPECT',
-           'MAX_IMG_DRAW', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'PYREPL_MODULES', 'set_theme',
-           'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
-           'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'draw_png',
-           'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn',
-           'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
+           'NOTIFY_EVERY', 'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'MAX_GROUP_ROWS',
+           'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA',
+           'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM',
+           'MAX_IMG_COLS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
+           'PYREPL_MODULES', 'set_theme', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths',
+           'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics',
+           'png_size', 'img_cells', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option',
+           'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -94,6 +94,16 @@ def _theme_parts(palette):
 MARKDOWN_THEME, GUTTERS = _theme_parts(GRUVBOX)
 
 FOLD, FOLD_TOOL, NOTIFY_EVERY = 12, 1, 0.08
+
+#: Whether a call still running shows its arguments, or only its summary line. `on_act` fires twice
+#: per call -- once running, once finished -- with no repaint between, so an unfolded running call
+#: is an open-then-shut flicker on every call rather than a progress display. Set True to see the
+#: arguments live again; `alt+1..9` drills into any call either way.
+FOLD_RUNNING = True
+
+#: How often the tool-activity pane may repaint. The streamed reply is already spaced by
+#: `STREAM_EVERY`; a burst of tool events used to repaint the whole tail per event.
+ACT_EVERY = 0.05
 #: A narration step folds to its first line once a tool call has ended it: the working reads as
 #: one row per step, and the answer -- the segment no call ever ended -- is the only prose left open.
 FOLD_STEP = 1
@@ -566,6 +576,8 @@ class Ui:
         self._seg = ''             # the current prose segment: the text of one step of the timeline
         self._seg_blk = None       # the block that segment grows in, or None between segments
         self._painted_at = 0.0     # when that segment last re-rendered, for `STREAM_EVERY`
+        self._acted_at = 0.0       # when the tool pane last repainted, for `ACT_EVERY`
+        self._held = set()         # blocks the reader folded or opened by hand
         self._turn_at = 0.0        # when the running turn began, for the working footer's clock
         self._turn_from = 0        # the block id the running turn started at, for `turn_blocks`
         self._rendered = ''        # the segment text last actually rendered, so a flush is never wasted
@@ -638,7 +650,9 @@ class Ui:
         self.flush_stream()
         blocks = self.drillable()
         if not 1 <= n <= len(blocks): return False
-        self.comp.toggle(blocks[n - 1])
+        blk = blocks[n - 1]
+        self.comp.toggle(blk)
+        self._held.add(blk.id)      # the reader has decided about this one; stop re-deciding
         self.touch(now=True)
         return True
 
@@ -789,6 +803,7 @@ class Ui:
         shut = not all(b.collapsed for b in work)
         for b in work:
             b.collapsed = shut
+            self._held.add(b.id)    # ctrl+o is a decision too
             self.comp._dirty(b)
         self.comp._frame()
         self.touch(now=True)
@@ -805,10 +820,15 @@ class Ui:
         return GRUVBOX['blue'] if not act.done else GRUVBOX['green'] if act.ok else GRUVBOX['red']
 
     def _folded(self, act, blk):
-        "Whether a finished call should fold to its summary row."
-        # Asked again on every body, since `set_body` re-measures but does not re-decide. A failure never
-        # folds, nor does a call still running: the error and the progress are what must stay on show.
-        return act.done and act.ok and blk.height > FOLD_TOOL
+        "Whether a call folds to its summary row."
+        # Asked again on every body, since `set_body` re-measures but does not re-decide -- so a block
+        # the reader opened by hand is exempt, or the next update would shut it under them.
+        if blk.id in self._held: return blk.collapsed
+        if blk.height <= FOLD_TOOL: return False
+        # a delegate is exempt: it repaints once per sub-call, so open is a live view of the
+        # sub-agent working. An ordinary call fires twice -- running, finished -- and open is a flash
+        if not act.done: return FOLD_RUNNING and act.id not in self.kids
+        return act.ok                          # a failure stays open; its error is the point
 
     def start_turn(self, coro):
         """Spawn a turn unless one is already running, and say whether it started.
@@ -846,7 +866,12 @@ class Ui:
             # `MAX_DETAIL` of result text. `Activity` caps itself at `MAX_ACTS`; this must too
             if act.done: self.by_id.pop(act.id, None)
         self.touch()
-        self.paint()
+        # a finished call is the last word on it, so it paints now; the rest are spaced, since a
+        # burst of progress events used to repaint the whole tail once per event
+        now = time.monotonic()
+        if act.done or now - self._acted_at >= ACT_EVERY:
+            self._acted_at = now
+            self.paint()
 
     def _nest(self, act):
         "A sub-agent's call, folded into the delegate that asked for it rather than printed beside it."
