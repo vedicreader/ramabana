@@ -2137,15 +2137,15 @@ wheels = [
 
 [[package]]
 name = "litert-lm-api"
-version = "0.16.0"
+version = "0.16.1"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/d1/c444aa53f82b3b3850bafe6c087aabfc3e201ee01209f3e594cd8c2a476a/litert_lm_api-0.16.0-py3-none-android_23_arm64_v8a.whl", hash = "sha256:d07c80e415f08e71aa6a0c51b6db602a11e828591e2f36501340fdd35292b62a", size = 13804850, upload-time = "2026-08-11T18:00:27.522Z" },
-    { url = "https://files.pythonhosted.org/packages/84/9f/d6f2f0879732004dcbd8b39f4b2849b971013b623ff56aa8ef57a840ee47/litert_lm_api-0.16.0-py3-none-android_23_x86_64.whl", hash = "sha256:18a64b67e3f5fc9f0f76bd3f50af1efb6e26a70c52f97c8d862edaa4201ed132", size = 14895732, upload-time = "2026-08-11T18:00:30.59Z" },
-    { url = "https://files.pythonhosted.org/packages/84/34/61446ca8538ff6529cefb8615f3c71b46d3bde9b500f200ebbcdff7e6021/litert_lm_api-0.16.0-py3-none-macosx_12_0_arm64.whl", hash = "sha256:6e7672708bd9e7b5133ef73e469b070da9c3ed6a544b314367fb6e56055f3fea", size = 22049482, upload-time = "2026-08-11T18:00:34.598Z" },
-    { url = "https://files.pythonhosted.org/packages/3a/07/fa43be00a7907dd0f9f2cfbcc9b1305198c1be6e5ef33b2604a622437915/litert_lm_api-0.16.0-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:5eb8c9faa5727730239591f8c912261ec7705512d5f30ec674586bc0005f2b00", size = 46085754, upload-time = "2026-08-11T18:00:40.22Z" },
-    { url = "https://files.pythonhosted.org/packages/1e/80/494be9edb8b851ae4a7b2065c0133426beb3608fa39f9454a0f823db8c76/litert_lm_api-0.16.0-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:a5d58ff8e1c14057d6a8c1f0333372bc685361e6311ea87bfa49fc131cb00a95", size = 46835531, upload-time = "2026-08-11T18:00:46.745Z" },
-    { url = "https://files.pythonhosted.org/packages/fc/76/8adac38aa8a0cbd433ef9fd6c0079531a58efe9a36ebd0f44825ba44b935/litert_lm_api-0.16.0-py3-none-win_amd64.whl", hash = "sha256:c2f6a961a2f680b907f63ba6be46d46ee8e491f9345c4acd18dbbf8fe7ba8a33", size = 26147679, upload-time = "2026-08-11T18:00:51.153Z" },
+    { url = "https://files.pythonhosted.org/packages/88/a6/82115653b34f3f26d616ed5334e951bbac5f79f72e63d982654bb0869bdc/litert_lm_api-0.16.1-py3-none-android_23_arm64_v8a.whl", hash = "sha256:a29d90b71bef8f7752fbc96d7cdbd7198a00b8823ae643ca02ad64675baf57fe", size = 13804828, upload-time = "2026-08-19T02:27:32.023Z" },
+    { url = "https://files.pythonhosted.org/packages/71/09/ba770ab64cad2d978ecef370cc58f61b89a3bbe7ef55b39eb92e249d0ee9/litert_lm_api-0.16.1-py3-none-android_23_x86_64.whl", hash = "sha256:9cef448ec047d6b3c28ec7d52e2eab8835ed74041c0aed86676dd6cb8b21923f", size = 14895564, upload-time = "2026-08-19T02:27:34.449Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/fb/1dcb39213daaa54768a42afee2eed6cf4bddb7db228a7862c668a161946f/litert_lm_api-0.16.1-py3-none-macosx_12_0_arm64.whl", hash = "sha256:0a3799a2b09f61ac67bda61240bf5549c0904cd470b7fcb03ea67dd42388e21b", size = 22049515, upload-time = "2026-08-19T02:27:37.02Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/80/8c92e40725eccc66b6a4a52835b076f87934eece75289c968602d55ca541/litert_lm_api-0.16.1-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:0a5a4b2c1b03f4ce40da1cb938e181320e996a2b10bbb06d1e7d330086b06999", size = 46085693, upload-time = "2026-08-19T02:27:40.582Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/fe/5f7ff3faa01cb6acce830c0b463f1b67f3cbd90601b29b42f9f3e4c6ed07/litert_lm_api-0.16.1-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:141255377831feef7f27aa069f4dc084ae4e1009284556e710b75b4b623735ea", size = 46835512, upload-time = "2026-08-19T02:27:45.049Z" },
+    { url = "https://files.pythonhosted.org/packages/31/42/43ffd35663f035bb3fe722c71a576b9fb482c2b97b1a697aba2c727cf8ff/litert_lm_api-0.16.1-py3-none-win_amd64.whl", hash = "sha256:b45d27a46d4ef048e1f29ae514b979bfb92c69710776a1f86456367ffae5acbc", size = 25716433, upload-time = "2026-08-19T02:27:48.416Z" },
 ]
 
 [[package]]
@@ -4190,7 +4190,7 @@ wheels = [
 
 [[package]]
 name = "rishi"
-version = "0.1.20"
+version = "0.1.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastcore" },
@@ -4199,9 +4199,9 @@ dependencies = [
     { name = "safepyrun" },
     { name = "truststore" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f9/7f/9890fba4fa6267f867682ca7f3e64d549331ce7b28a3282fa8c7e9b62ea4/rishi-0.1.20.tar.gz", hash = "sha256:2cd1326a6b6e9bcc6562be26b0fb32420bb6d2845dcc14fcf77b82835ce70af6", size = 100809, upload-time = "2026-08-19T01:12:04.237Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/7e/280c77047a79b64b841e6a685ee379bbda5bb9d5b7e4a396fe3767f127fe/rishi-0.1.21.tar.gz", hash = "sha256:bc9a3868259cd339d1bfd9a7a0ed9c422393ae5cb62d00d608f64bcd16f69023", size = 100835, upload-time = "2026-08-19T02:50:50.353Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/02/591656c20bfb20f43fb08a69309751a55670f6060d9c3b4e578e03a1f4fb/rishi-0.1.20-py3-none-any.whl", hash = "sha256:613efd090b14be214891924a6fb8290ac368854a95d73134f81cc44c5e32d7fd", size = 111233, upload-time = "2026-08-19T01:12:03.016Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/10/1e35670dad000207ed7970ffe547e254516758d65cdbd37b76e91e95c6b6/rishi-0.1.21-py3-none-any.whl", hash = "sha256:a23eb2ccc25413b50854b042913d0af0c5c0ae62f8b7d417f3f94896613fee4d", size = 111276, upload-time = "2026-08-19T02:50:49.032Z" },
 ]
 
 [package.optional-dependencies]

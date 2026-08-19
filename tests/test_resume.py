@@ -92,3 +92,22 @@ def test_resume_only_takes_the_session_it_was_asked_for(tmp_path):
     a.resume_session('s2')
 
     assert [m['content'] for m in be._resume_hist] == ['second', 'two']
+
+
+def test_a_resumed_session_is_told_what_it_no_longer_reaches():
+    """Roots opened during a session do not come back with it: a resume rebuilds from the log, and
+    silently re-widening the write boundary is not something a log should be able to do. What it can
+    do is say that the boundary used to be wider, so the person can open it again knowingly.
+    """
+    a, _ = fake_agent(replies=['ok'])
+    a.history = [{'session': 's1', 'activity': [
+                    {'tool': 'add_root', 'args': {'path': '/srv/app'}, 'ok': True},
+                    {'tool': 'view_file', 'args': {'path': 'a.py'}, 'ok': True}]},
+                 {'session': 's1', 'activity': [
+                    {'tool': 'add_root', 'args': {'path': '/srv/app'}, 'ok': True},
+                    {'tool': 'add_root', 'args': {'path': '~/notes'}, 'ok': True}]},
+                 {'session': 's2', 'activity': [
+                    {'tool': 'add_root', 'args': {'path': '/elsewhere'}, 'ok': True}]}]
+    assert a.session_added_roots('s1') == ['/srv/app', '~/notes']   # deduped, and s2 is not ours
+    assert a.session_added_roots('s2') == ['/elsewhere']
+    assert a.session_added_roots('nope') == []

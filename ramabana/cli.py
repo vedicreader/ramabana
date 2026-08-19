@@ -122,7 +122,7 @@ MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 #: The commands this surface answers rather than handing to the agent. `Agent.commands` cannot know
 #: them, and without them Tab completed `/co` to `/compact` and `/cost` while `/copy` went unlisted.
 SURFACE_COMMANDS = ('agent', 'attach', 'copy', 'detach', 'exit', 'guide', 'help', 'join', 'kernels',
-                    'mouse', 'paste', 'promote', 'python', 'quit', 'theme', 'vars')
+                    'mouse', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
 
 HELP = """normal  enter send · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
@@ -134,7 +134,7 @@ approve y approve · n refuse · a approve all · ctrl+y approve with a note · 
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · enter runs what compiles · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
-extra   /theme · /mouse to click blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
+extra   /root · /root add PATH to open another folder · /theme · /mouse to click blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
 subagent /subagents shows whether delegated work may write · /subagents on|off changes it for this session
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
@@ -1662,6 +1662,10 @@ def main(
         except Exception as e:
             print(f'could not resume: {agent_err(e)}', file=sys.stderr)
             return 2
+        # the folders it opened last time are not opened again. Said once, so it can be done again
+        if (was := getattr(agent, 'resumed_roots', None)):
+            print(f'that session had also opened {", ".join(was)} · /root add PATH to open again',
+                  file=sys.stderr)
     if agent.start() is None and not prompt:
         print(f'no model available: {agent.note}', file=sys.stderr)
     if prompt: return sys.exit(ask_once(agent, prompt))
@@ -1754,11 +1758,33 @@ def apply_theme(self:Ui, name=''):
     return self.note(f'theme: {active}')
 
 
+@patch
+def open_root(self:Ui, path=''):
+    """`/root` lists the open folders; `/root add PATH` opens another.
+
+    Typed by the person whose machine it is, so it is not gated: they are the approval. The agent
+    asking for the same thing goes through `add_root`, which is in `WRITE_TOOLS`.
+    """
+    host = self.agent.host
+    if not path:
+        added = set(getattr(host, 'added_roots', []))
+        rows = [f'{r}  (opened this session)' if r in added else r for r in host.roots]
+        return self.note('open folders: ' + ' · '.join(rows))
+    bits = path.split(None, 1)
+    if bits[0] != 'add' or len(bits) != 2: return self.note('usage: /root [add PATH]', 'error')
+    try: opened = host.add_root(bits[1].strip())
+    except Exception as e: return self.note(agent_err(e), 'error')
+    return self.note(f'opened {opened} · reads and writes now reach it')
+
+
 _submit_theme = Ui.submit
 @patch
 def submit(self:Ui):
-    "Handle the UI-owned `/theme` command before ordinary terminal commands."
+    "Handle the UI-owned `/theme` and `/root` commands before ordinary terminal commands."
     line = self.buf.text.strip()
+    if line == '/root' or line.startswith('/root '):
+        self.buf.clear()
+        return self.open_root(line[len('/root'):].strip())
     if line == '/theme' or line.startswith('/theme '):
         self.buf.clear()
         bits = line.split()

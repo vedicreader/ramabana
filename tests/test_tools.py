@@ -11,6 +11,7 @@ import pytest
 
 from ramabana import core, tools
 from ramabana.testing import MemHost, fake_agent
+from ramabana.core import AgentError
 from ramabana.tools import (ERR, LocalHost, NullHost, code_tools, failed, file_tools,
                             shell_tools, tools_for)
 
@@ -293,3 +294,39 @@ def test_search_fuses_legs_with_litesearch_rrf_and_rgapi(tmp_path, monkeypatch):
     # walk via rgapi.fd (or fallback) skips nothing essential
     walked = {p.name for p in host.walk()}
     assert walked == {'a.py', 'b.py'}
+
+
+def test_a_root_can_be_opened_after_the_host_is_built(tmp_path):
+    """Roots were fixed at construction, so reaching a folder outside them meant quitting the
+    session and starting again with a different `--root`. The write boundary can widen; what it
+    cannot do is widen quietly, so the host remembers which ones were added.
+    """
+    a, b = tmp_path/'a', tmp_path/'b'
+    a.mkdir(); b.mkdir(); (b/'f.txt').write_text('hi')
+    h = LocalHost(roots=[str(a)], index=False)
+
+    with pytest.raises(AgentError): h.check(b/'f.txt')     # outside, so refused
+    assert h.add_root(str(b)) == str(b.resolve())
+    assert str(b.resolve()) in h.roots
+    h.check(b/'f.txt')                                     # and now it is not
+    assert h.added_roots == [str(b.resolve())]             # remembered, for what /resume must say
+
+    assert h.add_root(str(b)) == str(b.resolve())          # adding it twice is not an error
+    assert h.roots.count(str(b.resolve())) == 1
+    with pytest.raises(AgentError): h.add_root(str(tmp_path/'nope'))
+    with pytest.raises(AgentError): h.add_root(str(b/'f.txt'))   # a file is not a root
+
+
+def test_the_agent_asks_before_it_widens_its_own_boundary(tmp_path):
+    "`add_root` is a write: the agent may propose one, and a person decides. `--approve off` refuses."
+    a, b = tmp_path/'a', tmp_path/'b'
+    a.mkdir(); b.mkdir()
+    assert 'add_root' in tools.WRITE_TOOLS, 'it must go through the same gate as a write'
+
+    h = LocalHost(roots=[str(a)], index=False)
+    fn = {t.__name__: t for t in tools.tools_for(h)}.get('add_root')
+    assert fn is not None, 'the tool is not offered'
+    assert str(b.resolve()) in fn(str(b))
+    assert str(b.resolve()) in h.roots
+
+    assert ERR in fn(str(tmp_path/'nope'))          # a refusal reads as a tool error, not a crash

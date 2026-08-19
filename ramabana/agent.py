@@ -1388,6 +1388,21 @@ class Agent:
                  'title': str(turns[0].get('prompt', '')).replace('\n', ' ')[:72]}
                 for sid, turns in sorted(grouped.items(), key=lambda x: x[1][-1].get('at', 0), reverse=True)]
 
+    def session_added_roots(self, session_id):
+        """Folders a saved session opened with `add_root`, in the order it opened them.
+
+        Read back from the log rather than carried in a snapshot, because the log is what a resume
+        rebuilds from. Nothing here re-opens them: see `resume_session`.
+        """
+        out = []
+        for turn in self.history:
+            if turn.get('session') != session_id: continue
+            for row in (turn.get('activity') or []):
+                if row.get('tool') != 'add_root' or not row.get('ok', True): continue
+                p = (row.get('args') or {}).get('path')
+                if p and p not in out: out.append(p)
+        return out
+
     def resume_session(self, selector='latest'):
         "Resume a persisted conversation by full/prefix id, or the newest with `latest`."
         if self.busy: raise RuntimeError('cannot resume while the assistant is working')
@@ -1399,6 +1414,8 @@ class Agent:
             matches = [s for s in choices if s['id'] == selector or s['id'].startswith(selector)]
             if len(matches) != 1: raise KeyError(f'session {selector!r} matched {len(matches)} conversations')
             picked = matches[0]
+        # the widening lapses: a log may say the boundary was wider, and may not move it back
+        self.resumed_roots = self.session_added_roots(picked['id'])
         turns = [t for t in self.history if t.get('session') == picked['id']]
         canonical = []
         # A resume rebuilds context from the durable log, not from a snapshot. The persisted args

@@ -49,6 +49,15 @@ class Host:
         "The open folders, as absolute paths. The agent is told about these and confined to them."
         raise NotImplementedError
 
+    @property
+    def added_roots(self):
+        "The roots opened after this host was built, which a resumed session must not inherit."
+        return []
+
+    def add_root(self, path):
+        "Open another folder, and return it resolved. Widening the write boundary, so hosts may refuse."
+        raise NotImplementedError
+
     def check(self, path, must_exist=False, reading=False):
         """The single chokepoint: resolve `path`, refuse anything outside `roots`, return a `Path`.
 
@@ -279,6 +288,13 @@ class NullHost(Host):
 
     @property
     def roots(self): return self._roots
+    @property
+    def added_roots(self): return list(getattr(self, '_added', []))
+    def add_root(self, path):
+        p = str(Path(path).expanduser().resolve())
+        if p not in self._roots:
+            self._roots.append(p); self.__dict__.setdefault('_added', []).append(p)
+        return p
 
     def check(self, path, must_exist=False, reading=False):
         from pathlib import Path
@@ -390,6 +406,7 @@ class LocalHost(Host):
                  read_outside=False,    # let read-only tools name any path on this machine
                  deny=DENY):            # what `read_outside` still refuses to open
         self._roots = [str(Path(r).expanduser().resolve()) for r in roots]
+        self._added_roots = []         # opened later, and not inherited by a resumed session
         self.ns = ifnone(ns, {'__name__': '__main__'})
         self._approvals, self._note, self.web = approvals, note, web
         self.read_outside, self.deny = bool(read_outside), tuple(deny or ())
@@ -440,6 +457,27 @@ class LocalHost(Host):
 
     @property
     def roots(self): return list(self._roots)
+
+    @property
+    def added_roots(self):
+        "Roots opened after construction. `/resume` lapses these, and says that it did."
+        return list(self._added_roots)
+
+    def add_root(self, path):
+        """Open another folder for reading and writing, and index it. Returns it resolved.
+
+        The one operation that widens the write boundary of a running session, so it refuses
+        anything that is not already a directory rather than creating one.
+        """
+        p = Path(path).expanduser().resolve()
+        if not p.exists(): raise AgentError(f'no such folder: {p}')
+        if not p.is_dir(): raise AgentError(f'not a folder, so it cannot be a root: {p}')
+        if str(p) in self._roots: return str(p)
+        self._roots.append(str(p)); self._added_roots.append(str(p))
+        self._pending.append(str(p))
+        try: self.sync_index()
+        except Exception as e: self._index_errors.append(agent_err(e))
+        return str(p)
 
     def check(self, path, must_exist=False, reading=False):
         "Resolve `path`. Refuse outside `roots` (unless `read_outside` and `reading`). Walks stay confined."
@@ -1049,7 +1087,7 @@ GIT_TOOLS = (*GIT_READ_TOOLS, *sorted(GIT_WRITE_TOOLS))
 # The tools that change something on disk, in the live session, or on the machine. See `Approvals`.
 WRITE_TOOLS = frozenset({'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell',
                          'run_python', 'run_shell', 'memory_forget', 'create_skill',
-                         'cancel_watch', 'cart_add', 'cart_remove'}) | GIT_WRITE_TOOLS
+                         'cancel_watch', 'cart_add', 'cart_remove', 'add_root'}) | GIT_WRITE_TOOLS
 
 # Every tool failure starts with this: no engine carries an `is_error` flag. The flag is in the text.
 ERR = 'ERROR: '
@@ -1338,6 +1376,15 @@ def _diff(before, after, path='file'):
 def file_tools(host, mx=MAX_TOOL_CHARS):
     "Reading and editing files, by exact text or by hash-verified address."
 
+    def add_root(path: str) -> str:
+        """Open another folder, so it can be read and written like the ones already open.
+
+        Ask for this only when the user has named a folder outside the open ones. It widens what
+        you may change on their machine, so it goes to them for approval like any other write.
+        """
+        try: return f'opened {host.add_root(path)}. Open folders: ' + ', '.join(host.roots)
+        except Exception as e: return err(f'could not open {path}', e)
+
     def view_file(path: str, start: int = 0, end: int = 0) -> str:
         """Read a file as `lineno|hash|content` lines. Optionally limit to lines `start`..`end`.
 
@@ -1416,7 +1463,7 @@ def file_tools(host, mx=MAX_TOOL_CHARS):
         try: return f'wrote {host.write(path, text)}'
         except Exception as e: return err('write failed', e)
 
-    return [view_file, replace_text, edit_file, create_file]
+    return [view_file, replace_text, edit_file, create_file, add_root]
 
 # %% ../nbs/02_tools.ipynb #6c20cd07
 def notebook_tools(host, mx=MAX_TOOL_CHARS):
