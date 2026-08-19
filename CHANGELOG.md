@@ -1,4 +1,10 @@
-# Changelog
+# Release notes
+
+<!-- do not remove -->
+
+## 0.1.18
+cli fixes to remove claude models tool calss as tags. remove multiple tool results in rmabana cli. 
+
 ## 0.1.17
 slopometer v2
 

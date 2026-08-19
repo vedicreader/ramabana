@@ -57,7 +57,6 @@ KAKU = DARK
 GRUVBOX = KAKU  # compatibility name for extensions. Updated by set_theme
 ACTIVE_THEME = 'dark'
 
-
 def set_theme(name='dark'):
     "Select the active semantic palette. `auto` safely falls back to dark in a terminal."
     global ACTIVE_THEME, GRUVBOX, MARKDOWN_THEME, GUTTERS
@@ -90,37 +89,16 @@ def _theme_parts(palette):
     }
     return markdown, gutters
 
-
 MARKDOWN_THEME, GUTTERS = _theme_parts(GRUVBOX)
-
 FOLD, FOLD_TOOL, NOTIFY_EVERY = 12, 1, 0.08
 
-#: Whether a call still running shows its arguments, or only its summary line. `on_act` fires twice
-#: per call -- once running, once finished -- with no repaint between, so an unfolded running call
-#: is an open-then-shut flicker on every call rather than a progress display. Set True to see the
-#: arguments live again; `alt+1..9` drills into any call either way.
 FOLD_RUNNING = True
-
-#: How often the tool-activity pane may repaint. The streamed reply is already spaced by
-#: `STREAM_EVERY`; a burst of tool events used to repaint the whole tail per event.
 ACT_EVERY = 0.05
-#: A narration step folds to its first line once a tool call has ended it: the working reads as
-#: one row per step, and the answer -- the segment no call ever ended -- is the only prose left open.
 FOLD_STEP = 1
-#: How often a growing reply re-renders. Its `source` is written on every chunk regardless, so
-#: search and copy never lag the model; only the Rich pass over the accumulated Markdown is spaced out.
 STREAM_EVERY = 0.05
-#: How many recent calls the working footer names.
 ACT_TAIL = 3
-#: How many of a delegate's sub-calls its block shows while it runs. It is unfolded then, so that a
-#: person can watch the sub-agent work -- and a block that is both newest and growing pushes rows
-#: across the top edge, where Teleprint inks them for good. A 60-call fan-out would leave 40 rows of
-#: exactly the scattering this grouping exists to prevent. The rest are counted, and all of them stay
-#: in `source`, so search and copy still see the whole thing.
 MAX_GROUP_ROWS = 8
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
-#: The commands this surface answers rather than handing to the agent. `Agent.commands` cannot know
-#: them, and without them Tab completed `/co` to `/compact` and `/cost` while `/copy` went unlisted.
 SURFACE_COMMANDS = ('agent', 'attach', 'copy', 'detach', 'exit', 'guide', 'help', 'join', 'kernels',
                     'mouse', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
 
@@ -192,8 +170,6 @@ def guide_text(text):
     return out
 
 # %% ../nbs/05_cli.ipynb #bffc3eec
-#: What a prompt can carry, and what each kind is called. Both reach the model as content parts
-#: where `core.accepts` says it can take them; audio falls back to a path when it cannot.
 MEDIA = {
     '.png': ('image', 'image/png'),   '.jpg':  ('image', 'image/jpeg'),
     '.jpeg': ('image', 'image/jpeg'), '.gif':  ('image', 'image/gif'),
@@ -203,11 +179,8 @@ MEDIA = {
     '.flac': ('audio', 'audio/flac'), '.aac':  ('audio', 'audio/aac'),
 }
 
-MAX_MEDIA = 20 << 20   # bytes. Past this a dropped file is a mistake, not an attachment
-MAX_ATTACH = 8         # attachments on one prompt
-
-#: How to ask a platform for a picture on the clipboard, in the order to try. Each writes PNG
-#: to stdout, so the reply can be checked against the PNG signature rather than trusted.
+MAX_MEDIA = 20 << 20
+MAX_ATTACH = 8
 CLIP_IMAGE = (('pngpaste', '-'),
               ('wl-paste', '--type', 'image/png'),
               ('xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'))
@@ -221,28 +194,23 @@ def _human(n):
     return f'{n / 1024:.1f}GB'
 
 def media_path(s):
-    """One path in whatever shape a terminal delivered it, or None.
-
-    A file dropped on a prompt arrives as a bare path, a quoted path, a `file://` URI, or. On macOS. With its spaces backslash-escaped, and some terminals wrap the whole thing in
-    brackets. Only the first of those shapes used to attach anything, which is why dropping a
-    picture on the prompt usually typed a path instead of attaching one.
-    """
+    "One path in whatever shape a terminal delivered it, or None."
     s = str(s).strip().strip('[]').strip()
     if len(s) >= 2 and s[0] == s[-1] and s[0] in '"\'': s = s[1:-1]
     if s.startswith('file://'): s = unquote(urlparse(s).path)
     else: s = s.replace('\\ ', ' ')
-    return Path(s).expanduser() if s else None
+    if not s: return None
+    try: return Path(s).expanduser()
+    except RuntimeError: return None
 
 def is_media(p):
     "Whether `p` names a media file that exists."
-    return p is not None and p.suffix.lower() in MEDIA and p.is_file()
+    if p is None or p.suffix.lower() not in MEDIA: return False
+    try: return p.is_file()
+    except OSError: return False
 
 def media_paths(text):
-    """Every media file a paste names, or nothing when the paste is anything else.
-
-    A paste attaches only when it is *nothing but* paths. Dropping three pictures attaches
-    three while prose that mentions `docs/shot.png` in passing stays prose.
-    """
+    "Every media file a paste names, or nothing when the paste is anything else."
     raw = str(text).strip().strip('[]').strip()
     if not raw: return []
     whole = media_path(raw)
@@ -278,12 +246,7 @@ def attach_refs(text):
     return out
 
 def clipboard_png():
-    """A picture on the system clipboard as PNG bytes, or None when there is not one.
-
-    Bracketed paste carries text and only text. A copied *image* never arrives as input at
-    all. Which is why pasting a screenshot into the prompt appeared to do nothing. Asking
-    the platform for it is the only route to the gesture.
-    """
+    "A picture on the system clipboard as PNG bytes, or None when there is not one."
     for cmd in CLIP_IMAGE:
         if shutil.which(cmd[0]) is None: continue
         try: out = subprocess.run(cmd, capture_output=True, timeout=5).stdout
@@ -338,11 +301,7 @@ KITTY_TERM = ('kitty', 'kaku', 'ghostty', 'wezterm')        # substrings of $TER
 KITTY_PROGRAM = ('WezTerm', 'Kaku', 'ghostty', 'kitty')     # exact $TERM_PROGRAM
 
 def kitty_graphics():
-    """Does this terminal speak the kitty graphics protocol?
-
-    `$RAMABANA_KITTY` settles it either way. The list below can only name the terminals known
-    when it was written, and one that does support the protocol but is missing from it shows a
-    path where it could have shown the picture."""
+    "Does this terminal speak the kitty graphics protocol?"
     if (forced := env('KITTY')) is not None:
         return str(forced).strip().lower() not in ('0', 'false', 'no', '')
     if any(os.environ.get(k) for k in KITTY_ENV): return True
@@ -356,11 +315,7 @@ CELL_ASPECT = 2.1
 MAX_IMG_DRAW = 2
 
 def png_size(path):
-    """`(width, height)` in pixels from a PNG's IHDR, or `None`.
-
-    `fastcore.xtras.image_size` is the obvious home for this and cannot be used: its `_png_size`
-    and `_gif_size` both read a `head` that is never bound. Every PNG raises `NameError` and
-    only the JPEG branch works."""
+    "`(width, height)` in pixels from a PNG's IHDR, or `None`."
     try: b = Path(path).read_bytes()[:24]
     except OSError: return None
     if len(b) < 24 or b[:8] != b'\x89PNG\r\n\x1a\n': return None
@@ -374,18 +329,10 @@ def img_cells(path, cols):
     c = max(1, min(cols, MAX_IMG_COLS))
     return c, max(1, round(c * (h / w) / CELL_ASPECT))
 
-#: Bytes of base64 per APC chunk, as the protocol requires them chunked.
 APC_CHUNK = 4096
 
 def draw_png(path, cols=MAX_IMG_COLS):
-    """The escape that draws `path` at the cursor, or `''`.
-
-    A *direct* placement, not the unicode-placeholder kind. Placeholders are the tidier idea. The image is ordinary text. It survives a repaint. But the terminals this runs in ignore
-    `U=1` and print `U+10EEEE` as a missing glyph. Every picture arrived with a block of tofu
-    behind it. Direct placement is what they actually implement.
-
-    `C=1` keeps the cursor where it was. The caller decides how many rows the image occupies
-    rather than the terminal moving the cursor out from under the compositor."""
+    "The escape that draws `path` at the cursor, or `''`."
     if not kitty_graphics() or Path(path).suffix.lower() != '.png': return ''
     if not (cr := img_cells(path, cols)): return ''
     try: data = b64encode(Path(path).read_bytes())
@@ -500,10 +447,7 @@ async def run_turn(ui, prompt):
     """
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
     ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
-    # the turn owns this, not `stream`: a turn is many prose segments now, and each one of them
-    # arrives with no block of its own, which is exactly the signal `stream` used to reset on
     ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
-    # the prompt block `submit` just printed: everything from here down belongs to this turn
     ui._turn_at, ui._turn_from = time.monotonic(), next(reversed(ui.comp.blocks), 0)
     atts, ui.attachments = list(ui.attachments), []
     spec = ui.agent.model
@@ -536,7 +480,6 @@ async def run_turn(ui, prompt):
         ui.agent.clear_problems()
         ui.touch(now=True)
         ui.paint()
-    # after the cleanup, not inside it: a log that raises must not wedge the prompt
     if blk is not None and ui._reply: ui.log_cell('**assistant**\n\n' + ui._reply, cell_type='markdown')
     return blk
 
@@ -664,10 +607,7 @@ class Ui:
         nums = {b.id: i + 1 for i, b in enumerate(self.drillable())}
         rows = []
         for a in acts[-ACT_TAIL:]:
-            style = (GRUVBOX['yellow'] if not a.done else
-                     GRUVBOX['gray'] if a.ok else GRUVBOX['red'])
-            # what it is nested *in*, not what it says its parent is: an act whose parent never
-            # got a block -- a replayed session, an overridden `_action_meta` -- has one of its own
+            style = GRUVBOX['yellow'] if not a.done else GRUVBOX['gray'] if a.ok else GRUVBOX['red']
             parent = self.acts.get(a.parent_action_id) if a.parent_action_id else None
             blk = parent if parent is not None else self.acts.get(a.id)
             n = nums.get(blk.id) if blk is not None else None
@@ -699,7 +639,6 @@ class Ui:
             return Text(self.ASKING, style=f"bold {GRUVBOX['yellow']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
         if self.mode == 'python':
             from ramabana.pyrepl import hl
-            # `allow_blank=True` keeps the trailing empty row of a buffer awaiting its blank line
             body = Text('\n' + self.CONT, style=GRUVBOX['fg0']).join(hl(self.buf.text).split('\n', allow_blank=True))
             return Text(self.PY_LABEL, style=f"bold {GRUVBOX['aqua']}") + body
         return Text('▌ ', style=f"bold {GRUVBOX['blue']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
@@ -731,27 +670,13 @@ class Ui:
         return []
 
     def paint(self):
-        """Repaint the live tail, and the browsing view when it is the surface on screen.
-
-        `set_tail` goes model-only while the transcript view owns the tty. Without the
-        second call the status bar and the composer would sit frozen for as long as it is up.
-        """
+        "Repaint the live tail, and the browsing view when it is the surface on screen."
         rows, cursor = self.tail()
         self.comp.set_tail(*rows, cursor=cursor, over=self.overlay())
         if self.transcript.active: self.transcript.draw()
 
     def touch(self, now=False):
-        """New or changed blocks: a following transcript view tracks them, as `less +F` would.
-
-        Teleprint rebuilds the whole model to do it, which is far too much work to repeat per
-        streamed chunk. Growing bodies are rate-limited. `now` is for a block that has just
-        been printed, and for the end of a turn: neither should ever wait.
-
-        `now` settles the throttled reply render too. `STREAM_EVERY` leaves the open segment's *body*
-        behind the model, not merely its cache, and the transcript view renders bodies -- so a
-        boundary that skipped this would show a reply a chunk short of what the model has said. That
-        is the lag both throttles exist to hide. `flush_stream` bounces back here once, un-nowed.
-        """
+        "New or changed blocks: a following transcript view tracks them, as `less +F` would."
         if now: self.flush_stream()
         if not self.transcript.active: return
         t = time.monotonic()
@@ -762,15 +687,18 @@ class Ui:
 
     def say(self, body, kind='reply', fold=FOLD, source=None, pad=False):
         "Print one block. Strings stay literal. Explicit Rich renderables keep their styling."
-        # `source` is the text the block *is* -- what search matches and `y` and `/copy` yield. Without
-        # it Teleprint scrapes the rendering, which comes back wrapped, indented and stripped of fences.
-        # `pad` is the one blank presentation row that makes a session read as turns.
         if source is None:
             if isinstance(body, str): source = body
             elif isinstance(body, Text): source = body.plain
         body = Text(body) if isinstance(body, str) else body
         blk = self.comp.print_block(body, gutter=GUTTERS.get(kind, GUTTERS['reply']),
                                     tag=kind, collapse_at=fold, source=source, pad=pad)
+        if kind != 'reply' and (reply := self._seg_blk) is not None:
+            self.comp._epoch.remove(reply.id)
+            self.comp._epoch.append(reply.id)
+            self.comp.blocks.pop(reply.id)
+            self.comp.blocks[reply.id] = reply
+            self.comp._frame()
         self.touch(now=True)
         return blk
 
@@ -781,10 +709,6 @@ class Ui:
 
     def _close_seg(self):
         "End the open prose segment, so what comes next prints below it rather than above."
-        # Teleprint orders blocks by creation and only the newest may grow, so one block grown across a
-        # turn puts all narration above all calls. A segment per step restores the order.
-        # A segment a call has ended is retagged `step`; the answer is the one no call ever ended, which
-        # is why it is still `reply` at the end and the one `/copy` reaches for.
         blk = self._seg_blk
         if blk is None: return
         self.flush_stream()
@@ -795,8 +719,6 @@ class Ui:
 
     def fold_work(self):
         "Open every step and call of the turn on screen, or shut them all again; returns which it did."
-        # Anything part-open shuts. `refresh_block` frames per block, so the caches are invalidated
-        # together and framed once rather than thirty whole redraws for thirty calls.
         self.flush_stream()
         work = [b for b in self.turn_blocks() if b.tag in ('step', 'tool') and b.height > 1]
         if not work: return False
@@ -815,31 +737,19 @@ class Ui:
 
     def _act_style(self, act):
         "Blue while it runs, green when it worked, red when it did not."
-        # On `done`, not `ok`: `ok` is True from the moment an `Act` is built, so a call in flight used
-        # to wear the colour of one that had already succeeded.
         return GRUVBOX['blue'] if not act.done else GRUVBOX['green'] if act.ok else GRUVBOX['red']
 
     def _folded(self, act, blk):
         "Whether a call folds to its summary row."
-        # Asked again on every body, since `set_body` re-measures but does not re-decide -- so a block
-        # the reader opened by hand is exempt, or the next update would shut it under them.
         if blk.id in self._held: return blk.collapsed
         if blk.height <= FOLD_TOOL: return False
-        # a delegate is exempt: it repaints once per sub-call, so open is a live view of the
-        # sub-agent working. An ordinary call fires twice -- running, finished -- and open is a flash
         if not act.done: return FOLD_RUNNING and act.id not in self.kids
-        return act.ok                          # a failure stays open; its error is the point
+        return act.ok                          
 
     def start_turn(self, coro):
-        """Spawn a turn unless one is already running, and say whether it started.
-
-        Enter used to spawn a second `run_turn` over the top of the first. They share `_reply` and
-        the segment state, so the newcomer's reset wiped what the first had said and the two
-        interleaved in `/copy turn` and in the notebook log; the task handle was overwritten too,
-        so ctrl+c could only reach one of them.
-        """
+        "Spawn a turn unless one is already running, and say whether it started."
         if self.turn is not None:
-            coro.close()   # never awaited, so close it rather than leave asyncio complaining
+            coro.close()
             self.note('a turn is running · ctrl+c stops it')
             return False
         self.turn = self.comp.spawn(coro, name='turn')
@@ -850,11 +760,11 @@ class Ui:
         self.by_id[act.id] = act
         blk = self.acts.get(act.id)
         if blk is None:
-            self._close_seg()   # the prose that introduced this call is finished; the call goes under it
+            self._close_seg()
             line = Text(act.line(), style=self._act_style(act))
             self.acts[act.id] = self.say(line, 'tool', source=act.line())
             return self.paint()
-        if act.id in self.kids: self._paint_group(act.id)   # a delegate redraws with its children
+        if act.id in self.kids: self._paint_group(act.id)
         else:
             line = Text(act.line(), style=self._act_style(act))
             src = act.line() if not act.detail else f'{act.line()}\n{act.detail}'
@@ -862,12 +772,8 @@ class Ui:
             self.comp.set_body(blk, *body, source=src)
             blk.collapsed = self._folded(act, blk)
             self.comp.refresh_block(blk)
-            # a finished call with no children is never redrawn again, and its `Act` carries up to
-            # `MAX_DETAIL` of result text. `Activity` caps itself at `MAX_ACTS`; this must too
             if act.done: self.by_id.pop(act.id, None)
         self.touch()
-        # a finished call is the last word on it, so it paints now; the rest are spaced, since a
-        # burst of progress events used to repaint the whole tail once per event
         now = time.monotonic()
         if act.done or now - self._acted_at >= ACT_EVERY:
             self._acted_at = now
@@ -875,8 +781,6 @@ class Ui:
 
     def _nest(self, act):
         "A sub-agent's call, folded into the delegate that asked for it rather than printed beside it."
-        # `Act` has carried `parent_action_id` all along and nothing rendered it, so three sub-agents'
-        # calls landed flat beside the caller's with nothing saying whose they were.
         kids = self.kids.setdefault(act.parent_action_id, [])
         if not any(k.id == act.id for k in kids): kids.append(act)
         self._paint_group(act.parent_action_id)
@@ -894,7 +798,6 @@ class Ui:
             body.append(Text(f'   … {len(kids) - len(shown)} earlier', style=GRUVBOX['gray']))
         body += [Text('   ' + k.line(), style=self._act_style(k)) for k in shown]
         if act.detail: body.append(Text(act.detail, style=GRUVBOX['gray']))
-        # `source` keeps every call, however few are drawn: search and copy read it, not the drawing
         src = '\n'.join([act.line()] + ['   ' + k.line() for k in kids] + ([act.detail] if act.detail else []))
         self.comp.set_body(blk, *body, source=src)
         blk.collapsed = self._folded(act, blk)   # unfolded while it runs: you watch the sub-agent work
@@ -996,9 +899,6 @@ class Ui:
             if not self._reply: return 'no turn to copy'
             text = self._reply
         else:
-            # this turn's, not the session's: a turn that ended on a tool call leaves no `reply`
-            # block of its own, and falling through would put an older answer on the clipboard
-            # while the message claimed it was the last one
             blk = next((b for b in reversed(self.turn_blocks()) if b.tag == tag), None)
             if blk is None: return f'no {tag} block in this turn to copy'
             text = self.transcript.block_text(blk)
@@ -1205,10 +1105,6 @@ class Ui:
 
     def stream(self, blk, chunk):
         "Grow one segment of the turn's timeline, opening a block where a call ended the last one."
-        # `blk=None`, or a segment `_close_seg` has ended, starts a fresh one -- which is what puts prose
-        # written after a tool call underneath it.
-        # The model text is written every chunk so search and `y` are never behind; only the Rich pass is
-        # spaced by `STREAM_EVERY`, re-rendering the whole Markdown per chunk being quadratic.
         if blk is None: self._seg_blk = None
         if self._seg_blk is None: self._seg = ''
         self._seg += chunk
@@ -1224,13 +1120,7 @@ class Ui:
 # %% ../nbs/05_cli.ipynb #64a54061
 @patch
 def show_media(self: Ui, media, session=''):
-    """Save the pictures a turn generated and name them in the transcript.
-
-    Drawing them inline is off: a kitty placement lands at the cursor, which after a paint is the
-    input line, and the next frame erases it. A blank gap where a picture should be. Placing it
-    where the block actually is needs the compositor to say which screen row that block occupies,
-    and to re-place it on every frame. Teleprint has no API for either. This saves the file and
-    prints the path until it does. `draw_png` is the escape that will be used then."""
+    "Save the pictures a turn generated and name them in the transcript."
     for m in media or []:
         try: p = save_media(m, session or getattr(self.agent, 'session_dir', '') or '.')
         except Exception as e:
@@ -1295,9 +1185,6 @@ def leave_transcript(self:Ui):
 @patch
 def set_mouse(self:Ui, want=''):
     "Take the mouse on the main screen, or give it back to the terminal. Off by default."
-    # Off is not timidity: with reporting on, the terminal stops drag-selecting and selection needs
-    # its own override -- shift-drag nearly everywhere, but not everywhere. Breaking selection to buy
-    # a click is a bad trade. On, a click folds the block under it and the wheel opens the view.
     want = (want or '').strip().lower()
     if want not in ('', 'on', 'off', 'toggle', 'yes', 'no'): return 'usage: /mouse [on|off]'
     self.mouse = not self.mouse if want in ('', 'toggle') else want in ('on', 'yes')
@@ -1308,17 +1195,12 @@ def set_mouse(self:Ui, want=''):
 @patch
 def on_mouse(self:Ui, ev):
     "Who owns the mouse: the browsing view while it is up, this surface only when `/mouse` says so."
-    # False hands the event back to Teleprint, whose default -- a click folds the block under it --
-    # is what is wanted. Only the wheel needs saying: the main screen is write-once and has nothing
-    # of its own to scroll, so rolling up opens the view that does.
     if self.transcript.active: return self.transcript.on_mouse(ev)
-    # reporting is off, so nothing should arrive; what does is in flight from the moment the view
-    # turned it on, and folding a main-screen block with a click meant for the view is not wanted
     if not self.mouse: return True
-    if ev.press and ev.btn == 64:      # wheel up: the main screen is write-once, so go where it is not
+    if ev.press and ev.btn == 64:
         self.enter_transcript()
         return True
-    return ev.press and ev.btn == 65   # wheel down at the tail: there is nothing below to go to
+    return ev.press and ev.btn == 65
 
 @patch
 def on_key(self:Ui, k):
@@ -1365,8 +1247,6 @@ def reply(self:Ui, text):
     return Markdown(text, code_theme='github-dark', style=GRUVBOX['fg1'])
 
 # %% ../nbs/05_cli.ipynb #pymode01
-#: What python mode needs installed. `Kernel` imports `jupyter_client` and its bootstrap imports
-#: `dhrishti`; both failures arrive too late to be answered with the name of what is missing.
 PYREPL_MODULES = ('jupyter_client', 'dhrishti')
 
 @patch
@@ -1427,7 +1307,6 @@ async def run_code(self:Ui, code):
     finally:
         self.turn = None
         self.paint()
-    # after the cleanup, not inside it: a log that raises must not wedge the prompt
     if result is not None: self.log_cell(code, result.outputs)
 
 @patch
@@ -1497,6 +1376,36 @@ async def _promote(self:Ui, name):
     self.turn = None
     self.paint()
 
+# %% ../nbs/05_cli.ipynb #d16f206f
+@patch
+def _close_seg(self:Ui): self.flush_stream()
+
+@patch
+def _act(self:Ui, act):
+    if act.parent_action_id and act.parent_action_id in self.acts: return self._nest(act)
+    self.by_id[act.id] = act
+    blk = self.acts.get(act.id)
+    if blk is None:
+        self._close_seg()
+        line = Text(act.line(), style=self._act_style(act))
+        self.acts[act.id] = self.say(line, 'tool', source=act.line())
+        return self.paint()
+    if act.id in self.kids: self._paint_group(act.id)
+    else:
+        line = Text(act.line(), style=self._act_style(act))
+        src = act.line() if not act.detail else f'{act.line()}\n{act.detail}'
+        body = [line] if not act.detail else [line, Text(act.detail, style=GRUVBOX['gray'])]
+        self.comp.set_body(blk, *body, source=src)
+        blk.collapsed = self._folded(act, blk)
+        self.comp.refresh_block(blk)
+        if act.done: self.by_id.pop(act.id, None)
+    self.touch()
+    now = time.monotonic()
+    if act.done or now - self._acted_at >= ACT_EVERY:
+        self._acted_at = now
+        self.paint()
+
+
 # %% ../nbs/05_cli.ipynb #79b1ca2e
 def mk_host(roots=('.',),
             approvals=None,          # an `Approvals` for the host to put writes in front of
@@ -1504,20 +1413,15 @@ def mk_host(roots=('.',),
             vault=False,             # keep what is read in a vishalakshi vault, for the next session
             spec=False,              # let the agent read an API specification and call it
             read_outside=False):     # let the read-only tools name any path on this machine
-    """The host both frontends run on: `LocalHost`, plus a vault and an API spec when asked.
-
-    `SpecHost` had no way of being built before this. Nothing constructed one. `api_load`
-    and `api_call` were unreachable from either frontend. Both mixins cooperate through `super()`,
-    in `__init__` and in `capabilities`. Asking for both is one class with both capability
-    sets rather than a choice between them.
-    """
+    "The host both frontends run on: `LocalHost`, plus a vault and an API spec when asked."
     bases = []
     if vault:
-        from .vault import VaultHost; bases.append(VaultHost)
+        from .vault import VaultHost
+        bases.append(VaultHost)
     if spec:
-        from .spec import SpecHost; bases.append(SpecHost)
-    Host = (LocalHost if not bases else
-            bases[0] if len(bases) == 1 else type('VaultSpecHost', tuple(bases), {}))
+        from .spec import SpecHost
+        bases.append(SpecHost)
+    Host = LocalHost if not bases else bases[0] if len(bases) == 1 else type('VaultSpecHost', tuple(bases), {})
     return Host(roots, approvals=approvals, web=web, read_outside=read_outside)
 
 
@@ -1540,7 +1444,6 @@ def mk_agent(roots=('.',),
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
 async def amain(agent, hint='', python=False, attach=''):
     """The tty loop: one terminal, one event loop, one place that owns the keyboard.
-
     Bracketed paste on, mouse reporting off: the main screen is the terminal's to select from.
     `Ui.enter_transcript` borrows the mouse for the browsing view and gives it straight back, and
     `/mouse` lends it to the main screen for anyone who would rather click a block than select one.
@@ -1631,7 +1534,6 @@ def main(
         return 2
     if attach:
         from ramabana.pyrepl import find_session
-        # Resolve before terminal setup so failure can print normally.
         try: attach = find_session(attach)
         except ModuleNotFoundError:
             print("--attach needs the pyrepl extra: pip install 'ramabana[pyrepl]'", file=sys.stderr)
@@ -1644,10 +1546,7 @@ def main(
     except ValueError as e:
         print(e, file=sys.stderr)
         return 2
-    # a mistyped `--model` is a typo, not a crash. `resolve` writes its refusal for a human, and
-    # raising it through `fastcore.script` buried that under thirty frames of someone else's stack
-    try:
-        agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault, spec=spec,
+    try: agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault, spec=spec,
                                read_outside=read_outside, subagent_writes=subagent_writes,
                                max_tool_calls=max_tool_calls, max_steps=max_steps,
                                cfg=Path(cfg).expanduser() if cfg else None)
@@ -1662,7 +1561,6 @@ def main(
         except Exception as e:
             print(f'could not resume: {agent_err(e)}', file=sys.stderr)
             return 2
-        # the folders it opened last time are not opened again. Said once, so it can be done again
         if (was := getattr(agent, 'resumed_roots', None)):
             print(f'that session had also opened {", ".join(was)} · /root add PATH to open again',
                   file=sys.stderr)
@@ -1761,7 +1659,6 @@ def apply_theme(self:Ui, name=''):
 @patch
 def open_root(self:Ui, path=''):
     """`/root` lists the open folders; `/root add PATH` opens another.
-
     Typed by the person whose machine it is, so it is not gated: they are the approval. The agent
     asking for the same thing goes through `add_root`, which is in `WRITE_TOOLS`.
     """

@@ -43,31 +43,39 @@ def a_turn(u, steps, answer='## Answer\n\nBoth of them.\n'):
     return list(u.comp.blocks.values())
 
 
-def test_a_tool_call_lands_below_the_prose_that_introduced_it(ui):
+def test_trace_replaces_interim_reply_prose(ui):
     blocks = a_turn(ui, [('Looking for it.\n', 'search_code', 'runtime.py:88'),
                          ('And the caller.\n', 'view_file', 'line 120'),
                          ('And the tests.\n', 'search_code', 'test_context.py:44')])
-    assert [b.tag for b in blocks] == ['step', 'tool', 'step', 'tool', 'step', 'tool', 'reply']
+    assert [b.tag for b in blocks] == ['tool', 'tool', 'tool', 'reply']
+    assert ui.transcript.block_text(blocks[-1]) == '## Answer\n\nBoth of them.\n'
+    assert ui._reply == '## Answer\n\nBoth of them.\n'
 
 
-def test_only_the_segment_no_call_ended_stays_a_reply(ui):
-    "Which segment is the answer is decided by what never happened to it, so `/copy` can find it."
+def test_the_reply_drops_prose_before_a_tool_call(ui):
     blocks = a_turn(ui, [('Looking.\n', 'search_code', 'hit')])
-    assert [b.tag for b in blocks] == ['step', 'tool', 'reply']
+    assert [b.tag for b in blocks] == ['tool', 'reply']
     answer = blocks[-1]
     assert ui.transcript.block_text(answer) == '## Answer\n\nBoth of them.\n'
     assert 'copied' in ui.copy_last('reply')
-    assert blocks[0].gutter is GUTTERS['step'] and blocks[0].collapse_at == FOLD_STEP
 
 
-def test_a_narration_step_folds_to_one_row_and_the_answer_does_not(ui):
+def test_a_status_block_stays_above_the_reply_when_streaming_resumes(ui):
+    seg = ui.stream(None, 'Waiting for approval.\n')
+    ui.note('approved')
+    ui.stream(seg, 'Done.\n')
+
+    blocks = list(ui.comp.blocks.values())
+    assert [b.tag for b in blocks] == ['note', 'reply']
+    assert ui.transcript.block_text(blocks[-1]) == 'Waiting for approval.\nDone.\n'
+
+
+def test_trace_folds_to_one_row_and_the_reply_does_not(ui):
     long = 'Let me work through this.\n' + ''.join(f'thought {i}\n' for i in range(30))
     blocks = a_turn(ui, [(long, 'search_code', 'hit\n' * 40)])
-    step, tool, answer = blocks
-    assert step.height > FOLD_STEP and step.collapsed
-    assert len(ui.comp._block_rows(step)) == 1
+    tool, answer = blocks
     assert tool.collapsed and len(ui.comp._block_rows(tool)) == 1
-    assert not answer.collapsed, 'the answer must never be born folded'
+    assert not answer.collapsed, 'the reply must never be born folded'
 
 
 def test_a_growing_segment_keeps_its_model_text_current_between_repaints(ui):
@@ -86,19 +94,17 @@ def test_a_growing_segment_keeps_its_model_text_current_between_repaints(ui):
     assert '```python' in ui.transcript.block_text(seg), 'copy must yield paste-able Markdown'
 
 
-def test_the_whole_turn_is_reset_per_turn_not_per_segment(ui):
-    "`stream` used to reset on a missing block, which after splitting is every segment's first chunk."
+def test_the_final_answer_is_the_reply(ui):
     a_turn(ui, [('one.\n', 'search_code', 'x'), ('two.\n', 'search_code', 'y')], answer='three.\n')
-    assert ui._reply == 'one.\ntwo.\nthree.\n', ui._reply
-    assert ui._seg == 'three.\n', 'the open segment is the answer alone'
+    assert ui._reply == 'three.\n', ui._reply
+    assert ui._seg == ui._reply
 
 
 def test_ctrl_o_reaches_every_step_and_call_of_the_turn(ui):
     "It used to reach the newest block, which after a long turn is the least interesting one."
-    # two paragraphs, so the step renders taller than one row and therefore has something to fold
     blocks = a_turn(ui, [(f'step {i}.\n\nmore.\n', 'search_code', 'hit\n' * 5) for i in range(6)])
-    work = [b for b in blocks if b.tag in ('step', 'tool') and b.height > 1]
-    assert len(work) == 12 and all(b.collapsed for b in work), 'the resting timeline is one row per entry'
+    work = [b for b in blocks if b.tag == 'tool' and b.height > 1]
+    assert len(work) == 6 and all(b.collapsed for b in work), 'the resting trace is one row per entry'
 
     assert ui.fold_work() is False and not any(b.collapsed for b in work)
     assert ui.fold_work() is True and all(b.collapsed for b in work)
@@ -191,12 +197,11 @@ def test_a_failed_call_never_folds_and_a_running_one_is_not_painted_as_done(ui):
     assert ui.acts[good.id].collapsed, 'a success should fold to its summary'
 
 
-def test_copy_turn_yields_every_word_the_turn_said(ui):
-    "Since a turn became a timeline, no single block holds all of its prose."
+def test_copy_turn_yields_the_final_answer(ui):
     a_turn(ui, [('looking.\n', 'search_code', 'hit'), ('and again.\n', 'search_code', 'hit')],
            answer='done.\n')
     assert 'copied' in ui.copy_last('turn')
-    assert ui._reply == 'looking.\nand again.\ndone.\n'
+    assert ui._reply == 'done.\n'
     assert ui.copy_last('turn').startswith(f'copied {len(ui._reply)} chars')
 
 
@@ -206,14 +211,11 @@ def test_the_bindings_arrive_through_the_real_key_parser(ui):
     a_turn(ui, [('looking.\n\nand looking.\n', 'search_code', 'hit\n' * 5)], answer='done.\n')
     ui._seg_blk = None
     entries = ui.drillable()
-    assert [b.tag for b in entries] == ['tool', 'step'] and all(b.collapsed for b in entries)
+    assert [b.tag for b in entries] == ['tool'] and all(b.collapsed for b in entries)
 
     ui.comp.on_bytes(b'\x1b1')                     # alt+1
     assert not entries[0].collapsed, 'alt+1 missed the newest entry'
-    ui.comp.on_bytes(b'\x1b2')
-    assert not entries[1].collapsed
     ui.comp.on_bytes(b'\x1b1')
-    ui.comp.on_bytes(b'\x1b2')
     assert all(b.collapsed for b in entries), 'pressing again did not shut them'
     assert ui.buf.text == '', f'alt+digit leaked into the composer: {ui.buf.text!r}'
 
@@ -260,20 +262,19 @@ def test_folding_and_drilling_reach_this_turn_and_not_the_session(ui):
     that crosses it is inked into scrollback for good -- no keystroke takes it back.
     """
     for _ in range(3): a_finished_turn(ui)
-    every = [b for b in ui.comp.blocks.values() if b.tag in ('step', 'tool') and b.height > 1]
-    assert len(every) == 12, len(every)
+    every = [b for b in ui.comp.blocks.values() if b.tag == 'tool' and b.height > 1]
+    assert len(every) == 6, len(every)
 
     assert len(ui.turn_blocks()) < len(ui.comp.blocks), 'the turn is not a subset of the session'
-    assert len(ui.drillable()) == 4, [b.tag for b in ui.drillable()]
+    assert len(ui.drillable()) == 2, [b.tag for b in ui.drillable()]
 
     ui.fold_work()
     opened = [b for b in every if not b.collapsed]
-    assert len(opened) == 4, f'ctrl+o opened {len(opened)} blocks across earlier turns'
+    assert len(opened) == 2, f'ctrl+o opened {len(opened)} blocks across earlier turns'
     assert all(b in ui.turn_blocks() for b in opened)
 
 
-def test_copy_says_no_reply_rather_than_reaching_back_a_turn(ui):
-    "A turn that ends on a tool call leaves no `reply` block; the answer above it is a different turn's."
+def test_copy_says_no_reply_when_a_turn_ends_on_a_tool(ui):
     a_finished_turn(ui, answer='THE ANSWER OF TURN ONE\n')
     assert 'copied 23 chars' in ui.copy_last('reply')
 
@@ -282,7 +283,7 @@ def test_copy_says_no_reply_rather_than_reaching_back_a_turn(ui):
     ui._turn_from = next(reversed(ui.comp.blocks), 0)
     seg = ui.stream(None, 'looking.\n')
     act = ui.agent.activity.start('view_file', {'path': 'a.py'})
-    ui.agent.activity.finish(act, 'contents')     # ...and the turn stops here, with no prose after
+    ui.agent.activity.finish(act, 'contents')
     ui.flush_stream(); ui._seg_blk = None
 
     assert 'reply' not in [b.tag for b in ui.turn_blocks()]
