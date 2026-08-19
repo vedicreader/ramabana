@@ -32,7 +32,7 @@ def test_the_one_shot_model_is_named_once_and_moves_every_cheap_job(monkeypatch)
 
     r = Routing(turn='gpt-mini')
     for job in ONESHOT_JOBS: assert r.name_for(job) == 'gemma-e4b', job
-    assert r.name_for('turn') == 'gpt-mini' and r.name_for('subagent') == 'gemma-e4b'
+    assert r.name_for('turn') == 'gpt-mini' and r.name_for('subagent') == 'gpt-4.1'
 
     r.policy['oneshot'] = 'gpt-sol'                    # one name moves them all
     for job in ONESHOT_JOBS: assert r.name_for(job) == 'gpt-sol', job
@@ -47,8 +47,9 @@ def test_the_one_shot_model_is_named_once_and_moves_every_cheap_job(monkeypatch)
 
     r2.set('gemma-12b')                                # stand-in for a cloud turn, no network
     assert r2.spec('turn').name == 'gemma-12b'
-    for job in ('completion', 'classify', 'subagent'):
+    for job in ('completion', 'classify'):
         assert r2.spec(job).name == core.DFLT_LOCAL and r2.spec(job).local, job
+    assert r2.spec('subagent').name == 'gpt-4.1' and not r2.spec('subagent').local
 
 
 def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runtime):

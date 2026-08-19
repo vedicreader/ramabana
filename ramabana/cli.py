@@ -10,10 +10,11 @@ __all__ = ['DARK', 'LIGHT', 'THEMES', 'KAKU', 'GRUVBOX', 'ACTIVE_THEME', 'MARKDO
            'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA',
            'MAX_ATTACH', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM',
            'MAX_IMG_COLS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'PYREPL_MODULES', 'set_theme', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths',
-           'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics',
-           'png_size', 'img_cells', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option',
-           'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
+           'PYREPL_MODULES', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media',
+           'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note',
+           'kitty_graphics', 'png_size', 'img_cells', 'draw_png', 'media_line', 'file_refs', 'FileAttachment',
+           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'mk_host', 'mk_agent', 'amain',
+           'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -115,6 +116,34 @@ plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t sho
 extra   /root · /root add PATH to open another folder · /theme · /mouse to click blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
 subagent /subagents shows whether delegated work may write · /subagents on|off changes it for this session
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
+
+
+#: `[ ]` pending, `[▸]` active, `[x]` done, `[-]` cancelled -- see `agent.TODO_MARK`
+_TODO_RE = re.compile(r'^(\[[ x▸\-]\])\s+(`[^`]*`)?\s*(.*)$')
+
+def plan_text(md):
+    """The plan checklist as themed `Text`: one colour for the marks, another for the step text.
+
+    Read as a column of marks first and prose second, so the id and any note recede to gray rather
+    than competing with the step. `GRUVBOX` is read per call, so `/theme` restyles a painted plan.
+    """
+    out = Text()
+    for i, line in enumerate(md.splitlines()):
+        if i: out.append('\n')
+        m = _TODO_RE.match(line)
+        if m is None:                                  # the `**title**  ·  n/m done` header
+            title, sep, count = line.replace('**', '').partition('  ·  ')
+            out.append(title, style=f"bold {GRUVBOX['yellow']}")
+            if sep: out.append(f'  ·  {count}', style=GRUVBOX['gray'])
+            continue
+        mark, tid, rest = m.group(1), m.group(2) or '', m.group(3)
+        out.append(mark, style=f"bold {GRUVBOX['aqua']}")
+        if tid: out.append(' ' + tid.strip('`'), style=GRUVBOX['gray'])
+        step, sep, note = rest.partition('  -- ')
+        out.append(' ' + step, style=GRUVBOX['fg1'])
+        if sep: out.append('  -- ' + note, style=GRUVBOX['gray'])
+    return out
+
 
 # %% ../nbs/05_cli.ipynb #buildstamp
 BUILD = datetime.fromtimestamp(Path(__file__).stat().st_mtime).strftime('%H:%M') if '__file__' in dir() else ''
@@ -448,6 +477,7 @@ async def run_turn(ui, prompt):
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
     ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
     ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
+    ui._plan_blk = None        # a new turn prints the plan once more, then rewrites that one
     ui._turn_at, ui._turn_from = time.monotonic(), next(reversed(ui.comp.blocks), 0)
     atts, ui.attachments = list(ui.attachments), []
     spec = ui.agent.model
@@ -524,6 +554,7 @@ class Ui:
         self._turn_at = 0.0        # when the running turn began, for the working footer's clock
         self._turn_from = 0        # the block id the running turn started at, for `turn_blocks`
         self._rendered = ''        # the segment text last actually rendered, so a flush is never wasted
+        self._plan_blk = None      # the turn's one plan block, updated in place. `on_plan` fires
         self._touched = 0.0        # when the transcript view last rebuilt, for `touch`
         self.history, self.history_at, self.draft = [], 0, ''
         self.menu = None            # the open `ChoiceMenu`, or None
@@ -912,7 +943,15 @@ class Ui:
         self._post(self._paint_plan, plan)
 
     def _paint_plan(self, plan):
-        if plan: self.say(Text(plan.md()), 'plan', fold=None, source=plan.md())
+        "Keep one plan block for the turn and rewrite it"
+        if not plan: return
+        md = plan.md()
+        if (blk := self._plan_blk) is None:
+            self._plan_blk = self.say(plan_text(md), 'plan', fold=None, source=md)
+            return
+        self.comp.set_body(blk, plan_text(md), source=md)
+        self.comp.refresh_block(blk)
+        self.touch(now=True)
         self.paint()
 
     def _slash_matches(self):
@@ -1472,7 +1511,7 @@ async def amain(agent, hint='', python=False, attach=''):
         brand.append(f"  {agent.note}", style=GRUVBOX['gray'])
         ui.say(brand, 'note', fold=None, source='RAMABANA')
         if agent.plan:
-            ui.say(Text(agent.plan.md()), 'plan', fold=None, source=agent.plan.md())
+            ui.say(plan_text(agent.plan.md()), 'plan', fold=None, source=agent.plan.md())
             ui.show_plan = True
         else: ui.say(Text('tab completes /commands · ctrl+t toggles the plan · /help for keys',
                         style=GRUVBOX['gray']), 'note', fold=None)

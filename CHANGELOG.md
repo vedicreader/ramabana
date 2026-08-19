@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.1.19
+plan displays once and is repainted and in theme. auto tool budget flows through
+
 ## 0.1.18
 cli fixes to remove claude models tool calss as tags. remove multiple tool results in rmabana cli. 
 

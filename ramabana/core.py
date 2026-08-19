@@ -237,11 +237,8 @@ DFLT_LOCAL = 'gemma-e4b'
 completer = DFLT_LOCAL
 cheap = completer          # back-compat alias
 
-#: `None` for the one-shot jobs, which is not "unset" but "whatever `oneshot` says" -- see
-#: `Routing.name_for`. Spelling each of them out as the same constant meant the cheap model
-#: could only be moved three times or not at all.
 DEFAULT_POLICY = {'turn': None, 'oneshot': completer, 'inline': None, 'completion': None,
-                  'classify': None, 'summary': None, 'subagent': DFLT_LOCAL}
+                  'classify': None, 'summary': None, 'subagent': 'gpt-4.1'}
 
 _LOCAL_CTX = {'gemma-e2b': 16_384, 'gemma-e4b': 16_384, 'gemma-12b': 32_000,
               'qwen-4b': 32_768, 'mini-coder-4b': 32_768, 'ornith-9b': 32_768,

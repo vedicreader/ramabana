@@ -89,7 +89,8 @@ def summarise(tool, args):
         return f'Grep {_s(a.get("pattern", ""))}{where}'
     if tool == 'ls':             return f'List {p or "(open folders)"}'
     if tool == 'view_file':
-        rng = f':{a["start"]}-{a["end"]}' if a.get('start') or a.get('end') else ''
+        start, end = a.get('start', ''), a.get('end', '')
+        rng = f':{start}-{end}' if start or end else ''
         return f'View {p}{rng}'
     if tool == 'edit_file':      return f'Edit {p}'
     if tool == 'replace_text':   return f'Edit {p}'
@@ -526,8 +527,8 @@ def request_text(prompt):
     """The person's request, excluding notebook/screen context composed around it."""
     text = prompt[-1] if isinstance(prompt, (list, tuple)) and prompt else prompt
     text = str(text or '')
-    match = re.search(r'<user-request>\n?(.*?)\n?</user-request>\s*$', text, re.S)
-    return match.group(1) if match else text
+    matches = list(re.finditer(r'<user-request>\n?(.*?)\n?</user-request>', text, re.S))
+    return matches[-1].group(1) if matches else text
 
 # %% ../nbs/03_agent.ipynb #fdd81169
 def prompt_directives(prompt, tools=(), skills=()):
@@ -1904,7 +1905,9 @@ def _prepare_limits(self, prompt):
     self.max_tool_calls = None if self.tool_budget == 'auto' else self.tool_budget
     self.max_steps = None if self.step_budget == 'auto' else self.step_budget
     backend = self._be('turn')
-    if self.max_steps is not None and hasattr(backend, 'max_steps'): backend.max_steps = self.max_steps
+    if hasattr(backend, 'max_steps'): backend.max_steps = self.max_steps
+    if getattr(backend, 'chat', None) is not None and hasattr(backend.chat, 'max_steps'):
+        backend.chat.max_steps = self.max_steps
     return _agent_prepare_limits(self, prompt)
 Agent._prepare = _prepare_limits
 
