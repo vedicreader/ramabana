@@ -6,7 +6,8 @@ not appear in the diff, and a backend that counts cumulatively must not charge t
 """
 from dataclasses import replace
 
-from ramabana import agent, core
+from ramabana import agent, core, runtime
+from ramabana.core import ModelSpec
 from ramabana.runtime import Usage
 from ramabana.testing import MemHost, ScriptedBackend, Step, fake_agent
 
@@ -156,3 +157,37 @@ def test_an_attached_image_survives_the_tool_plan():
     assert isinstance(sent, list) and len(sent) == 2
     assert sent[0] == b'\x89PNG-not-really'
     assert '<user-request>' in sent[1] and '<tool-plan' in sent[1]
+
+
+def test_a_tool_call_written_as_prose_earns_one_reminder():
+    """The tags channel asks the model to punctuate exactly, and a smaller model sometimes narrates
+    the call instead of emitting it. That was reported and then dropped, so the turn simply did not
+    do the thing. One corrective turn asks for the call again -- appended, never a re-run, because a
+    stream cannot unsay what already reached the screen.
+    """
+    sent = []
+
+    class Sloppy(runtime.RishiBackend):
+        def _start(self): return object()
+        def _usage(self): return None
+        def _stream(self, msg, **kw):
+            sent.append(msg)
+            yield "I'll search now: <tool_call> search_code(query='rrf')" if len(sent) == 1 else 'done'
+
+    spec = ModelSpec('claude/claude-sonnet-4-6', 'claude', 'claude-sonnet-4-6', 128_000)
+    b = Sloppy(spec, tools=[lambda: None])
+    out = ''.join(b.stream('find rrf'))
+
+    assert len(sent) == 2, f'{len(sent)} turns; the reminder never went'
+    assert runtime.TAG_REMINDER in str(sent[1]), sent[1]
+    assert 'done' in out, out
+    assert any('prose' in p for p in b.problems), b.problems
+
+    # and only one: a model that keeps narrating must not loop
+    sent.clear()
+    class Always(Sloppy):
+        def _stream(self, msg, **kw):
+            sent.append(msg); yield '<tool_call> nope'
+    b2 = Always(spec, tools=[lambda: None])
+    ''.join(b2.stream('again'))
+    assert len(sent) == 2, f'{len(sent)} turns; the reminder repeated'

@@ -7,9 +7,9 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 # %% auto #0
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
-           'ACTION_NOTICE', 'MAX_STEPS', 'ONESHOT_TOKENS', 'IMG_TOKENS', 'interesting', 'captured', 'capture',
-           'estimate_tokens', 'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt',
-           'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
+           'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'IMG_TOKENS', 'interesting', 'captured',
+           'capture', 'estimate_tokens', 'threshold', 'should_compact', 'serialise', 'split_previous',
+           'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
            'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
            'use_chat', 'RishiBackend', 'make_backend', 'Run', 'current_run', 'run_context']
 
@@ -396,6 +396,12 @@ def notices_block(prompt):
     ns = prompt_notices(prompt)
     return '' if not ns else '\n\n<system-reminder>\n' + '\n\n'.join(ns) + '\n</system-reminder>'
 
+#: What to say to a model that wrote a tool call as prose instead of emitting one. The tags channel
+#: asks for exact punctuation, and a smaller model narrates the call about as often as it makes it.
+TAG_REMINDER = ("That tool call arrived as prose rather than as a call, so nothing ran. Emit it "
+                "again on its own: one <tool_call> block containing only JSON with `name` and "
+                "`arguments`, and no other text in the message.")
+
 # %% ../nbs/01_runtime.ipynb #45fad4d6
 def compact_notebook_context(prompt, fits):
     "Reduce a tagged notebook only when `prompt` does not fit. A `keep` cell is never removed."
@@ -612,6 +618,7 @@ def _parts(msg):
 # %% ../nbs/01_runtime.ipynb #197644e7
 class Backend:
     kind='?'
+    _tag_reminded=False
     def __init__(self,spec,sp='',tools=(),approve=None,tool_max_len=None,shared=False,**kw):
         self.spec,self.sp,self.tools,self.approve=spec,sp,list(tools),approve
         self.tool_max_len,self.shared,self.kw=tool_max_len,shared,kw
@@ -676,12 +683,18 @@ class Backend:
         if self.start() is None:return self.note
         with self.lock:
             self.run=run
+            self._tag_reminded=False   # one reminder per turn. See `TAG_REMINDER`
             try:
                 for again in (True,False):
                     try:
                         out=self._send(msg,**kw)
                         if run is not None and run.cancelled:return ''
                         self.use=self._usage(); self._check_reply(out)
+                        # one corrective turn, appended rather than a re-run: the narrated call is
+                        # already said, and asking again is the only way to still get the call
+                        if not self._tag_reminded and self._needs_tag_retry(out):
+                            self._tag_reminded=True
+                            out=self._send(TAG_REMINDER,**kw); self.use=self._usage()
                         return out or self._empty()
                     except Exception as e:
                         if run is not None and run.cancelled:return ''
@@ -691,6 +704,7 @@ class Backend:
         if self.start() is None:yield self.note; return
         with self.lock:
             self.run=run
+            self._tag_reminded=False   # one reminder per turn. See `TAG_REMINDER`
             try:
                 for again in (True,False):
                     n,buf=0,[]
@@ -700,6 +714,15 @@ class Backend:
                             n+=len(c or ''); buf.append(c or ''); yield c
                         if run is not None and run.cancelled:return
                         self.use=self._usage(); self._check_reply(''.join(buf))
+                        # a stream cannot unsay a chunk, so the reminder is a further turn rather
+                        # than a retry. Once only: a model that keeps narrating must not loop
+                        if not self._tag_reminded and self._needs_tag_retry(''.join(buf)):
+                            self._tag_reminded=True
+                            yield '\n\n'
+                            for c2 in self._stream(TAG_REMINDER,**kw):
+                                if run is not None and run.cancelled:return
+                                n+=len(c2 or ''); yield c2
+                            self.use=self._usage()
                         if not n:yield self._empty(True)
                         return
                     except Exception as e:
@@ -714,6 +737,9 @@ class Backend:
     def _check_reply(self,text):
         "Look at a finished reply for a failure the transport could not raise. Nothing by default."
         return text
+    def _needs_tag_retry(self,text):
+        "Whether this reply narrated a tool call instead of emitting one. No by default."
+        return False
     def _empty(self,strict=False):
         why=f'{self.spec.name} returned nothing'+(f' -- {self.last_native}' if self.last_native else '')
         return self.problem(why) if strict else (f'({why})' if self.last_native else '(no reply)')
@@ -863,10 +889,17 @@ class RishiBackend(Backend):
         return True
     def _check_reply(self,text):
         "Report a tag call that came back as prose, which is what the tags channel costs."
-        if tool_channel(self.spec,self.chat)=='tags' and '<tool_call' in (text or ''):
+        if self._needs_tag_retry(text):
             self.problem(f'{self.spec.name}: a <tool_call> block came back as prose rather than a '
                          'call, so this model is not punctuating the tags channel reliably')
         return text
+    def _needs_tag_retry(self,text):
+        """A reply on the tags channel with a `<tool_call>` still in its prose never made the call.
+
+        Pure: `_check_reply` asks this too, and a once-guard here would let the report eat the
+        reminder. The caller owns `_tag_reminded`.
+        """
+        return tool_channel(self.spec,self.chat)=='tags' and '<tool_call' in (text or '')
     def _stream(self,msg,**kw):
         kw=self._turn_kw(kw)
         if not self.prefilled_think:yield from self.chat(msg,stream=True,**kw); return
