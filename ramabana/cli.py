@@ -1644,10 +1644,19 @@ def main(
     except ValueError as e:
         print(e, file=sys.stderr)
         return 2
-    agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault, spec=spec,
-                           read_outside=read_outside, subagent_writes=subagent_writes,
-                           max_tool_calls=max_tool_calls, max_steps=max_steps,
-                           cfg=Path(cfg).expanduser() if cfg else None)
+    # a mistyped `--model` is a typo, not a crash. `resolve` writes its refusal for a human, and
+    # raising it through `fastcore.script` buried that under thirty frames of someone else's stack
+    try:
+        agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault, spec=spec,
+                               read_outside=read_outside, subagent_writes=subagent_writes,
+                               max_tool_calls=max_tool_calls, max_steps=max_steps,
+                               cfg=Path(cfg).expanduser() if cfg else None)
+    except KeyError as e:
+        print(e.args[0] if e.args else e, file=sys.stderr)   # `str` on a KeyError re-quotes it
+        return 2
+    except (RuntimeError, AgentError) as e:   # an unavailable runtime names the extra to install
+        print(e, file=sys.stderr)
+        return 2
     if resume:
         try: agent.resume_session(resume)
         except Exception as e:

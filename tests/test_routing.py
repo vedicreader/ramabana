@@ -211,3 +211,20 @@ def test_an_unknown_model_names_the_near_miss_rather_than_the_whole_table():
     with pytest.raises(KeyError) as e:
         resolve('wat')
     assert 'gemma-e2b' not in str(e.value) and '/models' in str(e.value), str(e.value)
+
+
+def test_a_typed_model_name_fails_as_a_sentence_not_a_traceback():
+    """`--model claude-sonnet-4.6` printed thirty frames of `fastcore.script` and buried the message.
+
+    Everything else `main` refuses -- a bad theme, a missing pyrepl extra, `--vault` without a host --
+    already prints one line and returns 2. Model resolution was the one that raised through.
+    """
+    import subprocess, sys, pathlib
+    exe = pathlib.Path(sys.executable).parent/'ramabana'
+    if not exe.exists(): pytest.skip('console script not installed in this env')
+    r = subprocess.run([str(exe), '--model', 'claude-sonnet-4.6', 'hi'],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
+    assert 'Traceback' not in r.stderr, r.stderr
+    assert 'claude-sonnet-4-6' in r.stderr, r.stderr
+    assert r.stderr.count('\n') <= 2, f'{r.stderr.count(chr(10))} lines: {r.stderr}'

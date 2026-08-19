@@ -312,7 +312,7 @@ PREFIXES = RUNTIMES
 #: Prefixes that used to route somewhere and no longer do, and what to say about each. Without
 #: this an id left in a config is read as a vendor and handed to `remote`, which asks for an API
 #: key nothing about the request needs: a credentials error several layers from the cause.
-RETIRED = {'claude_code': 'use `claude/` instead -- the same models, through Claude Code itself',
+RETIRED = {'claude_code': 'use `claude/` instead: the same models, through Claude Code itself',
            'cursor': 'the Cursor backend was removed'}
 
 def resolve(name, default_local=DFLT_LOCAL):
