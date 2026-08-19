@@ -1604,11 +1604,11 @@ def ask_once(agent, prompt):
 @call_parse(pos=['prompt'])
 def main(
     prompt: str = '',                    # one turn and exit. Omit for the interactive session
-    root: str = '.',                     # folders the agent may touch, comma separated
+    root: str = '.',                     # folders it may read and write, comma separated: .,~/notes,/srv/app
     model: str = None,                   # the turn model. The routing default when omitted
     approve: str = 'ask',                # ask | auto | off | none (gate nothing at all)
-    web: bool = True,                    # let the web tools reach the network through fossick
-    read_outside: bool = False,          # let reads name any path on this machine. Writes stay inside
+    web: bool = True,                    # --no-web takes the network away from the web tools (fossick)
+    read_outside: bool = False,          # widen reads to any path. Writing still needs the folder in --root
     subagent_writes: bool = False,       # let delegated sub-agents write, run commands and run Python too
     vault: bool = False,                 # vishalakshi vault for what is read. Not offered in python mode
     spec: bool = False,                 # enable OpenAPI, Azure and Google Discovery tools
@@ -1621,7 +1621,7 @@ def main(
     attach: str = '',                  # join a live session; --kernels lists them
     kernels: bool = False,               # list live sessions and exit
 ):
-    "Run Ramabana as a terminal agent or Python prompt."
+    "Run Ramabana as a terminal agent or Python prompt. Name every folder it may work on: --root .,~/notes"
     if kernels:
         from ramabana.pyrepl import sessions
         print(sessions())
