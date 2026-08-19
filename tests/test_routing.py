@@ -191,3 +191,23 @@ def test_a_retired_prefix_says_where_the_model_went():
     with pytest.raises(KeyError, match='removed'):
         resolve('cursor/composer-2.5')
     assert resolve('openai/gpt-5.6').backend == 'remote'      # a real vendor still falls through
+
+
+def test_an_unknown_model_names_the_near_miss_rather_than_the_whole_table():
+    """A dot for a hyphen printed all 44 known names and left the reader to spot it.
+
+    The list is the least useful part of the message: what the typist wants is the name they nearly
+    typed. `/models` is there for the rest.
+    """
+    with pytest.raises(KeyError) as e:
+        resolve('claude-sonnet-4.6')
+    msg = str(e.value)
+    assert 'claude-sonnet-4-6' in msg, msg
+    assert 'did you mean' in msg.lower(), msg
+    assert '/models' in msg, msg
+    assert 'gemma-e2b' not in msg, 'the whole table is still in the message'
+
+    # a name nothing is close to says so plainly, and still does not list everything
+    with pytest.raises(KeyError) as e:
+        resolve('wat')
+    assert 'gemma-e2b' not in str(e.value) and '/models' in str(e.value), str(e.value)

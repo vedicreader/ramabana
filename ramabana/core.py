@@ -10,12 +10,12 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX',
            'CUSTOM', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES',
            'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError',
            'agent_err', 'use_env_prefix', 'env', 'runtime_available', 'auth_status', 'copilot_catalog',
-           'available_models', 'local_ctx', 'ModelSpec', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget',
-           'budget_for', 'register_model', 'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel',
-           'Routing']
+           'available_models', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps', 'accepts',
+           'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model', 'force_tags',
+           'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
-import functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
+import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
 from fastcore.all import Path
 from dataclasses import dataclass, field
 
@@ -295,6 +295,17 @@ def _cloud_ctx(model_id):
     except Exception as e: return 128_000, f'context window unknown ({agent_err(e)}), assuming 128k'
 
 # %% ../nbs/00_core.ipynb #1d37d28a
+def unknown_model(name):
+    """What to say about a name nothing matches.
+
+    Printing all of `MODELS` buried the useful part: `claude-sonnet-4.6` for `claude-sonnet-4-6` is
+    one character, and the reader had to find it among forty-odd names. `/models` lists them.
+    """
+    near = difflib.get_close_matches(str(name), MODELS, n=2, cutoff=0.6)
+    hint = f'; did you mean {" or ".join(repr(n) for n in near)}?' if near else '.'
+    return (f'unknown model {name!r}{hint} `/models` lists what is configured, and any '
+            f'vendor/model spec works too.')
+
 #: Prefixes that name a runtime or a transport rather than a vendor, in the spelling that works.
 PREFIXES = RUNTIMES
 
@@ -335,7 +346,7 @@ def resolve(name, default_local=DFLT_LOCAL):
             return ModelSpec(name, runtime, model_id, ctx)
         ctx, note = _cloud_ctx(name)
         return ModelSpec(name, 'remote', name, ctx, note)
-    raise KeyError(f'unknown model {name!r}; known: {", ".join(sorted(MODELS))}, or a vendor/model spec')
+    raise KeyError(unknown_model(name))
 
 @functools.lru_cache(maxsize=256)
 def _caps(model_id, runtime):
