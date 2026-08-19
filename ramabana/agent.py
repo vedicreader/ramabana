@@ -230,7 +230,13 @@ class Activity:
                 parent_action_id=parent_action_id or '')
         with self._lock:
             self.acts.append(a)
-            if len(self.acts) > self.max_acts: del self.acts[:-self.max_acts]
+            if len(self.acts) > self.max_acts:
+                # the window slides, so the turn boundary has to slide with it. Without this `_mark`
+                # stayed at `max_acts` while `len(acts)` was pinned there too, and `since()` -- the
+                # turn's own calls, which a status pane reads -- returned nothing ever again
+                n = len(self.acts) - self.max_acts
+                del self.acts[:n]
+                self._mark = max(0, self._mark - n)
         self._changed(a)
         return a
 

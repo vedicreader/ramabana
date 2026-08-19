@@ -240,3 +240,141 @@ def test_stopping_a_turn_does_not_leave_the_reply_growing_above_the_note(ui):
     ui.stream(seg, ' and a straggler')
     tags = [b.tag for b in ui.comp.blocks.values()]
     assert tags == ['reply', 'note', 'reply'], 'the straggler grew the block above the note'
+
+
+# -- what a review found: six ways the surface reached outside the turn it was showing -------------
+
+def a_finished_turn(u, n_calls=2, answer='done.\n'):
+    "Run a turn the way `run_turn` does, including the bookkeeping that scopes the turn."
+    u.say('a question', 'user', pad=True)
+    u._reply, u._seg, u._seg_blk, u._rendered = '', '', None, ''
+    u._turn_from = next(reversed(u.comp.blocks), 0)
+    u.agent.activity.mark()
+    a_turn(u, [(f'step {i}.\n\nmore.\n', 'search_code', 'hit\n' * 8) for i in range(n_calls)], answer)
+    u._seg_blk = None
+
+
+def test_folding_and_drilling_reach_this_turn_and_not_the_session(ui):
+    """Teleprint commits blocks only on a borrow, so `not committed` is the whole session. Ctrl-O
+    over twenty turns of tool results pushes thousands of rows past the top edge, and everything
+    that crosses it is inked into scrollback for good -- no keystroke takes it back.
+    """
+    for _ in range(3): a_finished_turn(ui)
+    every = [b for b in ui.comp.blocks.values() if b.tag in ('step', 'tool') and b.height > 1]
+    assert len(every) == 12, len(every)
+
+    assert len(ui.turn_blocks()) < len(ui.comp.blocks), 'the turn is not a subset of the session'
+    assert len(ui.drillable()) == 4, [b.tag for b in ui.drillable()]
+
+    ui.fold_work()
+    opened = [b for b in every if not b.collapsed]
+    assert len(opened) == 4, f'ctrl+o opened {len(opened)} blocks across earlier turns'
+    assert all(b in ui.turn_blocks() for b in opened)
+
+
+def test_copy_says_no_reply_rather_than_reaching_back_a_turn(ui):
+    "A turn that ends on a tool call leaves no `reply` block; the answer above it is a different turn's."
+    a_finished_turn(ui, answer='THE ANSWER OF TURN ONE\n')
+    assert 'copied 23 chars' in ui.copy_last('reply')
+
+    ui.say('another question', 'user', pad=True)
+    ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
+    ui._turn_from = next(reversed(ui.comp.blocks), 0)
+    seg = ui.stream(None, 'looking.\n')
+    act = ui.agent.activity.start('view_file', {'path': 'a.py'})
+    ui.agent.activity.finish(act, 'contents')     # ...and the turn stops here, with no prose after
+    ui.flush_stream(); ui._seg_blk = None
+
+    assert 'reply' not in [b.tag for b in ui.turn_blocks()]
+    assert ui.copy_last('reply') == 'no reply block in this turn to copy'
+
+
+def test_a_running_delegate_shows_a_bounded_window_of_its_sub_calls(ui):
+    """It stays open while it runs so the sub-agent's work is watchable, and a block that is both
+    newest and growing pushes rows across the top edge, where they ink. Sixty calls would leave
+    forty inked rows of exactly the scattering the grouping exists to prevent.
+    """
+    from ramabana.cli import MAX_GROUP_ROWS
+    acts = ui.agent.activity
+    parent = acts.start('delegate_parallel', {'questions': '["a","b"]'})
+    kids = [acts.start('search_code', {'query': str(i)}, parent_action_id=parent.id) for i in range(60)]
+    for k in kids: acts.finish(k, 'a hit')
+
+    group = ui.acts[parent.id]
+    assert not group.collapsed, 'it should be open while it runs'
+    assert group.height <= MAX_GROUP_ROWS + 2, f'{group.height} rows on screen for 60 calls'
+    drawn = '\n'.join(''.join(s.text for s in l) for l in ui.comp._content_lines(group))
+    assert '… 52 earlier' in drawn, drawn
+    assert all(k.line() in ui.transcript.block_text(group) for k in kids), 'source lost calls'
+
+    acts.finish(parent, 'answered')
+    assert group.collapsed and len(ui.comp._block_rows(group)) == 1
+
+
+def test_the_footer_survives_a_session_longer_than_the_activity_window(ui):
+    "`Activity` slid its window without sliding the turn mark, so `since()` went empty forever."
+    acts = ui.agent.activity
+    for i in range(acts.max_acts + 5): acts.finish(acts.start('search_code', {'query': str(i)}), 'x')
+    acts.mark('a later turn')
+    acts.finish(acts.start('view_file', {'path': 'a.py'}), 'contents')
+
+    assert [a.tool for a in acts.since()] == ['view_file'], acts.since()
+    ui.turn, ui._turn_at = 'a turn', time.monotonic()
+    assert [r.plain for r in ui.working()][-1].startswith('  step 1 ·')
+
+
+def test_an_act_whose_parent_has_no_block_is_counted_as_its_own(ui):
+    "A replayed session, or an overridden `_action_meta`, can name a parent this surface never saw."
+    ui.turn, ui._turn_at = 'a turn', time.monotonic()
+    ui.agent.activity.start('search_code', {'query': 'x'}, parent_action_id='deadbeef')
+    orphan = ui.agent.activity.acts[-1]
+    rows = [r.plain for r in ui.working()]
+    assert rows[-1].startswith('  step 1 ·'), rows        # counted, not written off as delegated
+    assert 'delegated' not in rows[-1], rows[-1]
+    assert rows[0] == f'  {orphan.line()}', rows          # and not indented as somebody's child
+
+    ui.agent.activity.finish(orphan, 'a hit\n' * 6)      # once it has something to fold, it numbers
+    assert [r.plain for r in ui.working()][0].startswith('1 ')
+
+
+def test_a_second_turn_cannot_start_over_a_running_one(ui):
+    "The two share `_reply` and the segment state, so the newcomer's reset wiped the first's words."
+    async def noop(): pass
+    ui.turn = 'a turn in flight'
+    coro = noop()
+    assert ui.start_turn(coro) is False
+    assert ui.turn == 'a turn in flight', 'the running turn was replaced'
+    assert [b.tag for b in ui.comp.blocks.values()][-1] == 'note'
+
+
+def test_a_model_that_stalls_mid_prose_does_not_leave_its_last_words_unseen():
+    """Every *boundary* flushes, but a stall is not a boundary: the chunk before a long pause stayed
+    undrawn for the whole pause. `animate` flushes on its frame, and skips when there is nothing new.
+    """
+    async def go():
+        tty = EmuTty(80, 12)
+        comp = Compositor(tty)
+        comp._register_signals = lambda: None
+        await comp.start()
+        agent, _ = fake_agent()
+        u = Ui(comp, agent)
+        u.turn = 'a turn'
+        spinner = comp.spawn(u.animate(), name='spinner')
+        try:
+            seg = u.stream(None, 'first chunk. ')
+            seg = u.stream(seg, 'SECOND CHUNK')   # inside STREAM_EVERY, so not drawn yet
+            drawn = lambda: '\n'.join(''.join(s.text for s in l)
+                                      for l in comp._content_lines(seg))
+            assert 'SECOND CHUNK' not in drawn(), 'the throttle did not throttle'
+            await asyncio.sleep(0.3)
+            assert 'SECOND CHUNK' in drawn(), 'the stalled tail is still invisible'
+
+            n = [0]
+            real = comp.set_body
+            comp.set_body = lambda *a, **k: (n.__setitem__(0, n[0] + 1), real(*a, **k))[1]
+            await asyncio.sleep(0.4)              # nothing new arrives
+            assert n[0] == 0, f'the timer re-rendered {n[0]} times with nothing to draw'
+        finally:
+            spinner.cancel()
+            tty.close()
+    asyncio.run(go())
