@@ -254,12 +254,10 @@ def test_the_web_tools_ask_for_what_they_want_and_hand_back_only_the_digest(monk
     assert out == '## t\nhttps://x\n\nbody' and 'dropped' not in out
 
 
-def test_the_code_index_builds_the_graph_it_later_queries(monkeypatch, tmp_path):
-    """`_semantic` asks `Kosha.context` for graph expansion, so the sync has to have built one. The
-    call passed `sync_graph=force` -- kosha's deprecated name for `graph` -- so with `force` at its
-    default the graph was switched off on every ordinary sync."""
+def test_the_code_index_uses_its_graph_setting_for_sync_and_search(monkeypatch, tmp_path):
+    """A graph is built and queried together, or neither operation uses one."""
     import kosha
-    seen = {}
+    seen = []
 
     class FakeKosha:
         # `**kw`, not `dir=None`: `sync_index` also passes `busy_timeout`, and a fake that
@@ -267,12 +265,18 @@ def test_the_code_index_builds_the_graph_it_later_queries(monkeypatch, tmp_path)
         # test silently stops reaching `sync` at all
         def __init__(self, **kw): pass
         def sync(self, **kw):
-            seen.update(kw)
+            seen.append(('sync', kw['graph']))
             return self
+        def context(self, **kw):
+            seen.append(('context', kw['graph']))
+            return []
 
     monkeypatch.setattr(kosha, 'Kosha', FakeKosha)
-    LocalHost([tmp_path], web=False).sync_index(wait=True)
-    assert seen.get('graph') is True and 'sync_graph' not in seen
+    for graph in False, True:
+        host = LocalHost([tmp_path], web=False, graph=graph)
+        host.wait_index()
+        host._semantic('query', 1)
+    assert seen == [('sync', False), ('context', False), ('sync', True), ('context', True)]
 
 
 def test_search_fuses_legs_with_litesearch_rrf_and_rgapi(tmp_path, monkeypatch):

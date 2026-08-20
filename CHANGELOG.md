@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.1.20
+cli fixes to default graph indexing to false and splitting prose 
+
 ## 0.1.19
 plan displays once and is repainted and in theme. auto tool budget flows through
 

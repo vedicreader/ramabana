@@ -401,6 +401,7 @@ class LocalHost(Host):
                  note=None,             # callable for out-of-band status lines
                  web=True,              # wire the web tools to fossick when it is installed
                  index=True,            # start a Kosha sync for every open root
+                 graph=False,           # build Kosha's call graph during sync
                  rerank=True,           # reorder Kosha's hits with its flashrank cross-encoder
                  rerank_model=None,     # flashrank model name. None is its fast default
                  read_outside=False,    # let read-only tools name any path on this machine
@@ -414,11 +415,11 @@ class LocalHost(Host):
         self._indexes, self._index_errors, self._index_thread = [], [], None
         self._pending = list(self._roots)     # roots whose sync has not returned yet
         self.rerank, self.rerank_model, self._rerank_note = bool(rerank), rerank_model, ''
+        self.graph = graph
         if index: self.sync_index()
 
-    def sync_index(self, wait=False, force=False, graph=True):
+    def sync_index(self, wait=False, force=False):
         "Run `Kosha.sync` for every open root, once, in a daemon thread. Each root publishes as it returns."
-        # `_semantic` queries `Kosha.context(graph=True)`. An ordinary sync has to build one
         if self._index_thread is None or not self._index_thread.is_alive():
             def run():
                 try:
@@ -429,7 +430,7 @@ class LocalHost(Host):
                 for root in list(self._roots):
                     try:
                         k = Kosha(dir=Path(root), busy_timeout=30000)
-                        k.sync(dir=Path(root), verbose=False, force=force, pyproject=True, graph=graph)
+                        k.sync(dir=Path(root), verbose=False, force=force, pyproject=True, graph=self.graph)
                         self._indexes.append(k)
                     except Exception as e: self._index_errors.append(agent_err(e))
                     finally:
@@ -599,7 +600,7 @@ class LocalHost(Host):
         for k in indexes:
             try:
                 rows = self._ranked(k.context, q=query, limit=limit, repo=True, env=True,
-                                    graph=True, columns='content,metadata')
+                                    graph=self.graph, columns='content,metadata')
             except Exception as e:
                 self._index_errors.append(agent_err(e)); continue
             for row in rows:
@@ -637,7 +638,6 @@ class LocalHost(Host):
         if not (query or '').strip(): return []
         rg = self._rg(query, limit)
         if (hits := _fuse([self._semantic(query, limit), rg or []], limit)): return hits
-        # `_rg` is None when rgapi is unavailable. `[]` when it ran and found nothing.
         return [] if rg is not None else self._scan(query, limit)
 
     @property
@@ -850,7 +850,6 @@ class LocalHost(Host):
 
     @property
     def research_note(self): return 'fossick' if self.web else 'web access is switched off'
-
 
     @property
     def approvals(self): return self._approvals

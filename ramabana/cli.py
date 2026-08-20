@@ -1426,6 +1426,7 @@ def _act(self:Ui, act):
     blk = self.acts.get(act.id)
     if blk is None:
         self._close_seg()
+        if self._reply: self._seg += '\n'; self._reply += '\n'
         line = Text(act.line(), style=self._act_style(act))
         self.acts[act.id] = self.say(line, 'tool', source=act.line())
         return self.paint()
