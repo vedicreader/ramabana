@@ -62,11 +62,13 @@ The owner protection itself holds under concurrency, because `owner_names()` is 
 
 Three methods on `Host`, alongside the memory group they are modelled on, plus a `recall` capability key:
 
-    recall_search(query, limit=8, scope='', outcome='')   # fragments, ranked
+    recall_search(query, limit=8, scope='', outcome='')   # fragments, ranked by relevance
     recall_outline(session='')                            # sessions, or one session's fragments
     recall_read(ref)                                      # one fragment in full
 
-`scope` narrows to a surface (`agent`, `inline`) or a session id. `outcome` keeps only fragments whose turn succeeded, or only those that failed. Every method may raise, and an absent one raises `NotImplementedError`, which is how `tools_for` drops the group.
+`scope` narrows to a surface (`agent`, `inline`) or a session id. `outcome` narrows to succeeded or failed, and its default is empty, meaning everything. Every method may raise, and an absent one raises `NotImplementedError`, which is how `tools_for` drops the group.
+
+Search ranks by relevance and reports every tag it knows. It never withholds a fragment, and it never reorders on a tag. The consumer decides, and the consumer is sometimes the agent and sometimes the person reading the results panel. Those two make different decisions from the same rows, and a search that has already decided for them serves neither. `outcome` exists for a caller who has decided and wants to say so.
 
 ### The fragment
 
@@ -79,7 +81,20 @@ Retrieval below session granularity needs an addressable unit. A fragment is one
 | `act` | `{sid}/{turn_id}#act:{n}` | one activity row, tool, args and clipped result |
 | `cell` | `{sid}/cell:{n}` | one dhrishti transcript cell |
 
-A fragment carries `ref`, `kind`, `session`, `at`, `model`, `text`, and `ok`. `ok` is false for a turn with a non-empty `error`, an activity row with `ok: false`, or a transcript cell whose source begins `# blocked:` or `# error:`. Nothing is dropped for being a failure. A failed attempt is often the most useful thing in the store, and the caller decides.
+A `prompt` fragment needs one more split. `Agent._remember` stores the prompt as it was passed to `ask`, which for `ask_with` is the output of `compose`. That output is the whole composed message, including the `<notebook path=>` block with every `<cell id= type= compact=>` the frontend sent. The history log therefore already holds the notebook context of every turn, with the keep, auto and discard marks the user had set at the time.
+
+So `prompt` splits into the `<user-request>` text and one fragment per notebook cell inside it:
+
+| kind | ref | source |
+|---|---|---|
+| `prompt` | `{sid}/{turn_id}#prompt` | the `<user-request>` text alone |
+| `nbcell` | `{sid}/{turn_id}#nb:{cell_id}` | one `<cell>` from the notebook block of that turn |
+
+Splitting it is not optional. Without it a `prompt` fragment is a multi-thousand-character blob whose relevance score is dominated by notebook context the user never typed, and every hit returns the same blob.
+
+A fragment carries `ref`, `kind`, `session`, `at`, `model`, `text`, and a `tags` dict. The tags are `ok`, `surface` (`agent`, `inline` or `transcript`), `age_days`, `model`, and `marked`. `ok` is false for a turn with a non-empty `error`, an activity row with `ok: false`, or a transcript cell whose source begins `# blocked:` or `# error:`. `marked` is the `compact` attribute the cell carried when the turn ran, and it is empty for every fragment kind that never had one.
+
+Nothing is dropped or demoted for any tag value. A failed attempt is often the most useful thing in the store, and a cell its author marked `discard` in March is evidence about what they were doing that day rather than an instruction to a search running now.
 
 ### `SessionIndex`
 
@@ -89,19 +104,31 @@ Ranking has two backends. Where a `Vault` is present, fragments go into a `sessi
 
 `VaultHost` implements the three methods against a `SessionIndex` built on its own `cfg`. `LocalHost` implements them against the scan. `WorkspaceHost` in leela overrides them to add dhrishti's transcripts, since the workspace is what knows where the kernel is logging.
 
-### The feedback risk, and what to do about it
+### The feedback risk, and where the judgment goes
 
-Searching agent sessions means searching the agent's own output, and a wrong answer retrieved and re-grounded becomes a wrong answer with a citation. Two defences, both cheap because the data is already recorded.
+Searching agent sessions means searching the agent's own output, and a wrong answer retrieved and re-grounded becomes a wrong answer with a citation.
 
-Rank demotes failures. A fragment whose turn carries an `error`, or whose activity row is `ok: false`, is scored below an equal match that succeeded. It still appears, and `outcome='failed'` asks for it directly.
+An earlier draft answered this by demoting failures in rank. That is the wrong place for the judgment. Ranking is how results get ordered, and folding a quality opinion into it hides the opinion inside a number the consumer cannot see or argue with. It also fails the case it most needs to serve: an agent asking why an approach did not work wants the failures first, and a rank that has already buried them makes the query useless without the agent knowing why.
 
-The tool descriptions say what the material is. Recalled text is what an agent said, and it is evidence about what was tried rather than a statement of fact about the code. The briefing rule already in `RULES` covers the general case ("Never claim a file changed... unless a tool result in this conversation says so"), and the recall tools restate it for their own results.
+The judgment goes in two visible places instead.
+
+The tags are on every row. `ok`, `marked`, `age_days` and `model` come back with the snippet, and a results panel renders them as chips the user filters on after seeing the counts. Filtering after seeing what is there is a different act from a search that filtered before showing anything.
+
+The briefing says what the material is. Recalled text is what an agent said in an earlier session, and it is evidence about what was tried rather than a statement of fact about the code. The rule already in `RULES` covers the general case ("Never claim a file changed... unless a tool result in this conversation says so"), and the recall tools restate it for their own results. Preferring a successful prior attempt is an instruction to the model, where it is written down and can be read, rather than an arithmetic adjustment nobody sees.
+
+### One log defect this makes acute
+
+`_remember` writes `'prompt': str(prompt)`. `compose` returns a list when there is an image, of the form `[*media, ask]`, where `media` are raw PNG bytes from `Workspace.take_screen`. Every turn carrying a screenshot therefore writes the Python repr of those bytes into the history log, escaped, on one line, up to the 9 MB cap the `/screen` route enforces. Leela sends a screenshot on the prompt-cell path too.
+
+Nobody noticed because nothing reads the log except `sessions()` and `resume_session`, and both look past the prompt. Recall makes the log a read surface, and a search over it would score against escaped PNG bytes.
+
+The fix is in `_remember`: for a list prompt, store the text parts joined, and record the media as a count and their mime types under a `media` key. This is a behaviour change to the durable record, it belongs in stage 1, and its regression test is a turn with an image whose logged prompt contains no `\\x` escapes.
 
 ### `recall_tools`
 
 Three tools, mirroring the memory group's browse, search and read triad:
 
-- `search_sessions(query, limit=8, scope='', outcome='')`. Ranked fragments as JSON rows with `ref`, `session`, `at`, `kind`, `ok` and a snippet.
+- `search_sessions(query, limit=8, scope='', outcome='')`. Fragments ranked by relevance, as JSON rows with `ref`, `session`, `at`, `kind`, `tags` and a snippet. `outcome` defaults to everything.
 - `session_outline(session='')`. Sessions newest first with turn counts, first prompt and models, or one session's fragments as a list of one-liners. This is the cheap browse, and it embeds no query.
 - `read_session_fragment(ref)`. One fragment in full.
 
@@ -109,24 +136,28 @@ Three tools, mirroring the memory group's browse, search and read triad:
 
 Two rules join `RULES`, both tagged `search_sessions` so they are filtered out when the tool is absent:
 
-- Search prior sessions before repeating work that sounds like work already done, and prefer a successful prior attempt over a failed one unless the failure is what you are asking about.
+- Search prior sessions before repeating work that sounds like work already done. Results are ranked by relevance alone and carry an `ok` tag. Prefer a successful prior attempt over a failed one unless the failure is what you are asking about, and read the tag rather than assuming the order.
 - Recalled text is what an agent said in an earlier session. Treat it as evidence about what was tried, and verify anything you are about to act on against the code as it stands now.
 
 ## The collage, in leela
 
 ### It is a notebook
 
-A collage is an ordinary `.ipynb` under `.leela/collages/<name>.ipynb`, opened in an ordinary editor tab. Every cell carries `metadata.leela.origin` naming the fragment it came from, alongside the `context` mode it already carries.
+A collage is an ordinary `.ipynb` under `.leela/collages/<name>.ipynb`, opened in an ordinary editor tab. Every cell carries two new pieces of metadata beside the `context` mode it already has: `origin`, naming the fragment it came from, and `marked`, the `compact` value that fragment carried in its original session.
+
+Three things that were one thing in the first draft stay separate here. `origin` is where this came from. `marked` is what its author decided then. `context` is what this collage decides now. A collage is where a decision gets recorded, and it cannot record one without keeping the earlier one visible beside it.
 
 Making it a notebook rather than a new object is most of the value here. Cell editing, the context toggle, split and merge, save, git, the outline, and the `@` completer all work on it the day it exists. Nothing new renders it. The user prunes it with the button that is already in the gutter, and a user who wants to rewrite a recalled cell into something shorter uses the editor.
 
-`Cell` gains one field, `origin: str = ''`, written into `metadata.leela.origin` by `nbcell` and read by `from_nb`. `_context_cell` emits it as an attribute, giving `<cell id= type= compact= origin=>`, which is how a model cites what it is quoting.
+`Cell` gains two fields, `origin: str = ''` and `marked: str = ''`, written under `metadata.leela` by `nbcell` and read by `from_nb`. `_context_cell` emits both, giving `<cell id= type= compact= origin= marked=>`. `origin` is how a model cites what it is quoting, and `marked` is how it tells a cell somebody once kept from a cell somebody once threw away.
 
 ### Building one
 
 `/recall/search` runs `ws.ai.host.recall_search` and returns rows for a results panel beside the vault workbench, which already has the row-with-attach-button pattern. Each row has three actions: attach to the next turn, add to a collage, and open the whole session.
 
-`/recall/collage` takes a list of refs and a target name, calls `recall_read` on each, and appends one cell per fragment. A `prompt` or `reply` fragment becomes a markdown cell. An `act` or `cell` fragment becomes a code cell where the source is code and a markdown cell otherwise. Default `context_mode` is `keep` for anything the user picked by hand and `auto` for anything an agent added, because a user who clicked a row meant it.
+`/recall/collage` takes a list of refs and a target name, calls `recall_read` on each, and appends one cell per fragment. A `prompt` or `reply` fragment becomes a markdown cell. An `act`, `cell` or `nbcell` fragment becomes a code cell where the source is code and a markdown cell otherwise.
+
+`marked` is copied from the fragment tag. `context_mode` is set to `auto` on every cell, whoever added it. An earlier draft made it `keep` for a user-picked row, reasoning that a user who clicked a row meant it. Clicking a row means the row is worth looking at, and it does not mean the cell must survive every future compaction of every turn this collage is ever attached to. Those are separate decisions and the gutter button is where the second one is made. A collage where the user marked three of forty cells `keep` says something. A collage where everything the user touched is `keep` says nothing, and the compactor then has only the agent's cells left to drop.
 
 ### Attaching one
 
@@ -135,7 +166,9 @@ Making it a notebook rather than a new object is most of the value here. Cell ed
     {'kind': 'session', 'ref': '<fragment ref>'}
     {'kind': 'collage', 'path': '<collage path>'}
 
-A `session` ref emits `<recalled ref= session= at= kind= ok=>`. A `collage` ref emits `<recalled-notebook path= cells=>` wrapping the collage's cells through `_context_cell`. Every cell arrives with its `compact=` and `origin=`.
+A `session` ref emits `<recalled ref= session= at= kind= ok= marked=>`. A `collage` ref emits `<recalled-notebook path= cells=>` wrapping the collage's cells through `_context_cell`. Every cell arrives with its `compact=`, `origin=` and `marked=`.
+
+`compact=` is what the compactor reads. `marked=` is inert to it, and reaches the model as text it may reason about. A cell marked `discard` in its original session and left `auto` here is telling the model that somebody once judged it not worth carrying, which is worth knowing and is not a reason to drop it now.
 
 ### Pruning it automatically
 
@@ -197,7 +230,7 @@ Cross-process writers to one transcript are out of scope. The lock covers thread
 
 Each stage is useful alone and none depends on a later one.
 
-1. `SessionIndex`, the three `Host` methods, `recall_tools`, and the scan backend. Ramabana only, testable with `fake_agent` and fixture logs.
+1. The `_remember` prompt fix, then `SessionIndex`, the three `Host` methods, `recall_tools`, and the scan backend. Ramabana only, testable with `fake_agent` and fixture logs. The prompt fix comes first because every turn logged before it is a fragment the index has to cope with, and the coping is a fallback rather than a feature.
 2. The dhrishti lock and cell authorship. Independent of everything else, and it fixes a live defect.
 3. `/recall/search` and the results panel, with `kind: 'session'` attachment. Leela gets recall into a turn with no collage yet.
 4. The collage document, `origin` on `Cell`, `<recalled-notebook>`, and the `compact_notebook_context` tag list.
@@ -211,7 +244,10 @@ Stage 6 is the one to defer if any should be. Two agents over two overlays with 
 Ramabana, in `tests/test_recall.py` against fixture logs, in the hand-written pytest style the suite already uses:
 
 - A fragment ref round-trips: `recall_read(f.ref)` returns the fragment `recall_search` produced.
-- A failed turn ranks below a successful turn with the same query overlap, and `outcome='failed'` returns it.
+- A composed prompt carrying a `<notebook>` block splits into one `prompt` fragment holding only the `<user-request>` text and one `nbcell` fragment per cell, each carrying the original `compact` value as its `marked` tag.
+- A failed turn and a successful turn with equal query overlap come back in relevance order with their `ok` tags set, and neither is demoted. `outcome='failed'` returns only the first.
+- A fragment whose source cell was marked `discard` is returned by a matching search, with `marked='discard'` on the row. This is the regression test for the rule that search reports tags rather than acting on them.
+- `_remember` on a prompt list of `[png_bytes, text]` logs the text and a `media` entry, and the logged prompt contains no byte-escape sequences.
 - `tools_for` omits the recall group for a host that raises `NotImplementedError` from `recall_outline`, and includes it for one that answers.
 - `budget_for` on a 16k model drops recall along with memory and web.
 - A malformed line in the JSONL is skipped rather than raising, since the log is appended to under `except: pass` and a truncated final line is the normal crash artifact.
@@ -223,9 +259,10 @@ Ramabana notebook cells in `16_recall.ipynb` carry the readable `test_eq` exampl
 Leela, in `tests/test_agent.py`:
 
 - `_attachment_context` on a `session` ref emits `<recalled ref=>` with the fragment text.
-- A collage attachment emits one `<cell>` per collage cell, each carrying `compact=` and `origin=`.
+- A collage attachment emits one `<cell>` per collage cell, each carrying `compact=`, `origin=` and `marked=`.
+- A fragment whose `marked` tag is `discard` still becomes a collage cell, with `context_mode` of `auto` and `marked` of `discard`, and survives a compaction pass that has room for it.
 - `_agent_context` on a notebook with a collage in its metadata puts the recalled block before the notebook block.
-- A collage saved and reloaded keeps `origin` and `context` on every cell.
+- A collage saved and reloaded keeps `origin`, `marked` and `context` on every cell.
 
 Dhrishti, in the notebook tests:
 
@@ -244,5 +281,7 @@ Cross-machine or cross-user recall. The stores are files under one config direct
 Embedding session fragments into the code index. Kosha holds code and vishalakshi holds prose, and the consolidation note in `docs/consolidation.md` keeps that split. Session fragments are prose with code in them, and they go to the vault.
 
 Automatic collage building. An agent may add to a collage through the tools it has, and nothing assembles one on its own. A retrieval system that decides unasked what an agent remembers is a different design with a different failure mode.
+
+Learning from the marks. Every collage records which recalled cells a person kept and which they discarded, which is training signal for a ranker. Collecting it is free and using it would put the judgment back inside the score, which is the thing this design moves out. Revisit it only with a way to show the user what the ranker learned.
 
 A second path to `/api/promote`. Publication between agents is new. Promotion into the owner's namespace keeps exactly the gate it has.
