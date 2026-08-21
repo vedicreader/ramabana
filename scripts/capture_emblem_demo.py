@@ -10,10 +10,15 @@ Two clips, written to the output folder (`media/` by default):
 
 No model is loaded and no network is touched: `fake_agent` answers, and the turn is driven through
 the same `stream`/`activity` calls a real one goes through, so what is recorded is the real surface.
+
+Wants ffmpeg on the path, and Pillow and fontTools importable -- neither is a dependency of the
+package, because nothing but this script needs them. `preflight` names whatever is missing before
+it draws a frame.
 """
 from __future__ import annotations
 
 import asyncio, shutil, subprocess, sys
+from importlib.util import find_spec
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -35,6 +40,27 @@ ANSI = ((40, 42, 46), (204, 102, 102), (152, 151, 26), (215, 153, 33), (69, 133,
         (177, 98, 134), (104, 157, 106), (168, 153, 132), (102, 92, 84), (251, 73, 52),
         (184, 187, 38), (250, 189, 47), (131, 165, 152), (211, 134, 155), (142, 192, 124),
         (235, 219, 178))
+
+
+def preflight():
+    """Say what is missing before a single frame is drawn, rather than part-way through.
+
+    Every one of these failed late and badly before: no ffmpeg meant rendering a whole clip and
+    then dying on the encode, twice, because `main` runs both; a mono font PIL cannot open threw
+    `OSError: cannot open resource` *after* `Clip.__init__` had already cleared the frames folder;
+    and a missing emoji font failed silently, leaving tofu where the tool icons should be.
+    """
+    missing = []
+    if shutil.which('ffmpeg') is None: missing.append('ffmpeg (apt install ffmpeg)')
+    # fontTools is reached lazily, by `_mono_cmap`, so it is the one import that can fail late.
+    # Pillow is imported at the top of this file and says so itself.
+    if find_spec('fontTools') is None: missing.append('fontTools (uv add --group dev fonttools)')
+    if not Path(FONT).exists():
+        missing.append(f'a mono font at {FONT} (apt install fonts-dejavu-core)')
+    if missing:
+        raise SystemExit('cannot record the demo without:\n  ' + '\n  '.join(missing))
+    if not Path(EMOJI).exists():
+        print(f'  note: no emoji font at {EMOJI}; tool icons will render as tofu', file=sys.stderr)
 
 
 def rgb(hex_or_none, fallback):
@@ -341,6 +367,7 @@ async def themes_clip(out):
 
 
 async def main(out):
+    preflight()
     out.mkdir(parents=True, exist_ok=True)
     print('emblem:');  await emblem_clip(out)
     print('themes:');  await themes_clip(out)

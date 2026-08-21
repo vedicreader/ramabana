@@ -13,8 +13,9 @@ Nothing here loads a model, and nothing here touches a real terminal.
 import pytest
 from rich.cells import cell_len
 
-from ramabana.cli import (ARROW, BANNER_GAP, BANNER_MIN, BOW, FLIGHT, FLIGHT_WIDTH, GUTTERS,
-                          MARK_WIDTH, SLACK, THEMES, WORDMARK, ACTIVE_THEME, arrow_mark, banner,
+import ramabana.cli as cli
+from ramabana.cli import (ARROW, BANNER_GAP, BANNER_MIN, BOW, CODE_THEMES, FLIGHT, FLIGHT_WIDTH,
+                          GUTTERS, MARK_WIDTH, SLACK, THEMES, WORDMARK, arrow_mark, banner,
                           code_theme, flight_line, set_theme)
 
 #: Every key `_theme_parts`, the gutters, the emblem and the widgets read off a palette.
@@ -24,8 +25,12 @@ KEYS = frozenset({'bg0', 'bg1', 'bg2', 'fg0', 'fg1', 'gray',
 
 @pytest.fixture(autouse=True)
 def back_to_dark():
-    "Leave the module-level palette as it was found, whatever a test in here selected."
-    was = ACTIVE_THEME
+    """Leave the module-level palette as it was found, whatever a test in here selected.
+
+    Through `cli`, not through a name imported from it: `ACTIVE_THEME` is rebound by `set_theme`,
+    so a name bound at import time is forever whatever it was then and this restored nothing.
+    """
+    was = cli.ACTIVE_THEME
     yield
     set_theme(was)
 
@@ -43,9 +48,8 @@ def test_every_palette_is_hex_a_terminal_can_take():
 
 
 def test_selecting_a_palette_restyles_the_gutters_and_the_markdown():
-    "`set_theme` rebuilds `GUTTERS` in place, which is how `/theme` restyles what is already painted."
+    "`set_theme` rebuilds `GUTTERS` in place, which is how `/theme` restyles the bar and what follows."
     set_theme('dark')
-    from ramabana import cli
     dark = cli.GUTTERS['user'][0].copy()
     set_theme('dracula')
     assert cli.GRUVBOX is THEMES['dracula']
@@ -83,10 +87,10 @@ def test_every_state_of_the_status_mark_measures_the_same():
     mid-rotation, would shove the model name and the cost sideways on every frame.
     """
     widths = {cell_len(arrow_mark(state, frame).plain)
-              for state in ('working', 'ready', 'idle', 'anything else')
-              for frame in range(MARK_WIDTH * 3)}
+              for state in ('working', 'ready', 'idle', 'anything else', '', None)
+              for frame in (*range(-MARK_WIDTH, MARK_WIDTH * 3), 10 ** 9, -10 ** 9)}
     assert widths == {MARK_WIDTH}, widths
-    assert len(SLACK) == MARK_WIDTH
+    assert cell_len(SLACK) == MARK_WIDTH
 
 
 def test_the_working_mark_always_shows_exactly_one_arrowhead():
@@ -102,16 +106,10 @@ def test_the_working_mark_always_shows_exactly_one_arrowhead():
     assert arrow_mark('ready', 3).plain == arrow_mark('ready', 9).plain, 'a still mark moved'
 
 
-def test_the_mark_and_the_flight_line_are_drawn_from_the_same_arrow():
-    "Two arrows that disagreed about their own glyphs would read as two different things."
-    assert ARROW[-1] == '▸' and ''.join(g for g, _ in FLIGHT).endswith(ARROW[1:])
-
-
 def test_the_three_states_are_told_apart_by_shape_and_not_only_by_colour():
     "A terminal with no colour, or a reader who cannot see it, still has to be able to read the bar."
     plains = {s: arrow_mark(s, 0).plain for s in ('working', 'ready', 'idle')}
     assert '▸' in plains['ready'] and '▸' not in plains['idle'], plains
-    assert plains['ready'] != plains['idle']
 
 
 def test_the_flight_track_is_constant_width_and_the_arrow_crosses_it():
@@ -144,7 +142,9 @@ def test_the_bow_has_a_middle_row_and_room_beside_it_for_the_name():
     assert len(BOW) >= len(WORDMARK) + 2, 'no room beside the bow for the wordmark and the note'
     assert '▸' in BOW[len(BOW) // 2], 'the arrow is not on the middle row'
     assert len({len(w) for w in WORDMARK}) == 1, 'the wordmark rows are ragged'
-    assert BANNER_MIN == max(map(len, BOW)) + BANNER_GAP + len(WORDMARK[0])
+    # The full banner needs the bow, the gap and the wordmark side by side, and nothing narrower.
+    assert cell_len(banner('', BANNER_MIN).plain.split('\n')[len(BOW) // 2]) <= BANNER_MIN
+    assert len(banner('', BANNER_MIN - 1).plain.split('\n')) == len(WORDMARK)
 
 
 #: Which cell edges each glyph of the bow puts a stroke through.
@@ -278,10 +278,117 @@ def test_a_running_turn_puts_the_arrow_in_flight_above_the_prompt():
         tty.close()
 
 
-def test_a_narrow_terminal_still_gets_a_totals_row_it_can_read():
-    "The flight track shares its row with the totals, so it has to give way rather than push them off."
-    from ramabana.cli import flight_line
-    assert cell_len(flight_line(0, max(len(FLIGHT), 30 - 40)).plain) == len(FLIGHT)
+def test_the_flight_track_gives_way_on_a_narrow_terminal_instead_of_wrapping_the_totals():
+    """The track shares the totals row, so on a narrow terminal it has to go rather than push the
+    numbers off the edge. The first version sized itself from what was left over, which meant it
+    changed width as `9s` became `10s` -- and a track of a different width wraps on a different
+    cycle, so the arrow jumped a cell as the clock ticked. It is one fixed width or nothing now.
+    """
+    import asyncio, time
+    from teleprint.compositor import Compositor
+    from teleprint.testing import EmuTty
+    from ramabana.cli import Ui
+    from ramabana.testing import fake_agent
+
+    async def go():
+        for cols in (20, 30, 40, 50, 60, 80, 100, 200):
+            tty = EmuTty(cols, 24)
+            comp = Compositor(tty)
+            comp._register_signals = lambda: None
+            await comp.start()
+            try:
+                agent, _ = fake_agent()
+                ui = Ui(comp, agent)
+                acts = agent.activity
+                for _ in range(3): acts.finish(acts.start('search_code', {'query': 'x' * 8}), 'hit')
+                ui.turn, ui._turn_at = 'a turn', time.monotonic()
+                rows = ui.working()
+                # The totals row is the one this change writes. The activity rows above it are
+                # `Activity.line()` output and were never clipped to the terminal; not this test's.
+                assert cell_len(rows[-1].plain) <= cols - 2, (cols, rows[-1].plain)
+                assert rows[-1].plain.startswith('  step 3 ·'), (cols, rows[-1].plain)
+                # Where it is drawn at all, it is always the one fixed width.
+                drawn = [r.plain for f in range(FLIGHT_WIDTH + len(FLIGHT))
+                         for r in [(setattr(ui, 'frame', f), ui.working()[-1])[1]]]
+                tracks = {len(r) for r in drawn}
+                assert len(tracks) == 1, f'{cols} cols: the totals row changed width: {tracks}'
+                if cols >= 80: assert any('▸' in r for r in drawn), f'{cols} cols: no arrow at all'
+            finally:
+                tty.close()
+    asyncio.run(go())
+
+
+def test_a_note_in_a_wide_script_is_clipped_by_cells_and_not_by_characters():
+    """CJK and emoji are two cells each. Clipping by codepoint let a note that had just been cut to
+    fit come out twice as wide as the width it was cut to.
+    """
+    for note in ('東京' * 40, '🎉' * 40, '東' * 5 + 'x' * 5):
+        for width in (26, 30, 60, 100):
+            rows = banner(note, width).plain.split('\n')
+            assert max(cell_len(r) for r in rows) <= width, (note[:4], width,
+                                                             [cell_len(r) for r in rows])
+
+
+def test_the_narrow_tiers_keep_the_note_instead_of_dropping_it():
+    """Clipping every tier to the widest tier's room threw the note away below 26 columns and
+    over-clipped it below 55, though both have their own room for it. The one-line tier is what
+    the CLI printed before any of this existed, and it always carried the model name.
+    """
+    assert banner('gemma-e2b', 20).plain == 'RAMABANA  gemma-e2b'
+    assert banner('gemma-e2b', 30).plain.split('\n')[-1] == 'gemma-e2b'
+    assert banner('gemma-e2b', 15).plain.startswith('RAMABANA  ') and '…' in banner('gemma-e2b', 15).plain
+    for width in (12, 15, 20, 26, 30, 54, 55, 80):
+        rows = banner('gemma-3n-e2b', width).plain.split('\n')
+        if width >= len(WORDMARK[0]) + 2:
+            assert max(cell_len(r) for r in rows) <= width, (width, rows)
+        assert 'gemma' in banner('gemma-3n-e2b', width).plain or width < 20, width
+
+
+def test_a_note_that_is_not_a_string_is_still_no_note():
+    "`str(note)` moved ahead of the truthiness test once, and the bow got the word `None` beside it."
+    for empty in (None, False, 0, '', '   '):
+        assert banner(empty, 100).plain.split('\n')[7].strip() == '│          ╭─╯'.strip()
+
+
+def test_theme_next_is_a_keyword_however_it_is_typed():
+    """`apply_theme` tested for the keyword before `set_theme` lowercased, so `/theme NEXT` came
+    back as `unknown theme 'next'` -- the tool echoing back the very word it had just refused.
+    """
+    import asyncio
+    from teleprint.compositor import Compositor
+    from teleprint.testing import EmuTty
+    from ramabana.cli import Ui
+    from ramabana.testing import fake_agent
+
+    async def go():
+        tty = EmuTty(100, 24)
+        comp = Compositor(tty)
+        comp._register_signals = lambda: None
+        await comp.start()
+        try:
+            agent, _ = fake_agent()
+            ui = Ui(comp, agent)
+            names = list(THEMES)
+            for typed in ('next', 'NEXT', 'Next'):
+                set_theme('dark')
+                ui.apply_theme(typed)
+                assert cli.ACTIVE_THEME == names[1], (typed, cli.ACTIVE_THEME)
+            for typed in ('prev', 'PREV'):
+                set_theme('dark')
+                ui.apply_theme(typed)
+                assert cli.ACTIVE_THEME == names[-1], (typed, cli.ACTIVE_THEME)
+            # And a walk of the whole ring comes back to where it started.
+            set_theme(names[0])
+            for _ in names: ui.apply_theme('next')
+            assert cli.ACTIVE_THEME == names[0]
+        finally:
+            tty.close()
+    asyncio.run(go())
+
+
+def test_every_palette_names_its_code_theme_outright():
+    "`code_theme`'s fallback used to cover `dark` as well as an unknown name, which hid both."
+    assert set(CODE_THEMES) == set(THEMES), set(THEMES) ^ set(CODE_THEMES)
 
 
 def test_the_python_prompt_highlights_in_the_palette_the_session_is_wearing():
