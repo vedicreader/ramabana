@@ -173,3 +173,5 @@ leela_agent_sessions/
 # demo capture intermediates
 media/frames/
 .leela-attachments/
+# pictures a turn generated, when the CLI is run from the repo root
+media/generated-*.png

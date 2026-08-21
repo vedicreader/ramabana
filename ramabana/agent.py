@@ -941,6 +941,7 @@ class Agent:
         self._nested = threading.local()   # per thread: the delegate calls whose sub-agents are running
         self.plan = Plan()       # durable checklist for stop/start and sub-agent bites
         self.on_plan = None      # frontend hook: callable(plan) after every mutation
+        self.on_media = None     # frontend hook: callable(paths) the moment a tool writes a picture
         self.calls = []          # (tool, args) per call this session. What the UI shows as activity
         self.history = []        # inspectable user/assistant turns, including the chosen tool plan
         self._load_history()
@@ -1001,7 +1002,8 @@ class Agent:
             return built if self.subagent_writes else self._plain
         if self._subtools is None:
             self._subtools = tools_for(self.host, lambda: self.skills, list(self.registry.tools),
-                                       mx=b.tool_max, drop=b.drop)
+                                       mx=b.tool_max, drop=b.drop, get_spec=self.spec_or_none,
+                                       on_media=self._drew)
         if not self.subagent_writes: return self._subtools
         if self._subrec is None: self._subrec = [self._record(t) for t in self._subtools]
         return self._subrec
@@ -1881,19 +1883,31 @@ class Agent:
 # %% ../nbs/03_agent.ipynb #15c8df1f
 @patch
 def _drew(self: Agent, paths):
-    "Record pictures a tool wrote this turn. A frontend can show them."
-    self._drawn = getattr(self, '_drawn', []) + list(paths)
+    "Record pictures a tool wrote this turn, and hand the frontend the paths at once."
+    paths = list(paths)
+    self._drawn = drawn = getattr(self, '_drawn', [])
+    drawn.extend(paths)                # in place: two sub-agents may be drawing on two threads
+    if self.on_media:
+        try: self.on_media(paths)
+        except Exception: pass
 
 @patch(as_prop=True)
-def last_media(self: Agent):
-    """Pictures from the newest turn, as `{'mime','data'}` dicts.
-
-    Two routes produce one: the model returns the image on its response, or a tool writes a file
-    and returns its path. A frontend cannot draw a filename. Both arrive here."""
+def resp_media(self: Agent):
+    "Pictures the model itself returned on the newest turn, as `{'mime','data'}` dicts."
     be = self._be('turn')
     m = next((m for m in reversed(list(be.hist if be else []))
               if isinstance(m, dict) and m.get('role') == 'assistant'), None)
-    out = list((m or {}).get('media') or [])
+    return list((m or {}).get('media') or [])
+
+@patch(as_prop=True)
+def last_media(self: Agent):
+    """Every picture from the newest turn, as `{'mime','data'}` dicts.
+
+    Two routes produce one: the model returns the image on its response, or a tool writes a file
+    and returns its path. A frontend cannot draw a filename, so both arrive here as bytes. One
+    that can draw a path takes `resp_media` plus the `on_media` paths instead, and a picture a
+    tool already saved is then never written a second time."""
+    out = self.resp_media
     for p in getattr(self, '_drawn', []):
         p = Path(p)
         try: out.append({'mime': mime_for(p), 'data': p.read_bytes()})
