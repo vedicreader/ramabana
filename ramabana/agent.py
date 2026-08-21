@@ -7,10 +7,10 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE',
-           'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'COMPLETE_SP',
-           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES', 'summarise',
-           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'Approvals', 'always', 'never', 'policy',
-           'applied', 'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context',
+           'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'LOOK_SP',
+           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES',
+           'summarise', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'Approvals', 'always', 'never',
+           'policy', 'applied', 'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context',
            'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
@@ -1038,7 +1038,7 @@ class Agent:
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
             b = self.budget
             plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop,
-                              get_spec=self.spec_or_none, on_media=self._drew)
+                              get_spec=self.spec_or_none, on_media=self._drew, look=self._look)
             self._plain = plain
             self._tools = [self._record(t) for t in plain]
         return self._tools
@@ -1879,6 +1879,34 @@ class Agent:
                        'subagents', 'plan', 'todos', 'todo', *self.registry.commands})
 
 # %% ../nbs/03_agent.ipynb #15c8df1f
+LOOK_SP = """You are looking at one picture for another agent, which cannot see it.
+
+- Describe what is in the picture, plainly, and answer the question you were asked about it.
+- Give positions as pixel coordinates from the top left when the question is about where something is.
+- Say what the picture does not show. A guess presented as an observation is worse than "not visible".
+- You have no tools. There is nothing to do here but look and answer."""
+
+
+@patch
+def _look(self: Agent, data, question=''):
+    "One throwaway turn that hands a picture to this session's model and returns what it said."
+    from .core import accepts
+    be = self._be_or_none('turn')
+    if be is None: return 'no model is loaded, so nothing looked at it'
+    spec = self.spec_or_none()
+    if spec is not None and not accepts(spec, 'image'):
+        return f'{spec.name} does not accept pictures, so nothing looked at it'
+    sub = None
+    try:
+        sub = be.spawn(sp=LOOK_SP, tools=())
+        return str(sub.send([data, question or 'Describe this picture.']) or '').strip()
+    except Exception as e: return f'could not look at it ({agent_err(e)})'
+    finally:
+        if sub is not None:
+            try: sub.close()
+            except Exception: pass
+
+
 @patch
 def _drew(self: Agent, paths):
     "Record pictures a tool wrote this turn. A frontend can show them."

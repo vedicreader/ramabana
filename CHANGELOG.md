@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## Unreleased
+`look_at` lets an agent see a picture. A `pyskills` entry point may name a packaged `SKILL.md`.
+`extensions/imagery.py` registers anya and chitra.
+
 ## 0.1.22
 cli, themes, runtime fixes
 

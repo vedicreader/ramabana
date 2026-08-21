@@ -8,13 +8,14 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 __all__ = ['MAX_GREP_HITS', 'MAX_API', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'MAX_FILE',
            'MAX_VARS', 'LD_CHARS', 'GROUP', 'EXTRA_MODULES', 'MAX_SKILL_CHARS', 'SKILL_DESC_MAX', 'EVENTS',
            'MAX_TOOL_CHARS', 'MAX_HITS', 'GIT_READ_TOOLS', 'GIT_WRITE_TOOLS', 'GIT_TOOLS', 'WRITE_TOOLS', 'ERR',
-           'RESPONSES_API', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'API_VENDORS', 'SUB_MAX_STEPS', 'SUB_SP',
-           'SUB_WRITE_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied', 'ld_json', 'LocalHost', 'Skill', 'skill_dirs',
-           'discover', 'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'err', 'failed', 'clip', 'clip_lines',
-           'readable', 'code_tools', 'file_tools', 'notebook_tools', 'media_dir', 'mime_for', 'save_media',
-           'image_available', 'api_model', 'draws_itself', 'image_tools', 'web_tools', 'memory_tools', 'api_tools',
-           'watch_tools', 'session_tools', 'shell_tools', 'skill_tools', 'tools_for', 'sub_briefing', 'read_only',
-           'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
+           'RESPONSES_API', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'API_VENDORS', 'MAX_LOOK_PX', 'LOOK_EXTS',
+           'SUB_MAX_STEPS', 'SUB_SP', 'SUB_WRITE_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied', 'ld_json',
+           'LocalHost', 'Skill', 'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'err',
+           'failed', 'clip', 'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools', 'media_dir',
+           'mime_for', 'save_media', 'image_available', 'api_model', 'draws_itself', 'image_tools', 'look_tools',
+           'web_tools', 'memory_tools', 'api_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools',
+           'tools_for', 'sub_briefing', 'read_only', 'sub_sp', 'delegate', 'delegate_many', 'named_skills',
+           'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, concurrent.futures, functools, json, mimetypes, os, re, runpy, shutil, threading, time, uuid
@@ -903,8 +904,25 @@ def _mod_skill(name, modpath):
     if not doc.strip(): return None
     return Skill(name=name, source='pyskill', description=_describe(doc), where=modpath, _text=load)
 
+def _res_skill(name, spec):
+    "A `Skill` for a markdown file shipped inside a package, named as `package:FILE.md`."
+    pkg, _, res = spec.partition(':')
+    def load():
+        from importlib.resources import files
+        return (files(pkg)/res).read_text(encoding='utf-8')
+    try: raw = load()
+    except Exception: return None
+    meta, body = frontmatter(raw)
+    if not body.strip(): return None
+    return Skill(name=meta.get('name') or name, source='pyskill',
+                 description=meta.get('description') or _describe(body), where=spec, _text=body)
+
+def _ep_skill(name, spec):
+    "One entry point as a `Skill`: a packaged markdown file where it names one, else a module docstring."
+    return _res_skill(name, spec) if spec.split(':')[-1].lower().endswith('.md') else _mod_skill(name, spec)
+
 def _pyskills():
-    "Every module published under the `pyskills` entry-point group, plus the known stragglers."
+    "Every skill published under the `pyskills` entry-point group, plus the known stragglers."
     out, seen = [], set()
     try:
         from importlib.metadata import entry_points
@@ -915,7 +933,7 @@ def _pyskills():
         mod = getattr(ep, 'value', None) or ep.name
         if mod in seen: continue
         seen.add(mod)
-        if (s := _mod_skill(ep.name.split('.')[-1] or ep.name, mod)): out.append(s)
+        if (s := _ep_skill(ep.name.split('.')[-1] or ep.name, mod)): out.append(s)
     for mod in EXTRA_MODULES:
         if mod in seen: continue
         seen.add(mod)
@@ -1603,6 +1621,62 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
 
     return [generate_image]
 
+# %% ../nbs/02_tools.ipynb #561c5340
+#: what a look is downscaled to before it goes out, and the pictures a look will open
+MAX_LOOK_PX = 1400
+LOOK_EXTS = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
+
+def _look_bytes(path, long=MAX_LOOK_PX):
+    "A picture's bytes, downscaled where Pillow is installed to do it, with the size that went out."
+    raw = Path(path).read_bytes()
+    try:
+        import io
+        from PIL import Image
+        im = Image.open(io.BytesIO(raw))
+        w, h = im.size
+        if max(w, h) <= long: return raw, (w, h)
+        r = long/max(w, h)
+        im = im.convert('RGB').resize((max(1, round(w*r)), max(1, round(h*r))))
+        buf = io.BytesIO(); im.save(buf, 'JPEG', quality=88)
+        return buf.getvalue(), im.size
+    except ImportError: return raw, None
+
+def look_tools(host, mx=MAX_TOOL_CHARS, on_media=None, look=None):
+    """Looking at a picture. `look(data, question)` is the one turn that actually sees it.
+
+    A tool result is text all the way down to the API, so a picture cannot ride inside one. What can
+    happen is a throwaway turn on a model that accepts pictures, whose words come back as the result.
+    `on_media` puts the same picture on the user's screen.
+    """
+
+    def look_at(path: str, question: str = '') -> str:
+        """Look at a picture and say what is in it.
+
+        Use it after an edit to check the result, and before one to decide where things are.
+        `question` is what you want answered about it, such as where something sits or whether an
+        edit landed. Ask for positions in pixels. The picture also reaches the user's screen.
+        """
+        try: p = Path(host.check(path, reading=True))
+        except NotImplementedError: raise
+        except Exception as e: return err('cannot read that path', e)
+        if not p.exists(): return err('no such file', str(p))
+        if p.suffix.lower() not in LOOK_EXTS:
+            return err('not a picture', f'{p.suffix or "no suffix"}; one of {", ".join(sorted(LOOK_EXTS))}')
+        try: data, wh = _look_bytes(p)
+        except Exception as e: return err('could not read the picture', e)
+        if on_media:
+            try: on_media([p])
+            except Exception: pass
+        head = f'{p} \u00b7 {wh[0]}x{wh[1]}' if wh else str(p)
+        if look is None:
+            return clip(f"{head}\nIt is on the user's screen. Nothing in this session accepts "
+                        "pictures, so nothing here has looked at it.")
+        try: said = look(data, question)
+        except Exception as e: return err('could not look at it', e)
+        return clip(f'{head}\n{said}')
+
+    return [look_at]
+
 # %% ../nbs/02_tools.ipynb #53642256
 def web_tools(host, mx=MAX_TOOL_CHARS):
     "The web, for the questions whose answer depends on current documentation."
@@ -1946,7 +2020,8 @@ def skill_tools(host, get_skills, mx=MAX_TOOL_CHARS):
     return [read_skill, create_skill]
 
 # %% ../nbs/02_tools.ipynb #ddf75013
-def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None):
+def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None,
+              on_media=None, look=None):
     """Every tool this host can actually support, plus whatever extensions registered.
 
     Groups are dropped whole, answered by `Host.capabilities` where the host declares it and by
@@ -1962,6 +2037,7 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_s
     if 'web' not in drop and _has(host, 'web', lambda: host.web_search('', n=1)): tools += web_tools(host, mx)
     # credentialled, never probed: a key is either there or it is not
     if 'image' not in drop and image_available(): tools += image_tools(host, mx, get_spec=get_spec, on_media=on_media)
+    if 'look' not in drop: tools += look_tools(host, mx, on_media=on_media, look=look)
     if 'memory' not in drop and _has(host, 'memory', lambda: host.memory_tree('')): tools += memory_tools(host, mx)
     if 'watch' not in drop and _has(host, 'watch', lambda: host.watches()): tools += watch_tools(host, mx)
     # declared, never probed: `api_ops` raises for a missing spec, not a missing capability

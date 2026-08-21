@@ -41,7 +41,7 @@ class MemHost(NullHost):
     @property
     def shell_note(self): return 'scripted'
 
-    def check(self, path, must_exist=False):
+    def check(self, path, must_exist=False, reading=False):
         p = Path(path)
         return p if p.is_absolute() else Path(self.root)/p
 
