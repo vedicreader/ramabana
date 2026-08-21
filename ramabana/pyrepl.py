@@ -313,8 +313,9 @@ def hl(src):
     if not src: return Text('')
     try:
         from rich.syntax import Syntax
+        from .cli import code_theme   # imported here: `cli` reaches `hl` the same way, lazily
         # `highlight` appends a newline. It is built for whole files
-        out = Syntax(src, 'python', theme='gruvbox-dark').highlight(src)
+        out = Syntax(src, 'python', theme=code_theme()).highlight(src)
         while out.plain.endswith('\n'): out.right_crop(1)
         return out if out.plain == src else Text(src)
     except Exception: return Text(src)

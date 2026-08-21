@@ -15,6 +15,24 @@ The brain of a coding agent: policy, tools, memory, and routing, with no editor 
 <img src="media/ramabana-cli-demo.gif" alt="ramabana CLI on Gemma 4 LiteRT" width="820" />
 </p>
 
+The terminal opens with Rama’s bow drawn and the arrow on the string, aimed at the name. That
+arrow is also the state: nocked and green while the session waits, loosed and flying while a turn
+runs, the string slack and gray when no model loaded.
+
+<p align="center">
+
+<img src="media/ramabana-emblem.gif" alt="the bow at startup, then the arrow in flight while a turn runs" width="820" />
+</p>
+
+Thirteen palettes, `/theme` to list them and `/theme next` to walk them. Beyond the two house
+palettes they are the schemes a [conterm](https://github.com/mahdiarfrm/conterm) or Ghostty window
+already ships, under the same names, so setting both leaves the surface and the window agreeing.
+
+<p align="center">
+
+<img src="media/ramabana-themes.gif" alt="the same screen carried through all thirteen palettes" width="820" />
+</p>
+
 ``` sh
 pip install 'ramabana[cli]'
 ramabana --root . --model gemma-e4b
