@@ -188,12 +188,22 @@ def test_the_banner_fits_the_width_it_was_given():
         assert max(cell_len(r) for r in out) <= width, (width, out)
 
 
-def test_the_banner_carries_the_note_without_the_note_widening_the_bow():
-    long = 'no model available: ' + 'x' * 200
-    out = banner(long, 120).plain.split('\n')
-    assert len(out) == len(BOW), out
+def test_the_note_cannot_widen_the_bow_or_add_a_row_to_it():
+    """`agent.note` is whatever the session had to say -- `agent_err` output included -- so it
+    arrives long, and can arrive with a newline in it. Either one used to break the art: the
+    newline added rows, and a long note pushed its own row past the width the caller allowed.
+    """
+    long = 'skills unavailable (Traceback most recent call last\nRuntimeError: ' + 'x' * 300 + ')'
+    for width in (26, 40, BANNER_MIN - 1, BANNER_MIN, 60, 120):
+        out = banner(long, width).plain.split('\n')
+        assert max(cell_len(r) for r in out) <= width, (width, [cell_len(r) for r in out])
+        assert len(out) <= len(BOW) + 1, (width, len(out))
+        assert '\n' not in banner(long, width).plain.replace('\n', '', len(out) - 1)
+    assert '…' in banner(long, 120).plain, 'a clipped note does not say it was clipped'
     assert 'RAMABANA' not in banner('', 120).plain, 'the wordmark is drawn, not spelled'
     assert banner('', 20).plain == 'RAMABANA', 'the narrowest tier lost the name'
+    assert banner(long, 0).plain == 'RAMABANA', 'a nonsense width still has to return something'
+    assert len(banner(long).plain.split('\n')) == len(BOW), 'no width means no limit, not no bow'
 
 
 def test_the_banner_takes_the_palette_it_is_handed_over_the_active_one():

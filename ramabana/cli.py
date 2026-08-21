@@ -287,6 +287,12 @@ def _spans(cells):
     return out
 
 
+def _fit(text, room):
+    "`text` inside `room` cells, an ellipsis where it was cut. `room` of None means no limit."
+    if room is None or len(text) <= room: return text
+    return text[:room - 1] + '…' if room > 1 else ''
+
+
 def _glyphs(row, palette):
     "One row of the emblem, coloured by glyph: the arrow warm, the bow quiet behind it."
     def style(ch):
@@ -306,16 +312,21 @@ def banner(note='',        # what the session has to say for itself: the model, 
     """
     p = palette or GRUVBOX
     bold, quiet = f"bold {p['fg0']}", p['gray']
+    # `agent.note` is whatever the session had to say, `agent_err` output included, so it can arrive
+    # long or with a newline in it. Either one would add rows to the art or push a row past `width`.
+    note = _fit(' '.join(str(note).split()), None if width is None else width - len(WORDMARK[0]) - 2)
     if width is not None and width < len(WORDMARK[0]) + 2:
         out = Text('RAMABANA', style=bold)
-        if note: out.append(f'  {note}', style=quiet)
+        tail = _fit(note, width - len('RAMABANA') - 2)
+        if tail: out.append(f'  {tail}', style=quiet)
         return out
     if width is not None and width < BANNER_MIN:
         out = Text('\n', style=bold).join(Text(w, style=bold) for w in WORDMARK)
-        if note: out.append(f'\n{note}', style=quiet)
+        if note: out.append(f'\n{_fit(note, width)}', style=quiet)
         return out
     left = max(map(len, BOW)) + BANNER_GAP
     top = len(BOW) // 2 - 1        # the wordmark straddles the arrow's row, the note sits under it
+    note = _fit(note, None if width is None else width - left)
     out = Text()
     for i, row in enumerate(BOW):
         if i: out.append('\n')
