@@ -272,3 +272,19 @@ def test_a_narrow_terminal_still_gets_a_totals_row_it_can_read():
     "The flight track shares its row with the totals, so it has to give way rather than push them off."
     from ramabana.cli import flight_line
     assert cell_len(flight_line(0, max(len(FLIGHT), 30 - 40)).plain) == len(FLIGHT)
+
+
+def test_the_python_prompt_highlights_in_the_palette_the_session_is_wearing():
+    """`hl` held `gruvbox-dark` whatever the palette, so a pale theme got dark code under it. It
+    asks `code_theme` now. The import is inside the function, because `cli` reaches `hl` the same
+    way and a module-level one either way round is a cycle.
+    """
+    from ramabana.pyrepl import hl
+    styles = {}
+    for name in ('dark', 'latte', 'gruvbox', 'solarized-light'):
+        set_theme(name)
+        styles[name] = [str(s.style) for s in hl('def f(x): return x + 1').spans]
+        assert styles[name], f'{name}: nothing was highlighted at all'
+    assert styles['latte'] != styles['dark'], 'a pale palette got the dark code theme'
+    assert styles['gruvbox'] != styles['dark']
+    assert hl('').plain == '' and hl('!!! not python').plain == '!!! not python'
