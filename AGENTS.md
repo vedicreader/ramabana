@@ -17,3 +17,13 @@ Everything above is `AnswerDotAI/aai-coding`, `prompts/core.md`, verbatim. Every
 For every behavior-changing code or schema change, add or update a focused regression test that reproduces the prior fault and verifies the repaired contract. In an nbdev project, write this as an executable test cell in the source notebook. Run the focused regression test and the project’s relevant checks before reporting completion. Before reporting, obtain an independent subagent review of the exact changed files and tests; validate its findings against the actual diff and test output rather than treating the review as proof.
 
 For edit tools whose `edits` or `commands` field is itself a JSON string, construct and inspect that inner JSON separately before sending it. Verify that its array has exactly the intended objects or command arrays and that the string ends after the array, with no extra closing delimiter. A JSON parse error means no edit occurred; correct the payload rather than retrying it unchanged.
+
+Treat acknowledgement of background work as a lifecycle boundary. Do not report acceptance until the exact worker has registered its work and ownership has been accepted atomically. Reserve pending work under the same synchronization used by competing starts and shutdown. Timeout, rejection and shutdown must wake both sides of the handshake. A worker that registers after rejection must stop its work and emit no accepted-work events.
+
+Represent replay completion as explicit state rather than inferring it from the newest event. Later bookkeeping events must not erase a terminal sequence. Reset terminal state only when the next unit of work is accepted. Keep application error events separate from transport errors so an application failure cannot trigger connection-recovery behaviour.
+
+When moving work or response ownership between layers, audit the previous producer, every consumer, and the success and failure paths. Preserve every response field that clients consume. Search for and update all callers and tests that intentionally specify the previous contract.
+
+Keep the session plan truthful. Mark completed steps done, keep only the current step active, and leave future steps pending. Text such as `[done]` inside a pending item does not make the item complete.
+
+Run focused, fast checks while implementing. Defer slow browser, kernel, model and network suites to the final verification stage unless the current change specifically requires one earlier. A final verification must still run every relevant slow check before completion is reported.

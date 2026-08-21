@@ -8,17 +8,17 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE',
            'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'COMPLETE_SP',
-           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'summarise', 'Act', 'Activity',
-           'preview_for', 'Ask', 'ask_md', 'answer_md', 'Approvals', 'always', 'never', 'policy', 'applied', 'apply',
-           'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context', 'work_rules', 'system_prompt',
-           'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent', 'Completer']
+           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES', 'summarise',
+           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'Approvals', 'always', 'never', 'policy',
+           'applied', 'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context',
+           'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, functools, json, re, threading, time, uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from fastcore.basics import patch
-from .core import agent_err, available_models, budget_for, JOBS, Routing, model_note, tool_channel
+from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from .tools import (mime_for, MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
                             find, load, skill_index, subagent_tools, tools_for)
@@ -584,6 +584,9 @@ RULES = (
            '  result in this conversation says so. If you did not run it, say you did not run it.'),
     (None, 'A tool result starting with ERROR: is a failure. Read it, fix the cause, and try a\n'
            '  different approach. Calling the same tool again unchanged is never the fix.'),
+    (None, 'Keep a plan small enough that every step has one independently verifiable outcome. Do not\n'
+           '  begin the next step until the current step is verified. If verification would widen the scope,\n'
+           '  split the step or stop and report the blocker.'),
     ('search_code', 'Use `search_code` for project behaviour, unfamiliar APIs, or uncertainty about an\n'
                     '  installed library -- the index covers this repo *and* every installed package. Do not\n'
                     '  search for routine Python you already know.'),
@@ -923,10 +926,9 @@ class Agent:
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
         self.instruction_style = instruction_style
         self.history_name = history_name
-        # one Agent owns one continuous model context, persisted so history can group turns
-        self.session_id = f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}'
+        self.session_id = f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")}'
         self.turn_seq, self.current_turn_id = 0, ''
-        self.current_branch_id, self.checkpoints = 'main', {}
+        self.current_branch_id, self.checkpoints, self._branch_hist = 'main', {}, {}
         self.routing = routing or Routing(turn=model)
         if model: self.routing.set(model)
         self.approvals, self.tool_max_len, self.subagents = approvals, tool_max_len, subagents
@@ -992,7 +994,11 @@ class Agent:
         # a writing sub-agent gets the recorded wrappers. Its edits then reach `calls`, `Activity`
         # and the before-images `changes()` reads. A reading one cannot change anything
         b = self.subagent_budget
-        if b == self.budget: return self.tools if self.subagent_writes else self._plain
+        if b == self.budget:
+            # `_plain` is written as a side effect of building `tools`, so ask for that first --
+            # read it cold and a sub-agent is handed an empty list
+            built = self.tools
+            return built if self.subagent_writes else self._plain
         if self._subtools is None:
             self._subtools = tools_for(self.host, lambda: self.skills, list(self.registry.tools),
                                        mx=b.tool_max, drop=b.drop)
@@ -1182,9 +1188,6 @@ class Agent:
     def ready(self):
         "Whether the turn model is up. Asked of the backend rather than looked up in the cache."
         return self._be('turn').ready
-
-    @property
-    def busy(self): return self.lock.locked()
 
     @property
     def model(self): return self.routing.spec('turn')
@@ -1544,20 +1547,169 @@ class Agent:
             except Exception: pass
         self._backends.clear()
 
-    def fork(self, turn_id, stage='after', branch_id=''):
-        "Fork model context from a captured turn boundary and make it active."
+    def context_parts(self, turn_id, stage='after'):
+        """One branchable part per message in a checkpoint, grouped so that a call and the results
+        it produced move together. A part id names its turn and its position, and survives a
+        reload because both do."""
         cp = self.checkpoints.get(str(turn_id))
         if cp is None or stage not in cp: raise KeyError(f'no {stage} checkpoint for {turn_id}')
+        out, group = [], 0
+        for i, m in enumerate(cp[stage]):
+            role = m.get('role') if isinstance(m, dict) else ''
+            kind = ('calls' if role == 'assistant' and m.get('tool_calls') else
+                    'result' if role == 'tool' else role or 'other')
+            if kind != 'result': group += 1        # a result belongs to the call above it
+            body = m.get('content') if isinstance(m, dict) else ''
+            out.append({'part_id': f'{turn_id}:{i}', 'turn_id': str(turn_id), 'stage': stage,
+                        'index': i, 'kind': kind, 'group': f'{turn_id}:g{group}',
+                        'preview': (body if isinstance(body, str) else '')[:200]})
+        return out
+
+    def conversation_parts(self, sid=None):
+        """One stored conversation as the ordered parts a person can keep, drop or rewrite.
+
+        Built from the turn log rather than from a live checkpoint, because the conversation a
+        person wants to reshape is usually one they have just resumed -- and a resumed assistant has
+        no snapshots. Part ids are derived from the turn and its position, so they name the same
+        part in the next process as in this one.
+        """
+        sid = sid or self.session_id
+        out = []
+        for turn in [t for t in self.history if t.get('session') == sid]:
+            tid = str(turn.get('turn_id') or '')
+            group = 0
+            def part(kind, text, editable, extra=None):
+                nonlocal group
+                out.append({'part_id': f'{tid}:{len(out)}', 'turn_id': tid, 'kind': kind,
+                            'group': f'{tid}:g{group}', 'editable': editable,
+                            'text': text, **(extra or {})})
+            part('user', str(turn.get('prompt') or ''), True)
+            for act in (turn.get('activity') or []):
+                group += 1
+                # a call and what it returned are one decision, so they share a group
+                part('call', str(act.get('line') or act.get('summary') or act.get('tool') or ''), False,
+                     {'tool': act.get('tool') or '', 'action_id': act.get('action_id') or act.get('id') or '',
+                      'parent_action_id': act.get('parent_action_id') or '', 'ok': bool(act.get('ok'))})
+                part('result', str(act.get('detail') or ''), False, {'tool': act.get('tool') or ''})
+            group += 1
+            if turn.get('reply'): part('assistant', str(turn['reply']), True)
+        return out
+
+    def compile_conversation(self, sid=None, manifest=None, rewrites=None):
+        """Provider messages for a reshaped conversation: the stored turns, minus what a person
+        discarded, with their own words in place of any prose they rewrote. A call and its result
+        move together, and neither can be rewritten -- editing them would claim work that never ran.
+        """
+        parts, manifest = self.conversation_parts(sid), dict(manifest or {})
+        rewrites = {str(k): str(v) for k, v in (rewrites or {}).items()}
+        bad = [p for p in manifest.values() if p not in BRANCH_POLICIES]
+        if bad: raise ValueError(f'unknown context policy {bad[0]!r}')
+        fixed = {p['part_id'] for p in parts if not p['editable']}
+        refused = sorted(set(rewrites) & fixed)
+        if refused: raise ValueError(f'{refused[0]} is not prose, so it cannot be rewritten')
+        unknown = sorted(set(rewrites) - {p['part_id'] for p in parts})
+        if unknown: raise ValueError(f'no part {unknown[0]} in this conversation')
+        forced = {p['group'] for p in parts if manifest.get(p['part_id']) == 'keep'}
+        gone = {p['group'] for p in parts if manifest.get(p['part_id']) == 'discard'} - forced
+        kept = [p for p in parts if p['group'] not in gone]
+        msgs = []
+        for p in kept:
+            text = rewrites.get(p['part_id'], p['text'])
+            if p['kind'] == 'user': msgs.append({'role': 'user', 'content': text})
+            elif p['kind'] == 'assistant': msgs.append({'role': 'assistant', 'content': text})
+            elif p['kind'] == 'call':
+                msgs.append({'role': 'assistant', 'content': '',
+                             'tool_calls': [{'id': p['part_id'], 'type': 'function',
+                                             'function': {'name': p.get('tool') or 'tool', 'arguments': '{}'}}]})
+            else: msgs.append({'role': 'tool', 'tool_call_id': msgs[-1]['tool_calls'][0]['id'] if msgs and msgs[-1].get('tool_calls') else p['part_id'],
+                               'content': text})
+        return {'messages': msgs, 'parts': parts, 'kept': len(kept),
+                'omitted': len(parts) - len(kept), 'rewritten': sorted(rewrites),
+                'groups': sorted({p['group'] for p in parts}),
+                'adjusted': sorted({p['part_id'] for p in parts
+                                    if p['group'] in gone and manifest.get(p['part_id']) != 'discard'})}
+
+    def reshape(self, sid=None, manifest=None, rewrites=None, branch_id='', revision=None):
+        "Make a reshaped conversation the active branch, without touching what was recorded."
+        compiled = self.compile_conversation(sid, manifest, rewrites)
         branch_id = branch_id or f'branch_{uuid.uuid4().hex[:8]}'
-        self._be('turn').restore_hist(cp[stage])
+        self._branch_hist.setdefault(self.current_branch_id, self._be('turn').snapshot_hist())
+        self._be('turn').resume_hist(compiled['messages'])
+        parent, self.current_branch_id = self.current_branch_id, branch_id
+        self._branch_hist[branch_id] = compiled['messages']
+        record = self.save_branch(branch_id, revision=revision, parent_branch_id=parent,
+                                 parent_turn_id=str(sid or self.session_id), stage='reshaped',
+                                 manifest=dict(manifest or {}), rewrites=dict(rewrites or {}))
+        return {**record, 'omitted': compiled['omitted'], 'kept': compiled['kept'],
+                'rewritten': compiled['rewritten'], 'adjusted': compiled['adjusted']}
+
+    def compile_context(self, turn_id, stage='after', part_id='', manifest=None):
+        """The provider messages a branch compiles to: a checkpoint, cut short at `part_id` when
+        one is named, with each part's policy applied. A call and its results are one decision --
+        included together or stopped before -- because half of an exchange is not a conversation.
+        """
+        cp = self.checkpoints.get(str(turn_id))
+        if cp is None or stage not in cp: raise KeyError(f'no {stage} checkpoint for {turn_id}')
+        msgs, manifest = cp[stage], dict(manifest or {})
+        bad = [p for p in manifest.values() if p not in BRANCH_POLICIES]
+        if bad: raise ValueError(f'unknown context policy {bad[0]!r}')
+        parts = self.context_parts(turn_id, stage)
+        if part_id:
+            cut = next((p for p in parts if p['part_id'] == str(part_id)), None)
+            if cut is None: raise ValueError(f'no part {part_id} in {turn_id} {stage}')
+            last = max(p['index'] for p in parts if p['group'] == cut['group'])
+            parts = [p for p in parts if p['index'] <= last]
+        forced = {p['group'] for p in parts if manifest.get(p['part_id']) == 'keep'}
+        gone = {p['group'] for p in parts if manifest.get(p['part_id']) == 'discard'} - forced
+        kept = [p for p in parts if p['group'] not in gone]
+        return {'messages': [msgs[p['index']] for p in kept], 'parts': parts,
+                'omitted': len(parts) - len(kept), 'kept': len(kept),
+                'groups': sorted({p['group'] for p in parts}),
+                'adjusted': sorted({p['part_id'] for p in parts
+                                    if p['group'] in gone and manifest.get(p['part_id']) != 'discard'})}
+
+    def fork(self, turn_id, stage='after', branch_id='', part_id='', manifest=None, revision=None):
+        "Fork model context from a captured turn boundary, or a part inside it, and make it active."
+        compiled = self.compile_context(turn_id, stage, part_id, manifest)
+        branch_id = branch_id or f'branch_{uuid.uuid4().hex[:8]}'
+        self._branch_hist.setdefault(self.current_branch_id, self._be('turn').snapshot_hist())
+        self._be('turn').restore_hist(compiled['messages'])
+        parent, self.current_branch_id = self.current_branch_id, branch_id
+        self._branch_hist[branch_id] = compiled['messages']
+        record = self.save_branch(branch_id, revision=revision, parent_branch_id=parent,
+                                 parent_turn_id=str(turn_id), parent_part_id=str(part_id or ''),
+                                 stage=stage, manifest=dict(manifest or {}))
+        return {**record, 'omitted': compiled['omitted'], 'kept': compiled['kept'],
+                'adjusted': compiled['adjusted'], 'parent_turn_id': str(turn_id), 'stage': stage}
+
+    def switch_branch(self, branch_id):
+        """Make another branch active by rebuilding its context, never by copying it. A branch is
+        its parent point plus its manifest, so recompiling is what switching means."""
+        branch_id = str(branch_id)
+        if branch_id == self.current_branch_id: return self.branch_meta(branch_id)
+        held = self._branch_hist.get(branch_id)
+        if held is None:
+            meta = self.branch_meta(branch_id)
+            if not meta['parent_turn_id']: raise KeyError(f'branch {branch_id} has no recorded parent point')
+            held = self.compile_context(meta['parent_turn_id'], meta['stage'] or 'after',
+                                        meta['parent_part_id'], meta['manifest'])['messages']
+        self._branch_hist.setdefault(self.current_branch_id, self._be('turn').snapshot_hist())
+        self._be('turn').restore_hist(held)
+        self._branch_hist[branch_id] = held
         self.current_branch_id = branch_id
-        return {'branch_id': branch_id, 'parent_turn_id': str(turn_id), 'stage': stage}
+        return self.branch_meta(branch_id)
+
+    def undo_turn(self, turn_id, branch_id=''):
+        """A turn undone is a branch that stops before it. The turn stays in canonical history --
+        undo is not deletion, and redo is switching back rather than replaying."""
+        return self.fork(turn_id, 'before', branch_id)
 
     def revise(self, turn_id, text, branch_id=''):
         "Fork after a turn and replace its prose response with a user-authored revision."
         branch = self.fork(turn_id, 'after', branch_id)
         self._be('turn').revise_last_assistant(text)
-        branch['revision'] = str(text)
+        self._branch_hist[branch['branch_id']] = self._be('turn').snapshot_hist()
+        branch['revision_text'] = str(text)
         return branch
 
 
@@ -1942,6 +2094,11 @@ _agent_status, _agent_command = Agent.status, Agent.command
 #: on any `Agent` before a run exists and survives a caller raising it.
 Agent.cancel_grace = .25
 
+def _stream_chunk(out, chunk):
+    text = ''.join(out)
+    if chunk == text: return ''
+    return chunk[len(text):] if chunk.startswith(text) else chunk
+
 def _run_store(self):
     if not hasattr(self, '_runs'):
         self._runs, self._runs_lock, self._foreground = {}, threading.RLock(), ''
@@ -1952,8 +2109,12 @@ def runs(self:Agent, active=False):
     "Return registered root and child runs."
     with getattr(self, '_runs_lock', threading.RLock()):
         roots = list(_run_store(self).values())
-        rows = [r.dict() for r in roots if not active or not r.terminal]
+        def live(r): return not r.terminal or any(live(child) for child in r.children)
+        rows = [r.dict() for r in roots if not active or live(r)]
     return rows
+
+@patch(as_prop=True)
+def busy(self:Agent): return bool(self.runs(active=True))
 
 @patch
 def run(self:Agent, run_id=''):
@@ -2005,7 +2166,7 @@ def ask(self:Agent, prompt, **kw):
         return self.note
 
 @patch
-def stream(self:Agent, prompt, **kw):
+def stream(self:Agent, prompt, on_registered=None, **kw):
     "One registered turn as markdown chunks. Cancelled output is not persisted."
     run = self._new_run(prompt)
     if self.start() is None:
@@ -2013,11 +2174,14 @@ def stream(self:Agent, prompt, **kw):
     backend = self._be('turn')
     if not run.start(backend): return
     try:
+        if on_registered is not None: on_registered(run)
+        if run.cancelled: run.finish(); return
         with run_context(run):
             outgoing, out = self._prepare(prompt), []
             for chunk in backend.stream(outgoing, run=run, **kw):
                 if run.cancelled:break
-                out.append(chunk); yield chunk
+                chunk = _stream_chunk(out, chunk)
+                if chunk: out.append(chunk); yield chunk
         if not run.cancelled:
             run.finish(); self._finish(''.join(out), prompt)
         else: run.finish()
@@ -2093,3 +2257,239 @@ def close(self:Agent):
         try: backend.close()
         except Exception: pass
 
+
+# %% ../nbs/03_agent.ipynb #d29d008a
+_HISTORY_LOCKS, _HISTORY_LOCKS_LOCK = {}, threading.RLock()
+_SESSION_META_VERSION = 1
+
+def _history_lock(agent):
+    "One lock per history file, so agents sharing a log serialise their writes to it."
+    path = agent.history_path
+    if path is None: return agent.__dict__.setdefault('_own_history_lock', threading.RLock())
+    key = str(path.resolve())
+    with _HISTORY_LOCKS_LOCK: return _HISTORY_LOCKS.setdefault(key, threading.RLock())
+
+@patch(as_prop=True)
+def sessions_path(self:Agent):
+    return None if self.cfg is None else self.cfg/f'{self.history_name}-sessions.json'
+
+def _session_rows(agent):
+    path = agent.sessions_path
+    if path is None or not path.exists(): return {}
+    try:
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict): raise ValueError('the document is not an object')
+        rows = data.get('sessions', {})
+        if not isinstance(rows, dict): raise ValueError('sessions is not an object')
+        agent.history_problem = ''
+        return rows
+    except Exception as e:
+        agent.history_problem = f'session metadata is malformed ({agent_err(e)})'
+        return None
+
+def _write_session_rows(agent, rows):
+    path = agent.sessions_path
+    if path is None:return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f'.{path.name}.{uuid.uuid4().hex}.tmp')
+    try:
+        tmp.write_text(json.dumps({'version': _SESSION_META_VERSION, 'sessions': rows}, ensure_ascii=False, indent=2) + '\n')
+        tmp.replace(path)
+    finally:
+        if tmp.exists(): tmp.unlink()
+
+_BRANCH_META_VERSION = 1
+BRANCH_POLICIES = ('keep', 'discard', 'auto')
+
+@patch(as_prop=True)
+def branches_path(self:Agent):
+    return None if self.cfg is None else self.cfg/f'{self.history_name}-branches.json'
+
+def _branch_rows(agent):
+    "Every recorded branch, or None when the file is there but unreadable."
+    path = agent.branches_path
+    if path is None or not path.exists(): return {}
+    try:
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict): raise ValueError('the document is not an object')
+        rows = data.get('branches', {})
+        if not isinstance(rows, dict): raise ValueError('branches is not an object')
+        return rows
+    except Exception as e:
+        agent.history_problem = f'branch metadata is malformed ({agent_err(e)})'
+        return None
+
+def _write_branch_rows(agent, rows):
+    path = agent.branches_path
+    if path is None:return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f'.{path.name}.{uuid.uuid4().hex}.tmp')
+    try:
+        tmp.write_text(json.dumps({'version': _BRANCH_META_VERSION, 'branches': rows}, ensure_ascii=False, indent=2) + '\n')
+        tmp.replace(path)
+    finally:
+        if tmp.exists(): tmp.unlink()
+
+@patch
+def branch_meta(self:Agent, branch_id=''):
+    "One branch's parentage, revision and context manifest. `main` is the conversation as recorded."
+    branch_id = str(branch_id or self.current_branch_id)
+    with _history_lock(self):
+        rows = _branch_rows(self)
+        row = {} if rows is None else dict(rows.get(branch_id, {}))
+    return {'version': _BRANCH_META_VERSION, 'branch_id': branch_id, 'revision': 0,
+            'parent_branch_id': '', 'parent_turn_id': '', 'parent_part_id': '', 'stage': '',
+            'created': 0.0, 'shaped': False, 'manifest': {}, 'rewrites': {}} | row
+
+@patch
+def branches(self:Agent):
+    "Every branch this history knows, newest first, with `main` always present."
+    with _history_lock(self): rows = _branch_rows(self) or {}
+    out = [self.branch_meta(bid) for bid in rows]
+    if 'main' not in rows: out.append(self.branch_meta('main'))
+    return sorted(out, key=lambda row: row['created'], reverse=True)
+
+@patch
+def save_branch(self:Agent, branch_id, revision=None, **changes):
+    """Record one branch. `revision` is the caller's optimistic base: a mismatch means someone
+    else moved the branch while a person was deciding, and nothing is written."""
+    branch_id = str(branch_id)
+    bad = [k for k in changes.get('manifest', {}).values() if k not in BRANCH_POLICIES]
+    if bad: raise ValueError(f'unknown context policy {bad[0]!r}')
+    with _history_lock(self):
+        rows = _branch_rows(self)
+        if rows is None: raise ValueError(self.history_problem)
+        held = dict(rows.get(branch_id, {}))
+        if revision is not None and int(held.get('revision', 0)) != int(revision):
+            raise BranchChanged(f'branch {branch_id} moved to revision {held.get("revision", 0)}')
+        row = (self.branch_meta(branch_id) | held | dict(changes) |
+               {'branch_id': branch_id, 'revision': int(held.get('revision', 0)) + 1})
+        row.setdefault('created', time.time())
+        if not row['created']: row['created'] = time.time()
+        row['shaped'] = (any(p != 'auto' for p in (row.get('manifest') or {}).values())
+                         or bool(row.get('rewrites')))
+        rows[branch_id] = row
+        _write_branch_rows(self, rows)
+        return dict(row)
+
+def _session_turns(agent, sid): return [t for t in agent.history if t.get('session') == sid]
+
+@patch
+def session_meta(self:Agent, sid=None):
+    sid = sid or self.session_id
+    with _history_lock(self):
+        rows = _session_rows(self)
+        row = {} if rows is None else dict(rows.get(sid, {}))
+    return {'version': _SESSION_META_VERSION, 'title': '', 'title_turns': 0, 'muted': False, 'manual': False} | row
+
+def _set_session_meta(agent, sid, **changes):
+    with _history_lock(agent):
+        rows = _session_rows(agent)
+        if rows is None: raise ValueError(agent.history_problem)
+        row = {'version': _SESSION_META_VERSION, 'title': '', 'title_turns': 0, 'muted': False, 'manual': False} | dict(rows.get(sid, {})) | changes
+        rows[sid] = row
+        _write_session_rows(agent, rows)
+        return dict(row)
+
+@patch
+def set_title(self:Agent, text, sid=None):
+    sid = sid or self.session_id
+    title = ' '.join(str(text).split())[:120]
+    return _set_session_meta(self, sid, title=title, title_turns=len(_session_turns(self, sid)),
+                             manual=bool(title))
+
+@patch
+def set_muted(self:Agent, muted=True, sid=None):
+    return _set_session_meta(self, sid or self.session_id, muted=bool(muted))
+
+@patch
+def summarize_session(self:Agent, sid=None, force=False):
+    sid = sid or self.session_id
+    turns, meta = _session_turns(self, sid), self.session_meta(sid)
+    if not turns or (meta['manual'] and not force): return meta
+    n = len(turns)
+    if not force and meta['title_turns'] and n < meta['title_turns'] * 2:return meta
+    fallback = meta['title'] or ' '.join(str(turns[0].get('prompt', '')).split())[:72]
+    prompt = '\n'.join(str(t.get('prompt', '')) for t in turns[-8:])
+    try:
+        title = ' '.join(self.oneshot(prompt, 'Write a short conversation title. Output only the title.', 'summary', 32).split())[:120]
+        if not title: raise ValueError('the summary model returned no title')
+        self.history_problem = ''
+    except Exception as e:
+        self.history_problem = f'title summary failed ({agent_err(e)})'
+        return _set_session_meta(self, sid, title=meta['title'] or fallback)
+    return _set_session_meta(self, sid, title=title, title_turns=n, manual=False)
+
+if '_agent_load_history' not in globals():
+    _agent_load_history, _agent_remember, _agent_sessions = Agent._load_history, Agent._remember, Agent.sessions
+
+@patch
+def _load_history(self:Agent):
+    self.history_problem = ''
+    with _history_lock(self): return _agent_load_history(self)
+
+@patch
+def refresh_history(self:Agent):
+    with _history_lock(self):
+        _agent_load_history(self)
+        _session_rows(self); _branch_rows(self)
+    return self.sessions()
+
+@patch
+def sessions(self:Agent):
+    rows = _agent_sessions(self)
+    with _history_lock(self): meta = _session_rows(self)
+    if meta is None: return rows
+    def merge(row):
+        held = {k: v for k, v in (meta.get(row['id']) or {}).items()
+                if k in ('title', 'title_turns', 'muted')}
+        # the sidecar names what a person set; silence about a title leaves the derived one standing
+        if not held.get('title'): held.pop('title', None)
+        return {'title_turns': 0, 'muted': False} | row | held
+    return [merge(row) for row in rows]
+
+@patch
+def _remember(self:Agent, prompt, text, error=''):
+    with _history_lock(self): _agent_remember(self, prompt, text, error)
+
+# %% ../nbs/03_agent.ipynb #491879ee
+@patch
+def add_chat_callback(self:Agent, name):
+    """Attach one named Rishi callback to the turn chat, and to whatever chat replaces it.
+
+    The registry holds what was asked for, not the catalogue. Seeding it with every known callback
+    meant asking for one attached all of them, because `_be` applies the whole registry to a chat
+    it builds.
+    """
+    from .runtime import CHAT_CALLBACKS
+    held = getattr(self, '_chat_callbacks', None)
+    if held is None: held = self._chat_callbacks = {}
+    if name in held: return name
+    if name not in CHAT_CALLBACKS:
+        raise KeyError(f'unknown callback {name!r}; known: {", ".join(sorted(CHAT_CALLBACKS))}')
+    held[name] = CHAT_CALLBACKS[name]
+    self.backend.add_cb(held[name])
+    return name
+
+@patch
+def chat_callback(self:Agent, name):
+    "Attach one built-in callback to the current turn backend."
+    return self.add_chat_callback(name)
+
+# %% ../nbs/03_agent.ipynb #240ae8af
+@patch
+def _be(self:Agent, job='turn'):
+    "The backend for `job`, applying registered turn callbacks when it is first built."
+    spec = self.routing.spec(job)
+    key = (spec.backend, spec.model_id)
+    if key not in self._backends:
+        is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
+        kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
+        if is_turn:
+            kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.tool_max_len,
+                      approve=(self.approvals.gate if self.approvals is not None else None))
+        backend = make_backend(spec, **kw)
+        if is_turn:
+            for cb in getattr(self, '_chat_callbacks', {}).values(): backend.add_cb(cb)
+        self._backends[key] = backend
+    return self._backends[key]

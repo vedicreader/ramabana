@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.1.22
+cli, themes, runtime fixes
+
+## 0.1.21
+removed claude cli and converged on one claude sdk model
+
 ## 0.1.20
 cli fixes to default graph indexing to false and splitting prose 
 

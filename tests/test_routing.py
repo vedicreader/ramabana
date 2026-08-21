@@ -124,11 +124,10 @@ def test_changing_the_turn_model_carries_the_conversation_and_is_refused_mid_tur
     assert second.hist == first.hist_ and second.hist is not first.hist_
 
     b, _ = fake_agent()
-    b.lock.acquire()
-    try:
-        with pytest.raises(RuntimeError, match='while the assistant is working'):
-            b.set_model('gemma-12b')
-    finally: b.lock.release()
+    run = b._new_run('still working')
+    with pytest.raises(RuntimeError, match='while the assistant is working'):
+        b.set_model('gemma-12b')
+    run.finish()
 
 
 # -- what reaches the engine -----------------------------------------------------------
@@ -229,3 +228,82 @@ def test_a_typed_model_name_fails_as_a_sentence_not_a_traceback():
     assert 'Traceback' not in r.stderr, r.stderr
     assert 'claude-sonnet-4-6' in r.stderr, r.stderr
     assert r.stderr.count('\n') <= 2, f'{r.stderr.count(chr(10))} lines: {r.stderr}'
+
+def test_only_a_local_backend_is_a_pip_extra():
+    """Rishi carries the hosted and harness dependencies itself now, and `rishi[claude]`,
+    `[copilot]` and `[remote]` are empty. Telling someone to install one sends them to do nothing
+    and come back to the same error."""
+    from ramabana.core import RUNTIMES, runtime_remedy
+    for local in ('litert', 'mlx', 'llama'):
+        assert f'pip install rishi[{local}]' in runtime_remedy(local), local
+    for shipped in ('claude', 'copilot', 'remote'):
+        assert 'pip install' not in runtime_remedy(shipped), shipped
+    assert 'claude /login' in runtime_remedy('claude')
+    assert 'sign in' in runtime_remedy('copilot')
+    assert 'API key' in runtime_remedy('remote')
+    assert all(runtime_remedy(r) for r in RUNTIMES), 'every runtime has an answer'
+
+
+def test_a_harness_is_reachable_through_its_module_and_its_binary():
+    """`rishi.claude` lost `sdk_available` when it became SDK-only, and the probe kept calling it
+    inside a bare except -- so the check silently became binary-only and swallowed real errors."""
+    import ramabana.core as core
+    assert 'sdk_available' not in core._harness_available.__doc__
+    src = core._harness_available.__code__.co_names
+    assert 'sdk_available' not in src, 'the removed limb is gone, not merely unreachable'
+    assert core._harness_available('rishi.does_not_exist', 'nope') is False
+    assert core._harness_available('rishi.claude', 'no_such_probe') is False
+
+def test_a_claude_model_is_measured_against_its_own_window():
+    """Every harness model used to be charged a flat 128k, because a harness re-sent the whole
+    conversation each turn and the ceiling was what that cost. Rishi resumes a session now, so the
+    same conversation was reading about eight times fuller on Claude than on a 1M OpenAI model."""
+    from ramabana.core import CLAUDE_MODELS, DFLT_AGENT_CTX, claude_ctx, resolve
+    for mid in CLAUDE_MODELS:
+        want = 200_000 if mid.startswith(('claude-opus', 'claude-sonnet')) else DFLT_AGENT_CTX
+        assert resolve(mid).ctx == want, mid
+    assert resolve('opus').ctx == 200_000 and resolve('sonnet').ctx == 200_000, 'aliases too'
+    # a window we do not know falls back rather than being guessed at: a ceiling set too high
+    # hides a compaction that should already have happened
+    assert claude_ctx('claude-something-unreleased') == DFLT_AGENT_CTX
+    assert claude_ctx('') == DFLT_AGENT_CTX and claude_ctx(None) == DFLT_AGENT_CTX
+    assert resolve('gpt-4.1').ctx > 1_000_000, 'and a hosted model still reports its real window'
+
+
+def test_a_bigger_window_does_not_quietly_change_what_a_model_is_briefed_with():
+    "Both ceilings sit above `SMALL_CTX`, so the tool budget must be the same either way."
+    from ramabana.core import DFLT_AGENT_CTX, budget_for, resolve
+    before, after = budget_for(resolve('claude-haiku-4-5'), 6000), budget_for(resolve('claude-opus-5'), 6000)
+    assert before.drop == after.drop == () and before.inline is after.inline is True
+
+def test_a_window_that_cannot_be_read_keeps_its_last_occupancy():
+    """`used_tokens` fell back to `use.total`, which is billing volume accumulated across every
+    turn -- so one unreadable session turned a two-thirds-full window into thousands of percent.
+    A session that cannot answer has not emptied its window."""
+    from ramabana.core import ModelSpec
+    from ramabana.runtime import Backend
+    b = Backend(ModelSpec('claude/claude-opus-5', 'claude', 'claude-opus-5', 200_000))
+    assert b.used_tokens == 0 and b.pct_full == 0.0, 'nothing started, nothing held'
+
+    class Chat: token_count = 137_000
+    b.chat = Chat()
+    assert b.used_tokens == 137_000 and round(b.pct_full, 3) == 0.685
+
+    class Gone:
+        @property
+        def token_count(self): raise RuntimeError('the session went away')
+    b.chat, b.use.total = Gone(), 4_000_000
+    assert b.used_tokens == 137_000, 'the last reading stands'
+    assert b.pct_full < 1.0, 'and the bar cannot read past full on billing volume'
+
+
+def test_occupancy_comes_from_the_session_rather_than_a_local_estimate():
+    """Claude Code reports what its own window holds, and rishi refreshes that once per turn on the
+    loop. Ramabana takes the default `stateful=True`, which is the path that refreshes it."""
+    from rishi.claude import ClaudeChat
+    import inspect
+    assert '_ctx_live' in inspect.getsource(ClaudeChat.token_count.fget), 'the session number wins'
+    assert inspect.signature(ClaudeChat.__init__).parameters['stateful'].default is True
+    import ramabana.runtime as R
+    assert 'stateful' not in inspect.getsource(R.Backend.start), 'ramabana does not override it'
+

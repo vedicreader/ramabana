@@ -6,13 +6,14 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD', 'CLAUDE_MODELS',
-           'CLAUDE', 'CLAUDE_ALIASES', 'DFLT_AGENT_CTX', 'RUNTIMES', 'AGENTS', 'HOSTED', 'COPILOT_UNAVAILABLE',
-           'CUSTOM', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES',
-           'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError',
-           'agent_err', 'use_env_prefix', 'env', 'runtime_available', 'auth_status', 'copilot_catalog',
-           'available_models', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps', 'accepts',
-           'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model', 'force_tags',
-           'forget_forced_tags', 'tool_channel', 'Routing']
+           'CLAUDE', 'CLAUDE_ALIASES', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIMES', 'AGENTS', 'HOSTED',
+           'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap',
+           'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
+           'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env',
+           'claude_ctx', 'runtime_remedy', 'runtime_available', 'auth_status', 'copilot_catalog', 'available_models',
+           'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget',
+           'budget_for', 'register_model', 'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel',
+           'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
@@ -22,22 +23,19 @@ from dataclasses import dataclass, field
 # %% ../nbs/00_core.ipynb #2049138c
 ENV_PREFIX, ENV_FALLBACK = 'RAMABANA_', 'LEELA_'
 
-class AgentError(Exception):
-    "Something the harness refuses to do, rather than a failure while doing it."
+class AgentError(Exception): "Something the harness refuses to do, rather than a failure while doing it."
+class BranchChanged(AgentError): "A branch moved while a person was deciding what to do to it, so nothing was written."
 
 def agent_err(e):
     "A caught exception for a user-facing harness surface."
     return f'{type(e).__name__}: {e}'
 
 def use_env_prefix(prefix, fallback=None):
-    """Name the environment variables this application reads, most specific first.
-    `use_env_prefix('LEELA_', 'RAMABANA_')`
-    """
+    "Name the environment variables this application reads, most specific first. `use_env_prefix('LEELA_', 'RAMABANA_')`"
     global ENV_PREFIX, ENV_FALLBACK
     ENV_PREFIX = prefix if prefix.endswith('_') else prefix + '_'
     if fallback is not None: ENV_FALLBACK = fallback if fallback.endswith('_') else fallback + '_'
     return ENV_PREFIX, ENV_FALLBACK
-
 
 def env(name, dflt=None):
     "`$<prefix><name>`, then `$<fallback><name>`, then `dflt`. See `use_env_prefix`."
@@ -75,22 +73,26 @@ CLAUDE = {f'claude/{mid}': mid for mid in CLAUDE_MODELS}
 CLAUDE_ALIASES = {**{mid: mid for mid in CLAUDE_MODELS},
                   'sonnet': 'claude-sonnet-5', 'opus': 'claude-opus-5', 'fable': 'claude-fable-5'}
 
+#: The ceiling for a harness model whose real window we do not know.
 DFLT_AGENT_CTX = 128_000
+CLAUDE_CTX = {'claude-opus': 200_000, 'claude-sonnet': 200_000}
+
+def claude_ctx(model_id):
+    "What a Claude Code model holds, or `DFLT_AGENT_CTX` when its window is not known here."
+    mid = str(model_id or '')
+    return next((c for p, c in CLAUDE_CTX.items() if mid.startswith(p)), DFLT_AGENT_CTX)
 RUNTIMES = ('litert', 'mlx', 'llama', 'claude', 'copilot', 'remote')
 AGENTS = ('claude',)
 HOSTED = ('remote', 'copilot', *AGENTS)
-COPILOT_UNAVAILABLE = ('copilot runtime is unavailable; install rishi[copilot], then sign in to '
-    'Copilot in an editor or run `python -c "from rishi.copilot import copilot_login; copilot_login()"`')
+COPILOT_UNAVAILABLE = ('copilot runtime is unavailable; sign in to Copilot in an editor or run '
+    '`python -c "from rishi.copilot import copilot_login; copilot_login()"`')
 CUSTOM = {}
 _RUNTIME_DEPS = {'litert': 'litert_lm', 'mlx': 'mlx_lm', 'llama': 'llama_cpp'}
 
 def _harness_available(mod, binary):
-    "Whether an agent harness can be reached at all: its SDK, or the binary it drives."
+    "Whether an agent harness can be reached: its module imports, and the binary its SDK spawns."
     try: m = importlib.import_module(mod)
     except Exception: return False
-    try:
-        if m.sdk_available(): return True
-    except Exception: pass
     try: return bool(getattr(m, binary)())
     except Exception: return False
 
@@ -103,6 +105,16 @@ def _copilot_available():
         m = importlib.import_module('rishi.copilot')
         return bool(m.copilot_oauth())
     except Exception: return False
+        
+RUNTIME_REMEDY = {
+    'remote': 'hosted models need an API key in the environment',
+    'claude': 'install Claude Code (https://claude.com/claude-code) and run `claude /login`',
+    'copilot': 'sign in to GitHub Copilot in an editor, or run `copilot_login()` from rishi.copilot',
+}
+
+def runtime_remedy(runtime):
+    "One sentence saying what to do about a runtime that cannot be reached here."
+    return RUNTIME_REMEDY.get(runtime, f'install the backend with `pip install rishi[{runtime}]`')
 
 def runtime_available(runtime):
     "Whether Rishi's optional dependency for `runtime` can be reached. Never raises."
@@ -134,7 +146,6 @@ def _claude_login():
         return p.returncode == 0 and bool(json.loads(p.stdout).get('loggedIn'))
     except Exception: return False
 
-
 def auth_status():
     'Credential sources FastLLM can use, without reading or returning any secret.'
     codex = bool(os.getenv('CODEX_AUTH_TOKEN') or _json_has(os.getenv('CODEX_AUTH_PATH', '~/.codex/auth.json'), 'tokens', 'access_token'))
@@ -144,11 +155,9 @@ def auth_status():
         'openai': {'available': bool(os.getenv('OPENAI_API_KEY')), 'source': 'OPENAI_API_KEY'},
         'codex': {'available': codex, 'source': 'Codex login' if codex else ''},
         'anthropic': {'available': bool(os.getenv('ANTHROPIC_API_KEY')), 'source': 'ANTHROPIC_API_KEY'},
-        'claude': {'available': claude_login,
-                   'source': 'Claude Code login' if claude_login else ''},
+        'claude': {'available': claude_login, 'source': 'Claude Code login' if claude_login else ''},
         'gemini': {'available': bool(os.getenv('GEMINI_API_KEY')), 'source': 'GEMINI_API_KEY'},
-        'copilot': {'available': copilot,
-                    'source': 'GitHub Copilot sign-in' if copilot else ''},
+        'copilot': {'available': copilot, 'source': 'GitHub Copilot sign-in' if copilot else ''},
     }
 
 # %% ../nbs/00_core.ipynb #56303cec
@@ -305,10 +314,6 @@ def unknown_model(name):
 
 #: Prefixes that name a runtime or a transport rather than a vendor, in the spelling that works.
 PREFIXES = RUNTIMES
-
-#: Prefixes that used to route somewhere and no longer do, and what to say about each. Without
-#: this an id left in a config is read as a vendor and handed to `remote`, which asks for an API
-#: key nothing about the request needs: a credentials error several layers from the cause.
 RETIRED = {'claude_code': 'use `claude/` instead: the same models, through Claude Code itself',
            'cursor': 'the Cursor backend was removed'}
 
@@ -319,11 +324,9 @@ def resolve(name, default_local=DFLT_LOCAL):
         backend, mid = MODELS[name]
         config = CUSTOM.get(name, {}).get('config', {})
         if backend not in ('remote', 'copilot'):
-            if not runtime_available(backend): raise RuntimeError(f'{backend} runtime is unavailable; install rishi[{backend}]')
-            # deliberately not the model's own window: an agent harness carries no session
-            # state, so every turn re-renders the whole conversation as a prompt and sends it
-            # again. The ceiling is what that costs to re-send, not what the model could hold
-            ctx = DFLT_AGENT_CTX if backend in AGENTS else local_ctx(name)
+            if not runtime_available(backend): raise RuntimeError(f'{backend} runtime is unavailable; {runtime_remedy(backend)}')
+            ctx = claude_ctx(mid) if backend == 'claude' else \
+                  DFLT_AGENT_CTX if backend in AGENTS else local_ctx(name)
             return ModelSpec(name, backend, mid, ctx, config=config)
         if backend == 'copilot':
             ctx, note = _copilot_ctx(mid)
@@ -338,8 +341,9 @@ def resolve(name, default_local=DFLT_LOCAL):
             ctx, note = _copilot_ctx(model_id)
             return ModelSpec(name, 'copilot', model_id, ctx, note)
         if runtime in ('litert', 'mlx', 'llama', *AGENTS):
-            if not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; install rishi[{runtime}]')
-            ctx = DFLT_AGENT_CTX if runtime in AGENTS else local_ctx(name)
+            if not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
+            ctx = claude_ctx(model_id) if runtime == 'claude' else \
+                  DFLT_AGENT_CTX if runtime in AGENTS else local_ctx(name)
             return ModelSpec(name, runtime, model_id, ctx)
         ctx, note = _cloud_ctx(name)
         return ModelSpec(name, 'remote', name, ctx, note)
@@ -418,7 +422,7 @@ def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model
     # `register_model` fails on the answer it just asked for
     if runtime not in RUNTIMES: raise ValueError(f'unknown runtime {runtime!r}')
     if runtime != 'remote' and not runtime_available(runtime):
-        raise RuntimeError(f'{runtime} runtime is unavailable; install rishi[{runtime}]')
+        raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
     MODELS[name] = (runtime, model_id); _LOCAL_CTX[name] = int(ctx or 128_000)
     CUSTOM[name] = {'name': name, 'model_id': model_id, 'runtime': runtime,
                     'ctx': int(ctx or 128_000), 'note': note, 'config': config}
@@ -448,21 +452,11 @@ def forget_forced_tags():
 
 def tool_channel(spec, chat=None):
     """Which channel a model's tool schemas travel on: `'native'` on the wire, `'tags'` in the
-    system prompt. Takes a `ModelSpec` or a bare model id, and the live chat when there is one.
-
-    A chat is the authority. An agent runtime decides its own channel from the path it took and from
-    what the harness accepted. No property of the spec can be sure. A Claude chat that opened an
-    MCP server and had it refused is on tags now, and only it knows. Without one this predicts, which
-    is all `budget_for` can have: it sizes the tool list, and the tool list is what builds the chat.
-    """
+    system prompt. Takes a `ModelSpec` or a bare model id, and the live chat when there is one."""
     if (v := (env('TOOL_CHANNEL') or '').strip().lower()) in TOOL_CHANNELS: return v
     if (ch := getattr(chat, 'tool_channel', None)) in TOOL_CHANNELS: return ch
     mid = str(getattr(spec, 'model_id', spec) or '')
-    # a bare id carries its runtime in the prefix, and nowhere else: without this an agent
-    # harness's id fell through to the default for a hosted model
     rt = getattr(spec, 'runtime', '') or (mid.split('/', 1)[0] if '/' in mid else '')
-    # an agent harness has no native channel: its only way to carry a tool it did not ship with
-    # is an MCP server, and a managed configuration refuses even the in-process kind
     if rt in AGENTS: return 'tags'
     if mid in _forced_tags: return 'tags'
     return 'native'

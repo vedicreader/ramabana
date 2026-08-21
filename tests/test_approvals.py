@@ -18,7 +18,7 @@ def edit_call(path='a.py'): return {'function': {'name': 'edit_file', 'arguments
 def answer_when_asked(ap, ok, note=''):
     "Answer the next pending ask from another thread, the way a frontend does."
     def run():
-        for _ in range(200):
+        for _ in range(10):
             if (a := ap.pending) is not None: return ap.answer(a.id, ok, note)
             time.sleep(0.01)
     threading.Thread(target=run, daemon=True).start()

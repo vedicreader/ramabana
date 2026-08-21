@@ -7,16 +7,18 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 # %% auto #0
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
-           'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'IMG_TOKENS', 'interesting', 'captured',
-           'capture', 'estimate_tokens', 'threshold', 'should_compact', 'serialise', 'split_previous',
-           'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
-           'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
-           'use_chat', 'RishiBackend', 'make_backend', 'Run', 'current_run', 'run_context']
+           'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'IMG_TOKENS', 'CHAT_CALLBACKS',
+           'interesting', 'captured', 'capture', 'estimate_tokens', 'threshold', 'should_compact', 'serialise',
+           'split_previous', 'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices',
+           'notices_block', 'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter',
+           'Usage', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'Run', 'current_run', 'run_context',
+           'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import contextvars, copy, os, re, sys, threading, time
 from contextlib import contextmanager
 from dataclasses import dataclass
+from fastcore.basics import patch
 from .core import agent_err, env, force_tags, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
@@ -432,7 +434,6 @@ def compact_notebook_context(prompt, fits):
 # %% ../nbs/01_runtime.ipynb #4ee869b3
 class Compactor:
     "Decides when to compact, and does it. Not a callback on either engine."
-
     def __init__(self,
                  reserve=RESERVE,
                  keep_recent=KEEP_RECENT,
@@ -472,12 +473,10 @@ class Compactor:
             if used + n > budget and kept: break
             kept.append(m); used += n
         kept.reverse()
-        # the tail starts at a user turn: a dangling tool call is rejected by some providers
         while kept and _role(kept[0]) != 'user': kept.pop(0)
         return kept
 
-    def compact(self, backend, summariser, extra='', summary_ctx=0, summary_output=1024,
-                summary_count=None):
+    def compact(self, backend, summariser, extra='', summary_ctx=0, summary_output=1024, summary_count=None):
         "Summarise `backend`'s conversation with `summariser(prompt, sp)` and replace it. The summary, or `''`."
         msgs = list(backend.hist or [])
         if not msgs:
@@ -547,17 +546,13 @@ def prefills_think(chat):
     except Exception: return False
     return '<think>' in p and '</think>' not in p.rsplit('<think>', 1)[-1]
 
-
 class ThinkFilter:
     "Drop a template-opened thinking block out of a raw chunk stream. A tool call re-arms it."
     TAG = '</think>'
-
     def __init__(self): self.thinking, self.buf, self.thought, self.answer = True, '', 0, 0
-
     def _tool(self, o):
         parts = o.get('content') or [] if isinstance(o, dict) else []
         return any(isinstance(p, dict) and p.get('type') == 'tool_call' for p in parts)
-
     def __call__(self, chunks):
         "Filter raw chunk dicts, yielding the same shape back."
         from rishi.core import resp_text
@@ -625,6 +620,7 @@ class Backend:
         self.chat,self.use,self.note=None,Usage(model=spec.model_id),'not started'
         self.problems,self.last_native,self._tried,self.run=[], '', False, None
         self._resume_hist=None
+        self._used=0                 # last occupancy the engine reported. See `used_tokens`
         self.lock=threading.Lock()
     @property
     def ready(self): return self.chat is not None
@@ -679,11 +675,19 @@ class Backend:
         try:f()
         except Exception as e:self._failed('could not be stopped',e); return False
         return True
+    def _sync_callbacks(self):
+        "Give the live chat every registered callback it is missing. Callers hold `lock`."
+        add = getattr(self.chat, 'add_cb', None)
+        if add is None: return
+        held = getattr(self.chat, 'cbs', ())
+        for cb in getattr(self, '_callbacks', ()):
+            if not any(isinstance(x, cb) for x in held): add(cb)
     def send(self,msg,run=None,**kw):
         if self.start() is None:return self.note
         with self.lock:
             self.run=run
             self._tag_reminded=False   # one reminder per turn. See `TAG_REMINDER`
+            self._sync_callbacks()     # anything registered while a turn was running
             try:
                 for again in (True,False):
                     try:
@@ -705,6 +709,7 @@ class Backend:
         with self.lock:
             self.run=run
             self._tag_reminded=False   # one reminder per turn. See `TAG_REMINDER`
+            self._sync_callbacks()     # anything registered while a turn was running
             try:
                 for again in (True,False):
                     n,buf=0,[]
@@ -713,9 +718,8 @@ class Backend:
                             if run is not None and run.cancelled:return
                             n+=len(c or ''); buf.append(c or ''); yield c
                         if run is not None and run.cancelled:return
-                        self.use=self._usage(); self._check_reply(''.join(buf))
-                        # a stream cannot unsay a chunk, so the reminder is a further turn rather
-                        # than a retry. Once only: a model that keeps narrating must not loop
+                        self.use=self._usage()
+                        self._check_reply(''.join(buf))
                         if not self._tag_reminded and self._needs_tag_retry(''.join(buf)):
                             self._tag_reminded=True
                             yield '\n\n'
@@ -743,22 +747,27 @@ class Backend:
     def _empty(self,strict=False):
         why=f'{self.spec.name} returned nothing'+(f' -- {self.last_native}' if self.last_native else '')
         return self.problem(why) if strict else (f'({why})' if self.last_native else '(no reply)')
+    
     def oneshot(self,prompt,sp='',max_tokens=None):
         if self.start() is None or not self.lock.acquire(False):return ''
         try:return answer_only(self._oneshot(prompt,sp,max_tokens) or '')
         except Exception as e:self._failed('one-shot failed',e); return ''
         finally:self.lock.release()
+    
     def spawn(self,sp='',tools=(),**kw): raise NotImplementedError
     def replace_hist(self,summary,keep=()):
         if not self.chat:raise RuntimeError('nothing to compact: the model is not running')
         self._replace_hist(summary,list(keep)); return self
+    
     def snapshot_hist(self):
         "A detached model-history checkpoint suitable for an in-process branch."
         return copy.deepcopy(list(self.hist))
+    
     def resume_hist(self,hist):
         "Restore canonical history now, or after this backend starts lazily."
         if self.chat:return self.restore_hist(hist)
         self._resume_hist=copy.deepcopy(list(hist or [])); return self
+    
     def restore_hist(self,hist):
         "Restore a checkpoint and rebuild provider conversation state."
         if not self.chat:raise RuntimeError('nothing to restore: the model is not running')
@@ -766,6 +775,7 @@ class Backend:
         recreate=getattr(self.chat,'_recreate_conv',None)
         if recreate:recreate()
         return self
+    
     def revise_last_assistant(self,text):
         "Replace the last prose assistant message in a restored checkpoint."
         if not self.chat:raise RuntimeError('nothing to revise: the model is not running')
@@ -776,14 +786,19 @@ class Backend:
         recreate=getattr(self.chat,'_recreate_conv',None)
         if recreate:recreate()
         return self
+    
     def count_tokens(self,text):
         try:return self.chat.count_tokens(text or '') if self.chat else max(1,(len(text or '')+3)//4)
         except Exception:return max(1,(len(text or '')+3)//4)
+    
     @property
     def used_tokens(self):
-        "What the window holds, which the engine reports. Occupancy not billing volume: rishi>=0.1.12."
-        try:return self.chat.token_count if self.chat else 0
-        except Exception:return self.use.total
+        "used tokens or token count from rishi chat."
+        try:
+            if self.chat: self._used = self.chat.token_count
+        except Exception: pass
+        return self._used
+    
     @property
     def pct_full(self):return self.used_tokens/max(self.spec.ctx,1)
     def pending_tokens(self,msg):
@@ -793,11 +808,13 @@ class Backend:
         except Exception:pass
         text,media = _parts(msg)
         return self.count_tokens(text)+8+IMG_TOKENS*media
+    
     def projected_tokens(self,msg):return self.used_tokens+self.pending_tokens(msg)
     def fits(self,msg,reserve=None):
         if not self.spec.ctx:return True
         reserve=min(1024,max(128,self.spec.ctx//4)) if reserve is None else max(0,reserve)
         return self.projected_tokens(msg)<=max(1,self.spec.ctx-reserve)
+    
     def _start(self):raise NotImplementedError
     def _send(self,msg,**kw):raise NotImplementedError
     def _stream(self,msg,**kw):raise NotImplementedError
@@ -807,10 +824,7 @@ class Backend:
     def _refresh(self):raise NotImplementedError
 
 # %% ../nbs/01_runtime.ipynb #4c988345
-#: What builds a model conversation, and the one seam a recording replaces. `None` is rishi's
-#: own `Chat`, which is what every application gets.
 _MK_CHAT = None
-
 @contextmanager
 def use_chat(f):
     "Build model conversations with `f` for the duration, instead of rishi's `Chat`."
@@ -818,7 +832,6 @@ def use_chat(f):
     old, _MK_CHAT = _MK_CHAT, f
     try: yield f
     finally: _MK_CHAT = old
-
 
 class RishiBackend(Backend):
     kind='rishi'
@@ -837,16 +850,13 @@ class RishiBackend(Backend):
         import os
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
-        # only `remote` takes the keyword. For the local engines tag calls are the protocol
         if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
-            # rishi takes backend itself. Inside eng_kw it arrives twice and no litert model loads.
             if 'backend' not in eng and 'backend' not in kw and (backend := env('LITERT_BACKEND')):
                 from litert_lm import Backend as LB
                 backends = {'cpu': LB.CPU, 'gpu': LB.GPU}
-                if backend.lower() not in backends:
-                    raise ValueError(f'unknown LiteRT backend {backend!r}; use cpu or gpu')
+                if backend.lower() not in backends: raise ValueError(f'unknown LiteRT backend {backend!r}; use cpu or gpu')
                 kw['backend'] = backends[backend.lower()]()
             eng.setdefault('max_num_tokens',self.spec.ctx)
             kw['eng_kw']=eng
@@ -872,8 +882,6 @@ class RishiBackend(Backend):
     def _send(self,msg,**kw):
         from rishi.core import resp_text
         return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
-    #: What a transport says when it will not carry the tool schemas. An enterprise policy is the
-    #: reason; the wording is the SDK's, and it arrives under several of these at once.
     MCP_REFUSED=('mcp','strict_mcp_config','allowed_tools','disallowed','not permitted','policy')
     def _recover(self,e):
         "Learn that this model's wire tool channel is closed. Later turns stop trying it."
@@ -894,11 +902,7 @@ class RishiBackend(Backend):
                          'call, so this model is not punctuating the tags channel reliably')
         return text
     def _needs_tag_retry(self,text):
-        """A reply on the tags channel with a `<tool_call>` still in its prose never made the call.
-
-        Pure: `_check_reply` asks this too, and a once-guard here would let the report eat the
-        reminder. The caller owns `_tag_reminded`.
-        """
+        "A reply on the tags channel with a `<tool_call>` still in its prose never made the call."
         return tool_channel(self.spec,self.chat)=='tags' and '<tool_call' in (text or '')
     def _stream(self,msg,**kw):
         kw=self._turn_kw(kw)
@@ -918,13 +922,12 @@ class RishiBackend(Backend):
             from rishi import Chat
             self._oneshot_chat=Chat(self.spec.model_id,runtime='mlx',engine=self.chat.engine,think=False,
                                     sp=sp,ctx_limit=self.spec.ctx,max_output_tokens=ONESHOT_TOKENS)
-        # `c.sp=`, not `reconfigure`, which rebuilds backend state and drops MLX's cache
-        c=self._oneshot_chat; c.sp=sp; c.hist[:]=[c.mk_msg(prompt)]
+        c=self._oneshot_chat
+        c.sp=sp
+        c.hist[:]=[c.mk_msg(prompt)]
         from rishi.core import resp_text
-        # always an explicit cap: this conversation is reused across jobs
         return resp_text(c._model_step(max_tokens or ONESHOT_TOKENS))
     def _replace_hist(self,summary,keep):
-        # a replayed conversation has neither. `Compactor` catches the refusal and says so
         if not hasattr(self.chat,'_recreate_conv'):
             raise RuntimeError(f'{type(self.chat).__name__} cannot have its history replaced')
         self.chat.hist[:]=self.chat.mk_msgs([summary,*keep]); self.chat._recreate_conv()
@@ -1073,3 +1076,52 @@ def run_context(run):
     try: yield run
     finally: _current_run.reset(token)
 
+
+# %% ../nbs/01_runtime.ipynb #42b75c72
+@patch
+def add_cb(self:Backend, cb):
+    """Register one Rishi callback class, for this chat and for any that replaces it.
+
+    A turn holds `lock` for its whole length and Rishi walks `chat.cbs` while it runs, so a caller
+    on another thread records the callback and the running turn takes it up at its own boundary.
+    Splicing into that list from outside can drop or repeat a callback in the turn already going.
+    """
+    callbacks = getattr(self, '_callbacks', [])
+    if cb not in callbacks: callbacks.append(cb)
+    self._callbacks = callbacks
+    if self.lock.acquire(False):
+        try: self._sync_callbacks()
+        finally: self.lock.release()
+    return self
+
+@patch
+def _start_callbacks(self:Backend): self._sync_callbacks()
+
+@patch
+def start(self:Backend):
+    if self._tried: return self.chat
+    self._tried = True
+    try:
+        self.chat = self._start()
+        self._start_callbacks()
+        if self._resume_hist is not None:
+            self.restore_hist(self._resume_hist); self._resume_hist = None
+        self.note = f'{len(self.tools)} tools'
+    except Exception as e: self.chat = None; self._failed('unavailable', e)
+    return self.chat
+
+# %% ../nbs/01_runtime.ipynb #fdd397db
+from rishi.core import ChatCallback
+class TokenLogger(ChatCallback):
+    "Report Rishi's provider-reported usage after each response."
+    order = 20
+    sink = None
+    def after_response(self):
+        u = self.chat.use
+        cost = u.cost if isinstance(u.cost, (int, float)) else 0.   # a provider may report null
+        (type(self).sink or print)(
+            f'[rishi usage] model={u.model or "?"} input={u.prompt_tokens} '
+            f'output={u.completion_tokens} total={u.total_tokens} cached={u.cached_tokens} '
+            f'cost=${cost:.6f}')
+
+CHAT_CALLBACKS = {'token_logger': TokenLogger}

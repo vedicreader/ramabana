@@ -10,7 +10,7 @@ Modules:
 - `ramabana.write_docs`: The voiceless register for the prose that ships with code, adapted from Answer.AI's write_docs.
 - `ramabana.write_prose`: Anti-slop rules for narrative prose, adapted from Answer.AI's write_prose."""
 
-__version__ = "0.1.20"
+__version__ = "0.1.22"
 
 from .core import AgentError, agent_err, env
 

@@ -338,14 +338,18 @@ def test_an_act_whose_parent_has_no_block_is_counted_as_its_own(ui):
     assert [r.plain for r in ui.working()][0].startswith('1 ')
 
 
-def test_a_second_turn_cannot_start_over_a_running_one(ui):
-    "The two share `_reply` and the segment state, so the newcomer's reset wiped the first's words."
-    async def noop(): pass
+def test_a_second_turn_waits_instead_of_starting_over_a_running_one(ui):
+    """The two share `_reply` and the segment state, so the newcomer's reset wiped the first's words.
+    It is held rather than dropped: the line is already in the transcript by the time it is asked
+    for, and closing it left a message that looked answered and was gone."""
+    async def run_turn(): pass   # named as the real prompt coroutine is
     ui.turn = 'a turn in flight'
-    coro = noop()
+    coro = run_turn()
     assert ui.start_turn(coro) is False
     assert ui.turn == 'a turn in flight', 'the running turn was replaced'
+    assert ui._queued is coro, 'and the newcomer is waiting rather than closed'
     assert [b.tag for b in ui.comp.blocks.values()][-1] == 'note'
+    ui.drop_queued()
 
 
 def test_a_model_that_stalls_mid_prose_does_not_leave_its_last_words_unseen():
@@ -379,3 +383,40 @@ def test_a_model_that_stalls_mid_prose_does_not_leave_its_last_words_unseen():
             spinner.cancel()
             tty.close()
     asyncio.run(go())
+
+def _banner_copies(comp, tty, calls):
+    "How many times the first block reaches the terminal while `calls` tool results fold under it."
+    from rich.text import Text
+    wrote, real = [], tty.write
+    tty.write = lambda s: (wrote.append(s), real(s))[1]
+    comp.print_block(Text('BANNER'), tag='note', collapse_at=None, source='BANNER')
+    for n in range(calls):
+        blk = comp.print_block(Text('\n'.join(f'{n} line {i}' for i in range(30))),
+                               tag='tool', collapse_at=None, source='x')
+        comp._frame()
+        blk.collapsed, blk.collapse_at = True, 1      # the fold `_act` applies when a result lands
+        comp._dirty(blk); comp._frame()
+    return ''.join(wrote).count('BANNER'), comp._ws
+
+
+def test_a_folded_call_does_not_ink_the_transcript_above_it_again():
+    """Teleprint's `_frame` ended by assigning the scrolled-off row count, which lowered it whenever
+    the document shrank -- and a tool result folding to one row is a large shrink. The rows above
+    were then inked a second time on the next growth, so a turn of twenty-three folded calls left
+    twenty-three copies of the startup banner in the scrollback. `cli` patches the mark to rise
+    only; rows the terminal already has cannot be taken back."""
+    from ramabana.cli import INK_PATCHED
+    from teleprint.compositor import Compositor
+    assert INK_PATCHED, 'teleprint fixed it: drop the patch and this test with it'
+    marks = []
+    for frame in (Compositor._frame, Compositor._frame.__wrapped__):
+        tty = EmuTty(40, 8)
+        comp = Compositor(tty); comp._register_signals = lambda: None
+        asyncio.run(comp.start())
+        comp._frame = frame.__get__(comp)
+        marks.append(_banner_copies(comp, tty, 8))
+        tty.close()
+    (patched, mark), (bare, _) = marks
+    assert mark > 0, 'the document has to outgrow the window for anything to be inked at all'
+    assert patched < bare, f'patched inked the banner {patched} times, unpatched {bare}'
+

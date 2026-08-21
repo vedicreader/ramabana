@@ -334,3 +334,15 @@ def test_the_agent_asks_before_it_widens_its_own_boundary(tmp_path):
     assert str(b.resolve()) in h.roots
 
     assert ERR in fn(str(tmp_path/'nope'))          # a refusal reads as a tool error, not a crash
+
+def test_a_sub_agent_sized_like_its_parent_is_not_handed_an_empty_list():
+    """When the sub-agent budget matches the turn's there is no separate list to build, so the
+    answer is the parent's own. That list is written while `tools` is built, and asking for it
+    before anything asked for `tools` used to hand delegation nothing at all."""
+    a, _ = fake_agent()
+    assert a.subagent_budget == a.budget, 'one model, one budget: this is the shared-list branch'
+    assert a._sub_plain(), 'read cold, before `tools` was ever touched'
+    warm = {t.__name__ for t in a._sub_plain()}
+    a.tools
+    assert {t.__name__ for t in a._sub_plain()} == warm, 'and it does not change once warm'
+

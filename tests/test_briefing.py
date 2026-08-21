@@ -316,6 +316,7 @@ def test_the_briefing_describes_only_the_tools_the_model_was_given():
     # lead with the answer, and look in durable memory before acting.
     rules = A.work_rules()
     assert 'Start every user-facing response with what you plan to do or the next action.' in rules
+    assert 'Keep a plan small enough that every step has one independently verifiable outcome.' in rules
     assert 'Before acting on a request, search Vishalakshi durable memory with `memory_search`' in rules
 
     assert '`write_docs`' in A.work_rules(['read_skill']) and '`write_prose`' in A.work_rules(['read_skill'])
@@ -467,16 +468,20 @@ def test_a_bare_agent_model_id_answers_the_channel_its_spec_would(monkeypatch):
     assert tool_channel('claude/claude-sonnet-5') == tool_channel(CLAUDE) == 'tags'
 
 
-def test_an_agent_harness_is_held_to_what_it_can_afford_to_resend():
-    """Deliberately not the model's own window, which is 8x larger.
+def test_a_harness_is_held_to_its_own_window_not_the_tables():
+    """`rishi.claude` used to carry no session state: each turn rendered the whole conversation to
+    a text prompt and sent it again, so the ceiling was what was affordable to re-send rather than
+    what the model held -- at the tables' 1M figure ramabana compacted at 983,616 tokens and
+    re-sent that much per turn, which was the hang.
 
-    `rishi.claude` carries no session state: each turn renders the whole
-    conversation to a text prompt and sends it again. So the ceiling is what is affordable to
-    re-send every turn, not what the model could hold -- at the tables' 1M figure ramabana
-    compacts at 983,616 tokens and re-sends that much per turn, which is the hang. Claude Code's
-    own session window is smaller than the model's besides.
+    Rishi resumes a Claude Code session now, so that reason has gone and the model's own window is
+    the honest number. The tables' figure is still refused: it is the model's, not the session's.
     """
-    from ramabana.core import DFLT_AGENT_CTX, _cloud_ctx, resolve
-    assert _cloud_ctx('claude-sonnet-5')[0] > DFLT_AGENT_CTX      # the tables do know a bigger one
+    from ramabana.core import DFLT_AGENT_CTX, _cloud_ctx, claude_ctx, resolve
+    assert _cloud_ctx('claude-sonnet-5')[0] > 200_000, 'the tables still know a bigger one'
     for name in ('sonnet', 'opus', 'claude/claude-opus-5'):
-        assert resolve(name).ctx == DFLT_AGENT_CTX, name
+        assert resolve(name).ctx == 200_000, name
+        assert resolve(name).ctx < _cloud_ctx('claude-sonnet-5')[0], 'and it is not the tables\' figure'
+    # a family whose window is not recorded here still gets the affordable ceiling
+    assert resolve('claude-haiku-4-5').ctx == DFLT_AGENT_CTX
+    assert claude_ctx('claude-unreleased-9') == DFLT_AGENT_CTX
