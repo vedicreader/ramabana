@@ -1397,7 +1397,10 @@ def file_tools(host, mx=MAX_TOOL_CHARS):
         # hashes are the same either way: both views hash `line_hash(lineno, line)` over the
         # same lines. `replace_text` and `create_file` go through the host too; `edit_file`
         # verifies against the file, so against such a host it refuses rather than misfires
-        text = host.read(str(p))
+        # a host is allowed to raise from any method, and one may not implement `read` at all;
+        # that is a reason to read the file, not to lose the tool
+        try: text = host.read(str(p))
+        except Exception: text = None
         if text is None and not p.exists(): return err(f'no such file: {p}')
         view = str(lnhashview(text, start or None, end or None) if text is not None
                    else lnhashview_file(str(p), start or None, end or None))

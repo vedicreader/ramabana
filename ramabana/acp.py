@@ -51,7 +51,12 @@ class Bridge:
 
     def call(self, coro, timeout=None):
         "Block this thread on one round trip, and raise whatever the client raised."
-        return asyncio.run_coroutine_threadsafe(coro, self.loop).result(ifnone(timeout, self.timeout))
+        fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
+        try: return fut.result(ifnone(timeout, self.timeout))
+        except Exception:
+            # or the request sits in the connection's pending table for the rest of the session
+            fut.cancel()
+            raise
 
     def post(self, coro):
         "An update nothing waits on."
@@ -159,10 +164,11 @@ def blocks(prompt, spec=None):
     for b in prompt:
         kind = getattr(b, 'type', '')
         if kind == 'text': text.append(b.text)
-        elif kind == 'image': media.append(base64.b64decode(b.data))
-        elif kind == 'audio':
-            if spec is None or accepts(spec, 'audio'): media.append(base64.b64decode(b.data))
-            else: text.append(f'[audio dropped: {b.mime_type} -- this model does not accept audio]')
+        elif kind in ('image', 'audio'):
+            # `accepts` says yes where rishi cannot say, so this only drops what it knows
+            # cannot be sent. Dropping with a reason beats the turn dying inside the engine
+            if spec is None or accepts(spec, kind): media.append(base64.b64decode(b.data))
+            else: text.append(f'[{kind} dropped: {b.mime_type} -- this model does not accept {kind}]')
         elif kind == 'resource': text.append(_res(b))
         elif kind == 'resource_link': text.append(f'@{getattr(b, "uri", "")}')
     return '\n\n'.join(t for t in text if t), media
@@ -171,13 +177,16 @@ def blocks(prompt, spec=None):
 class Session:
     "One ACP session: an agent, and the editor it reports to."
 
-    def __init__(self, sid, roots, conn, loop, model=None, mk=None, **kw):
-        self.sid, self.conn = sid, conn
+    def __init__(self, roots, conn, loop, sid=None, model=None, mk=None, timeout=DFLT_TIMEOUT, **kw):
+        self.conn, self.br = conn, None
         self.seen, self.cancelled, self.gated, self.shell = set(), False, {}, ''
-        self.br = Bridge(conn, sid, loop)
-        self.br.on_terminal = self._terminal
         self.agent, self.host = ifnone(mk, mk_agent)(roots, model=model, approve='ask',
-                                                     on_activity=self._act, **kw)
+                                                     timeout=timeout, on_activity=self._act, **kw)
+        # the harness's own session id, so `session/load` can name a conversation and mean it.
+        # A uuid could never match one, and `resume_session` would silently take the newest
+        self.sid = sid or self.agent.session_id
+        self.br = Bridge(conn, self.sid, loop, timeout)
+        self.br.on_terminal = self._terminal
         # nothing listening means Ramabana refuses a write, so this registration is what
         # makes writes possible at all -- and losing it fails closed
         self.unhook = self.agent.approvals.listen(self._ask)
@@ -189,7 +198,8 @@ class Session:
             self.host.attach(self.br, getattr(caps, 'fs', None), getattr(caps, 'terminal', False))
         return self
 
-    def _send(self, update): return self.br.post(self.conn.session_update(self.sid, update))
+    def _send(self, update):
+        return None if self.br is None else self.br.post(self.conn.session_update(self.sid, update))
 
     @staticmethod
     def _key(tool, args): return (tool, str((args or {}).get('path', '')))
@@ -217,6 +227,10 @@ class Session:
             body = [acp.tool_content(acp.text_block(d['detail']))] if d['detail'] else None
             self._send(acp.update_tool_call(tid, status='completed' if d['ok'] else 'failed',
                                             content=body))
+        elif tid == d['id']:
+            # not gated, so `_permit` never sent the diff. `a.args` rather than the clipped copy
+            if (diff := self._body(d['tool'], a.args, '')) is not None:
+                self._send(acp.update_tool_call(tid, content=diff))
 
     def _plan(self, plan):
         self._send(acp.update_plan([acp.plan_entry(t.text, status=PLAN.get(t.status, 'pending'))
@@ -232,9 +246,12 @@ class Session:
         "On the turn's thread, inside `Approvals.request`, before it waits."
         try: ok, note, always = self.br.call(self._permit(a))
         except Exception as e: ok, note, always = False, f'the editor did not answer ({e!r})', False
-        # a refused call never runs, so nothing else would ever close its entry
-        if not ok: self._send(acp.update_tool_call(a.id, status='failed'))
-        self.agent.approvals.answer(a.id, ok, note, session=always)
+        answered = self.agent.approvals.answer(a.id, ok, note, session=always)
+        # a refused call never runs, and a cancel may have answered it while the dialog was
+        # open. Either way `_act` will not fire, so the entry has to be closed and dropped here
+        if not ok or answered is None:
+            self._send(acp.update_tool_call(a.id, status='failed'))
+            self.gated.pop(self._key(a.tool, a.args), None)
 
     async def _permit(self, a):
         path = (a.args or {}).get('path', '')
@@ -276,8 +293,9 @@ class Session:
 class AcpAgent(acp.Agent):
     "Ramabana behind the Agent Client Protocol. One agent per session, rooted where the editor says."
 
-    def __init__(self, model=None, roots=('.',), mk=None, **kw):
+    def __init__(self, model=None, roots=('.',), mk=None, timeout=DFLT_TIMEOUT, **kw):
         self.model, self.roots, self.mk, self.kw = model, list(roots), mk, kw
+        self.timeout = timeout
         self.sessions, self.conn, self.caps = {}, None, None
 
     def on_connect(self, conn): self.conn = conn
@@ -296,28 +314,37 @@ class AcpAgent(acp.Agent):
             agent_info=Implementation(name='ramabana', title='Ramabana', version=__version__))
 
     async def _open(self, cwd, extra=None, sid=None):
-        sid = sid or uuid.uuid4().hex
         roots = [cwd, *(extra or [])] if cwd else list(self.roots)
-        s = Session(sid, roots, self.conn, asyncio.get_running_loop(), self.model, self.mk, **self.kw)
-        self.sessions[sid] = s.attach(self.caps)
-        await self.conn.session_update(sid, s.commands())
+        s = Session(roots, self.conn, asyncio.get_running_loop(), sid, self.model, self.mk,
+                    self.timeout, **self.kw)
+        self.sessions[s.sid] = s.attach(self.caps)
+        await self.conn.session_update(s.sid, s.commands())
         return s
 
     async def new_session(self, cwd, additional_directories=None, mcp_servers=None, **kw):
+        # `mcp_servers` is not honoured: this agent brings its own tools rather than the
+        # editor's. An editor that configured some gets them silently ignored, not an error
         return NewSessionResponse(session_id=(await self._open(cwd, additional_directories)).sid)
 
     async def load_session(self, cwd, session_id, mcp_servers=None, additional_directories=None, **kw):
-        "Resume a saved conversation and replay it, so what the terminal started the editor continues."
-        s = self.sessions.get(session_id) or await self._open(cwd, additional_directories, session_id)
-        try:
-            saved = {r['id'] for r in s.agent.sessions()}
-            s.agent.resume_session(session_id if session_id in saved else 'latest')
-        except Exception: pass
-        for turn in s.agent.history:
+        "Resume the named conversation and replay it, so what the terminal started the editor continues."
+        if (s := self.sessions.get(session_id)) is None:
+            s = await self._open(cwd, additional_directories, session_id)
+            try: picked = s.agent.resume_session(session_id)
+            except Exception as e:
+                # never fall back to 'latest': that hands the editor whichever conversation
+                # happened to run last, from whichever project, and changes the model with it
+                self.sessions.pop(s.sid, None)
+                s.close()
+                raise acp.RequestError.resource_not_found(f'no saved session {session_id} ({e})')
+            got = picked['id']
+        else: got = s.agent.session_id
+        # only this conversation: `agent.history` is the whole log, every session in it
+        for turn in [t for t in s.agent.history if t.get('session') == got]:
             if turn.get('prompt'):
-                await self.conn.session_update(session_id, acp.update_user_message_text(str(turn['prompt'])))
+                await self.conn.session_update(s.sid, acp.update_user_message_text(str(turn['prompt'])))
             if turn.get('reply'):
-                await self.conn.session_update(session_id, acp.update_agent_message_text(str(turn['reply'])))
+                await self.conn.session_update(s.sid, acp.update_agent_message_text(str(turn['reply'])))
         return LoadSessionResponse()
 
     async def prompt(self, session_id, prompt, **kw):
@@ -325,8 +352,10 @@ class AcpAgent(acp.Agent):
         s.cancelled, s.seen = False, set()
         text, media = blocks(prompt, s.agent.model)
         if not text and not media: return PromptResponse(stop_reason='end_turn')
+        s.gated = {}
         if text.startswith('/') and not media:
-            out = s.agent.command(text) or f'unknown command {text.split()[0]}'
+            # off the loop: /compact calls a model, and a command may reach the approval gate
+            out = await asyncio.to_thread(s.agent.command, text) or f'unknown command {text.split()[0]}'
             await self.conn.session_update(session_id, acp.update_agent_message_text(out))
             return PromptResponse(stop_reason='end_turn')
         await asyncio.to_thread(s.run, text, media)
@@ -347,7 +376,16 @@ async def serve(agent=None):
     # prints -- a model loader, a warning -- goes to stderr, where it cannot corrupt a frame
     reader, writer = await acp.stdio_streams()
     sys.stdout = sys.stderr
-    await acp.run_agent(ifnone(agent, AcpAgent()), input_stream=writer, output_stream=reader)
+    a = ifnone(agent, AcpAgent())
+    try: await acp.run_agent(a, input_stream=writer, output_stream=reader)
+    finally:
+        # the editor closing does not stop a turn: it is on a worker thread, and the process
+        # would sit there running tools until it finished. Cancel, then release the backends
+        for s in list(a.sessions.values()):
+            try: s.agent.cancel()
+            except Exception: pass
+            s.close()
+        a.sessions.clear()
 
 @call_parse
 def main(

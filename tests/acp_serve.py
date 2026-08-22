@@ -48,4 +48,4 @@ def mk(roots, **kw):
     a._be = a._be_or_none = lambda job='turn': be
     return a, h
 
-if __name__ == '__main__': asyncio.run(serve(AcpAgent(mk=mk)))
+if __name__ == '__main__': asyncio.run(serve(AcpAgent(mk=mk, timeout=30)))
