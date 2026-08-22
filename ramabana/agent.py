@@ -22,6 +22,7 @@ from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, 
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from .tools import (mime_for, MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
                             find, load, skill_index, subagent_tools, tools_for)
+from .monitor import Monitors, monitor_tools, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
 MAX_DETAIL = 4000     # chars of a tool result kept for the fold
@@ -54,6 +55,8 @@ _KIND = {
     'memory_topics': 'memory', 'memory_forget': 'memory', 'remember': 'memory',
     'set_reminder': 'watch', 'watch_url': 'watch', 'list_watches': 'watch',
     'cancel_watch': 'watch', 'poll_watches': 'watch',
+    'watch_folder': 'watch', 'list_folder_watches': 'watch',
+    'cancel_folder_watch': 'watch', 'check_folders': 'watch',
     'cart_stores': 'cart', 'cart_open': 'cart', 'cart_find': 'cart',
     'cart_add': 'cart', 'cart_show': 'cart', 'cart_remove': 'cart',
 }
@@ -66,6 +69,7 @@ DELEGATE_TOOLS = {t for t, k in _KIND.items() if k == 'delegate'}
 #: Tools whose useful summary is the same words every time: they take nothing worth showing.
 _LABEL = {'list_vars': 'List variables', 'read_terminal': 'Read terminal',
           'list_watches': 'List watches', 'poll_watches': 'Poll watches',
+          'list_folder_watches': 'List watched folders', 'check_folders': 'Check watched folders',
           'memory_topics': 'Map remembered topics', 'cart_stores': 'List stores',
           'cart_show': 'Read the trolley'}
 
@@ -118,6 +122,8 @@ def summarise(tool, args):
     if tool == 'set_reminder':   return f'Remind every {a.get("every", "1w")}: {_s(a.get("text", ""))}'
     if tool == 'watch_url':      return f'Watch {_s(a.get("url", ""), 100)} every {a.get("every", "1d")}'
     if tool == 'cancel_watch':   return f'Cancel watch {a.get("watch_id", "?")}'
+    if tool == 'watch_folder':   return f'Watch folder {_s(a.get("folder", ""), 80)}'
+    if tool == 'cancel_folder_watch': return f'Stop watching {a.get("watch_id", "?")}'
     if tool == 'cart_open':      return f'Shop at {_s(a.get("url", ""), 100)}'
     if tool == 'cart_find':      return f'Shop search: {_s(q)}'
     if tool == 'cart_add':       return f'Add to trolley: {a.get("qty", 1)} x {_s(a.get("item", ""))}'
@@ -623,6 +629,10 @@ RULES = (
                    '  derived from, `theory`.'),
     ('delegate_parallel', 'When two or more questions are independent and each would take several tool calls,\n'
                           '  send them together with `delegate_parallel` rather than working through them yourself.'),
+    ('watch_folder', '`watch_folder` is for work happening beside this conversation: another agent editing\n'
+                     '  the repo, a build writing output. Its `instructions` are the whole brief the reviewer\n'
+                     '  gets, so write them self-contained. Its reviews arrive on their own; `check_folders`\n'
+                     '  looks now.'),
     (None, 'Make the change the user asked for and no other. Do not reformat, reorganise, or\n'
            '  “improve” code you were not asked to touch, and never discard their edits.'),
     (None, 'Writes may be put to the user for approval. A refusal comes back with their reason --\n'
@@ -960,6 +970,10 @@ class Agent:
         self._subrec = None      # those tools recorded, for when sub-agents may write
         self._plain = []         # the unwrapped tools, which is what the briefing is written from
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
+        self._monitor_thread = None
+        # the folders something *else* is changing. Reviews run on the sub-agent model, read-only
+        self.monitors = Monitors(host, get_backend=lambda: self._be_or_none('subagent'),
+                                 get_tools=self._sub_plain)
         self.lock = threading.Lock()
 
 
@@ -1036,6 +1050,7 @@ class Agent:
                                         lambda: self.approvals.gate if self.approvals is not None else None)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
             b = self.budget
+            extra += monitor_tools(lambda: self.monitors, mx=b.tool_max)
             plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop,
                               get_spec=self.spec_or_none, on_media=self._drew)
             self._plain = plain
@@ -1299,6 +1314,21 @@ class Agent:
         self._poll_thread.name = 'ramabana-poll'
         return self._poll_thread
 
+    def poll_monitors(self):
+        "Look at every watched folder in a daemon thread. What it reviews reaches the turn after this one."
+        if not self.monitors.all(): return None
+        if self._monitor_thread is not None and self._monitor_thread.is_alive(): return self._monitor_thread
+
+        def run():
+            try: self.monitors.check()
+            except Exception as e:
+                try: self.host.note(f'could not check the watched folders: {agent_err(e)}')
+                except Exception: pass
+        from fastcore.parallel import startthread
+        self._monitor_thread = startthread(run, daemon=True)
+        self._monitor_thread.name = 'ramabana-monitor'
+        return self._monitor_thread
+
 
     def _prepare(self, prompt):
         "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
@@ -1316,6 +1346,8 @@ class Agent:
         for old in list(self.checkpoints)[:-MAX_CHECKPOINTS]: self.checkpoints.pop(old, None)
         self.registry.fire('before_turn', self, prompt)
         self.poll_watches()
+        reviews = self.monitors.drain()   # what a watched folder produced since the last turn
+        self.poll_monitors()              # and the next look, whose reviews the next turn carries
         outgoing = _with_notices(prompt) if self.instruction_style == 'aai' else prompt
         request = request_text(prompt)
         requested, loaded = prompt_directives(request, self.tools, self.skills)
@@ -1342,6 +1374,7 @@ class Agent:
             try: evidence = tool(query)
             except Exception as e: evidence = f'{name} failed: {agent_err(e)}'
             outgoing = _append(outgoing, f'\n\n<preflight-tool name="{name}">\n{evidence}\n</preflight-tool>')
+        if reviews: outgoing = _append(outgoing, review_notice(reviews))
         for skill in loaded:
             outgoing = _append(outgoing, f'\n\n<requested-skill name="{skill.name}">\n{skill.text()}\n</requested-skill>')
         b = self._be('turn')

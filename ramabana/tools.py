@@ -2014,7 +2014,10 @@ def sub_briefing(writes=False):
 
 
 # A sub-agent does not spawn sub-agents: recursion here is a fan-out tree whose width nobody chose.
-NO_SUB = frozenset({'delegate_search', 'delegate_parallel'})
+# Nor does it open standing work: a folder watch outlives the task that opened it, and nobody
+# asked for the reviews it would keep producing after the delegation is forgotten.
+NO_SUB = frozenset({'delegate_search', 'delegate_parallel',
+                    'watch_folder', 'cancel_folder_watch', 'check_folders'})
 
 # %% ../nbs/02_tools.ipynb #8ca3589d
 def read_only(tools, max_calls=None, writes=False):
