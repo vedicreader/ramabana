@@ -4,6 +4,7 @@
 
 ## Modules
 
+- [ramabana.acp](https://vedicreader.github.io/ramabana/acp.html.md): Ramabana as an [Agent Client Protocol](https://agentclientprotocol.com/) agent: an editor drives this host, with its own files and its own terminal.
 - [ramabana.coding_patterns](https://vedicreader.github.io/ramabana/coding_patterns.html.md): Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
 - [ramabana.mcp](https://vedicreader.github.io/ramabana/mcp.html.md): Ramabana's tools, and Ramabana's whole agent, as an MCP server.
 - [ramabana.monitor](https://vedicreader.github.io/ramabana/monitor.html.md): A folder somebody else is changing, looked at between turns, and the standing review that fires when it moves.
