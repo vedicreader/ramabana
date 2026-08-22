@@ -4,6 +4,7 @@ Modules:
 
 - `ramabana.coding_patterns`: Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
 - `ramabana.mcp`: Ramabana's tools, and Ramabana's whole agent, as an MCP server.
+- `ramabana.monitor`: A folder somebody else is changing, looked at between turns, and the standing review that fires when it moves.
 - `ramabana.shop`: A trolley the agent can fill: `fossick.shop` behind a small interface, and the weekly grocery run it was written for.
 - `ramabana.theory`: Naur's programming-as-theory-building, in the sense this team uses the word.
 - `ramabana.vault`: Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing watches that put things back on the agent's desk.
