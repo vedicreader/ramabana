@@ -1390,10 +1390,17 @@ def file_tools(host, mx=MAX_TOOL_CHARS):
         Always read this way before editing: `edit_file` addresses lines by the exact
         hashes this returns. The view is also the address book.
         """
-        from exhash import lnhashview_file
+        from exhash import lnhashview, lnhashview_file
         p = readable(host, path)
-        if not p.exists(): return err(f'no such file: {p}')
-        view = str(lnhashview_file(str(p), start or None, end or None))
+        # through the host, so a host answering from somewhere other than disk -- an editor
+        # holding an unsaved buffer -- is seen as itself rather than as a stale copy. The
+        # hashes are the same either way: both views hash `line_hash(lineno, line)` over the
+        # same lines. `replace_text` and `create_file` go through the host too; `edit_file`
+        # verifies against the file, so against such a host it refuses rather than misfires
+        text = host.read(str(p))
+        if text is None and not p.exists(): return err(f'no such file: {p}')
+        view = str(lnhashview(text, start or None, end or None) if text is not None
+                   else lnhashview_file(str(p), start or None, end or None))
         return clip_lines(view.splitlines(), start=(start or 1), n=mx,
                           more='call view_file(path, start={next}) to continue')
 

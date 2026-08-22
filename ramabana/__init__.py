@@ -2,6 +2,7 @@
 
 Modules:
 
+- `ramabana.acp`: Ramabana as an [Agent Client Protocol](https://agentclientprotocol.com/) agent: an editor drives this host, with its own files and its own terminal.
 - `ramabana.coding_patterns`: Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
 - `ramabana.mcp`: Ramabana's tools, and Ramabana's whole agent, as an MCP server.
 - `ramabana.shop`: A trolley the agent can fill: `fossick.shop` behind a small interface, and the weekly grocery run it was written for.
