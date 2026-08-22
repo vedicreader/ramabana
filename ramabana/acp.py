@@ -73,11 +73,6 @@ class EditorHost(LocalHost):
         self.can_run = bool(terminal)
         return self
 
-    @property
-    def capabilities(self):
-        c = super().capabilities
-        return {**c, 'editor': bool(self.editor)}
-
     def _ok(self, what): return self.editor is not None and getattr(self, f'can_{what}')
 
     def read(self, path):
@@ -97,28 +92,33 @@ class EditorHost(LocalHost):
         return super().text_at(path) if got is None else got
 
     def write(self, path, text):
+        # no fallback here, unlike `read`. A read that the editor cannot serve costs nothing to
+        # answer from disk; a write it *refused* must be reported, not routed around behind it
         if not self._ok('write'): return super().write(path, text)
         e, p = self.editor, self.check(path)
-        try:
-            e.call(e.conn.write_text_file(session_id=e.sid, path=str(p), content=str(text)))
-            return str(p)
-        except Exception: return super().write(path, text)
+        e.call(e.conn.write_text_file(session_id=e.sid, path=str(p), content=str(text)))
+        return str(p)
 
     def run_cmd(self, command, cwd=None, timeout=120):
         cmd = str(command or '').strip()
         # `tools_for` asks "can you run commands?" with an empty one, and must not spawn anything
         if not cmd: return 0, ''
         if not self._ok('run'): return super().run_cmd(command, cwd=cwd, timeout=timeout)
-        try: return self._in_editor(cmd, cwd, timeout)
-        except Exception: return super().run_cmd(command, cwd=cwd, timeout=timeout)
+        opened = []
+        try: return self._in_editor(cmd, cwd, timeout, opened)
+        except Exception as e:
+            # falling back once the terminal exists would run the command a second time
+            if opened: return 1, f'the editor terminal failed after starting the command ({e!r})'
+            return super().run_cmd(command, cwd=cwd, timeout=timeout)
 
-    def _in_editor(self, cmd, cwd, timeout):
+    def _in_editor(self, cmd, cwd, timeout, opened):
         "Run it in the editor's terminal, so the person watches it live and keeps the scrollback."
         e, c = self.editor, self.editor.conn
         where = str(self.check(cwd)) if cwd else str(self.roots[0])
         # a shell, not the bare string: `run_cmd` promises pipes and redirects work
         t = e.call(c.create_terminal(session_id=e.sid, command=SHELL, args=['-c', cmd], cwd=where))
         tid = t.terminal_id
+        opened.append(tid)
         try:
             if e.on_terminal: e.on_terminal(tid)
             done = e.call(c.wait_for_terminal_exit(session_id=e.sid, terminal_id=tid), timeout + 30)

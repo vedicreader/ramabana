@@ -278,3 +278,50 @@ def test_a_terminal_is_released_when_the_command_is_done(tmp_path):
     ed = Terminals()
     run(drive(tmp_path, ed, script='shell'))
     assert ed.released == ['term-1']
+
+
+class Refuses(Buffers):
+    "An editor that will not take a write, the way one holding a read-only file would not."
+    async def write_text_file(self, session_id, path, content, **kw):
+        raise acp.RequestError.invalid_params({'details': 'this file is read-only here'})
+
+
+class BrokenTerminal(Terminals):
+    "An editor whose terminal starts the command and then stops answering about it."
+    async def wait_for_terminal_exit(self, session_id, terminal_id, **kw):
+        raise acp.RequestError.internal_error({'details': 'the terminal went away'})
+
+
+def test_a_write_the_editor_refuses_is_reported_rather_than_written_to_disk(tmp_path):
+    "Falling back here would route around the refusal, which is the whole thing being prevented."
+    ed = Refuses(buffers={'a.py': 'import b\n'})
+    run(drive(tmp_path, ed))
+    assert not (tmp_path/'b.py').exists(), 'the refusal was routed around and disk was written'
+    assert 'write failed' in details(ed.updates)
+
+
+def test_a_terminal_that_dies_after_starting_the_command_does_not_run_it_again(tmp_path):
+    "The command already ran once in the editor. Falling back locally would run it twice."
+    ed = BrokenTerminal()
+    _, _, res = run(drive(tmp_path, ed, script='marker'))
+    assert res.stop_reason == 'end_turn'
+    assert ed.ran, 'the editor was never asked to open a terminal'
+    assert not (tmp_path/'marker.txt').exists(), 'the command was run a second time locally'
+    assert 'terminal failed after starting' in details(ed.updates)
+
+
+def test_the_command_still_falls_back_when_the_terminal_never_opened(tmp_path):
+    "Nothing ran yet, so running it locally is right rather than a repeat."
+    class NoTerminal(Terminals):
+        async def create_terminal(self, session_id, command, args=None, env=None, cwd=None,
+                                  output_byte_limit=None, **kw):
+            raise acp.RequestError.internal_error({'details': 'no terminals here'})
+    ed = NoTerminal()
+    run(drive(tmp_path, ed, script='marker'))
+    assert (tmp_path/'marker.txt').exists(), 'the command was neither run in the editor nor locally'
+
+
+def test_capabilities_stays_the_tool_group_namespace_it_is_documented_to_be(tmp_path):
+    "`Host.capabilities` is `{tool group: bool}`, and an editor is not a tool group."
+    h = EditorHost([str(tmp_path)])
+    assert set(h.capabilities) <= {'notebook', 'web', 'memory', 'watch', 'session', 'shell'}
