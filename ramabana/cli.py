@@ -721,6 +721,8 @@ class Ui:
         self.ask = None            # the `Ask` waiting on an answer, or None
         self.turn = None           # the running turn's task, or None
         self._queued = None        # a line typed during a turn, waiting for it to end
+        self._queued_echo = []     # what a queued line printed, held for when it runs
+        self._echoed = []          # (block, body, kind, kw) for the line just typed
         self.acts = {}             # act id -> its block, for calls that have one of their own
         self.by_id = {}            # act id -> the `Act`, while it may still need redrawing
         self.kids = {}             # delegate act id -> the calls its sub-agent has made
@@ -1027,18 +1029,36 @@ class Ui:
         if not act.done: return FOLD_RUNNING and act.id not in self.kids
         return act.ok                          
 
+    def _echo(self, body, kind='user', **kw):
+        "Print what was typed, and keep it retractable until the turn it belongs to starts."
+        blk = self.say(body, kind, **kw)
+        self._echoed.append((blk, body, kind, kw))
+        return blk
+
+    def _retract(self):
+        "Take the typed entry back off the screen: the turn it belongs to has not started."
+        held, self._echoed = self._echoed, []
+        for blk, *_ in held: self.comp.remove_block(blk)
+        return held
+
+    def _replay(self, held):
+        "Print a retracted entry again, where the turn it belongs to actually starts."
+        for _, body, kind, kw in held: self._echo(body, kind, **kw)
+
     def start_turn(self, coro):
         "Spawn a turn, or hold it until the running one ends. Says whether it started now."
         if self._turn_over(): self.turn = None
         if self.turn is not None:
             if self._queued is not None:
                 coro.close()
+                self._retract()   # it will never run, so the transcript must not claim it did
                 self.note('something is already waiting · ctrl+c clears it and stops this turn')
                 return False
-            self._queued = coro
+            self._queued, self._queued_echo = coro, self._retract()
             self.note('queued · it runs when this turn ends · ctrl+c stops and clears it')
             return False
         self.turn = self.comp.spawn(coro, name='turn')
+        self._echoed = []   # it is running: the entry stands
         self.turn.add_done_callback(lambda _t: self._next_queued())
         return True
 
@@ -1052,17 +1072,19 @@ class Ui:
         if self._turn_over(): self.turn = None
         # another turn already has the surface; its own ending drains this
         if self.turn is not None: return
-        held, self._queued = self._queued, None
+        held, echo, self._queued, self._queued_echo = self._queued, self._queued_echo, None, []
+        self._replay(echo)   # the entry belongs where the turn starts, not where it was typed
         try: self.start_turn(held)
         except Exception as e:
-            self._queued = held
+            self._queued, self._queued_echo = held, self._retract()
             self.note(f'the waiting message did not start: {agent_err(e)}', 'error')
         self.paint()
 
     def drop_queued(self):
         "Forget a waiting line. Ctrl-C means stop what is happening, and it was part of that."
         if self._queued is None: return False
-        self._queued.close(); self._queued = None
+        # its entry left the screen when it was queued: nothing to un-draw, only to forget
+        self._queued.close(); self._queued, self._queued_echo = None, []
         self.note('the waiting message was cleared')
         return True
 
@@ -1256,6 +1278,7 @@ class Ui:
         """
         src, line = self.buf.text, self.buf.text.strip()
         self.complete, self.desc = None, []
+        self._echoed = []   # this keystroke's echo, retractable until its turn starts
         self.buf.clear()
         if not line: return None
         if line in ('/agent_proxy', '/agent-proxy'): return self.enable_agent_proxy()
@@ -1272,12 +1295,12 @@ class Ui:
         if self.mode == 'python' and not line.startswith('/'):
             from ramabana.pyrepl import hl
             # the raw buffer, not the stripped line. An indented paste keeps its first row
-            self.say(hl(src), 'user', source=src)
+            self._echo(hl(src), 'user', source=src)
             return self.run_code(src)
         if not line.startswith('/') and (opts := options_for(line)) is not None:
             self.menu_prompt, self.menu = line, ChoiceMenu(*opts)
             return None
-        self.say(Text(line), 'user', pad=True)   # one blank row: a session reads as turns
+        self._echo(Text(line), 'user', pad=True)   # one blank row: a session reads as turns
         if line in ('/quit', '/exit', '/q'): return 'quit'
         if line == '/kernels':
             from ramabana.pyrepl import sessions
@@ -1338,11 +1361,12 @@ class Ui:
             done, choice = self.menu.choose(k.name)
             if not done: return self.paint()
             prompt, self.menu_prompt, self.menu = self.menu_prompt, '', None
+            self._echoed = []
             if choice is None or choice.suffix is None:
                 self.buf.text, self.buf.cursor = prompt, len(prompt)
                 return self.paint()
-            self.say(Text(prompt), 'user')
-            self.say(Text(f'{choice.label} -- {choice.note}'), 'note')
+            self._echo(Text(prompt), 'user')
+            self._echo(Text(f'{choice.label} -- {choice.note}'), 'note')
             self.paint()
             return run_turn(self, prompt + choice.suffix)
         if self.complete is not None and k.name in ('tab', 'shift+tab', 'up', 'down'):

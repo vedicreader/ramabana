@@ -947,7 +947,8 @@ class Agent:
         self._load_history()
         self._load_plan()
         self.before = {}         # path -> its text just before a write tool touched it, this turn
-        self._walked = False     # whether the whole tree was snapshotted for a shell command
+        self._walked = False     # whether a tree baseline is held for the running command
+        self._tree = {}          # that baseline: path -> its text when the command started
         self._tool_calls_turn = 0 # backend-independent guard for local/native tool loops
         self.max_tool_calls = 80
         self.use = Usage()       # this session's total, across every model it routed to
@@ -992,12 +993,8 @@ class Agent:
 
     def _sub_plain(self):
         "The tool list a sub-agent gets, sized to the model sub-agents run on."
-        # a writing sub-agent gets the recorded wrappers. Its edits then reach `calls`, `Activity`
-        # and the before-images `changes()` reads. A reading one cannot change anything
         b = self.subagent_budget
         if b == self.budget:
-            # `_plain` is written as a side effect of building `tools`, so ask for that first --
-            # read it cold and a sub-agent is handed an empty list
             built = self.tools
             return built if self.subagent_writes else self._plain
         if self._subtools is None:
@@ -1094,6 +1091,7 @@ class Agent:
                 elif name == 'run_shell': self.snapshot_tree()
             nested = name in DELEGATE_TOOLS   # every call its sub-agent makes hangs off this one
             if nested: self._delegating.append(act.id)
+            shelled = name == 'run_shell' and self._walked
             try: out = f(*a, **kw)
             except NotImplementedError as e:   # a raise ends the turn. A readable failure does not
                 self.activity.finish(act, agent_err(e), ok=False)
@@ -1103,6 +1101,7 @@ class Agent:
                 raise
             finally:
                 if nested: self._delegating.pop()
+                if shelled: self.settle_tree()
             self.activity.finish(act, out, ok=not failed(out))   # one spelling of failure, in one place
             self.registry.fire('after_tool', self, name, out)
             return out
@@ -1122,7 +1121,7 @@ class Agent:
                 'parent_action_id': self._delegating[-1] if self._delegating else ''}
 
     def snapshot_tree(self):
-        "Read the open folders once per turn. `changes()` can tell what a shell command moved."
+        "Read the open folders, so `settle_tree` can tell what the command about to run moved."
         if self._walked: return True
         try: paths = [str(p) for p in self.host.walk()]
         except Exception as e:
@@ -1137,9 +1136,23 @@ class Agent:
                                f'{SHELL_SNAPSHOT // 1_000_000}MB of text')
                 return False
             tree[p] = text
-        for p, text in tree.items(): self.before.setdefault(p, text)
-        self._walked = True
+        self._tree, self._walked = tree, True
         return True
+
+    def settle_tree(self):
+        "Decide what the command moved the moment it finishes, not when the turn does."
+        # The baseline is dropped, not carried: what happens while the model thinks between two
+        # commands is neither one's doing, and `changes()` is what undo is built from.
+        if not self._walked: return
+        tree, self._tree, self._walked = self._tree, {}, False
+        for p, was in tree.items():
+            now = self.host.text_at(p)
+            if now is not None and now != was: self.before.setdefault(p, was)
+        try: paths = [str(p) for p in self.host.walk()]     # a command also makes files, which
+        except Exception: paths = []                        # no earlier snapshot can hold
+        for p in paths:
+            if p in tree or p in self.before: continue
+            if self.host.text_at(p): self.before.setdefault(p, '')
 
     def changes(self):
         "`{path: (before, after)}` for every file this turn's write tools actually moved."
@@ -1147,13 +1160,6 @@ class Agent:
         for p, was in self.before.items():
             now = self.host.text_at(p)
             if now is not None and now != was: out[p] = (was, now)
-        if self._walked:
-            # a command can also make files, which no earlier snapshot can hold
-            try: paths = [str(p) for p in self.host.walk()]
-            except Exception: paths = []
-            for p in paths:
-                if p in self.before: continue
-                if (now := self.host.text_at(p)): out[p] = ('', now)
         return out
 
 
@@ -1298,7 +1304,7 @@ class Agent:
         "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
         self.before.clear()                    # `changes()` reports this turn, not the session
         self._drawn = []                       # pictures this turn's tools wrote, for the frontend
-        self._walked = False
+        self._walked, self._tree = False, {}
         self.turn_use = Usage()                # a failed turn cannot inherit the previous turn's cost
         self._tool_calls_turn = 0               # applies even when a native engine owns the loop
         self.turn_seq += 1

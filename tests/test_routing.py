@@ -307,3 +307,131 @@ def test_occupancy_comes_from_the_session_rather_than_a_local_estimate():
     import ramabana.runtime as R
     assert 'stateful' not in inspect.getsource(R.Backend.start), 'ramabana does not override it'
 
+class _Engine:
+    "An engine that built the cache it could, which may not be the one it was asked for."
+    def __init__(self, got): self.got = got
+    def n_ctx(self): return self.got
+
+class _Chat:
+    def __init__(self, got, ctx_limit=None): self.engine, self.ctx_limit = _Engine(got), ctx_limit
+    def close(self): pass
+
+def _started(spec, got, **kw):
+    "A backend whose engine reports `got`, without loading anything."
+    from ramabana.runtime import use_chat
+    seen = {}
+    def mk(model_id, **kwargs): seen.update(kwargs); return _Chat(got, kwargs.get('ctx_limit'))
+    be = RishiBackend(spec, **kw)
+    with use_chat(mk): be.start()
+    return be, seen
+
+def test_a_local_engine_is_believed_about_its_own_window():
+    """`spec.ctx` is a table. A local engine that could not build the cache that big says so only
+    after loading, and the agent packed and compacted against four times what the model held --
+    every turn past it dying mid-tool or coming back hallucinated."""
+    spec = ModelSpec('gguf-thing', 'llama', 'someone/Thing-GGUF', 32_768)
+    be, _ = _started(spec, 8192)
+    assert be.spec.ctx == 8192, 'the engine, not the table'
+    assert be.chat.ctx_limit == 8192, 'and rishi is told the same, so its own truncation agrees'
+
+def test_an_engine_that_gave_what_was_asked_is_left_alone():
+    spec = ModelSpec('gguf-thing', 'llama', 'someone/Thing-GGUF', 32_768)
+    be, _ = _started(spec, 32_768)
+    assert be.spec.ctx == 32_768
+
+def test_a_wider_engine_does_not_widen_the_window_behind_the_agent():
+    "Only downwards. A window the agent did not ask for is one nothing has budgeted for."
+    spec = ModelSpec('gguf-thing', 'llama', 'someone/Thing-GGUF', 32_768)
+    be, _ = _started(spec, 262_144)
+    assert be.spec.ctx == 32_768
+
+def test_an_engine_with_nothing_to_say_about_its_window_is_not_an_error():
+    "Hosted runtimes have no engine at all, and a local one may predate `n_ctx`."
+    spec = ModelSpec('cloud-thing', 'remote', 'openai/gpt-4.1', 128_000)
+    from ramabana.runtime import use_chat
+    class Bare:
+        ctx_limit = None
+        def close(self): pass
+    be = RishiBackend(spec)
+    with use_chat(lambda model_id, **kw: Bare()): be.start()
+    assert be.spec.ctx == 128_000
+
+def test_a_gguf_engine_is_asked_for_the_window_the_spec_promises():
+    """llama.cpp builds its KV cache at load and defaults to 8192 whatever the model was trained
+    for, so the engine held a quarter of what `ctx_limit` advertised."""
+    spec = ModelSpec('gguf-thing', 'llama', 'someone/Thing-GGUF', 32_768)
+    _, seen = _started(spec, 32_768)
+    assert seen['n_ctx'] == 32_768 and seen['ctx_limit'] == 32_768
+
+def test_a_gguf_window_the_caller_chose_is_left_alone():
+    spec = ModelSpec('gguf-thing', 'llama', 'someone/Thing-GGUF', 32_768)
+    _, seen = _started(spec, 4096, n_ctx=4096)
+    assert seen['n_ctx'] == 4096
+
+def test_only_the_gguf_runtime_is_given_n_ctx():
+    "MLX reads the window from the model's own config, and a hosted runtime has none to build."
+    for runtime, mid in (('mlx', 'mlx-community/Thing-4bit'), ('remote', 'openai/gpt-4.1')):
+        _, seen = _started(ModelSpec('x', runtime, mid, 32_768), 32_768)
+        assert 'n_ctx' not in seen, runtime
+
+def _measured(spec, real, monkeypatch, **kw):
+    "The window a backend settles on, given a model config that reports `real`."
+    monkeypatch.setattr('ramabana.runtime.local_window', lambda runtime, mid: real)
+    be, seen = _started(spec, spec.ctx, **kw)
+    return be.spec.ctx, seen
+
+def test_a_model_trained_smaller_than_the_table_is_not_filled_to_the_table(monkeypatch):
+    """`_LOCAL_CTX` is hand-kept and everything missing from it took the default. Packed to a window
+    the model never had, a turn either died mid-tool or came back hallucinated."""
+    spec = ModelSpec('small', 'mlx', 'mlx-community/Small-4bit', 32_768)
+    ctx, _ = _measured(spec, 8192, monkeypatch)
+    assert ctx == 8192, 'the model config, not the table'
+
+def test_a_model_trained_wider_than_the_table_is_still_capped(monkeypatch):
+    """A config is the model's maximum, not a suggestion. Ornith-9B declares 262144, and an agent
+    that budgets that much fills a KV cache until the machine gives out."""
+    spec = ModelSpec('ornith-9b', 'mlx', 'mlx-community/Ornith-1.0-9B-8bit', 32_768)
+    ctx, _ = _measured(spec, 262_144, monkeypatch)
+    assert ctx == 32_768, 'the table caps how much of a local model is worth filling'
+
+def test_a_model_config_that_says_nothing_leaves_the_table_alone(monkeypatch):
+    spec = ModelSpec('quiet', 'mlx', 'mlx-community/Quiet-4bit', 32_768)
+    ctx, _ = _measured(spec, 0, monkeypatch)
+    assert ctx == 32_768
+
+def test_a_hosted_model_is_never_measured(monkeypatch):
+    "There is no config to read and no engine to build; the window is the provider's own number."
+    called = []
+    monkeypatch.setattr('ramabana.runtime.local_window', lambda runtime, mid: called.append(mid) or 8192)
+    _started(ModelSpec('cloud', 'remote', 'openai/gpt-4.1', 128_000), 128_000)
+    assert not called
+
+def test_the_engine_is_asked_for_the_window_the_model_config_settled_on(monkeypatch):
+    "Measured first, so llama.cpp builds the cache for what the model has rather than for a guess."
+    spec = ModelSpec('gguf', 'llama', 'someone/Thing-GGUF', 32_768)
+    ctx, seen = _measured(spec, 8192, monkeypatch)
+    assert ctx == 8192 and seen['n_ctx'] == 8192
+
+def test_an_ollama_model_resolves_to_the_ollama_runtime(monkeypatch):
+    """`ollama/` fell through every branch and came back as `remote`, so a local daemon model was
+    dialled as a hosted API and failed on a missing key rather than saying it was not wired."""
+    monkeypatch.setattr(core, 'runtime_available', lambda r: True)
+    s = resolve('ollama/ornith-1.5:9b')
+    assert (s.runtime, s.model_id) == ('ollama', 'ornith-1.5:9b')
+    assert s.local, 'it runs on this machine, so it is not a hosted spend'
+
+def test_ollama_is_a_runtime_ramabana_knows_about():
+    assert 'ollama' in core.RUNTIMES and 'ollama' not in core.HOSTED
+
+def test_an_ollama_runtime_that_cannot_be_reached_says_so(monkeypatch):
+    monkeypatch.setattr(core, 'runtime_available', lambda r: r != 'ollama')
+    with pytest.raises(RuntimeError, match='ollama runtime is unavailable'):
+        resolve('ollama/ornith-1.5:9b')
+
+def test_the_ollama_daemon_is_asked_for_the_window_it_holds(monkeypatch):
+    "`num_ctx` defaults to 4096 whatever the model holds, the same trap llama.cpp sets with `n_ctx`."
+    monkeypatch.setattr('ramabana.runtime.local_window', lambda runtime, mid: 262_144)
+    spec = ModelSpec('ornith', 'ollama', 'ornith-1.5:9b', 32_768)
+    ctx, seen = _measured(spec, 32_768, monkeypatch)
+    assert ctx == 32_768, 'capped, since a daemon will happily hold a window nothing budgeted for'
+    assert seen['n_ctx'] == 32_768, 'and the daemon is told, rather than left on its 4096 default'

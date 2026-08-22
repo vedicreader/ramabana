@@ -19,7 +19,7 @@ import contextvars, copy, os, re, sys, threading, time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fastcore.basics import patch
-from .core import agent_err, env, force_tags, tool_channel
+from .core import agent_err, env, force_tags, local_ctx, local_window, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # tail kept per call. An engine that logs a lot must not eat memory
@@ -851,6 +851,7 @@ class RishiBackend(Backend):
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
+        if self.spec.runtime in ('llama','ollama'): kw.setdefault('n_ctx',self.spec.ctx)
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
             if 'backend' not in eng and 'backend' not in kw and (backend := env('LITERT_BACKEND')):
@@ -862,11 +863,26 @@ class RishiBackend(Backend):
             kw['eng_kw']=eng
             if conv := dict(kw.pop('conv_kw',{}) or {}): kw['conv_kw']=conv   # rishi constrains a tool call itself
         return kw
+    def _measure(self):
+        "Narrow the window to what the model was trained for, capped by what is worth filling."
+        if not self.spec.local: return
+        if real := local_window(self.spec.runtime,self.spec.model_id):
+            from dataclasses import replace
+            self.spec=replace(self.spec,ctx=min(real,local_ctx(self.spec.name)))
     def _start(self):
         from rishi import Chat
-        return (_MK_CHAT or Chat)(self.spec.model_id,runtime=self.spec.runtime,sp=self.sp,tools=self.tools,
-                    approve=self.approve,tool_max_len=self.tool_max_len,max_steps=self.max_steps,
-                    ctx_limit=self.spec.ctx,**self._runtime_kw())
+        self._measure()
+        return self._fitted((_MK_CHAT or Chat)(self.spec.model_id,runtime=self.spec.runtime,sp=self.sp,
+                    tools=self.tools,approve=self.approve,tool_max_len=self.tool_max_len,
+                    max_steps=self.max_steps,ctx_limit=self.spec.ctx,**self._runtime_kw()))
+    def _fitted(self,chat):
+        "Take the window from the engine, which is the only thing that knows it."
+        try: real=int(chat.engine.n_ctx())
+        except Exception: return chat
+        if real and real<self.spec.ctx:
+            from dataclasses import replace
+            self.spec=replace(self.spec,ctx=real); chat.ctx_limit=real
+        return chat
     def spawn(self,sp='',tools=(),**kw):
         if self.start() is None:raise RuntimeError(self.note)
         shared={'engine':self.chat.engine} if self.spec.local and hasattr(self.chat,'engine') else {}

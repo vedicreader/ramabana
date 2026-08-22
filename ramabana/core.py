@@ -11,9 +11,9 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX',
            'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
            'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'AgentError', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env',
            'claude_ctx', 'runtime_remedy', 'runtime_available', 'auth_status', 'copilot_catalog', 'available_models',
-           'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget',
-           'budget_for', 'register_model', 'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel',
-           'Routing']
+           'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps', 'accepts', 'model_note',
+           'Budget', 'budget_for', 'register_model', 'unregister_model', 'force_tags', 'forget_forced_tags',
+           'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
@@ -81,7 +81,7 @@ def claude_ctx(model_id):
     "What a Claude Code model holds, or `DFLT_AGENT_CTX` when its window is not known here."
     mid = str(model_id or '')
     return next((c for p, c in CLAUDE_CTX.items() if mid.startswith(p)), DFLT_AGENT_CTX)
-RUNTIMES = ('litert', 'mlx', 'llama', 'claude', 'copilot', 'remote')
+RUNTIMES = ('litert', 'mlx', 'llama', 'ollama', 'claude', 'copilot', 'remote')
 AGENTS = ('claude',)
 HOSTED = ('remote', 'copilot', *AGENTS)
 COPILOT_UNAVAILABLE = ('copilot runtime is unavailable; sign in to Copilot in an editor or run '
@@ -116,11 +116,21 @@ def runtime_remedy(runtime):
     "One sentence saying what to do about a runtime that cannot be reached here."
     return RUNTIME_REMEDY.get(runtime, f'install the backend with `pip install rishi[{runtime}]`')
 
+@functools.lru_cache(maxsize=1)
+def _ollama_available():
+    "Whether ollama can serve here: the daemon is answering, or its binary is on hand."
+    try:
+        from rishi.ollama import OllamaClient, ollama_bin
+        try: return bool(OllamaClient().models() is not None)
+        except Exception: return bool(ollama_bin())
+    except Exception: return False
+
 def runtime_available(runtime):
     "Whether Rishi's optional dependency for `runtime` can be reached. Never raises."
     if runtime == 'remote': return True
     if runtime == 'claude': return _claude_available()
     if runtime == 'copilot': return _copilot_available()
+    if runtime == 'ollama': return _ollama_available()
     try: return importlib.util.find_spec(_RUNTIME_DEPS[runtime]) is not None
     except (ImportError, KeyError, ValueError): return False
 
@@ -203,6 +213,13 @@ def available_models(include_legacy=False):
         if not runtime_available(runtime): continue
         rows += [{'value': name, 'label': name, 'provider': runtime,
                   'source': f'on device via Rishi {runtime}'} for name in models]
+    if runtime_available('ollama'):
+        try:
+            from rishi.ollama import OllamaClient
+            for m in OllamaClient().models():          # names, not rows
+                rows.append({'value': f'ollama/{m}', 'label': m, 'provider': 'ollama',
+                             'source': 'on device via the ollama daemon'})
+        except Exception: pass
     if runtime_available('claude'):
         rows += [{'value': name, 'label': mid, 'provider': 'claude',
                   'source': 'Claude Code (CLI or SDK)'} for name, mid in CLAUDE.items()]
@@ -255,8 +272,27 @@ _LOCAL_CTX = {'gemma-e2b': 16_384, 'gemma-e4b': 16_384, 'gemma-12b': 32_000,
 DFLT_LOCAL_CTX = 32_768
 
 
+@functools.lru_cache(maxsize=64)
+def local_window(runtime, model_id):
+    "What a local model was trained for, from its own config. 0 when it will not say."
+    try:
+        if runtime == 'ollama':
+            from rishi.ollama import OllamaClient
+            info = OllamaClient().show(model_id).get('model_info') or {}
+            return int(next((v for k, v in info.items() if k.endswith('.context_length')), 0) or 0)
+        if runtime == 'mlx':
+            from rishi.mlx import ctx_len, read_config
+            return int(ctx_len(read_config(model_id), 0) or 0)
+        if runtime == 'llama':
+            from llama_cpp import Llama
+            from rishi.llama import _get_model
+            meta = Llama(_get_model(model_id), vocab_only=True, verbose=False).metadata
+            return int(meta.get(f"{meta.get('general.architecture')}.context_length") or 0)
+    except Exception: pass
+    return 0
+
 def local_ctx(name, dflt=DFLT_LOCAL_CTX):
-    "The context window for a local model: `$LEELA_LOCAL_CTX` if it says, else the table."
+    "How much of a local model to use: `$LEELA_LOCAL_CTX` if it says, else the table."
     if (ovr := (env('LOCAL_CTX') or '').strip()):
         if ovr.isdigit(): return int(ovr)
         for part in ovr.split(','):
@@ -340,11 +376,16 @@ def resolve(name, default_local=DFLT_LOCAL):
             if not runtime_available('copilot'): raise RuntimeError(COPILOT_UNAVAILABLE)
             ctx, note = _copilot_ctx(model_id)
             return ModelSpec(name, 'copilot', model_id, ctx, note)
-        if runtime in ('litert', 'mlx', 'llama', *AGENTS):
+        if runtime in ('litert', 'mlx', 'llama', 'ollama', *AGENTS):
             if not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
             ctx = claude_ctx(model_id) if runtime == 'claude' else \
                   DFLT_AGENT_CTX if runtime in AGENTS else local_ctx(name)
             return ModelSpec(name, runtime, model_id, ctx)
+        from rishi.core import infer_runtime
+        if (inferred := infer_runtime(name)) in ('litert', 'mlx', 'llama'):
+            if not runtime_available(inferred):
+                raise RuntimeError(f'{inferred} runtime is unavailable; {runtime_remedy(inferred)}')
+            return ModelSpec(name, inferred, name, local_ctx(name))
         ctx, note = _cloud_ctx(name)
         return ModelSpec(name, 'remote', name, ctx, note)
     raise KeyError(unknown_model(name))

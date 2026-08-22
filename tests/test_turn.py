@@ -90,6 +90,76 @@ def test_changes_report_the_file_not_the_claim():
     assert a.changes() == {'/proj/a.py': ('x = 1\n', 'x = 2\n')}
 
 
+def test_a_command_is_credited_only_with_what_changed_while_it_ran():
+    """The snapshot covers every open folder and the turn thinks on long after the command returns.
+    Deciding at the end of it credited the turn with whatever anyone else wrote meanwhile -- an
+    editor, a rebase, an agent in a second open repository -- and `changes()` is what the undo
+    transaction and the host's journal are built from."""
+    host = MemHost({'/proj/a.py': 'a = 1\n', '/proj/elsewhere.py': 'e = 1\n'})
+    a, _ = fake_agent(host)
+    a.before.clear()
+    a.snapshot_tree()
+    host.files['/proj/a.py'] = 'a = 2\n'                 # the command's own work
+    a.settle_tree()
+    host.files['/proj/elsewhere.py'] = 'e = 2\n'         # somebody else, after it finished
+    assert a.changes() == {'/proj/a.py': ('a = 1\n', 'a = 2\n')}
+    assert '/proj/elsewhere.py' not in a.before, 'an untouched file is not carried to the end of the turn'
+
+def test_a_file_a_command_created_is_still_reported():
+    "No earlier snapshot can hold it, so the settle has to look for it."
+    host = MemHost({'/proj/a.py': 'a = 1\n'})
+    a, _ = fake_agent(host)
+    a.before.clear()
+    a.snapshot_tree()
+    host.files['/proj/made.py'] = 'made = 1\n'
+    a.settle_tree()
+    assert a.changes() == {'/proj/made.py': ('', 'made = 1\n')}
+
+def test_each_command_is_measured_against_the_one_before_it():
+    "A second command reused the first one's baseline, so what happened between them was its work."
+    host = MemHost({'/proj/a.py': 'a = 1\n', '/proj/b.py': 'b = 1\n'})
+    a, _ = fake_agent(host)
+    a.before.clear()
+    a.snapshot_tree(); host.files['/proj/a.py'] = 'a = 2\n'; a.settle_tree()
+    host.files['/proj/b.py'] = 'b = 2\n'                 # between the two commands: nobody's tool
+    a.snapshot_tree(); a.settle_tree()                    # a second command that changed nothing
+    assert set(a.changes()) == {'/proj/a.py'}, 'what happened between them belongs to neither'
+
+def test_the_real_shell_tool_snapshots_and_settles_around_itself():
+    "End to end through the wrapped tool: nothing has to call the two halves by hand."
+    host = MemHost({'/proj/a.py': 'a = 1\n', '/proj/elsewhere.py': 'e = 1\n'})
+    a, _ = fake_agent(host)
+    a.before.clear()
+    shell = next(t for t in a.tools if t.__name__ == 'run_shell')
+    def ran(command, cwd=None, timeout=120):
+        host.files['/proj/a.py'] = 'a = 2\n'
+        return 0, 'done'
+    host.run_cmd = ran
+    shell('touch a.py')
+    host.files['/proj/elsewhere.py'] = 'e = 2\n'         # after the command, before the turn ends
+    assert a.changes() == {'/proj/a.py': ('a = 1\n', 'a = 2\n')}
+
+def test_a_shell_tool_settles_its_snapshot_even_when_it_raises():
+    "A command that blew up still ran, and what it did before blowing up is still its doing."
+    host = MemHost({'/proj/a.py': 'a = 1\n', '/proj/elsewhere.py': 'e = 1\n'})
+    a, _ = fake_agent(host)
+    a.before.clear()
+    shell = next(t for t in a.tools if t.__name__ == 'run_shell')
+    def died(command, cwd=None, timeout=120):
+        host.files['/proj/a.py'] = 'a = 2\n'
+        raise RuntimeError('the command died')
+    host.run_cmd = died
+    assert 'could not be run' in shell('touch a.py'), 'the tool reports the failure rather than raising'
+    host.files['/proj/elsewhere.py'] = 'e = 2\n'
+    assert a.changes() == {'/proj/a.py': ('a = 1\n', 'a = 2\n')}
+
+def test_a_turn_does_not_inherit_the_previous_turn_s_tree():
+    a, _ = fake_agent(MemHost({'/proj/a.py': 'a = 1\n'}))
+    a.snapshot_tree()
+    assert a._walked and a._tree
+    a._prepare('next')
+    assert not a._walked and a._tree == {} and a.before == {}
+
 def test_streaming_yields_as_it_goes_and_composes_the_same_message_as_blocking():
     """A stream that only yields at the end is a blocking call with extra steps, and a streamed turn
     that quietly saw a different message would be a very hard bug to find."""

@@ -1532,11 +1532,11 @@ def image_available(): return bool(os.environ.get('OPENAI_API_KEY'))
 
 def _hdrs(): return {'Authorization': f"Bearer {os.environ['OPENAI_API_KEY']}"}
 
-def _post_image(prompt, size, n, timeout=120):
+def _post_image(prompt, size, n, timeout=120, model=IMAGE_MODEL):
     "Raw `data` rows from the images endpoint."
     import httpx
     r = httpx.post(IMAGE_API, timeout=timeout, headers=_hdrs(),
-                   json={'model': IMAGE_MODEL, 'prompt': prompt, 'size': size, 'n': n})
+                   json={'model': model, 'prompt': prompt, 'size': size, 'n': n})
     r.raise_for_status()
     return r.json().get('data') or []
 
@@ -1578,26 +1578,25 @@ def _from_responses(raw):
 def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=None):
     "Drawing: by the turn's own model where it can, and by the images endpoint where it cannot."
 
-    def generate_image(prompt: str, size: str = '1024x1024', n: int = 1) -> str:
+    def generate_image(prompt: str, size: str = '1024x1024', n: int = 1, model: str = '') -> str:
         """Generate a picture from a description and save it. Returns the paths written.
 
         Use whenever the user asks for an image. `size` is one of 1024x1024, 1536x1024,
-        1024x1536, auto, and applies only when this model cannot draw for itself.
+        1024x1536, or auto. Set `model` to use the dedicated images endpoint.
         """
         if not image_available(): return err('image generation is unavailable', 'OPENAI_API_KEY is not set')
         if size not in IMAGE_SIZES: return err('unknown size', f'{size!r}; use one of {", ".join(IMAGE_SIZES)}')
         spec = get_spec() if get_spec else None
         try:
-            if draws_itself(spec): media = _from_responses(_post_responses(prompt, spec.model_id))
+            if not model and draws_itself(spec): media = _from_responses(_post_responses(prompt, spec.model_id))
             else: media = [{'mime': 'image/png', 'data': b64decode(r['b64_json'])}
-                           for r in _post_image(prompt, size, max(1, min(int(n or 1), 4)))
+                           for r in _post_image(prompt, size, max(1, min(int(n or 1), 4)),
+                                                model=api_model(model or IMAGE_MODEL))
                            if r.get('b64_json')]
         except Exception as e: return err('could not generate the image', e)
         if not media: return err('the model returned no image', 'the reply carried no picture')
         try: out = [save_media(m, session, 'generated') for m in media]
         except Exception as e: return err('could not save the image', e)
-        # the model is told the path. `on_media` is what puts the picture on the user's screen,
-        # since a tool result is text and a frontend cannot draw a filename
         if on_media: on_media(out)
         return clip('\n'.join(str(p) for p in out))
 
