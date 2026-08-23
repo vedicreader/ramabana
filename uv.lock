@@ -4045,11 +4045,11 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rgapi", specifier = ">=0.1.19" },
-    { name = "rishi", specifier = ">=0.1.25" },
-    { name = "rishi", marker = "extra == 'copilot'", specifier = ">=0.1.25" },
+    { name = "rishi", specifier = ">=0.1.27" },
+    { name = "rishi", marker = "extra == 'copilot'", specifier = ">=0.1.27" },
     { name = "rishi", extras = ["all"], marker = "extra == 'all'" },
     { name = "rishi", extras = ["all"], marker = "extra == 'dev'" },
-    { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.25" },
+    { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.27" },
     { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.1" },
@@ -4258,7 +4258,7 @@ wheels = [
 
 [[package]]
 name = "rishi"
-version = "0.1.26"
+version = "0.1.27"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
@@ -4272,9 +4272,9 @@ dependencies = [
     { name = "safepyrun" },
     { name = "truststore" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6b/3d/81c293cd3efa797bcbd91b985bde7fef62b84630157fb8ede27dda85d40a/rishi-0.1.26.tar.gz", hash = "sha256:c110a39277e8ac1c7a8d50454d547435543ccaea277c9c23c9b592fc9c26db7b", size = 104541, upload-time = "2026-08-22T06:26:37.704Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/86/53/c41edcb51c021d09aa14d20f0abbece0b624cad9f0f7132c0c7df44e5a37/rishi-0.1.27.tar.gz", hash = "sha256:c785178bdd1001041fe28d2d1c9e48f8beddb281af691cddf12fecf1fcab1db0", size = 107570, upload-time = "2026-08-23T03:02:47.479Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/ab/4101677f24d081f346ccf77d1318e10d13a92c871a136b168382f002e460/rishi-0.1.26-py3-none-any.whl", hash = "sha256:5ac1ea41ea673d26fdc014e887aea1e59a96166461154bb409b42c70db4b98a5", size = 114894, upload-time = "2026-08-22T06:26:36.402Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/27/1caa7def22757d066db9e1017339fbf856e38d99bd060ec6109cd4589788/rishi-0.1.27-py3-none-any.whl", hash = "sha256:9fad6520870b8c88f4ff9f55f1829770064adccf4c6e0aefc57535016d6a8835", size = 117575, upload-time = "2026-08-23T03:02:46.05Z" },
 ]
 
 [package.optional-dependencies]
