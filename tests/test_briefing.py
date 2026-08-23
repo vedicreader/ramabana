@@ -263,7 +263,10 @@ def test_a_tag_call_that_came_back_as_prose_is_reported(monkeypatch):
             return '{"name": "grep", "arguments": {"pattern": "x"}}  Tool result (grep): 3 matches'
 
     bare = Bare(CLAUDE, tools=[_tool]); bare.send('go')
-    assert any('came back as prose' in p for p in bare.problems), bare.problems
+    # ...and the report names the shape it saw, since the tags it mentions were never there
+    assert any('bare JSON' in p for p in bare.problems), bare.problems
+    assert not any('came back as prose' in p for p in bare.problems), bare.problems
+    assert any('came back as prose' in p for p in sent.problems)   # the tagged shape still reads so
     # a reply naming something this backend does not carry is prose about JSON, not a lost call
     assert not Bare(CLAUDE, tools=[])._needs_tag_retry('{"name": "grep", "arguments": {"pat": "x"}}')
     assert not Bare(CLAUDE, tools=[_tool])._needs_tag_retry('grep takes a "name" and a pattern')

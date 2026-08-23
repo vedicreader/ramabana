@@ -922,8 +922,10 @@ class RishiBackend(Backend):
     def _check_reply(self,text):
         "Report a tag call that came back as prose, which is what the tags channel costs."
         if self._needs_tag_retry(text):
-            self.problem(f'{self.spec.name}: a <tool_call> block came back as prose rather than a '
-                         'call, so this model is not punctuating the tags channel reliably')
+            how=('a <tool_call> block came back as prose' if '<tool_call' in (text or '')
+                 else 'a tool call came back as bare JSON, with no <tool_call> tags around it')
+            self.problem(f'{self.spec.name}: {how} rather than as a call, so this model is not '
+                         'punctuating the tags channel reliably')
         return text
     def _needs_tag_retry(self,text):
         """A reply on the tags channel that shows a call it never made.
