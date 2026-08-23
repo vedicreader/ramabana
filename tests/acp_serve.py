@@ -4,7 +4,7 @@
 the tools, the approval gate and the protocol are all real.
 """
 import asyncio, os, pathlib
-from ramabana.acp import AcpAgent, mk_agent, serve
+from ramabana.racp import AcpAgent, mk_agent, serve
 from ramabana.testing import SCRIPTED, ScriptedBackend, Step
 
 ROOT = pathlib.Path(os.environ['ACP_ROOT'])
@@ -37,7 +37,7 @@ SCRIPTS = {
 }
 
 def mk(roots, **kw):
-    "Stands in for `ramabana.acp.mk_agent`: a real host and gate, a scripted model."
+    "Stands in for `ramabana.racp.mk_agent`: a real host and gate, a scripted model."
     kw.pop('model', None)
     a, h = mk_agent(roots, model=None, web=False, vault=False, timeout=30,
                    cfg=ROOT/'.cfg', on_activity=kw.get('on_activity'))

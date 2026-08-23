@@ -16,7 +16,7 @@ from acp.schema import (AllowedOutcome, ClientCapabilities, DeniedOutcome, FileS
                         RequestPermissionResponse, TerminalExitStatus, TerminalOutputResponse,
                         CreateTerminalResponse, WaitForTerminalExitResponse)
 
-from ramabana.acp import KIND, PLAN, TOOL, EditorHost, blocks
+from ramabana.racp import KIND, PLAN, TOOL, EditorHost, blocks
 
 HERE = Path(__file__).parent
 
@@ -405,7 +405,7 @@ def test_a_refusal_clears_its_entry_so_a_later_call_cannot_inherit_it(tmp_path):
 
     Left behind, the next call on the same key is reported under the id the editor already
     marked failed -- and every `run_shell` shares one key, since it has no path."""
-    from ramabana.acp import Session
+    from ramabana.racp import Session
     sent = []
 
     class Conn:

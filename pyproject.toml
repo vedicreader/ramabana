@@ -37,7 +37,6 @@ dependencies = [
 cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0"]
 mcp = ["mcp>=1.2"]
 copilot = ["rishi>=0.1.25"]
-all = ["ramabana[cli,mcp,pyrepl,acp]", "rishi[all]"]
 dev = ["ramabana[all]", "rishi[all]>=0.1.25", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0"]
 pyrepl = [
     "ramabana[cli]",
@@ -47,7 +46,7 @@ pyrepl = [
 acp = [
     "agent-client-protocol>=0.12.1",
 ]
-
+all = ["ramabana[cli,mcp,pyrepl,acp]", "rishi[all]"]
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
 Documentation = "https://vedicreader.github.io/ramabana/"
