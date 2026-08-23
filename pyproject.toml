@@ -54,7 +54,7 @@ Documentation = "https://vedicreader.github.io/ramabana/"
 [project.scripts]
 ramabana = "ramabana.cli:main"
 ramabana-mcp = "ramabana.mcp:main"
-ramabana-acp = "ramabana.acp:main"
+ramabana-acp = "ramabana.racp:main"
 
 [project.entry-points.nbdev]
 ramabana = "ramabana._modidx:d"

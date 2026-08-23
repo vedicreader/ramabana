@@ -450,3 +450,21 @@ def test_an_image_is_dropped_with_a_reason_when_the_model_cannot_see_it():
         text, media = blocks([acp.image_block(base64.b64encode(b'\x89PNG').decode(), 'image/png')], Spec())
     finally: core._caps = was
     assert media == [] and 'image dropped' in text
+
+
+def test_every_console_script_resolves():
+    """A rename that misses `[project.scripts]` leaves a binary that fails only when a user runs it.
+
+    `ramabana/acp.py` shadowed the `acp` package it imports, so it became `ramabana.racp`. The
+    entry point kept pointing at `ramabana.acp:main`, which no test touched: the suite imports
+    modules directly, and nothing but an editor launching `ramabana-acp` would have found it.
+    """
+    import importlib, tomllib
+    from pathlib import Path
+    cfg = tomllib.loads((Path(__file__).parent.parent/'pyproject.toml').read_text())
+    scripts = cfg['project']['scripts']
+    assert 'ramabana-acp' in scripts
+    for name, target in scripts.items():
+        mod, _, fn = target.partition(':')
+        m = importlib.import_module(mod)
+        assert callable(getattr(m, fn, None)), f'{name} = {target!r} does not resolve'
