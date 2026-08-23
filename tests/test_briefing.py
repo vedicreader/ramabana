@@ -252,6 +252,22 @@ def test_a_tag_call_that_came_back_as_prose_is_reported(monkeypatch):
     clean = Clean(CLAUDE); clean.send('go')
     assert not clean.problems
 
+    # ...and the shape with no tags at all. haiku writes the call object and then invents the
+    # result after it, which rishi's parser must refuse, so the reply reached the user as raw JSON
+    # with nothing reported and no corrective turn: the detector only looked for `<tool_call`.
+    def _tool(pattern): return pattern            # a name the backend really carries
+    _tool.__name__ = 'grep'
+
+    class Bare(Tagged):
+        def _send(self, msg, **kw):
+            return '{"name": "grep", "arguments": {"pattern": "x"}}  Tool result (grep): 3 matches'
+
+    bare = Bare(CLAUDE, tools=[_tool]); bare.send('go')
+    assert any('came back as prose' in p for p in bare.problems), bare.problems
+    # a reply naming something this backend does not carry is prose about JSON, not a lost call
+    assert not Bare(CLAUDE, tools=[])._needs_tag_retry('{"name": "grep", "arguments": {"pat": "x"}}')
+    assert not Bare(CLAUDE, tools=[_tool])._needs_tag_retry('grep takes a "name" and a pattern')
+
 
 # -- the property all of it exists for -------------------------------------------------
 

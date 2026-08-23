@@ -926,8 +926,14 @@ class RishiBackend(Backend):
                          'call, so this model is not punctuating the tags channel reliably')
         return text
     def _needs_tag_retry(self,text):
-        "A reply on the tags channel with a `<tool_call>` still in its prose never made the call."
-        return tool_channel(self.spec,self.chat)=='tags' and '<tool_call' in (text or '')
+        """A reply on the tags channel that shows a call it never made.
+
+        The shape is rishi's to know, beside the parser that reads it. Only the tool names are
+        ours: a reply naming something this backend does not carry is prose about JSON.
+        """
+        from rishi.core import tag_call_shape
+        if tool_channel(self.spec,self.chat)!='tags': return False
+        return tag_call_shape(text,[getattr(t,'__name__','') for t in self.tools])
     def _stream(self,msg,**kw):
         kw=self._turn_kw(kw)
         if not self.prefilled_think:yield from self.chat(msg,stream=True,**kw); return
