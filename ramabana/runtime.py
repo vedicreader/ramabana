@@ -130,7 +130,7 @@ def capture(fn, *a, **kw):
     return out, cap.problems
 
 # %% ../nbs/01_runtime.ipynb #da1ec431
-CHARS_PER_TOKEN = 3.25       # measured, for text no tokenizer has seen yet. See `estimate_tokens`
+CHARS_PER_TOKEN = 3.25       #: ornith and qwen3 both measure 3.50. Estimate high: see `estimate_tokens`
 RESERVE = 16_384             # headroom kept below the window: one full reply plus its tool results
 KEEP_RECENT = 20_000         # tokens of recent conversation compaction does not touch
 SUMMARY_PREFIX = 'Previous conversation summary:\n'
@@ -138,11 +138,7 @@ SURGICAL_POLICY = {'user': 2000, 'assistant': 150, 'call': 60, 'result': 35}
 
 # %% ../nbs/01_runtime.ipynb #be51204d
 def estimate_tokens(text, count=None):
-    """Tokens in `text`: exact via `count` when a tokenizer is at hand, `CHARS_PER_TOKEN` otherwise.
-
-    The old chars/4 ran 12% under what ornith and qwen3 actually tokenise (both measure 3.50), so a
-    summary prompt built to fill the window overflowed it. Estimating high costs a shorter prompt;
-    estimating low costs the compaction."""
+    "Tokens in `text`: exact via `count` when a tokenizer is at hand, `CHARS_PER_TOKEN` otherwise."
     if not text: return 0
     if count is not None:
         try: return count(text)
@@ -515,8 +511,8 @@ class Compactor:
         if summary_ctx:
             sp_tokens = estimate_tokens(SUMMARISE_SP, summary_count)
             input_budget = max(128, summary_ctx - summary_output - sp_tokens - 64)
-        # a prompt built to fit can still overflow: for any backend without a tokenizer of its own
-        # the budget is an estimate. Halve and retry rather than lose the conversation.
+        # the budget is an estimate wherever the backend has no tokenizer, so a prompt built to
+        # fit can still overflow
         text, err = '', None
         for b in halvings(input_budget):
             try:

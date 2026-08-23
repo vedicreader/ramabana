@@ -335,12 +335,11 @@ def test_a_cheap_job_cannot_leave_its_output_cap_behind():
 
 
 def test_a_summariser_that_overflows_is_retried_on_half_the_budget(spec):
-    """A prompt built to fill the summary model's window can still overflow it, because for any
-    backend without a tokenizer of its own the budget was only estimated. Measured against ollama,
-    chars/4 ran 12% under what ornith and qwen3 actually tokenise, so compaction of a conversation
-    already well past its window died on a 400 and left the history untouched -- the one moment
-    compaction exists for. Halving the budget and asking again costs a shorter summary, which is
-    always better than no summary.
+    """A prompt built to fill the summary model's window can still overflow it. For any backend
+    without a tokenizer of its own the budget was only estimated, and chars/4 ran 12% under what
+    ornith and qwen3 tokenise. Compaction of a conversation already well past its window then died
+    on a 400 and left the history untouched, which is the one moment compaction exists for.
+    Halving the budget and asking again costs a shorter summary. That beats no summary.
     """
     be = FakeBackend(spec)
     be.start()
@@ -367,9 +366,9 @@ def test_a_summariser_that_overflows_is_retried_on_half_the_budget(spec):
 
 
 def test_the_token_estimate_errs_high_so_a_prompt_built_to_fit_does(spec):
-    """Estimating low overflows the window and costs the whole compaction; estimating high costs a
-    slightly shorter prompt. ornith-1.5:9b and qwen3:0.6b both tokenise English prose at 3.50
-    chars/token, so the estimator must stay at or under that.
+    """Estimating low overflows the window and costs the whole compaction. Estimating high costs
+    a slightly shorter prompt. ornith-1.5:9b and qwen3:0.6b both tokenise English prose at 3.50
+    chars/token. The estimator must stay at or under that.
     """
     assert runtime.CHARS_PER_TOKEN <= 3.5
     assert runtime.estimate_tokens('x' * 126438) >= 36110, 'measured on ornith for this length'

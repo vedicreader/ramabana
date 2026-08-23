@@ -298,11 +298,10 @@ def test_a_local_turn_fits_its_window_end_to_end(tmp_path):
     assert was > budget, f'the old briefing fitted after all ({was} of {budget})'
     assert now < budget, f'{now} of {budget}'
     # The slack asserted here was 1500 while `estimate_tokens` assumed chars/4. It measures 3.25
-    # now, which ornith and qwen3 bear out, so the same unchanged briefing prices 12% higher and
-    # the slack is what it always really was. The turn still fits, and still leaves a reply room
-    # inside the 16k window; what it no longer has is much room before compaction fires.
-    # Most of the cost is the schemas, not the prose: 5,136 tokens of them against a 1,548-token
-    # briefing. That is the number to attack if this needs more headroom.
+    # now, which ornith and qwen3 bear out. The briefing did not change. Its price is what it
+    # always was. The turn still fits, and still leaves a reply room inside the 16k window. What
+    # it no longer has is much room before compaction fires. Most of that cost is the schemas
+    # rather than the prose: 5,136 tokens against a 1,548-token briefing.
     assert budget - now > 500, f'only {budget - now} left before compaction fires'
     assert SMALL.ctx - now > 4000, f'only {SMALL.ctx - now} of window left to answer in'
     # A 200k model is untouched by any of it: the old cost was never its problem.

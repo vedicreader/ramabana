@@ -44,9 +44,9 @@ def env(name, dflt=None):
 # %% ../nbs/00_core.ipynb #9df3b26a
 JOBS = ('turn', 'oneshot', 'inline', 'completion', 'classify', 'summary', 'subagent')
 
-#: One-shot jobs share the `oneshot` policy unless set individually. Not `turn` or `subagent`,
-#: and not `summary`: compacting is a summary *of this conversation*, so it belongs on the model
-#: holding it. Inherited from `oneshot` it loaded a second local runtime to summarise the first.
+#: One-shot jobs share the `oneshot` policy unless set individually. Not `turn` or `subagent`.
+#: Not `summary` either. A summary of this conversation belongs on the model holding it. Under
+#: `oneshot` it loaded a second local runtime to summarise the first.
 ONESHOT_JOBS = ('oneshot', 'completion', 'classify', 'inline')
 LOCAL = {'gemma-e2b': 'litert-community/gemma-4-E2B-it-litert-lm',
     'gemma-e4b': 'litert-community/gemma-4-E4B-it-litert-lm',
