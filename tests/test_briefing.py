@@ -297,7 +297,14 @@ def test_a_local_turn_fits_its_window_end_to_end(tmp_path):
     was = cost(('exhash',), 6000)
     assert was > budget, f'the old briefing fitted after all ({was} of {budget})'
     assert now < budget, f'{now} of {budget}'
-    assert budget - now > 1500, f'only {budget - now} left to answer in'
+    # The slack asserted here was 1500 while `estimate_tokens` assumed chars/4. It measures 3.25
+    # now, which ornith and qwen3 bear out, so the same unchanged briefing prices 12% higher and
+    # the slack is what it always really was. The turn still fits, and still leaves a reply room
+    # inside the 16k window; what it no longer has is much room before compaction fires.
+    # Most of the cost is the schemas, not the prose: 5,136 tokens of them against a 1,548-token
+    # briefing. That is the number to attack if this needs more headroom.
+    assert budget - now > 500, f'only {budget - now} left before compaction fires'
+    assert SMALL.ctx - now > 4000, f'only {SMALL.ctx - now} of window left to answer in'
     # A 200k model is untouched by any of it: the old cost was never its problem.
     assert was < threshold(BIG.ctx)
 

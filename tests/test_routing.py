@@ -33,10 +33,14 @@ def test_the_one_shot_model_is_named_once_and_moves_every_cheap_job(monkeypatch)
     r = Routing(turn='gpt-mini')
     for job in ONESHOT_JOBS: assert r.name_for(job) == 'gemma-e4b', job
     assert r.name_for('turn') == 'gpt-mini' and r.name_for('subagent') == 'gpt-4.1'
+    # compacting is a summary *of this conversation*, so it follows the model holding it. Sharing
+    # the `oneshot` policy, it loaded a second local runtime to summarise the first.
+    assert 'summary' not in ONESHOT_JOBS and r.name_for('summary') == 'gpt-mini'
 
     r.policy['oneshot'] = 'gpt-sol'                    # one name moves them all
     for job in ONESHOT_JOBS: assert r.name_for(job) == 'gpt-sol', job
-    r.policy['summary'] = 'gpt'                        # and one may still be singled out
+    assert r.name_for('summary') == 'gpt-mini', 'except the one that follows the turn'
+    r.policy['summary'] = 'gpt'                        # and it may still be singled out
     assert r.name_for('summary') == 'gpt' and r.name_for('classify') == 'gpt-sol'
 
     monkeypatch.delenv('LEELA_MODEL', raising=False)

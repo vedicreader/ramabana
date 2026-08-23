@@ -8,14 +8,14 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
            'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'IMG_TOKENS', 'CHAT_CALLBACKS',
-           'interesting', 'captured', 'capture', 'estimate_tokens', 'threshold', 'should_compact', 'serialise',
-           'split_previous', 'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices',
-           'notices_block', 'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter',
-           'Usage', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'Run', 'current_run', 'run_context',
-           'TokenLogger']
+           'interesting', 'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact',
+           'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient',
+           'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think',
+           'ThinkFilter', 'Usage', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'Run', 'current_run',
+           'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
-import contextvars, copy, os, re, sys, threading, time
+import contextvars, copy, math, os, re, sys, threading, time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fastcore.basics import patch
@@ -130,7 +130,7 @@ def capture(fn, *a, **kw):
     return out, cap.problems
 
 # %% ../nbs/01_runtime.ipynb #da1ec431
-CHARS_PER_TOKEN = 4          # tau's estimate, for text no tokenizer has seen yet
+CHARS_PER_TOKEN = 3.25       # measured, for text no tokenizer has seen yet. See `estimate_tokens`
 RESERVE = 16_384             # headroom kept below the window: one full reply plus its tool results
 KEEP_RECENT = 20_000         # tokens of recent conversation compaction does not touch
 SUMMARY_PREFIX = 'Previous conversation summary:\n'
@@ -138,12 +138,21 @@ SURGICAL_POLICY = {'user': 2000, 'assistant': 150, 'call': 60, 'result': 35}
 
 # %% ../nbs/01_runtime.ipynb #be51204d
 def estimate_tokens(text, count=None):
-    "Tokens in `text`: exact via `count` when a tokenizer is at hand, tau's chars/4 otherwise."
+    """Tokens in `text`: exact via `count` when a tokenizer is at hand, `CHARS_PER_TOKEN` otherwise.
+
+    The old chars/4 ran 12% under what ornith and qwen3 actually tokenise (both measure 3.50), so a
+    summary prompt built to fill the window overflowed it. Estimating high costs a shorter prompt;
+    estimating low costs the compaction."""
     if not text: return 0
     if count is not None:
         try: return count(text)
         except Exception: pass
-    return max(1, (len(text) + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN)
+    return max(1, math.ceil(len(text) / CHARS_PER_TOKEN))
+
+def halvings(budget, tries=3, floor=256):
+    "A budget and its halvings, to retry a prompt whose fit was only estimated."
+    if not budget: return [budget]
+    return [budget] + [max(floor, budget >> i) for i in range(1, tries)]
 
 def threshold(ctx, reserve=RESERVE):
     "The token count at which a conversation should be compacted, or None when there is no window."
@@ -506,14 +515,17 @@ class Compactor:
         if summary_ctx:
             sp_tokens = estimate_tokens(SUMMARISE_SP, summary_count)
             input_budget = max(128, summary_ctx - summary_output - sp_tokens - 64)
-        try:
-            prompt = summarise_prompt(older, extra, input_budget, summary_count)
-            text = (summariser(prompt, SUMMARISE_SP) or '').strip()
-        except Exception as e:
-            self.note = f'compaction failed ({agent_err(e)})'
-            return ''
+        # a prompt built to fit can still overflow: for any backend without a tokenizer of its own
+        # the budget is an estimate. Halve and retry rather than lose the conversation.
+        text, err = '', None
+        for b in halvings(input_budget):
+            try:
+                text = (summariser(summarise_prompt(older, extra, b, summary_count), SUMMARISE_SP) or '').strip()
+                if text: break
+            except Exception as e: err = e
         if not text:
-            self.note = 'the summarizer returned nothing; conversation left alone'
+            self.note = (f'compaction failed ({agent_err(err)})' if err is not None
+                         else 'the summarizer returned nothing; conversation left alone')
             return ''
         head = SUMMARY_PREFIX + text + '\n\n' + reorient(self.kernel_alive)
         try: backend.replace_hist(head, keep)
@@ -788,8 +800,8 @@ class Backend:
         return self
     
     def count_tokens(self,text):
-        try:return self.chat.count_tokens(text or '') if self.chat else max(1,(len(text or '')+3)//4)
-        except Exception:return max(1,(len(text or '')+3)//4)
+        try:return self.chat.count_tokens(text or '') if self.chat else estimate_tokens(text)
+        except Exception:return estimate_tokens(text)
     
     @property
     def used_tokens(self):

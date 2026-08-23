@@ -332,3 +332,50 @@ def test_a_cheap_job_cannot_leave_its_output_cap_behind():
     b.oneshot('label this', 'pick one', 32)
     b.oneshot('summarise this')
     assert caps == [32, ONESHOT_TOKENS]
+
+
+def test_a_summariser_that_overflows_is_retried_on_half_the_budget(spec):
+    """A prompt built to fill the summary model's window can still overflow it, because for any
+    backend without a tokenizer of its own the budget was only estimated. Measured against ollama,
+    chars/4 ran 12% under what ornith and qwen3 actually tokenise, so compaction of a conversation
+    already well past its window died on a 400 and left the history untouched -- the one moment
+    compaction exists for. Halving the budget and asking again costs a shorter summary, which is
+    always better than no summary.
+    """
+    be = FakeBackend(spec)
+    be.start()
+    be.hist_ = [{'role': 'user', 'content': 'x' * 40000}, {'role': 'assistant', 'content': 'y' * 40000},
+                {'role': 'user', 'content': 'recent'}]
+    seen = []
+
+    def picky(prompt, sp):
+        seen.append(len(prompt))
+        if len(seen) < 3: raise RuntimeError('exceeds the available context size')
+        return 'GOAL: ship it'
+
+    out = Compactor(keep_recent=40).compact(be, picky, summary_ctx=2048, summary_count=None)
+    assert out == 'GOAL: ship it', 'the third, smallest prompt should have been accepted'
+    assert len(seen) == 3 and seen[0] > seen[1] > seen[2], f'budget did not halve: {seen}'
+    assert runtime.SUMMARY_PREFIX in be.hist[0]['content']
+
+    # every attempt failing still reports the transport's own words, not a bare 'returned nothing'
+    c = Compactor(keep_recent=40)
+    be2 = FakeBackend(spec); be2.start(); be2.hist_ = list(be.hist_)
+    assert c.compact(be2, lambda p, sp: (_ for _ in ()).throw(RuntimeError('boom')),
+                     summary_ctx=2048, summary_count=None) == ''
+    assert 'boom' in c.note and be2.hist == be2.hist_
+
+
+def test_the_token_estimate_errs_high_so_a_prompt_built_to_fit_does(spec):
+    """Estimating low overflows the window and costs the whole compaction; estimating high costs a
+    slightly shorter prompt. ornith-1.5:9b and qwen3:0.6b both tokenise English prose at 3.50
+    chars/token, so the estimator must stay at or under that.
+    """
+    assert runtime.CHARS_PER_TOKEN <= 3.5
+    assert runtime.estimate_tokens('x' * 126438) >= 36110, 'measured on ornith for this length'
+    assert runtime.estimate_tokens('') == 0 and runtime.estimate_tokens('a') == 1
+    assert isinstance(runtime.estimate_tokens('x' * 999), int)
+    assert runtime.halvings(31614) == [31614, 15807, 7903]
+    assert runtime.halvings(None) == [None] and runtime.halvings(0) == [0]
+    # a tokenizer that is present is still believed over the estimate
+    assert runtime.estimate_tokens('x' * 1000, count=lambda t: 7) == 7
