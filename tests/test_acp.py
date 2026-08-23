@@ -468,3 +468,25 @@ def test_every_console_script_resolves():
         mod, _, fn = target.partition(':')
         m = importlib.import_module(mod)
         assert callable(getattr(m, fn, None)), f'{name} = {target!r} does not resolve'
+
+
+def test_a_missing_acp_extra_names_itself():
+    """`agent-client-protocol` is an optional extra and `ramabana-acp` installs without it.
+
+    The editor launches the binary and shows whatever reached stderr, so a bare
+    `ModuleNotFoundError: No module named 'acp'` is all the user gets, with nothing saying which
+    install would fix it.
+    """
+    import importlib, sys
+    saved = {k: sys.modules.get(k) for k in list(sys.modules) if k == 'acp' or k.startswith('acp.')}
+    saved['ramabana.racp'] = sys.modules.get('ramabana.racp')
+    try:
+        for k in list(saved): sys.modules.pop(k, None)
+        sys.modules['acp'] = None                      # `import acp` now raises ImportError
+        with pytest.raises(ImportError, match=r"ramabana\[acp\]"):
+            importlib.import_module('ramabana.racp')
+    finally:
+        sys.modules.pop('acp', None)
+        for k, v in saved.items():
+            if v is not None: sys.modules[k] = v
+        importlib.import_module('ramabana.racp')

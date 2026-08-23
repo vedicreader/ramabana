@@ -11,11 +11,16 @@ __all__ = ['KIND', 'TOOL', 'PLAN', 'SHELL', 'OPTIONS', 'Bridge', 'EditorHost', '
 
 # %% ../nbs/16_acp.ipynb #85a94c36
 import asyncio, base64, os, sys, uuid
-import acp
-from acp.helpers import update_available_commands
-from acp.schema import (AgentCapabilities, AvailableCommand, Implementation, InitializeResponse,
-                        LoadSessionResponse, NewSessionResponse, PermissionOption, PromptCapabilities,
-                        PromptResponse, ToolCallLocation, ToolCallUpdate)
+try:
+    import acp
+    from acp.helpers import update_available_commands
+    from acp.schema import (AgentCapabilities, AvailableCommand, Implementation, InitializeResponse,
+                            LoadSessionResponse, NewSessionResponse, PermissionOption, PromptCapabilities,
+                            PromptResponse, ToolCallLocation, ToolCallUpdate)
+# `ramabana-acp` installs whether or not the extra did, and an editor launching it shows the agent
+# failing to start with whatever reached stderr. Name the extra there.
+except ImportError as e: raise ImportError(
+    f"ramabana-acp needs the acp extra: pip install 'ramabana[acp]' ({e})") from None
 from fastcore.basics import ifnone
 from fastcore.script import call_parse
 from . import __version__
