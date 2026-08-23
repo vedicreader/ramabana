@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.1.24
+acp, agent monitoring, claude fixes
+
 ## 0.1.23
 cli streaming + local model fixes
 
