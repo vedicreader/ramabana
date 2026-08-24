@@ -1230,8 +1230,6 @@ class GitRepo:
         lfs = self._lfs_pointer(left) or self._lfs_pointer(right)
         binary = bool(lfs) or 'Binary files' in raw
         if binary:
-            # Neither side is text worth showing: an LFS pointer is three lines of metadata about
-            # the file, and a binary blob is worse. Say what it is and hand back nothing to render.
             return {'text': raw, 'content': '', 'notebook': False, 'left': '', 'right': '',
                     'binary': True, 'lfs': lfs}
         if not str(path).lower().endswith('.ipynb'):
