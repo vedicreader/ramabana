@@ -1210,6 +1210,15 @@ class GitRepo:
             kind = cell.get('cell_type') or 'cell'
             parts.append(f'# %% {kind} · cell {i}\n{source.rstrip()}')
         return '\n\n'.join(parts) + ('\n' if parts else '')
+    LFS_MAGIC = 'version https://git-lfs.github.com/spec/v1'
+
+    @classmethod
+    def _lfs_pointer(cls, raw):
+        "The oid and size of an LFS pointer, or None. A pointer is text, so git diffs it as text."
+        if not raw or not raw.startswith(cls.LFS_MAGIC): return None
+        fields = dict(l.split(' ', 1) for l in raw.strip().split('\n') if ' ' in l)
+        return {'oid': fields.get('oid', ''), 'size': fields.get('size', '')}
+
     def diff_view(self, path, staged=False):
         change = first(c for c in self.changes() if c['path'] == path)
         if change and change['untracked'] and not staged:
@@ -1218,10 +1227,19 @@ class GitRepo:
             raw = self.diff(path, staged)
         left = self._version(path, 'head' if staged else 'index')
         right = self._version(path, 'index' if staged else 'worktree')
+        lfs = self._lfs_pointer(left) or self._lfs_pointer(right)
+        binary = bool(lfs) or 'Binary files' in raw
+        if binary:
+            # Neither side is text worth showing: an LFS pointer is three lines of metadata about
+            # the file, and a binary blob is worse. Say what it is and hand back nothing to render.
+            return {'text': raw, 'content': '', 'notebook': False, 'left': '', 'right': '',
+                    'binary': True, 'lfs': lfs}
         if not str(path).lower().endswith('.ipynb'):
-            return {'text': raw, 'content': raw, 'notebook': False, 'left': left, 'right': right}
+            return {'text': raw, 'content': raw, 'notebook': False, 'left': left, 'right': right,
+                    'binary': False, 'lfs': None}
         left, right, content = self._side_by_side(path, left, right, 'before', 'after', raw)
-        return {'text': raw, 'content': content, 'notebook': True, 'left': left, 'right': right}
+        return {'text': raw, 'content': content, 'notebook': True, 'left': left, 'right': right,
+                'binary': False, 'lfs': None}
     @staticmethod
     def _cells(raw):
         "id -> source for one notebook's cells, in order. A cell with no id is keyed by position."
