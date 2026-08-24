@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.1.25
+git lfs binary diffs
+
 ## 0.1.24
 acp, agent monitoring, claude fixes
 
