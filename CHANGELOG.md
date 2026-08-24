@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.1.26
+threads manage their own vault connections
+
 ## 0.1.25
 git lfs binary diffs
 

@@ -90,7 +90,12 @@ def test_a_reminder_reschedules_itself_and_becomes_something_memory_can_find(hos
 
 def test_a_failing_watch_is_recorded_rather_than_raised_and_the_rest_still_run(host):
     def down(target, **kw): raise ConnectionError('name not resolved')
-    host.vault.url = down
+    original = host._worker_vault
+    def worker():
+        v = original()
+        v.url = down
+        return v
+    host._worker_vault = worker
     host.watch('https://example.invalid', action='url', every='1d', start=time.time() - 1)
     host.watch('still fine', action='remind', every='1d', start=time.time() - 1)
     out = host.poll()
