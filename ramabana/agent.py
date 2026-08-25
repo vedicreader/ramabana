@@ -666,7 +666,9 @@ def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=()):
     if getattr(host, 'read_outside', False):   # only when the host says so
         roots += ('\n  Reads may name any path on this machine. Writing, running commands and\n'
                   '  listing files stay inside the folders above.')
-    conc = (   # claimed only where it is true'\n  Your kernel runs each inspection in its own subshell. This works while one '
+    # Claimed only where it is true: a host says so, and "keep it short, the kernel is busy"
+    # is advice for a problem it may not have.
+    conc = ('\n  Your kernel runs each inspection in its own subshell. This works while one '
             "of the user's cells is still running." if getattr(host, 'concurrent', False) else '')
     live = ('' if 'inspect_python' not in names and names else
             '\n- To *look at* live state, prefer `inspect_python`: neither of its scopes can change\n'
