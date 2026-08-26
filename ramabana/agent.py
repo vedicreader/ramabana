@@ -2161,11 +2161,7 @@ def _run_store(self):
 
 @patch
 def runs(self:Agent, active=False):
-    """Return registered root and child runs. `active` drops the ones that have finished.
-
-    The test ran on roots only, so a live turn handed back every subagent it had ever started
-    and a caller listing what is running listed what had stopped.
-    """
+    "Return registered root and child runs. `active` drops the ones that have finished."
     def live(r): return not r.terminal or any(live(child) for child in r.children)
     def row(r):
         d = r.dict()
