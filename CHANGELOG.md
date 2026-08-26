@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.1.28
+drop stale subagents
+
+
 ## 0.1.26
 threads manage their own vault connections
 
