@@ -2161,12 +2161,19 @@ def _run_store(self):
 
 @patch
 def runs(self:Agent, active=False):
-    "Return registered root and child runs."
+    """Return registered root and child runs. `active` drops the ones that have finished.
+
+    The test ran on roots only, so a live turn handed back every subagent it had ever started
+    and a caller listing what is running listed what had stopped.
+    """
+    def live(r): return not r.terminal or any(live(child) for child in r.children)
+    def row(r):
+        d = r.dict()
+        # A finished parent with a live child stays, or the child it is still running is orphaned.
+        if active: d['children'] = [row(c) for c in r.children if live(c)]
+        return d
     with getattr(self, '_runs_lock', threading.RLock()):
-        roots = list(_run_store(self).values())
-        def live(r): return not r.terminal or any(live(child) for child in r.children)
-        rows = [r.dict() for r in roots if not active or live(r)]
-    return rows
+        return [row(r) for r in _run_store(self).values() if not active or live(r)]
 
 @patch(as_prop=True)
 def busy(self:Agent): return bool(self.runs(active=True))
