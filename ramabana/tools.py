@@ -14,7 +14,7 @@ __all__ = ['MAX_GREP_HITS', 'MAX_API', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 
            'readable', 'code_tools', 'file_tools', 'notebook_tools', 'media_dir', 'mime_for', 'save_media',
            'image_available', 'api_model', 'draws_itself', 'image_tools', 'web_tools', 'memory_tools', 'api_tools',
            'watch_tools', 'session_tools', 'shell_tools', 'skill_tools', 'tools_for', 'sub_briefing', 'read_only',
-           'sub_sp', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
+           'sub_sp', 'bad_json', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, concurrent.futures, functools, json, mimetypes, os, re, runpy, shutil, threading, time, uuid
@@ -2062,6 +2062,21 @@ def _stopped(run):
     return f'The delegated question was stopped ({run.state}) before it answered.'
 
 
+def bad_json(e, span=120):
+    "The fragment a JSON error is about."
+    doc, pos = getattr(e, 'doc', None), getattr(e, 'pos', None)
+    if not isinstance(doc, str) or not isinstance(pos, int): return ''
+    lead = '…' if pos > span else ''
+    tail = '…' if pos + span < len(doc) else ''
+    return f'\nit stopped here: {lead}{doc[max(0, pos - span):pos + span]}{tail}'
+
+
+def _model_refused(sub, reply):
+    "Whether what came back is the sub-agent's backend reporting its own failure, not an answer."
+    problems = getattr(sub, 'problems', None) or []
+    return bool(problems) and str(reply or '').strip() == str(problems[-1]).strip()
+
+
 def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skills=(),
              writes=False,      # hand over WRITE_TOOLS as well
              approve=None,      # the gate those writes answer to, which `spawn` inherits none of
@@ -2077,13 +2092,17 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
                             tools=read_only(tools, max_calls=max_steps * 4, writes=writes), **kw)
         if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
         if not run.attach(sub): return _stopped(run)
-        with run_context(run): out = _delegate_result(sub.send(question, run=run))
+        with run_context(run): reply = sub.send(question, run=run)
         if run.cancelled: return _stopped(run.finish())
+        if _model_refused(sub, reply):
+            run.finish('failed')
+            return err(f'delegation failed after the sub-agent was asked: {reply}')
         run.finish()
-        return out
+        return _delegate_result(reply)
     except Exception as e:
         run.finish('failed')
-        return err('delegation failed', e)
+        return err('delegation failed after the sub-agent was asked' if sub is not None else
+                   'delegation failed before the sub-agent was asked, so nothing was sent', e) + bad_json(e)
     finally:
         if sub is not None:
             try: sub.close()
@@ -2119,7 +2138,7 @@ def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS
         for child, future in zip(runs, futures):
             if future.done():
                 try:out.append(future.result())
-                except Exception as e:out.append(err('delegation failed', e))
+                except Exception as e:out.append(err('delegation failed', e) + bad_json(e))
             else:
                 child.detach(); out.append(_stopped(child))
         return L(out)

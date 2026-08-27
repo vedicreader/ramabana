@@ -439,6 +439,40 @@ def test_a_notice_fires_on_the_shape_of_the_prompt_not_on_a_model_call():
     assert 'route="direct"' in sent and '<system-reminder>' not in sent
 
 
+def test_a_delegation_says_which_side_of_the_call_it_died_on(spec):
+    """`delegation failed: JSONDecodeError: Unterminated string starting at: char 18` twice running
+
+    read as a model that could not be reached, and was a request that was never sent. The answer
+    now names the side, and a JSON error brings the fragment it stopped in.
+    """
+    import json
+    from ramabana.tools import bad_json, delegate
+    broken = json.JSONDecodeError('Unterminated string starting at', '{"question": "why is', 14)
+
+    class NoSpawn(FakeBackend):
+        def spawn(self, sp='', tools=(), **kw): raise broken
+    out = delegate(NoSpawn(spec), 'q', tools=[])
+    assert 'before the sub-agent was asked, so nothing was sent' in out, out
+    assert 'it stopped here: {"question": "why is' in out, 'the fragment, not just the offset'
+
+    class NoSend(FakeBackend):
+        def spawn(self, sp='', tools=(), **kw):
+            s = NoSend(self.spec, shared=True)
+            s._send = _raise
+            return s
+    def _raise(msg, **kw): raise ConnectionError('the model host refused the connection')
+    out = delegate(NoSend(spec), 'q', tools=[])
+    assert 'after the sub-agent was asked' in out and 'ConnectionError' in out, out
+    assert 'it stopped here' not in out, 'nothing to show for a failure that is not a serialisation'
+
+def test_a_json_error_with_nothing_to_show_says_nothing():
+    import json
+    from ramabana.tools import bad_json
+    assert bad_json(ValueError('plain')) == ''
+    assert bad_json(json.JSONDecodeError('x', 'abc', 1)) == '\nit stopped here: abc'
+    long = json.JSONDecodeError('x', 'a' * 400, 200)
+    assert bad_json(long).count('…') == 2, 'a long document is elided at both ends'
+
 def test_a_delegated_question_runs_on_a_thrown_away_conversation_with_the_scope_it_needs(spec):
     """Nothing leaks back into the parent -- a sub-agent whose context returns is a slower way of
     doing the work inline. It keeps the scope choice, because the sandbox limits the Python available
