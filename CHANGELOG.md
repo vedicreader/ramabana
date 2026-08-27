@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.1.29
+fixes delegate search errors
+
 ## 0.1.28
 drop stale subagents
 
