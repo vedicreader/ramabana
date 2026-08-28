@@ -1,12 +1,21 @@
 # Splitting the toolset out of Ramabana
 
+> **Decisions taken on 2026-08-29.** The package is `shalya`, not `yantras`, and the repository
+> exists. The host is one flat class with capability groups attached as functions, not a protocol
+> per group with mixins. `uraiyadal` is the distribution name and `urai` the import name. Shalya
+> publishes to PyPI. Leela migrates afterwards and is pinned to earlier Ramabana and rishi
+> releases, so Ramabana does not have to keep every moved name resolving. The four pyskills stay in
+> Ramabana. Task 5 shrank: gheasy 0.0.9 already matches. Sections below carry the detail.
+
 > **For agentic workers:** this plan spans four repositories and one that does not exist yet. Read "State on 2026-08-28" before starting: it records measurements taken from the working trees on that date, and a later session must re-measure rather than trust them. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ramabana keeps the agent. A new package, `yantras`, owns the host protocols, the tool factories and the skills registry. Leela and any other frontend then take the tools without taking the agent loop.
 
-**Architecture after the split:** `uraiyadal` holds the chat conventions, the runtime registry, `ModelSpec` and `resolve`. `rishi` holds the local and hosted engines and registers them with `uraiyadal`. `gheasy` holds the git and GitHub plumbing. `yantras` holds the host protocols, the capability mixins, the tool factories, the skills registry and the tool-result conventions. `ramabana` holds the agent loop, context compaction, sessions and branches, approvals, routing and budgets, subagent delegation, and the CLI, MCP and ACP frontends. `leela` is the application.
+**Architecture after the split:** `uraiyadal` holds the chat conventions, the runtime registry, `ModelSpec` and `resolve`. `rishi` holds the local and hosted engines and registers them with `uraiyadal`. `gheasy` holds the git and GitHub plumbing. `shalya` holds the host, the capability groups, the tool factories, the skills registry and the tool-result conventions. `ramabana` holds the agent loop, context compaction, sessions and branches, approvals, routing and budgets, subagent delegation, and the CLI, MCP and ACP frontends. `leela` is the application.
 
-**Package name:** `yantras`. PyPI returned 404 for it on 2026-08-28. `yantra`, singular, is taken by an unrelated plugin framework at 0.7.1. Re-check availability before the first upload.
+**Package name:** `shalya`. PyPI returned 404 for it on 2026-08-29, and the repository is
+`vedicreader/shalya`. This plan was first written against the name `yantras`. Every mention of it
+below means `shalya`.
 
 ## State on 2026-08-28
 
@@ -88,19 +97,30 @@ Independent of every other task. Do it first, because it shrinks what Task 2 has
 
 **Leela sees this task.** It imports `resolve`, `RUNTIMES`, `AGENTS`, `MODELS`, `CUSTOM`, `DFLT_LOCAL`, `spec_caps`, `estimate_tokens`, `model_note`, `available_models`, `auth_status`, `runtime_available`, `runtime_remedy`, `register_model` and `unregister_model` from `ramabana.core`. Every one of them must keep resolving from `ramabana` after this task, whatever they now wrap.
 
-### Task 2: Capability groups become mixins
+### Task 2: One flat host, capability groups attached as functions
 
 **Files:** `nbs/02_tools.ipynb`, `nbs/05_cli.ipynb`, `nbs/10_spec.ipynb`, `nbs/07_vault.ipynb`, `nbs/11_pyrepl.ipynb`, `nbs/08_shop.ipynb`, `nbs/04_testing.ipynb`, `tests/test_tools.py`
 
-- [ ] Reduce `Host` to the path boundary every group needs: `roots`, `added_roots`, `add_root`, `check`, `walk`, `read`, `write`, `text_at`, `note`.
-- [ ] Declare one protocol per group: code search, web, memory, watches, notebooks, session, shell, api. Give api the declaration it has never had: `api_load`, `api_ops`, `api_count`, `api_call`.
-- [ ] Keep a class named `Host` that inherits every protocol. Existing subclasses, Leela's `WorkspaceHost` and all test doubles included, must keep working untouched. New hosts mix in only what they have.
-- [ ] Turn `SpecHost`, `VaultHost`, `DhrishtiHost` and the shop group into mixins over the small `Host` rather than subclasses of `LocalHost`.
-- [ ] Rewrite `tools_for` as a loop over `(protocol, factory)` pairs with `isinstance` as the test.
-- [ ] Delete `capabilities`, `_declared`, `_probe`, `_supports`, `_has` and `_takes_reading`. Fold `readable` into `check`.
-- [ ] Change `mk_host` to mix in the requested groups. Remove the `type()` call.
-- [ ] Change `enter_python` and `attach_session` to mix the kernel group into the host they already have. Neither may construct a replacement host.
-- [ ] Decide whether `approvals` stays declared on the yantras-side `Host`. `tools.py` never reads it. Recording the decision matters more than which way it goes.
+Mixins were the first answer and are not the one taken. The problem is that capability is asked
+five different ways. A protocol per group plus a mixin per group is more class machinery than that
+needs. One rule answers it: a group applies when the host has the group's methods.
+
+- [ ] Reduce `Host` to the path boundary every group needs: `roots`, `added_roots`, `add_root`, `check`, `walk`, `read`, `write`, `text_at`, `note`. A host that cannot do something does not define the method, so `hasattr` is the whole test.
+- [ ] Make each group an `add_<group>(host, ...)` function that binds the group's methods onto a host that already exists. `add_code`, `add_web`, `add_notebook`, `add_session`, `add_shell`, `add_memory`, `add_watch`, `add_api`. Give api the four names it has never declared: `api_load`, `api_ops`, `api_count`, `api_call`.
+- [ ] Rewrite `tools_for` as a loop over one `(group, factory, methods)` table, with `hasattr` as the test.
+- [ ] Delete `capabilities`, `_declared`, `_probe`, `_supports`, `_has` and `_takes_reading`. Fold `readable` into `check`, whose `reading` flag is now the only signature.
+- [ ] `LocalHost.__init__` calls the attachers for the groups whose optional dependency imported. A missing `fossick` means no `web_search`, rather than a `web_search` that always answers nothing.
+- [ ] `mk_host` calls attachers. Remove the `type()` call that synthesises a class at runtime.
+- [ ] `enter_python` and `attach_session` call `add_session(host, kernel)` on the host they already have. Neither constructs a replacement, so nothing can be lost in the swap.
+- [ ] `SpecHost`, `VaultHost` and `DhrishtiHost` become calls to `add_api`, `add_memory`/`add_watch` and `add_session`. Keep the class names as thin constructors for one release.
+
+**Decided:** `approvals` stays declared on shalya's `Host`, returning None. Shalya never reads it. It
+is where Ramabana and Leela both hang the object, and one property is cheaper than a second base
+class.
+
+**Consequence worth stating.** `hasattr` means a host that defines a method must be able to answer
+it. A host can no longer define a method and signal absence by raising `NotImplementedError`.
+Ramabana's `NullHost` and Leela's `WorkspaceHost` both need reading against that rule.
 
 **Acceptance:** a regression test asserts that the tool-name set after entering python mode is a superset of the set before it, for a host built with `vault=True, spec=True`. The fifteen tools listed above must survive. `uv run pytest` and `uv run nbdev-test` both pass.
 
@@ -128,31 +148,43 @@ Do this before extracting anything. The protocols from Task 2 are what tell you 
 
 ### Task 5: Point `git_tools` at gheasy
 
-- [ ] Promote `_invalidate`, `_plural` and `_unborn` to gheasy's `__all__`. Leela already imports all three.
-- [ ] Rewrite `git_tools` in `yantras` against `gheasy`. Move `GIT_READ_TOOLS`, `GIT_WRITE_TOOLS` and `GIT_TOOLS` to `yantras`, since they are tool names.
-- [ ] Delete `ramabana/git.py` and `nbs/12_git.ipynb`. Re-export from `gheasy` for one release.
+**Measured on 2026-08-29, and it makes this task small.** `ramabana/git.py` and `gheasy/repo.py`
+were compared function by function with docstrings and the `@patch` receiver annotation normalised
+away. 117 definitions are identical in code and prose. 17 differ in the docstring alone. Six differ in code. Every one of the six is the same
+difference. Seven helpers are module-level functions in gheasy and methods on `GitRepo` in
+Ramabana: `_cells`, `_diff_numstat`, `_diff_status`, `_lfs_pointer`, `_line_ranges`,
+`_notebook_content`, `_patch_hunks`. Their bodies are identical. `FOREIGN_LOCK`, `LFS_MAGIC` and every operation-classifying
+constant compare equal at runtime.
+
+Nothing has to move from Ramabana into gheasy. gheasy is already the same code, and on the seven
+helpers it is ahead: they are plain functions there.
+
+- [ ] Import from `gheasy.repo`, not `gheasy`. `gheasy/__init__.py` imports `core` and `workflow` and not `repo`, so `from gheasy import GitRepo` raises. `_invalidate`, `_plural` and `_unborn` import from `gheasy.repo` today and need no change there, which is why no gheasy release blocks this task.
+- [ ] Rewrite `git_tools` in `shalya` against `gheasy.repo`. It is the one name in `ramabana/git.py`'s `__all__` that gheasy does not carry, and it is a tool factory rather than git plumbing.
+- [ ] `GIT_READ_TOOLS`, `GIT_WRITE_TOOLS` and `GIT_TOOLS` are tool names, so they live in `shalya.core`. Done.
+- [ ] Delete `ramabana/git.py` and `nbs/12_git.ipynb`. Re-export from `gheasy.repo` for one release.
 
 **Acceptance:** `uv run pytest tests/test_git.py` passes against `gheasy`. No import cycle remains.
 
 ### Task 6: Publish the pyskills
 
-`coding_patterns`, `theory`, `write_prose` and `write_docs` are 317 lines with no imports and no importers, already published through `[project.entry-points.pyskills]`.
+**Decided: they stay in Ramabana.** `coding_patterns` is inlined into every briefing Ramabana
+assembles, so it has to ship with the agent. The other three cost nothing to keep beside it. The
+`Skill.text` clipping contract and `tests/test_skills.py` are unchanged. Revisit when something
+outside this stack wants `write_docs` without the agent.
 
-- [ ] Decide whether they ship from `yantras` or their own package. Anything that wants `write_docs` today installs Ramabana and its whole dependency tree.
-- [ ] Keep the `Skill.text` clipping contract wherever the loader ends up. `tests/test_skills.py` pins it, and `write_prose` sits just under `MAX_SKILL_CHARS`.
+### Task 7: Leela adopts shalya
 
-### Task 7: Leela adopts yantras
-
-Leela's own session, after Task 5. Leela imports 64 names from Ramabana today, measured on 2026-08-28. The split sends them four ways.
+Leela's own session, after Task 5. Leela is pinned to earlier Ramabana and rishi releases, so nothing here is urgent and Ramabana's re-export shims only have to last until this task runs. Leela imports 64 names from Ramabana today, measured on 2026-08-28. The split sends them four ways.
 
 | goes to | names |
 |---|---|
-| `yantras` | `Host`, `SpecHost`, `MAX_OPS`, `tools_for`, `clip`, `err`, `failed`, `save_media`, `DENY`, `MAX_HITS`, `MAX_TOOL_CHARS`, `MAX_GREP_HITS`, `WRITE_TOOLS`, `GIT_TOOLS`, `GIT_READ_TOOLS`, `GIT_WRITE_TOOLS`, and the privates `_cmds`, `_edits`, `_apply_edits` |
+| `shalya` | `Host`, `SpecHost`, `MAX_OPS`, `tools_for`, `clip`, `err`, `failed`, `save_media`, `DENY`, `MAX_HITS`, `MAX_TOOL_CHARS`, `MAX_GREP_HITS`, `WRITE_TOOLS`, `GIT_TOOLS`, `GIT_READ_TOOLS`, `GIT_WRITE_TOOLS`, and the privates `_cmds`, `_edits`, `_apply_edits` |
 | `gheasy` | `GitError`, `GitRepo`, `clone`, `clone_target`, `gateway`, `repo_root`, `url_name`, and the privates `_invalidate`, `_plural`, `_unborn` |
-| `uraiyadal`, reachable through Ramabana | `resolve`, `RUNTIMES`, `spec_caps`, `estimate_tokens` |
+| `urai`, reachable through Ramabana | `resolve`, `RUNTIMES`, `spec_caps`, `estimate_tokens` |
 | `ramabana` | `Agent`, `Approvals`, `Ask`, `Backend`, `Completer`, `Routing`, `AgentError`, `agent_err`, `env`, `answer_md`, `ask_md`, `preview_for`, `_summary`, `Attachment`, `MEDIA`, `media_note`, `media_parts`, `safe_shelf`, `AGENTS`, `MODELS`, `CUSTOM`, `JOBS`, `DFLT_LOCAL`, `auth_status`, `available_models`, `model_note`, `register_model`, `unregister_model`, `runtime_available`, `runtime_remedy`, `ACTION_NOTICE`, `prompt_notices` |
 
-- [ ] Promote the six private names that cross a new package boundary: `_cmds`, `_edits` and `_apply_edits` into `yantras`, `_invalidate`, `_plural` and `_unborn` into `gheasy`. A private imported across a package boundary is a public name that has not been renamed. `_summary` stays inside Ramabana and can be promoted separately.
+- [ ] Promote the six private names that cross a new package boundary: `_cmds`, `_edits` and `_apply_edits` into `shalya`, where they are now `cmds`, `edits` and `apply_edits`, `_invalidate`, `_plural` and `_unborn` into `gheasy`. A private imported across a package boundary is a public name that has not been renamed. `_summary` stays inside Ramabana and can be promoted separately.
 - [ ] Repoint `leela/agent/tools.py` at `yantras`.
 - [ ] Rebuild `WorkspaceHost` on the mixins. It reimplements memory, api, session, shell, notebook and web from scratch today because it cannot inherit from `LocalHost`.
 
@@ -177,7 +209,13 @@ Fetch-on-demand is still worth building for skills that are not inlined, with th
 
 ## Open questions
 
-- Where the four pyskills ship from. Task 6 records the choice.
-- Whether `approvals` stays on the yantras-side `Host` protocol. Task 2 records the choice.
-- How long Ramabana re-exports the moved names. One release is enough if Leela migrates in the same window.
-- Whether `Compactor`, `surgical_history` and `summarise_prompt` in `runtime.py` should move down into `uraiyadal` alongside `evict_middle` and `SlidingWindowCallback`. Urai's are mechanical eviction and Ramabana's summarise through a model, so they are related and not duplicates. Not part of this plan.
+- How long Ramabana re-exports the moved names. Task 7 is Leela's session and Leela is pinned, so one release is enough.
+- Whether `Compactor`, `surgical_history` and `summarise_prompt` in `runtime.py` should move down into `urai` alongside `evict_middle` and `SlidingWindowCallback`. Urai's are mechanical eviction and Ramabana's summarise through a model, so they are related and not duplicates. Not part of this plan.
+
+## Answered
+
+- The package is `shalya`.
+- The host is flat, and capability groups attach as functions. Task 2.
+- The pyskills stay in Ramabana. Task 6.
+- `approvals` stays on shalya's `Host`. Task 2.
+- `uraiyadal` is the distribution name, `urai` the import name. `/home/user/urai` declares `name = "urai"` at `0.0.1` and has to be corrected before it is published. Task 1.
