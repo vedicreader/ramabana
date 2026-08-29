@@ -50,6 +50,14 @@ because `gheasy/__init__.py` does not carry it.
 keeps working. `ramabana/tools.py` adds what needs an agent: delegation, `draws_itself`, and the
 `tools_for` wrapper that builds the image group from the turn's model.
 
+The clock is [pobblebonk](https://github.com/vedicreader/pobblebonk), an optional `ramabana[cron]`
+extra. It schedules an operating-system job through cron, launchd or `schtasks`, so it fires when no
+session is open. Ramabana holds only the seam, in `ramabana/monitor.py`. `pob` opens the shared
+SQLite database. `beat_notes` reads what the beat left, under a per-session reader id.
+`ramabana-tick` is the entry point a beat runs. The two halves share that database and never call
+each other. Register a schedule's callback with `on_tick`. The schedules themselves belong to
+whichever package owns the work.
+
 A host declares a capability group by inheriting the class that names it, and `Host.provides` is the
 only way to ask what a host supports. `without` is the runtime half: a group whose backend was never
 attached, or whose package never imported. A host that declares a group and leaves a method

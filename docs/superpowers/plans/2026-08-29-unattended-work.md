@@ -1,8 +1,8 @@
 # Work that outlives the turn that started it
 
-> **Decisions taken on 2026-08-29.** Async delegation is in. Approvals reach background work.
-> The CLI gets a control for the approvals mode. pobblebonk owns the clock and drives Ramabana
-> from outside, so no scheduler goes in the agent core.
+> **Done on 2026-08-29.** All four tasks are implemented, tested and pushed. pobblebonk 0.0.2 is
+> a `ramabana[cron]` extra, and the published release carries `core` but not `heartbeat`, so `pob`
+> falls back to naming the directory itself. Every box below is ticked.
 
 The goal: a task can outlive the turn that started it, and the writes it wants are gated by
 someone who is there to answer.
@@ -45,18 +45,18 @@ policy off*. There is no way back to `ask`, and no way to reach `off` at all.
 
 `delegate` needs no change. What is missing is a caller that does not join.
 
-- [ ] `delegate_async(question, skills='') -> run_id`. Register the child `Run` on the parent,
+- [x] `delegate_async(question, skills='') -> run_id`. Register the child `Run` on the parent,
       start `delegate(..., run=child)` on a daemon thread, return `child.id`. The tool returns
       as soon as the run is registered, never before: a handle for work that was not accepted is
       a lie the model will act on.
-- [ ] `delegate_status(run_id='')` reads `Run.dict()` through the existing `runs()`. Empty
+- [x] `delegate_status(run_id='')` reads `Run.dict()` through the existing `runs()`. Empty
       `run_id` lists every live child of the current session.
-- [ ] `delegate_result(run_id)` returns the answer for a terminal run, or says it is still
+- [x] `delegate_result(run_id)` returns the answer for a terminal run, or says it is still
       running. Results live in a bounded dict beside `_run_store`, keyed by run id.
-- [ ] `delegate_cancel(run_id)` calls the existing `request_cancel()`.
-- [ ] Add all four to `NO_SUB`. A sub-agent that can spawn background sub-agents is a fork bomb
+- [x] `delegate_cancel(run_id)` calls the existing `request_cancel()`.
+- [x] Add all four to `NO_SUB`. A sub-agent that can spawn background sub-agents is a fork bomb
       with a language model in it.
-- [ ] A concurrency ceiling. `Routing` picks the sub-agent model and nothing caps how many run
+- [x] A concurrency ceiling. `Routing` picks the sub-agent model and nothing caps how many run
       at once. One semaphore, sized from a new `max_async` setting.
 
 **Failure and recovery states.** A run that fails keeps `state='failed'` and its error text is
@@ -77,13 +77,13 @@ callable to `delegate` when sub-agent writes are on. Two things break once deleg
   no one to answer it, so it times out, and a timeout that reads as a refusal is the right answer
   only if that was the intent rather than an accident.
 
-- [ ] A background run defaults to refusing writes, whatever the session mode. Opting in is
+- [x] A background run defaults to refusing writes, whatever the session mode. Opting in is
       explicit and per call: `delegate_async(..., writes=True)`.
-- [ ] An ask raised with no listener registered (`Approvals.listeners == 0`) resolves as a
+- [x] An ask raised with no listener registered (`Approvals.listeners == 0`) resolves as a
       refusal immediately rather than waiting out the timeout, and says which run asked.
-- [ ] `Ask` carries the `run_id` that raised it, so a frontend can say who is asking. Today the
+- [x] `Ask` carries the `run_id` that raised it, so a frontend can say who is asking. Today the
       pending ask is anonymous, which was fine when only the foreground turn could raise one.
-- [ ] Every pending ask a background run raised is refused when the session ends.
+- [x] Every pending ask a background run raised is refused when the session ends.
 
 ## Task 3: changing the mode from the CLI
 
@@ -91,13 +91,13 @@ The code already holds an invariant worth keeping: the policy only loosens by wa
 approval. A bare keystroke that turns approvals off would break it, and it is the kind of key
 someone hits by accident. So the two directions get different controls.
 
-- [ ] `ctrl+g` tightens one step: `auto` to `ask`, `ask` to `off`. One keystroke, always safe,
+- [x] `ctrl+g` tightens one step: `auto` to `ask`, `ask` to `off`. One keystroke, always safe,
       never needs confirming. Shown in `HELP` under `approve`.
-- [ ] `/approve ask|auto|off` is the only way to loosen. Typed, explicit, and it says in the
+- [x] `/approve ask|auto|off` is the only way to loosen. Typed, explicit, and it says in the
       transcript what changed and when. Add `approve` to `SURFACE_COMMANDS`.
-- [ ] The status bar shows the current mode. `Ui` already renders `agent.status()`, which carries
+- [x] The status bar shows the current mode. `Ui` already renders `agent.status()`, which carries
       `budget` and `tool_budget`. The approvals mode belongs beside them.
-- [ ] `a` during a pending ask keeps its meaning and keeps setting `mode='auto'`. It is an
+- [x] `a` during a pending ask keeps its meaning and keeps setting `mode='auto'`. It is an
       approval, so the invariant holds.
 
 ## Task 4: the tick, through pobblebonk
@@ -114,14 +114,16 @@ a read offset per reader.
 
 So the two halves never talk directly. They share a database.
 
-- [ ] A `ramabana-tick` console entry point. It opens the `Pob`, calls `tick()`, and returns. The
-      callbacks registered under `Pob.on` are what poll watches and check folders.
-- [ ] `_prepare` drains `Pob` notes with the session id as the reader, beside the `Monitors.drain()`
+- [x] A `ramabana-tick` console entry point. It opens the `Pob`, registers whatever `on_tick`
+      collected, calls `tick()`, and returns. Ramabana registers no schedules of its own: the
+      watches are vishalakshi's to own, and a fire with no callback is recorded as such rather
+      than passing silently.
+- [x] `_prepare` drains `Pob` notes with the session id as the reader, beside the `Monitors.drain()`
       it already does. A live session picks up what the beat found without the beat reaching into
       it.
-- [ ] pobblebonk is an optional extra, `ramabana[cron]`. honker is not installed here today, so
+- [x] pobblebonk is an optional extra, `ramabana[cron]`. honker is not installed here today, so
       this is a new dependency chain and does not belong in the base install.
-- [ ] `Monitors.pending` is backed by the notes stream when pobblebonk is present, and stays the
+- [x] `Monitors.pending` is backed by the notes stream when pobblebonk is present, and stays the
       deque when it is not. Same degradation the host capability groups already use.
 
 **Why not a thread in the agent.** A scheduler in the core is inherited by every frontend, and
@@ -138,6 +140,28 @@ write tools with nobody registered to answer an approval. Task 4 does not ship f
 
 `catchup='once'` is the right default for a watch. A machine off for a week should fire the
 latest missed reminder, not four hundred of them, and pobblebonk already has that policy.
+
+### What shipped that the plan did not name
+
+`monitor.secs` reached into vishalakshi, which will not import against rishi 0.1.32, so
+`17_monitor.ipynb` could not run at all. It now prefers pobblebonk's parser and falls back to
+vishalakshi's, which fixes the notebook and moves the family onto one parser rather than two.
+
+`Background` finishes a run its callback left non-terminal. `delegate` finishes its own, but a
+callback that did not would have shown as running forever.
+
+`Approvals.close()` is new. `request` already refused when nothing was listening, which is half of
+what unattended work needs. The other half is waking a caller that is already blocked when the
+session ends.
+
+A review of the first cut found four defects, all fixed and each with a regression test. A
+background delegation was parented on the turn's root run. `Agent.busy` therefore stayed true
+after the turn ended, and `/resume`, `/model` and the sub-agent write toggle all refused for as
+long as the work ran. Background runs are parentless now. `Approvals.request` checked `closed` and stored
+`current` under separate locks, so an ask landing in the gap waited out its whole timeout.
+`close()` refused only the newest ask rather than every pending one. `Background.result` reported
+a terminal run whose worker had not written its answer yet as having lost it, which is a
+sentence that stops a model asking again.
 
 ### What this lets Ramabana retire
 

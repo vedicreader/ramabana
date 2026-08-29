@@ -8,19 +8,21 @@ Docs: https://vedicreader.github.io/ramabana/monitor.html.md"""
 # %% ../nbs/17_monitor.ipynb #a361b376
 from __future__ import annotations
 
-import fnmatch, threading, time, uuid
+import fnmatch, sys, threading, time, uuid
 from collections import deque
 from pathlib import Path
 
 from fastcore.basics import patch
+from fastcore.script import call_parse
 
 from .core import AgentError, agent_err
 from .tools import MAX_TOOL_CHARS, _diff, clip, delegate, err
 
 # %% auto #0
 __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_STEPS', 'PENDING_MAX', 'DFLT_SETTLE', 'REVIEW_SP',
-           'secs', 'files_under', 'snapshot', 'changed', 'summarise', 'report', 'review_prompt', 'review_notice',
-           'FolderWatch', 'Monitors', 'monitor_tools']
+           'POB_READER', 'TICKS', 'POB_HOME', 'secs', 'files_under', 'snapshot', 'changed', 'summarise', 'report',
+           'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'monitor_tools', 'on_tick', 'pob_path', 'pob',
+           'beat_notes', 'beat_notice', 'tick']
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
 #: What one look at a folder may hold. Past this the folder is being watched too widely, and
@@ -34,8 +36,10 @@ DFLT_SETTLE = '20s'          # least time between two reviews of one folder
 
 
 def secs(every):
-    "Seconds from `'30s'`, `'5m'`, `'1h'`, or a number. Vishalakshi's parser, so a monitor and a watch spell an interval alike."
-    from vishalakshi.acquire import secs as _secs
+    "Seconds from `'30s'`, `'5m'`, `'1h'`, or a number. One parser for the family, never our own."
+    # pobblebonk first: it is where the family's schedules are moving, and it also takes `1h30m`
+    try: from pobblebonk.core import secs as _secs
+    except ImportError: from vishalakshi.acquire import secs as _secs
     return _secs(every)
 
 # %% ../nbs/17_monitor.ipynb #c02d5ec8
@@ -371,3 +375,57 @@ def monitor_tools(get_monitors, mx=MAX_TOOL_CHARS):
             f"{r['review'] or r['error'] or r['changes']}" for r in recs), mx)
 
     return [watch_folder, list_folder_watches, cancel_folder_watch, check_folders]
+
+# %% ../nbs/17_monitor.ipynb #b10df102
+POB_READER = 'ramabana'   #: the notes-stream reader a session drains under
+TICKS = {}                #: schedule name -> what a beat runs for it. `ramabana-tick` registers these
+
+def on_tick(name):
+    "Register the callback a fire of `name` runs, for whichever process the beat starts."
+    def _f(fn):
+        TICKS[str(name)] = fn
+        return fn
+    return _f
+
+POB_HOME = Path.home()/'.pobblebonk'   #: where the beat keeps its launcher, its log and the database
+
+def pob_path():
+    "The one file the beat and a session meet in. Both sides ask here, so they cannot disagree."
+    # the released package may not carry `heartbeat` yet, and its directory is all that is wanted
+    try: from pobblebonk.heartbeat import HOME
+    except ImportError: HOME = POB_HOME
+    return Path(HOME).expanduser()/'pob.db'
+
+def pob(path=None):
+    "The database the beat and this session share. None when pobblebonk is not installed."
+    # `Pob(None)` makes a temporary database the beat would never find again, so always name one
+    try: from pobblebonk.core import Pob
+    except ImportError: return None
+    return Pob(str(path or pob_path()))
+
+def beat_notes(db, reader=POB_READER, limit=20):
+    "What the beat left that `reader` has not read. Empty for no beat, and never raises into a turn."
+    if db is None: return []
+    try: got = db.drain(str(reader), limit)
+    except Exception: return []
+    return [f"{n['title']}: {n['body']}" if n.get('body') else str(n['title']) for n in got]
+
+def beat_notice(notes, mx=REVIEW_MAX_CHARS):
+    "What the beat left since this session last looked, as the block a prompt carries."
+    if not notes: return ''
+    return '\n\n<beat>\n' + clip('\n'.join(notes), mx) + '\n</beat>'
+
+
+# %% ../nbs/17_monitor.ipynb #18ac0628
+@call_parse
+def tick(db: str = '',         # the shared database; pobblebonk's own by default
+         quiet: bool = False): # say nothing on success
+    "One beat: run the schedules that are due and leave what they found as notes."
+    p = pob(db or None)
+    if p is None:
+        print("pobblebonk is not installed: pip install 'ramabana[cron]'", file=sys.stderr)
+        return 1
+    for name, fn in TICKS.items(): p.on(name)(fn)
+    got = p.tick()
+    if not quiet: print(f'{len(got.ran)} ran of {len(got.fired)} fired')
+    return 0

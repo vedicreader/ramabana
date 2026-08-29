@@ -21,8 +21,9 @@ from fastcore.basics import patch
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from .tools import (mime_for, MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
-                            find, load, skill_index, subagent_tools, tools_for)
-from .monitor import Monitors, monitor_tools, review_notice
+                            find, load, skill_index, subagent_tools, tools_for, Background)
+from .monitor import (Monitors, POB_READER, beat_notes, beat_notice, monitor_tools,
+                              pob, pob_path, review_notice)
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
 MAX_DETAIL = 4000     # chars of a tool result kept for the fold
@@ -355,6 +356,7 @@ class Ask:
     answer: bool = None
     note: str = ''
     asked: float = field(default_factory=time.time)
+    run_id: str = ''          # the run that raised it; '' when the foreground turn did
     _done: threading.Event = field(default_factory=threading.Event, repr=False, compare=False)
 
     @property
@@ -366,7 +368,8 @@ class Ask:
 
     def dict(self):
         return {'id': self.id, 'tool': self.tool, 'summary': self.summary, 'preview': self.preview,
-                'answer': self.answer, 'note': self.note, 'pending': self.pending}
+                'answer': self.answer, 'note': self.note, 'pending': self.pending,
+                'run_id': self.run_id}
 
     def resolve(self, ok, note=''):
         self.answer, self.note = bool(ok), note or ''
@@ -410,6 +413,7 @@ class Approvals:
         # the application's recorder. Frontends register through `listen` instead. Neither unhooks the other
         self.on_ask, self.on_answer = on_ask, on_answer
         self.current = None                 # the `Ask` in flight, or None
+        self.closed = False                 # set once; a closing session refuses rather than waits
         self.history = []                   # every `Ask` this session, answered or not
         self._watchers = []                 # (on_ask, on_answer) per registered frontend
         self._lock = threading.Lock()
@@ -456,6 +460,19 @@ class Approvals:
         a._done.set()
         return a
 
+    def close(self):
+        "Refuse everything still waiting, and every ask after it. A closing session answers nothing."
+        with self._lock:
+            if self.closed: return []
+            self.closed = True
+            # `history` holds them all. `current` is only the newest, and a background run can
+            # raise one while another is already waiting
+            waiting = [a for a in self.history if a.pending]
+        for a in waiting:
+            a.resolve(False, 'the session closed before this was answered')
+            self._notify('answer', a)
+        return waiting
+
     def _decided(self, a, ok, note):
         "Resolve without asking anybody, and still tell the recorder."
         a.resolve(ok, note)
@@ -474,14 +491,22 @@ class Approvals:
 
     def request(self, name, args, force=False, timeout=None):
         "Raise one request and wait for it. Returns the resolved `Ask`, whose `reply()` carries the reason."
-        a = Ask(tool=name, args=args, summary=_summary(name, args), preview=preview_for(name, args, self.host))
+        a = Ask(tool=name, args=args, summary=_summary(name, args),
+                preview=preview_for(name, args, self.host),
+                run_id=getattr(current_run(), 'id', '') or '')
         self.history.append(a)
         if not force and name not in self.tools: return a.resolve(True)   # `force` asks anyway
         if self.mode == 'auto': return a.resolve(True)
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
+        # closing first: it is the more useful reason, and it holds whether or not anyone listens.
+        # `current` is taken under the same lock a close competes for, because checking and then
+        # storing separately left an ask that landed in the gap waiting out its whole timeout
+        with self._lock:
+            closing = self.closed
+            if not closing: self.current = a
+        if closing: return self._decided(a, False, 'the session is closing')
         if self.listeners < 1:
             return self._decided(a, False, 'nothing is listening for approvals, so this could not be asked')
-        self.current = a
         self._notify('ask', a)
         wait_for = self.timeout if timeout is None else timeout
         if not a.wait(wait_for):
@@ -1125,6 +1150,13 @@ def _sub_plain(self:Agent):
     if self._subrec is None: self._subrec = [self._record(t) for t in self._subtools]
     return self._subrec
 
+# %% ../nbs/03_agent.ipynb #76e57894
+@patch(as_prop=True)
+def background(self:Agent):
+    "The register async delegations run in, built on first use."
+    if getattr(self, '_background', None) is None: self._background = Background()
+    return self._background
+
 # %% ../nbs/03_agent.ipynb #d598e329
 @patch(as_prop=True)
 def tools(self:Agent):
@@ -1135,7 +1167,8 @@ def tools(self:Agent):
             extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
                                     lambda: self.skills, self._cloud_backend_or_none,
                                     lambda: self.subagent_writes,
-                                    lambda: self.approvals.gate if self.approvals is not None else None)
+                                    lambda: self.approvals.gate if self.approvals is not None else None,
+                                    background=self.background)
         extra += plan_tools(lambda: self.plan, save=self._save_plan)
         b = self.budget
         extra += monitor_tools(lambda: self.monitors, mx=b.tool_max)
@@ -1523,6 +1556,25 @@ def poll_monitors(self:Agent):
     self._monitor_thread.name = 'ramabana-monitor'
     return self._monitor_thread
 
+# %% ../nbs/03_agent.ipynb #b56d3c40
+@patch(as_prop=True)
+def beat(self:Agent):
+    "The beat's database, opened once. None where no beat has ever run on this machine."
+    if getattr(self, '_beat', 'unset') == 'unset':
+        # `pob_path` is the one source of truth, so the beat and a session cannot open different files
+        p = pob_path()
+        self._beat = pob(p) if p.exists() else None
+        # the reader is fixed when the beat is opened: `resume_session` renames the session, and a
+        # reader that moved with it would replay notes this session already carried
+        self._beat_reader = f'{POB_READER}:{self.session_id}'
+    return self._beat
+
+@patch
+def beat_drain(self:Agent):
+    "Notes the beat left that this session has not read. Empty when no beat runs here."
+    if self.beat is None: return []
+    return beat_notes(self.beat, reader=self._beat_reader)
+
 # %% ../nbs/03_agent.ipynb #0ccb8d65
 @patch
 def _prepare(self:Agent, prompt):
@@ -1570,6 +1622,8 @@ def _prepare(self:Agent, prompt):
         except Exception as e: evidence = f'{name} failed: {agent_err(e)}'
         outgoing = _append(outgoing, f'\n\n<preflight-tool name="{name}">\n{evidence}\n</preflight-tool>')
     if reviews: outgoing = _append(outgoing, review_notice(reviews))
+    # what the beat found while no session was running. Read once, under this session's id
+    if (left := self.beat_drain()): outgoing = _append(outgoing, beat_notice(left))
     for skill in loaded:
         outgoing = _append(outgoing, f'\n\n<requested-skill name="{skill.name}">\n{skill.text()}\n</requested-skill>')
     b = self._be('turn')
@@ -2047,7 +2101,8 @@ def status(self:Agent):
     return {'ready': self.ready, 'busy': self.busy, 'note': self.note,
             'problems': self.problems,
             'model': self.model.name, 'model_note': model_note(self.model),
-            'budget': self.budget.note, 'tool_budget': self.tool_budget, 'step_budget': self.step_budget,
+            'budget': self.budget.note, 'tool_budget': self.tool_budget,
+            'approve': getattr(self.approvals, 'mode', ''), 'step_budget': self.step_budget,
             'tool_calls': self._tool_calls_turn, 'tool_limit': self.max_tool_calls, 'step_limit': self.max_steps,   # a tool withheld for a small window is invisible otherwise
             'ntools': len(self.tools), 'nskills': len(self.skills),
             'pct_full': round(self.pct_full, 3), 'compactions': self.compactor.count,
@@ -2432,6 +2487,10 @@ def commands(self:Agent): return sorted(set(_agent_commands_runs(self)) | {'stop
 def close(self:Agent):
     "Cancel active runs before closing their backends."
     backends = list(self._backends.values())
+    # the register first: a background run blocked on an approval is woken by closing the gate,
+    # and one still queued never reaches a model at all
+    if getattr(self, '_background', None) is not None: self._background.close()
+    if self.approvals is not None: self.approvals.close()
     for row in self.runs(active=True): self.cancel(row['id'])
     evicted = [b for b in backends if all(b is not live for live in self._backends.values())]
     _agent_close_runs(self)

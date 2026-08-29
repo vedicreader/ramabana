@@ -11,12 +11,12 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEM
            'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE',
            'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS',
            'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'BLOCK_START', 'PYREPL_MODULES', 'code_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text',
-           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
-           'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
-           'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn',
-           'Ui', 'ThemedCode', 'Reply', 'compact_md', 'VaultSpecHost', 'mk_host', 'mk_agent', 'amain', 'ask_once',
-           'main']
+           'APPROVE_MODES', 'BLOCK_START', 'PYREPL_MODULES', 'code_theme', 'code_bg', 'set_theme', 'plan_text',
+           'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
+           'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
+           'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
+           'ChoiceMenu', 'run_turn', 'Ui', 'ThemedCode', 'Reply', 'compact_md', 'VaultSpecHost', 'mk_host', 'mk_agent',
+           'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -237,8 +237,8 @@ STREAM_EVERY = 0.05
 ACT_TAIL = 3
 MAX_GROUP_ROWS = 8
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
-SURFACE_COMMANDS = ('agent', 'agent_proxy', 'attach', 'copy', 'detach', 'exit', 'guide', 'help', 'join', 'kernels',
-                    'mouse', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
+SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
+                    'join', 'kernels', 'mouse', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
 
 HELP = """normal  enter send · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
@@ -247,6 +247,7 @@ edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
 media   drop or paste a path to attach · @path in a prompt · /attach PATH · /detach [N] · ctrl+v or /paste clipboard image
 copy    select with the mouse as in any scrollback · /copy the last reply · /copy turn for all of it · ctrl+r then y for any block
 approve y approve · n refuse · a approve all · ctrl+y approve with a note · or type a reason and press enter to refuse
+          ctrl+g asks for more · /approve off|ask|auto asks for less
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
@@ -851,6 +852,7 @@ class Ui:
         out.append(f"  {s['model']}  ", style=GRUVBOX['gray'])
         out.append(f'{mark} {state.lower()}', style=color)
         bits = [f"{s['ntools']} tools", f"{s['nskills']} skills", f"{round(s['pct_full'] * 100)}% ctx"]
+        if s.get('approve') and s['approve'] != 'ask': bits.append(f"approve {s['approve']}")
         if s.get('plan_line'): bits.append(s['plan_line'])
         if s['compactions']: bits.append(f"{s['compactions']} compacted")
         if self.agent.use.total: bits.append(s['usage'])
@@ -1326,6 +1328,7 @@ class Ui:
         if name == '/paste': return self.note(self.attach_clipboard())
         if name == '/copy': return self.note(self.copy_last(arg))
         if name == '/mouse': return self.note(self.set_mouse(arg))
+        if name == '/approve': return self.note(self.approve_mode(arg))
         if line.startswith('/'):
             out = self.agent.command(line)
             kind = 'plan' if name in ('/plan', '/todo', '/todos') and out is not None else (
@@ -1403,6 +1406,9 @@ class Ui:
             return coro
         if k.name == 'ctrl+v':
             self.note(self.attach_clipboard())
+            return self.paint()
+        if k.name == 'ctrl+g':
+            self.note(self.tighten_approve())
             return self.paint()
         if k.name == 'ctrl+o':
             self.fold_work()
@@ -1514,6 +1520,38 @@ def place_pics(self:Ui):
     if not out: return
     r, c = comp._cursor
     comp.tty.write(''.join(out) + f'\x1b[{r + 1};{c + 1}H')
+
+# %% ../nbs/05_cli.ipynb #3c9fb61c
+APPROVE_MODES = ('off', 'ask', 'auto')   #: strictest first, which is the order `ctrl+g` walks
+
+def _settle(approvals, mode):
+    "Answer whatever was already waiting. A new policy that left it hanging would not be the policy."
+    a = approvals.pending
+    if a is None or mode == 'ask': return ''
+    approvals.answer(a.id, mode == 'auto', f'answered by /approve {mode}')
+    return f' · {"approved" if mode == "auto" else "refused"} what was waiting'
+
+@patch
+def approve_mode(self:Ui, want=''):
+    "`/approve [off|ask|auto]`, or the current mode when `want` is empty."
+    a = self.agent.approvals
+    if a is None: return 'this session runs without approvals'
+    want = str(want or '').strip().lower()
+    if not want: return f'approvals: {a.mode}'
+    if want not in APPROVE_MODES: return f"usage: /approve [{'|'.join(APPROVE_MODES)}]"
+    was, a.mode = a.mode, want
+    if was == want: return f'approvals: {want}'
+    return f'approvals: {was} -> {want}{_settle(a, want)}'
+
+@patch
+def tighten_approve(self:Ui):
+    "One step stricter, and never the other way. That is what makes it safe to bind to a key."
+    a = self.agent.approvals
+    if a is None: return 'this session runs without approvals'
+    i = APPROVE_MODES.index(a.mode) if a.mode in APPROVE_MODES else 1
+    if not i: return 'approvals: off · /approve ask to be asked again'
+    was, a.mode = a.mode, APPROVE_MODES[i - 1]
+    return f'approvals: {was} -> {a.mode}{_settle(a, a.mode)}'
 
 # %% ../nbs/05_cli.ipynb #280bb985
 @patch

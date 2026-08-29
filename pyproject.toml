@@ -39,6 +39,7 @@ dependencies = [
 [project.optional-dependencies]
 cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0"]
 mcp = ["mcp>=1.2"]
+cron = ["pobblebonk>=0.0.2"]   # the beat and the shared database. See `ramabana.monitor.pob`
 copilot = ["rishi>=0.1.32"]
 dev = ["ramabana[all]", "rishi[all]>=0.1.32", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0"]
 pyrepl = [
@@ -49,7 +50,7 @@ pyrepl = [
 acp = [
     "agent-client-protocol>=0.12.1",
 ]
-all = ["ramabana[cli,mcp,pyrepl,acp]", "rishi[all]"]
+all = ["ramabana[cli,mcp,pyrepl,acp,cron]", "rishi[all]"]
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
 Documentation = "https://vedicreader.github.io/ramabana/"
@@ -58,6 +59,7 @@ Documentation = "https://vedicreader.github.io/ramabana/"
 ramabana = "ramabana.cli:main"
 ramabana-mcp = "ramabana.mcp:main"
 ramabana-acp = "ramabana.racp:main"
+ramabana-tick = "ramabana.monitor:tick"
 
 [project.entry-points.nbdev]
 ramabana = "ramabana._modidx:d"

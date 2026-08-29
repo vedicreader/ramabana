@@ -1469,6 +1469,18 @@ wheels = [
 ]
 
 [[package]]
+name = "honker"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6b/19/77a30cfcafd6036cb409245dcccc2f354842cb12aa07ca044243aa55a4be/honker-0.5.0-cp311-abi3-macosx_10_12_x86_64.whl", hash = "sha256:190a827be3485af2aef66320adbbcba2a3595a03e6c4afe3bcd7f26e3961de82", size = 995659, upload-time = "2026-08-23T22:50:53.546Z" },
+    { url = "https://files.pythonhosted.org/packages/69/5a/6ac3666dbfaab0c14c3f70566eeb908872d348e2456616efe4eea9760596/honker-0.5.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:e7d7a1c566d6f9b43abe2f17115d7859b57e922dccd73f2edf16d07fd77d85bd", size = 978042, upload-time = "2026-08-23T22:50:54.804Z" },
+    { url = "https://files.pythonhosted.org/packages/05/34/ba7836904f2c6d0e14d1257606f83d2ace01f0df63e5705c112da27a530e/honker-0.5.0-cp311-abi3-manylinux_2_38_aarch64.whl", hash = "sha256:ed99bd11a5dc47714b5484c8ba3dc12e10b6a871c610acff3488da822f3a34a4", size = 1871815, upload-time = "2026-08-23T22:50:56.147Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/d0/fe00b8f44e03c33aa6408c9defd902a47221fbd18045d155fbbac40b8736/honker-0.5.0-cp311-abi3-manylinux_2_38_x86_64.whl", hash = "sha256:c61cc173db699f5fbbc09f1821069416e8874075e16ee571d76c75a7be96e37e", size = 1881633, upload-time = "2026-08-23T22:50:57.904Z" },
+    { url = "https://files.pythonhosted.org/packages/49/b6/2ad40cfe8d35ca733ad51fb1334de03a71e1dc000826331e12f67f77485f/honker-0.5.0-cp311-abi3-win_amd64.whl", hash = "sha256:62e78378b4212ad9c04a4dd51b5ca57ff3d4e259271170a88745db60c3179602", size = 1697424, upload-time = "2026-08-23T22:50:59.388Z" },
+]
+
+[[package]]
 name = "hpack"
 version = "4.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3310,6 +3322,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pobblebonk"
+version = "0.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fastcore" },
+    { name = "honker" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/55/b5/6268e06f97db16f618a79b67f227c7cfbb012092178f0b9b8f89831ad5f4/pobblebonk-0.0.2.tar.gz", hash = "sha256:b23c51ad4feeb4b20ca4266afb8d5eb24f2abb09c7092723fc8b7027f7bab0de", size = 9411, upload-time = "2026-08-26T09:28:50.833Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f4/65/ce0999b1cb79a2f4b91db94dc785b1e96280358a1aebc3f07563a5ca3f26/pobblebonk-0.0.2-py3-none-any.whl", hash = "sha256:a2440652514775870453a1cb4efc66a1c042a94150f87a8439144b4c5095b27a", size = 10368, upload-time = "2026-08-26T09:28:49.628Z" },
+]
+
+[[package]]
 name = "primp"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3890,6 +3915,7 @@ all = [
     { name = "dhrishti" },
     { name = "jupyter-client" },
     { name = "mcp" },
+    { name = "pobblebonk" },
     { name = "pyghostty" },
     { name = "rishi", extra = ["all"] },
     { name = "teleprint" },
@@ -3901,6 +3927,9 @@ cli = [
 copilot = [
     { name = "rishi" },
 ]
+cron = [
+    { name = "pobblebonk" },
+]
 dev = [
     { name = "agent-client-protocol" },
     { name = "dhrishti" },
@@ -3908,6 +3937,7 @@ dev = [
     { name = "mcp" },
     { name = "nbdev" },
     { name = "notebook" },
+    { name = "pobblebonk" },
     { name = "pyghostty" },
     { name = "pytest" },
     { name = "rishi", extra = ["all"] },
@@ -3953,6 +3983,9 @@ requires-dist = [
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.2" },
     { name = "nbdev", marker = "extra == 'dev'", specifier = ">=3.3.11" },
     { name = "notebook", marker = "extra == 'dev'", specifier = ">=7.6.1" },
+    { name = "pobblebonk", marker = "extra == 'all'", specifier = ">=0.0.2" },
+    { name = "pobblebonk", marker = "extra == 'cron'", specifier = ">=0.0.2" },
+    { name = "pobblebonk", marker = "extra == 'dev'", specifier = ">=0.0.2" },
     { name = "pyghostty", marker = "extra == 'all'", specifier = ">=0.1.0" },
     { name = "pyghostty", marker = "extra == 'cli'", specifier = ">=0.1.0" },
     { name = "pyghostty", marker = "extra == 'dev'", specifier = ">=0.1.0" },
@@ -3974,7 +4007,7 @@ requires-dist = [
     { name = "uraiyadal", editable = "../urai" },
     { name = "vishalakshi", specifier = ">=0.1.11" },
 ]
-provides-extras = ["acp", "all", "cli", "copilot", "dev", "mcp", "pyrepl"]
+provides-extras = ["acp", "all", "cli", "copilot", "cron", "dev", "mcp", "pyrepl"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "ramabana", extras = ["dev"] }]
