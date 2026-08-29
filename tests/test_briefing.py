@@ -480,13 +480,13 @@ def test_a_delegated_question_runs_on_a_thrown_away_conversation_with_the_scope_
     so it is no more dangerous to delegate than to run.
     """
     import inspect
-    from ramabana.tools import NullHost, delegate, read_only
+    from ramabana.tools import NullHost, SessionHost, delegate, read_only
     be = FakeBackend(spec)
     be.start()
     assert delegate(be, 'where do we do X?', tools=[]) == 'sub answer'
     assert len(be.spawned) == 1 and be.hist == []
 
-    class H(NullHost):
+    class H(NullHost, SessionHost):      # declaring the group is what earns the session tools
         def __init__(self, *a, **kw): super().__init__(*a, **kw); self.calls = []
         def inspect_python(self, code, scope='isolated'):
             self.calls.append((code, scope)); return 'ok'

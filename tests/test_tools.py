@@ -12,7 +12,7 @@ import pytest
 from ramabana import core, tools
 from ramabana.testing import MemHost, fake_agent
 from ramabana.core import AgentError
-from ramabana.tools import (ERR, LocalHost, NullHost, code_tools, failed, file_tools,
+from ramabana.tools import (ERR, HostError, LocalHost, NullHost, code_tools, failed, file_tools,
                             shell_tools, tools_for)
 
 
@@ -32,19 +32,20 @@ def outside_host(tmp_path):
 
 # -- which tools a host earns ----------------------------------------------------------
 
-def test_a_host_is_offered_exactly_the_groups_it_implements():
-    """A capability the host does not have must not become a tool the model keeps failing to call,
-    and the probe that decides must never do anything: `run_cmd` has no harmless call, so
-    `_supports` asks whether the host overrode the method rather than running something. `drop`
-    withholds groups the host *does* have, for a model that cannot afford their schemas.
+def test_a_host_is_offered_exactly_the_groups_it_declares():
+    """A capability the host does not have must not become a tool the model keeps failing to call.
+
+    One rule decides: the host declares a group by inheriting the class that names it, and
+    `provides` reads the declarations. `drop` withholds groups the host *does* have, for a model
+    that cannot afford their schemas.
     """
     bare = names(tools_for(NullHost(['/x'])))
-    assert {'search_code', 'view_file'} <= bare
-    assert not ({'run_python', 'notebook_cells', 'run_shell'} & bare)
+    assert 'view_file' in bare                 # every host has the path boundary the file tools need
+    assert not ({'search_code', 'run_python', 'notebook_cells', 'run_shell'} & bare)
 
     mem = names(tools_for(MemHost()))
-    assert 'run_shell' in mem                  # MemHost overrides run_cmd
-    assert 'run_python' not in mem             # list_vars/terminal_text absent, so the group drops
+    assert {'search_code', 'run_shell'} <= mem          # MemHost declares code and shell
+    assert not ({'run_python', 'notebook_cells', 'memory_tree', 'api_load'} & mem)
 
     h = MemHost()
     tools_for(h)
@@ -215,19 +216,21 @@ def test_reading_outside_the_folders_is_a_separate_decision_from_writing_outside
     assert not (sibling/'new.py').exists()
 
 
-def test_the_read_flag_is_a_host_capability_not_a_tool_assumption():
-    "An older host that predates the flag must see its own call shape, not a new keyword."
+def test_the_read_flag_reaches_the_host_on_every_read_only_resolution():
+    "`readable` is the one caller of `check(reading=True)`, and the flag is the whole contract now."
     from pathlib import Path
     seen = []
 
-    class OldHost(NullHost):
-        def check(self, path, must_exist=False):
-            seen.append((path, must_exist))
+    class Watching(NullHost):
+        def check(self, path, must_exist=False, reading=False):
+            seen.append((path, must_exist, reading))
             return Path(path)
 
-    assert not tools._takes_reading(OldHost)
-    assert str(tools.readable(OldHost(['/proj']), '/anywhere/x.py')) == '/anywhere/x.py'
-    assert seen == [('/anywhere/x.py', False)]
+    h = Watching(['/proj'])
+    assert str(tools.readable(h, '/anywhere/x.py')) == '/anywhere/x.py'
+    assert seen == [('/anywhere/x.py', False, True)]
+    h.check('/anywhere/x.py')
+    assert seen[-1] == ('/anywhere/x.py', False, False)
 
 
 # -- reaching outward ------------------------------------------------------------------
@@ -346,3 +349,47 @@ def test_a_sub_agent_sized_like_its_parent_is_not_handed_an_empty_list():
     a.tools
     assert {t.__name__ for t in a._sub_plain()} == warm, 'and it does not change once warm'
 
+
+
+# ---- entering python mode keeps every group the host already had -------------------------
+
+class _Kernel:
+    "The shape `LocalHost` expects of a kernel. `/python` attaches one of these."
+    scopes, kind = ('isolated', 'overlay'), 'ipykernel'
+    def run(self, code): return 'ran'
+    def inspect(self, code, scope='isolated'): return 'inspected'
+    def list_vars(self): return ''
+
+
+def test_entering_python_mode_keeps_every_tool_the_host_already_had(tmp_path):
+    """`/python` used to build a replacement host from four attributes of the old one.
+
+    A session started with `--vault --spec` lost fifteen tools and gained none, because every
+    group the old host had and `LocalHost` does not went with the host it replaced. A kernel is
+    a backend on the host now, so there is nothing to copy and nothing to drop.
+    """
+    from ramabana.cli import mk_host
+    host = mk_host(roots=(str(tmp_path),), vault=True, spec=True)
+    before = {t.__name__ for t in tools_for(host)}
+    assert {'memory_tree', 'api_load', 'list_watches'} <= before, sorted(before)
+    host.kernel = _Kernel()                       # what `use_kernel` does
+    after = {t.__name__ for t in tools_for(host)}
+    assert before == after, f'lost {sorted(before - after)}, gained {sorted(after - before)}'
+
+
+def test_a_host_declares_its_groups_and_cannot_claim_one_it_has_not_written():
+    "A group is an abstract base class, so declaring it and leaving a method out refuses to build."
+    from shalya.host import ApiHost
+    class Half(MemHost, ApiHost):
+        def api_load(self, src, name=''): return {}
+        # and no api_ops, api_count or api_call
+    with pytest.raises(TypeError) as e: Half()
+    assert 'api_ops' in str(e.value)
+
+
+def test_a_group_whose_backend_is_absent_is_absent_from_provides(tmp_path):
+    "`without` is the runtime half: the class declares, construction says what is actually there."
+    host = LocalHost([tmp_path], index=False)
+    assert not host.can('memory') and not host.can('api')
+    assert host.can('code') and host.can('file')
+    with pytest.raises(HostError, match='no vault'): host.memory_tree('')

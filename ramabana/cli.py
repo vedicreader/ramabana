@@ -15,7 +15,8 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEM
            'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
            'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
            'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn',
-           'Ui', 'ThemedCode', 'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
+           'Ui', 'ThemedCode', 'Reply', 'compact_md', 'VaultSpecHost', 'mk_host', 'mk_agent', 'amain', 'ask_once',
+           'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -1690,7 +1691,7 @@ PYREPL_MODULES = ('jupyter_client', 'dhrishti')
 @patch
 def log_cell(self:Ui, source, outputs=None, cell_type='code'):
     "Write one cell to the session notebook, when the host keeps one."
-    log = getattr(self.agent.host, 'log_cell', None)   # only a `DhrishtiHost` has one
+    log = getattr(getattr(self.agent.host, 'kernel', None), 'log_cell', None)   # only a Dhrishti kernel has one
     if log is not None: log(source, outputs, cell_type)
 
 @patch
@@ -1757,10 +1758,9 @@ async def enable_agent_proxy(self:Ui):
 @patch
 async def attach_session(self:Ui, name):
     "Point the agent's Python at a dhrishti session someone else owns. We start nothing and own no prompt."
-    from ramabana.pyrepl import DhrishtiHost, find_session
-    old, base = self.agent.host, find_session(name)
-    self.use_host(DhrishtiHost(old.roots, base, approvals=old.approvals, web=old.web,
-                               read_outside=old.read_outside))
+    from ramabana.pyrepl import find_session, use_kernel
+    base = find_session(name)
+    self.use_host(use_kernel(self.agent.host, base))
     self.attached = base
     return base
 
@@ -1885,6 +1885,14 @@ def _act(self:Ui, act):
 
 
 # %% ../nbs/05_cli.ipynb #79b1ca2e
+from .spec import SpecHost
+from .vault import VaultHost
+
+
+class VaultSpecHost(VaultHost, SpecHost):
+    "Both optional groups on one host. A declared class, rather than one built by `type()` per session."
+
+
 def mk_host(roots=('.',),
             approvals=None,          # an `Approvals` for the host to put writes in front of
             web=True,                # wire the web tools to fossick
@@ -1892,15 +1900,11 @@ def mk_host(roots=('.',),
             spec=False,              # let the agent read an API specification and call it
             read_outside=False):     # let the read-only tools name any path on this machine
     "The host both frontends run on: `LocalHost`, plus a vault and an API spec when asked."
-    bases = []
-    if vault:
-        from .vault import VaultHost
-        bases.append(VaultHost)
-    if spec:
-        from .spec import SpecHost
-        bases.append(SpecHost)
-    Host = LocalHost if not bases else bases[0] if len(bases) == 1 else type('VaultSpecHost', tuple(bases), {})
-    return Host(roots, approvals=approvals, web=web, read_outside=read_outside)
+    kw = dict(approvals=approvals, web=web, read_outside=read_outside)
+    if vault and spec: return VaultSpecHost(roots, **kw)
+    if vault: return VaultHost(roots, **kw)
+    if spec: return SpecHost(roots, **kw)
+    return LocalHost(roots, **kw)
 
 
 def mk_agent(roots=('.',),

@@ -125,11 +125,6 @@ def parse_ops(spec):
 class SpecHost(LocalHost):
     "`LocalHost` plus named API specs (OpenAPI / Discovery / GraphQL) loaded on demand."
 
-    @property
-    def capabilities(self):
-        "Advertise `api`. Never probe — that needs a loaded spec."
-        return {**super().capabilities, 'api': True}
-
     @delegates(LocalHost.__init__)
     def __init__(self,
                  roots=('.',),          # the folders the agent is confined to
@@ -145,6 +140,8 @@ class SpecHost(LocalHost):
         self.max_ops = max_ops
         self._clients = {}
         self.spec_info = {}
+        # this class answers the api group itself, without an `apis` backend handed in
+        self.without = self.without - {'api'}
 
     def api_load(self, src, name=''):
         "Read a spec and remember it under `name` (default: its title, else the host)."

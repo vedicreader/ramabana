@@ -60,11 +60,6 @@ def _fed_hit(h):
 class VaultHost(LocalHost):
     "A `LocalHost` with durable memory, federated search and watches."
 
-    @property
-    def capabilities(self):
-        "Report memory and watch support."
-        return {**super().capabilities, 'memory': True, 'watch': True}
-
     @delegates(LocalHost.__init__)
     def __init__(self,
                  roots=('.',),          # the folders the agent is confined to
@@ -84,6 +79,8 @@ class VaultHost(LocalHost):
         self._vault, self._vlock, self._vthread = vault, threading.Lock(), None
         self.federate, self.remember_reads = federate, remember_reads
         self._legs, self._cthread = None, None
+        # this class answers the memory, ask and watch groups itself, without a store handed in
+        self.without = self.without - {'memory', 'ask', 'watch'}
         if warm: self.open_vault()
 
 

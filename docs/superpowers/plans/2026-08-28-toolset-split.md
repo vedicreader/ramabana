@@ -105,28 +105,34 @@ Mixins were the first answer and are not the one taken. The problem is that capa
 five different ways. A protocol per group plus a mixin per group is more class machinery than that
 needs. One rule answers it: a group applies when the host has the group's methods.
 
-- [ ] Reduce `Host` to the path boundary every group needs: `roots`, `added_roots`, `add_root`, `check`, `walk`, `read`, `write`, `text_at`, `note`. A host that cannot do something does not define the method, so `hasattr` is the whole test.
-- [ ] Make each group an `add_<group>(host, ...)` function that binds the group's methods onto a host that already exists. `add_code`, `add_web`, `add_notebook`, `add_session`, `add_shell`, `add_memory`, `add_watch`, `add_api`. Give api the four names it has never declared: `api_load`, `api_ops`, `api_count`, `api_call`.
-- [ ] Rewrite `tools_for` as a loop over one `(group, factory, methods)` table, with `hasattr` as the test.
-- [ ] Delete `capabilities`, `_declared`, `_probe`, `_supports`, `_has` and `_takes_reading`. Fold `readable` into `check`, whose `reading` flag is now the only signature.
-- [ ] `LocalHost.__init__` calls the attachers for the groups whose optional dependency imported. A missing `fossick` means no `web_search`, rather than a `web_search` that always answers nothing.
-- [ ] `mk_host` calls attachers. Remove the `type()` call that synthesises a class at runtime.
-- [ ] `enter_python` and `attach_session` call `add_session(host, kernel)` on the host they already have. Neither constructs a replacement, so nothing can be lost in the swap.
-- [ ] `SpecHost`, `VaultHost` and `DhrishtiHost` become calls to `add_api`, `add_memory`/`add_watch` and `add_session`. Keep the class names as thin constructors for one release.
+- [x] Reduce `Host` to the path boundary every group needs: `roots`, `added_roots`, `add_root`, `check`, `walk`, `read`, `write`, `text_at`, `note`. A host that cannot do something does not define the method, so `hasattr` is the whole test.
+- [x] Make each group an abstract base class carrying its name and its methods: `CodeHost`, `WebHost`, `NotebookHost`, `MemoryHost`, `WatchHost`, `SessionHost`, `ShellHost`, `ApiHost`, `GitHost`. Api got the four names it has never declared: `api_load`, `api_ops`, `api_count`, `api_call`.
+- [x] Rewrite `tools_for` as a loop over one `(group, factory)` table, with `Host.provides` as the test.
+- [x] Delete `capabilities`, `_declared`, `_probe`, `_supports`, `_has` and `_takes_reading`. Fold `readable` into `check`, whose `reading` flag is now the only signature.
+- [x] `LocalHost` declares every group and fills `without` at construction from what imported and what the caller asked for. Memory, watches, the api group and the session kernel are backends handed in, so one class covers every combination.
+- [x] `mk_host` picks from named classes. The `type()` call is gone, replaced by a declared `VaultSpecHost`.
+- [x] `enter_python` and `attach_session` call `use_kernel(host, base)`, which is `host.kernel = Dhrishti(base)`. Neither constructs a replacement, so nothing can be lost in the swap.
+- [x] `SpecHost` and `VaultHost` keep their construction and clear their own group from `without`. `DhrishtiHost` became `Dhrishti`, a kernel object, with the class kept as a thin constructor.
 
 **Decided:** `approvals` stays declared on shalya's `Host`, returning None. Shalya never reads it. It
 is where Ramabana and Leela both hang the object, and one property is cheaper than a second base
 class.
 
-**Consequence worth stating.** `hasattr` means a host that defines a method must be able to answer
-it. A host can no longer define a method and signal absence by raising `NotImplementedError`.
-Ramabana's `NullHost` and Leela's `WorkspaceHost` both need reading against that rule.
+**Consequence worth stating.** A host that declares a group must implement every method in it, and
+`ABCMeta` enforces that where the host is built. A host can no longer define a method and signal
+absence by raising `NotImplementedError`. `NullHost` and `MemHost` were rewritten against that rule.
+Leela's `WorkspaceHost` still needs it, in Task 7.
 
-**Acceptance:** a regression test asserts that the tool-name set after entering python mode is a superset of the set before it, for a host built with `vault=True, spec=True`. The fifteen tools listed above must survive. `uv run pytest` and `uv run nbdev-test` both pass.
+`@patch` adds methods after `ABCMeta` has worked out what is missing, so `implemented(cls)` asks
+again by the same rule. A method nothing ever wrote stays abstract.
 
-### Task 3: Split `tools.py` inside Ramabana
+**Acceptance:** measured on 2026-08-29 against `mk_host(roots=..., vault=True, spec=True)`: 43 tools before attaching a kernel, 43 after, none lost and none gained. A regression test pins it.
 
-Do this before extracting anything. The protocols from Task 2 are what tell you where to cut.
+### Task 3: Split `tools.py` inside Ramabana — done
+
+The four modules are `shalya.core`, `shalya.host`, `shalya.tools` and `shalya.skills`. Delegation,
+`draws_itself` and the image group's model knowledge stayed in Ramabana, and `ramabana/tools.py`
+re-exports every moved name.
 
 **Files:** new notebooks under `nbs/`, `nbs/02_tools.ipynb`
 
@@ -137,7 +143,7 @@ Do this before extracting anything. The protocols from Task 2 are what tell you 
 
 **Acceptance:** `uv run pytest` passes with no test file edited. Importing every name Leela uses from `ramabana.tools` still works.
 
-### Task 4: Cut `yantras`
+### Task 4: Cut `shalya` — done
 
 - [ ] Create the repository and the nbdev scaffold. Copy the four notebooks from Task 3.
 - [ ] Make each capability group an optional extra: `[code]` pulls `koshas` and `litesearch`, `[web]` pulls `fossick`, `[memory]` pulls `vishalakshi`, `[api]` pulls `fastspec`, `[git]` pulls `gheasy`. The base install pulls `fastcore` only.
@@ -211,6 +217,13 @@ Fetch-on-demand is still worth building for skills that are not inlined, with th
 
 - How long Ramabana re-exports the moved names. Task 7 is Leela's session and Leela is pinned, so one release is enough.
 - Whether `Compactor`, `surgical_history` and `summarise_prompt` in `runtime.py` should move down into `urai` alongside `evict_middle` and `SlidingWindowCallback`. Urai's are mechanical eviction and Ramabana's summarise through a model, so they are related and not duplicates. Not part of this plan.
+
+## Left to do
+
+- **Publish `shalya` to PyPI**, then delete `[tool.uv.sources]` from Ramabana's `pyproject.toml`. It points at `../shalya`, which no published Ramabana can resolve. Nothing else reads it.
+- **Publish `uraiyadal` 0.0.5.** The distribution name in `/home/user/urai` is corrected and the version follows the published 0.0.4.
+- **Task 1 is not started.** `ramabana/core.py` still declares its own `ModelSpec` and `resolve`. It is independent of the split and waits on nothing now that the naming is settled.
+- **Task 7, Leela.** `WorkspaceHost` declares nothing, so `tools_for` gives it the file tools alone. It needs to inherit the group classes for what it implements.
 
 ## Answered
 

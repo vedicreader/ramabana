@@ -15,7 +15,9 @@ from functools import partial
 from pathlib import Path
 from .core import AgentError, ModelSpec, agent_err, register_model
 from .runtime import Backend, Usage
-from .tools import AttrDict, Hit, LocalHost, NullHost
+from fastcore.basics import AttrDict
+from .tools import (CodeHost, Hit, HostError, LocalHost, NullHost, SessionHost,
+                            ShellHost, implemented)
 from .agent import Agent
 
 # %% ../nbs/04_testing.ipynb #cbdc4d5f
@@ -23,7 +25,8 @@ SPEC = ModelSpec('fake', 'fake', 'fake/model', ctx=1000)
 SCRIPTED = ModelSpec('scripted', 'scripted', 'scripted/model', ctx=8000)
 
 # %% ../nbs/04_testing.ipynb #2ce479ad
-class MemHost(NullHost):
+@implemented
+class MemHost(NullHost, CodeHost, ShellHost):
     "A host whose folders live in a dict. The file tools can be driven without touching disk."
 
     def __init__(self, files=None, root='/proj', commands=None):
@@ -41,7 +44,7 @@ class MemHost(NullHost):
     @property
     def shell_note(self): return 'scripted'
 
-    def check(self, path, must_exist=False):
+    def check(self, path, must_exist=False, reading=False):
         p = Path(path)
         return p if p.is_absolute() else Path(self.root)/p
 
@@ -63,6 +66,10 @@ class MemHost(NullHost):
         self.ran.append(code)
         return 'ok'
 
+    def peers(self, path, line, limit=20): return []
+    def symbols(self, path): return []
+    def public_api(self, package, limit=200): raise HostError('no code index: memory')
+
 # %% ../nbs/04_testing.ipynb #d107b5da
 class FullHost(LocalHost):
     """Provide every host capability in process over a temporary folder.
@@ -75,6 +82,9 @@ class FullHost(LocalHost):
         root = Path(root) if root else Path(tempfile.mkdtemp())/'proj'
         root.mkdir(parents=True, exist_ok=True)
         super().__init__([root], web=False, index=False, **kw)
+        # the web, code, notebook, session, shell and memory groups are answered in this class
+        # body. `ask` needs a model, `api` needs a specification, `watch` needs a real vault
+        self.without = frozenset({'ask', 'api', 'watch'})
         self.root = self.check('.')
         for path, text in (files or {}).items(): self.write(path, text)
         #: url -> markdown, the entire web this host knows about

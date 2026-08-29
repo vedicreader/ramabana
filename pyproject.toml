@@ -18,6 +18,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
+    "shalya>=0.0.1",
+    "gheasy>=0.0.9",
     "exhash>=0.4.9",
     "fastcore>=2.1.16",
     "rishi>=0.1.27",
@@ -79,3 +81,8 @@ path = "ramabana/__init__.py"
 
 [dependency-groups]
 dev = ["ramabana[dev]"]
+
+# Until shalya is on PyPI. Remove this before the next release: a published ramabana cannot
+# resolve a relative path, and `uv sync` here is the only thing that reads it.
+[tool.uv.sources]
+shalya = { path = "../shalya", editable = true }

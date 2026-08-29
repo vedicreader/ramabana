@@ -283,7 +283,7 @@ def test_generate_image_refuses_without_a_key_rather_than_calling(monkeypatch):
 def test_an_unknown_size_is_refused_before_any_request(monkeypatch):
     monkeypatch.setenv('OPENAI_API_KEY', 'k')
     called = []
-    monkeypatch.setattr('ramabana.tools._post_image', lambda *a, **kw: called.append(a))
+    monkeypatch.setattr('shalya.tools._post_image', lambda *a, **kw: called.append(a))
     assert failed(_gi()('a cat', size='4096x4096'))
     assert called == []
 
@@ -292,7 +292,7 @@ def test_a_generated_picture_lands_beside_the_session(tmp_path, monkeypatch):
     from base64 import b64encode
     png = b'\x89PNG\r\n\x1a\nx'
     monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    monkeypatch.setattr('ramabana.tools._post_image',
+    monkeypatch.setattr('shalya.tools._post_image',
                         lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
     out = _gi(session=str(tmp_path))('a cat')
     assert not failed(out)
@@ -303,14 +303,14 @@ def test_a_generated_picture_lands_beside_the_session(tmp_path, monkeypatch):
 def test_an_endpoint_failure_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
     monkeypatch.setenv('OPENAI_API_KEY', 'k')
     def boom(*a, **kw): raise RuntimeError('502 upstream')
-    monkeypatch.setattr('ramabana.tools._post_image', boom)
+    monkeypatch.setattr('shalya.tools._post_image', boom)
     r = _gi(session=str(tmp_path))('a cat')
     assert failed(r) and '502 upstream' in r
 
 
 def test_an_empty_reply_is_a_refusal(tmp_path, monkeypatch):
     monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    monkeypatch.setattr('ramabana.tools._post_image', lambda *a, **kw: [])
+    monkeypatch.setattr('shalya.tools._post_image', lambda *a, **kw: [])
     assert failed(_gi(session=str(tmp_path))('a cat'))
 
 
@@ -399,8 +399,8 @@ def test_a_drawing_model_draws_as_itself_rather_than_delegating(tmp_path, monkey
     def fake(prompt, model, timeout=300):
         seen['model'] = model
         return {'output': [{'type': 'image_generation_call', 'result': b64encode(png).decode()}]}
-    monkeypatch.setattr('ramabana.tools._post_responses', fake)
-    monkeypatch.setattr('ramabana.tools._post_image', lambda *a, **kw: pytest.fail('delegated'))
+    monkeypatch.setattr('shalya.tools._post_responses', fake)
+    monkeypatch.setattr('shalya.tools._post_image', lambda *a, **kw: pytest.fail('delegated'))
     gi = _gi(session=str(tmp_path), get_spec=lambda: _spec('openai/gpt-5.6-luna'))
     out = gi('a bottle')
     assert not failed(out)
@@ -413,8 +413,8 @@ def test_a_model_that_cannot_draw_falls_back_to_the_images_endpoint(tmp_path, mo
     png = b'\x89PNG\r\n\x1a\nx'
     caps(_Caps(('text', 'image'), ('text',)))
     monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    monkeypatch.setattr('ramabana.tools._post_responses', lambda *a, **kw: pytest.fail('should not ask'))
-    monkeypatch.setattr('ramabana.tools._post_image',
+    monkeypatch.setattr('shalya.tools._post_responses', lambda *a, **kw: pytest.fail('should not ask'))
+    monkeypatch.setattr('shalya.tools._post_image',
                         lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
     gi = _gi(session=str(tmp_path), get_spec=lambda: _spec('anthropic/claude-opus-4-5'))
     assert Path(gi('a bottle').strip()).read_bytes() == png
@@ -424,7 +424,7 @@ def test_a_drawing_model_that_returns_no_picture_is_a_refusal(tmp_path, monkeypa
     c = _Caps(('text', 'image'), ('text',)); c.tools = ('image',)
     caps(c)
     monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    monkeypatch.setattr('ramabana.tools._post_responses',
+    monkeypatch.setattr('shalya.tools._post_responses',
                         lambda *a, **kw: {'output': [{'type': 'message'}]})
     gi = _gi(session=str(tmp_path), get_spec=lambda: _spec('openai/gpt-5.6-luna'))
     assert failed(gi('a bottle'))
@@ -619,7 +619,7 @@ def test_a_picture_a_tool_wrote_reaches_the_frontend(tmp_path, monkeypatch, caps
     png = _png(64, 64)
     caps(_Caps(('text', 'image'), ('text',)))
     monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    monkeypatch.setattr('ramabana.tools._post_image',
+    monkeypatch.setattr('shalya.tools._post_image',
                         lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
     agent, _ = fake_agent(replies=['done'])
     agent._drawn = []
@@ -711,7 +711,7 @@ def _drawing_turn(tmp_path, monkeypatch, cols=100, rows=40, turns=1):
     monkeypatch.setenv('RAMABANA_KITTY', '1')
     monkeypatch.chdir(tmp_path)
     png = _png(600, 600)
-    monkeypatch.setattr('ramabana.tools._post_image',
+    monkeypatch.setattr('shalya.tools._post_image',
                         lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
     said = []
 

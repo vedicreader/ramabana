@@ -338,10 +338,11 @@ def test_the_command_still_falls_back_when_the_terminal_never_opened(tmp_path):
     assert (tmp_path/'marker.txt').exists(), 'the command was neither run in the editor nor locally'
 
 
-def test_capabilities_stays_the_tool_group_namespace_it_is_documented_to_be(tmp_path):
-    "`Host.capabilities` is `{tool group: bool}`, and an editor is not a tool group."
+def test_provides_stays_the_tool_group_namespace_it_is_documented_to_be(tmp_path):
+    "`Host.provides` is a set of tool group names, and an editor is not a tool group."
     h = EditorHost([str(tmp_path)])
-    assert set(h.capabilities) <= {'notebook', 'web', 'memory', 'watch', 'session', 'shell'}
+    assert h.provides <= {'code', 'file', 'notebook', 'web', 'memory', 'watch', 'session',
+                          'shell', 'api', 'git'}
 
 
 # ---- sessions the editor can name and come back to ------------------------------------
