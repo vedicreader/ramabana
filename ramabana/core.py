@@ -386,7 +386,7 @@ def resolve(name, default_local=DFLT_LOCAL):
             ctx = claude_ctx(model_id) if runtime == 'claude' else \
                   DFLT_AGENT_CTX if runtime in AGENTS else local_ctx(name)
             return ModelSpec(name, runtime, model_id, ctx)
-        from rishi.core import infer_runtime
+        from urai import infer_runtime
         if (inferred := infer_runtime(name)) in ('litert', 'mlx', 'llama'):
             if not runtime_available(inferred):
                 raise RuntimeError(f'{inferred} runtime is unavailable; {runtime_remedy(inferred)}')
@@ -397,9 +397,9 @@ def resolve(name, default_local=DFLT_LOCAL):
 
 @functools.lru_cache(maxsize=256)
 def _caps(model_id, runtime):
-    "`rishi.model_caps`, memoised. `None` where rishi predates it."
+    "`urai.model_caps`, memoised. `None` where the installed urai predates it."
     try:
-        from rishi.core import model_caps
+        from urai import model_caps
         return model_caps(model_id, runtime=runtime)
     except Exception: return None
 
@@ -462,7 +462,7 @@ def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model
     if not name: name = model_id.rsplit('/', 1)[-1]
     if not name or not model_id: raise ValueError('model name and model id are required')
     if runtime is None:
-        from rishi.core import resolve_runtime
+        from urai import resolve_runtime
         runtime, model_id = resolve_runtime(model_id)
     # `RUNTIMES`, not a literal: whatever `resolve_runtime` can infer has to be here, or
     # `register_model` fails on the answer it just asked for

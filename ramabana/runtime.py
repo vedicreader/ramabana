@@ -539,7 +539,7 @@ class Compactor:
 # %% ../nbs/01_runtime.ipynb #a3e427bf
 def answer_only(text):
     "A one-shot reply with the model's thinking removed, however the runtime left it."
-    from rishi.core import split_think
+    from urai import split_think
     out, _ = split_think(text or '')
     if '</think>' in out: out = out.partition('</think>')[2]
     if '<think>' in out: out = out.partition('<think>')[0]
@@ -563,7 +563,7 @@ class ThinkFilter:
         return any(isinstance(p, dict) and p.get('type') == 'tool_call' for p in parts)
     def __call__(self, chunks):
         "Filter raw chunk dicts, yielding the same shape back."
-        from rishi.core import resp_text
+        from urai import resp_text
         for o in chunks:
             if self._tool(o): self.thinking, self.buf = True, ''; yield o; continue
             if not self.thinking: self.answer += len(resp_text(o)); yield o; continue
@@ -904,7 +904,7 @@ class RishiBackend(Backend):
             self.chat.reasoning_effort = effort
         return kw
     def _send(self,msg,**kw):
-        from rishi.core import resp_text
+        from urai import resp_text
         return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
     MCP_REFUSED=('mcp','strict_mcp_config','allowed_tools','disallowed','not permitted','policy')
     def _recover(self,e):
@@ -933,13 +933,13 @@ class RishiBackend(Backend):
         The shape is rishi's to know, beside the parser that reads it. Only the tool names are
         ours: a reply naming something this backend does not carry is prose about JSON.
         """
-        from rishi.core import tag_call_shape
+        from urai import tag_call_shape
         if tool_channel(self.spec,self.chat)!='tags': return False
         return tag_call_shape(text,[getattr(t,'__name__','') for t in self.tools])
     def _stream(self,msg,**kw):
         kw=self._turn_kw(kw)
         if not self.prefilled_think:yield from self.chat(msg,stream=True,**kw); return
-        from rishi.core import StreamFormatter
+        from urai import StreamFormatter
         f=ThinkFilter()
         yield from StreamFormatter().format_stream(f(self.chat(msg,stream='raw',**kw)))
         if f.thought and not f.answer:
@@ -957,7 +957,7 @@ class RishiBackend(Backend):
         c=self._oneshot_chat
         c.sp=sp
         c.hist[:]=[c.mk_msg(prompt)]
-        from rishi.core import resp_text
+        from urai import resp_text
         return resp_text(c._model_step(max_tokens or ONESHOT_TOKENS))
     def _replace_hist(self,summary,keep):
         if not hasattr(self.chat,'_recreate_conv'):
@@ -1143,7 +1143,7 @@ def start(self:Backend):
     return self.chat
 
 # %% ../nbs/01_runtime.ipynb #fdd397db
-from rishi.core import ChatCallback
+from urai import ChatCallback
 class TokenLogger(ChatCallback):
     "Report Rishi's provider-reported usage after each response."
     order = 20

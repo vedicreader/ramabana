@@ -271,10 +271,10 @@ CHATS = Path(ramabana.__file__).parent.parent/'chatcache'
 def recorded(path=None, record=None):
     """Replay recorded model answers for the duration, instead of calling a model.
 
-    `record=True`. Or `$RISHI_RECORD_CHAT`. Lets a miss reach a real model. Without it a miss
+    `record=True`. Or `$URAI_RECORD_CHAT`. Lets a miss reach a real model. Without it a miss
     raises. A streamed turn is a generator. Nothing records it and `stream` reaches the model.
     """
-    from rishi.core import CachedChat
+    from urai.record import CachedChat
     from ramabana.runtime import use_chat
     p = Path(path or CHATS)
     with use_chat(partial(CachedChat, path=str(p), record=record)): yield p

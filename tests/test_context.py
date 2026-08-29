@@ -69,8 +69,11 @@ def _harness_chat(cls, hist, billed=260_915, sp='BRIEFING'):
     `__new__` rather than the constructor: what is under test is the window read-out, and building
     one properly wants a Claude Code login that CI does not have.
     """
+    from urai import ChatOpts
     chat = cls.__new__(cls)
-    chat.hist, chat.sp, chat.toolspecs, chat._ctx_tokens = list(hist), sp, [], billed
+    # `sp` is a property over `opts` in urai, so an uninitialised chat has to be given one
+    chat.opts = ChatOpts.create(None, sp=sp)
+    chat.hist, chat.toolspecs, chat._ctx_tokens = list(hist), [], billed
     # `token_count` renders the prompt, which asks the chat which channel its tools are on, which
     # reads these. Without them it raises, `used_tokens` swallows that and answers with the bill
     # -- so the read-out under test here silently was not being read at all.

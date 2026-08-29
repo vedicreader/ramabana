@@ -3877,6 +3877,7 @@ dependencies = [
     { name = "rishi" },
     { name = "shalya" },
     { name = "toolslm" },
+    { name = "uraiyadal" },
     { name = "vishalakshi" },
 ]
 
@@ -3959,17 +3960,18 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rgapi", specifier = ">=0.1.19" },
-    { name = "rishi", specifier = ">=0.1.27" },
-    { name = "rishi", marker = "extra == 'copilot'", specifier = ">=0.1.27" },
+    { name = "rishi", specifier = ">=0.1.32" },
+    { name = "rishi", marker = "extra == 'copilot'", specifier = ">=0.1.32" },
     { name = "rishi", extras = ["all"], marker = "extra == 'all'" },
     { name = "rishi", extras = ["all"], marker = "extra == 'dev'" },
-    { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.27" },
+    { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.32" },
     { name = "shalya", editable = "../shalya" },
     { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'pyrepl'", specifier = ">=0.1.1" },
     { name = "toolslm", specifier = ">=0.3.48" },
+    { name = "uraiyadal", editable = "../urai" },
     { name = "vishalakshi", specifier = ">=0.1.11" },
 ]
 provides-extras = ["acp", "all", "cli", "copilot", "dev", "mcp", "pyrepl"]
@@ -4186,7 +4188,7 @@ wheels = [
 
 [[package]]
 name = "rishi"
-version = "0.1.30"
+version = "0.1.32"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
@@ -4195,29 +4197,26 @@ dependencies = [
     { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "liteparse" },
+    { name = "litert-lm-api" },
     { name = "llmsurgery" },
     { name = "python-fastllm" },
     { name = "safepyrun" },
     { name = "truststore" },
+    { name = "uraiyadal" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/47/1f/a564493394d584a77f63794d5c211087d2545f6cab699bd50d97825ddf9d/rishi-0.1.30.tar.gz", hash = "sha256:5feac8a1b5377e983b24d41d1f22dc26f0580985a19afbd6ad9fe76099736b80", size = 108559, upload-time = "2026-08-25T23:52:15.37Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/44/3b5920ce5806d8bce1247d4be5e1b7a20a59da06215faef6f2250f55b4a4/rishi-0.1.32.tar.gz", hash = "sha256:3dca540ea14b492414d1e46bc191159b2f72c19d6f297ca88420cfa928bc84aa", size = 76449, upload-time = "2026-08-28T00:49:15.973Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/fb/8e0d6e26120ee194988d9da6951d24ca0f317350929b7e59b436832c69d3/rishi-0.1.30-py3-none-any.whl", hash = "sha256:b3cdc208ae08defc131f16bc18ac145ad5f44e94006bb2f277024505aff1edd0", size = 118587, upload-time = "2026-08-25T23:52:13.758Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/95/2dbb5addc7fb27676ce33890f79775b223c15717a531a2a4ed4ab6e5c1b6/rishi-0.1.32-py3-none-any.whl", hash = "sha256:51ccd48e9ea76c4f93caefc62b0493ef7d37248e1f5b5569f20de5a546e5f9b5", size = 85816, upload-time = "2026-08-28T00:49:14.555Z" },
 ]
 
 [package.optional-dependencies]
 all = [
-    { name = "diskcache" },
-    { name = "litert-lm-api" },
     { name = "llama-cpp-python" },
     { name = "mlx-lm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "mlx-vlm", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "numpy" },
     { name = "soundfile" },
     { name = "zstandard", marker = "python_full_version < '3.14' and sys_platform == 'linux'" },
-]
-litert = [
-    { name = "litert-lm-api" },
 ]
 
 [[package]]
@@ -4881,6 +4880,40 @@ wheels = [
 ]
 
 [[package]]
+name = "uraiyadal"
+source = { editable = "../urai" }
+dependencies = [
+    { name = "aidialog" },
+    { name = "fastcore" },
+    { name = "httpx" },
+    { name = "python-fastllm" },
+    { name = "safepyrun" },
+    { name = "truststore" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aidialog", specifier = ">=0.0.22" },
+    { name = "diskcache", marker = "extra == 'all'", specifier = ">=5.6.3" },
+    { name = "diskcache", marker = "extra == 'record'", specifier = ">=5.6.3" },
+    { name = "fastcore", specifier = ">=2.1.16" },
+    { name = "httpx" },
+    { name = "python-fastllm", specifier = ">=0.0.41" },
+    { name = "safepyrun", specifier = ">=0.2.3" },
+    { name = "truststore", specifier = ">=0.10" },
+]
+provides-extras = ["all", "record"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "ipykernel", specifier = ">=7.3.0" },
+    { name = "nbdev", specifier = ">=3.1.0" },
+    { name = "notebook", specifier = ">=7.6.0" },
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "uraiyadal", extras = ["all"] },
+]
+
+[[package]]
 name = "uri-template"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5048,7 +5081,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pyskills" },
     { name = "rgapi" },
-    { name = "rishi", extra = ["litert"] },
+    { name = "rishi" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/fd/56/722a008a20fe5d5e9bb19044b9b288f2ebccb8fe0ad24ddffa2fcc2aa57e/vishalakshi-0.1.12.tar.gz", hash = "sha256:e4e4cdaacdaec7db1cb0a970427c8eb4a190009bf7241f9d36d574737d74126a", size = 94231, upload-time = "2026-08-24T03:18:38.929Z" }
 wheels = [

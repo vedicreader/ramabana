@@ -287,7 +287,7 @@ def test_a_local_turn_fits_its_window_end_to_end(tmp_path):
         the briefing, the schemas, and what four real `view_file` results actually come back as.
         """
         import json
-        from rishi.core import mk_toolspec
+        from urai import mk_toolspec
         from ramabana.agent import system_prompt
         tools = tools_for(host, lambda: [BIG_SKILL], mx=tool_max)
         view = next(t for t in tools if getattr(t, '__name__', '') == 'view_file')

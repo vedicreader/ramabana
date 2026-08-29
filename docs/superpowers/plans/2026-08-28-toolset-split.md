@@ -218,39 +218,39 @@ Fetch-on-demand is still worth building for skills that are not inlined, with th
 - How long Ramabana re-exports the moved names. Task 7 is Leela's session and Leela is pinned, so one release is enough.
 - Whether `Compactor`, `surgical_history` and `summarise_prompt` in `runtime.py` should move down into `urai` alongside `evict_middle` and `SlidingWindowCallback`. Urai's are mechanical eviction and Ramabana's summarise through a model, so they are related and not duplicates. Not part of this plan.
 
-## The rishi 0.1.32 upgrade is blocked on vishalakshi
+## The rishi 0.1.32 upgrade
 
-Measured on 2026-08-29. Ramabana is pinned to `rishi>=0.1.27` and resolves to 0.1.30, which still
-carries its own copy of `core.py` at 1715 lines, `CachedChat` included. rishi 0.1.32 is the migrated
-one: 106 lines, re-exporting `uraiyadal`.
+Ramabana is on `rishi>=0.1.32` and `uraiyadal>=0.0.5`. rishi 0.1.32 is the migrated one: `core.py`
+is 106 lines re-exporting `uraiyadal`, down from 1715.
 
-Upgrading is Task 1's prerequisite and it does not work yet. Three things break.
+Eleven imports moved off `rishi.core` onto `urai`: `ChatCallback`, `StreamFormatter`,
+`infer_runtime`, `model_caps`, `resolve_runtime`, `resp_text`, `split_think`, `tag_call_shape` and
+`CachedChat` in the package, `mk_toolspec` in `tests/test_briefing.py`. `tests/test_context.py`
+builds its harness chat through `ChatOpts.create`, because `sp` is a property over `opts` in urai
+and an uninitialised chat has none.
 
-- `vishalakshi` 0.1.12 imports `Chat`, `is_ctx_error`, `resolve_runtime`, `resp_text`, `split_think`
-  and `thought` from `rishi.core`, and 0.1.32 exports none of them. That is 16 of Ramabana's tests,
-  and the fix belongs in vishalakshi.
-- `rishi.claude.ClaudeChat` stores its options as `_opts`, and `urai.chat._opt_prop` sets `opts`. Any
-  assignment to `sp`, `max_steps` or `tool_max_len` on a Claude chat raises `AttributeError`.
-- `mk_toolspec` moved from `rishi.core` to `urai`, which `tests/test_briefing.py` imports.
+What the upgrade buys is the accounting on the agent page. `uraiyadal` 0.0.5 folds a recording's
+usage block into `CachedChat.use`. It reports the last reply's occupancy as `token_count`, which is
+what `Backend.used_tokens` reads. A replayed turn now reports what it cost and how full the window
+is, and `nbs/03_agent.ipynb` asserts both against a real recording.
 
-The third is a one-line change here. The first two are not Ramabana's, so the upgrade waits on a
-vishalakshi release and on rishi settling `opts` against urai's property.
-
-Everything on the Ramabana side that the upgrade would enable is written and reverted rather than
-guessed at: `uraiyadal` 0.0.5 has the `CachedChat.use` counter, and `nbs/03_agent.ipynb` says where
-its usage assertion becomes real.
+One thing is still not ours. `vishalakshi` 0.1.12 imports `Chat`, `is_ctx_error`,
+`resolve_runtime`, `resp_text`, `split_think` and `thought` from `rishi.core`, and 0.1.32 exports
+none of them, so the package will not import. All 16 tests in `tests/test_vault.py` open a vault.
+The file skips at module level with that reason, and the skip clears itself once vishalakshi ships
+against the newer rishi. Nothing else in the suite touches it: 354 pass.
 
 ## Left to do
 
 - **Publish `shalya` to PyPI**, then delete `[tool.uv.sources]` from Ramabana's `pyproject.toml`. It points at `../shalya`, which no published Ramabana can resolve. Nothing else reads it.
-- **Publish `uraiyadal` 0.0.5.** The distribution name in `/home/user/urai` is corrected and the version follows the published 0.0.4.
+- **Publish `uraiyadal` 0.0.5.** The distribution name in `/home/user/urai` is corrected and the version follows the published 0.0.4. 0.0.5 adds `CachedChat.use` and `CachedChat.token_count`, which the agent notebook's accounting tests need, and `NotRecordable` so a reply that cannot be stored is never cached.
 - **Task 1 is not started.** `ramabana/core.py` still declares its own `ModelSpec` and `resolve`. It is independent of the split and waits on nothing now that the naming is settled.
 - **Task 7, Leela.** `WorkspaceHost` declares nothing, so `tools_for` gives it the file tools alone. It needs to inherit the group classes for what it implements.
 
 ## Answered
 
 - The package is `shalya`.
-- The host is flat, and capability groups attach as functions. Task 2.
+- The host is flat. A capability group is an abstract class the host inherits, so `provides` reads the declaration and a host that leaves a group's method unwritten refuses to be built. Task 2.
 - The pyskills stay in Ramabana. Task 6.
 - `approvals` stays on shalya's `Host`. Task 2.
-- `uraiyadal` is the distribution name, `urai` the import name. `/home/user/urai` declares `name = "urai"` at `0.0.1` and has to be corrected before it is published. Task 1.
+- `uraiyadal` is the distribution name, `urai` the import name. Corrected in `/home/user/urai`, with `lib_path` pinned so nbdev keeps exporting into `urai/`. Task 1.

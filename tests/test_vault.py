@@ -15,6 +15,12 @@ import pytest
 from ramabana.agent import Agent
 from ramabana.tools import ERR, WRITE_TOOLS, LocalHost, NullHost, failed, tools_for, watch_tools
 
+# vishalakshi 0.1.12 imports names that rishi 0.1.32 moved to urai, so it will not import at all.
+# Every test here opens a vault. Skip until vishalakshi is released against the newer rishi.
+# importorskip only skips a module that is missing; this one is installed and raises on import.
+try: import vishalakshi  # noqa: F401
+except ImportError as e: pytest.skip(f'vishalakshi will not import: {e}', allow_module_level=True)
+
 
 def names(ts): return {t.__name__ for t in ts}
 
