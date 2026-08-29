@@ -161,8 +161,9 @@ checklink/cookies.txt
 # a pyrepl session's own state: the dhrishti server's log notebooks and the vault it filled
 .ramabana/
 
-# recorded model answers for the docs pages; committed deliberately, per recording, not wholesale
-chatcache/
+# recorded model answers for the docs pages, committed on purpose: `nbs/03_agent.ipynb` runs a real
+# Agent against them, and without them the page would need a model. Record with
+# RISHI_RECORD_CHAT=1 uv run nbdev-test --path nbs/03_agent.ipynb
 
 # the sdd workspace: briefs, reports and review packages for an in-flight plan
 .superpowers/
