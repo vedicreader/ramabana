@@ -2,6 +2,23 @@
 
 <!-- do not remove -->
 
+## Unreleased
+
+The toolset moved to [shalya](https://github.com/vedicreader/shalya) and the git plumbing to
+[gheasy](https://github.com/vedicreader/gheasy). `ramabana.tools` and `ramabana.git` re-export every
+moved name, so nothing that imports them has to change.
+
+- `ramabana --vault --spec` followed by `/python` no longer drops fifteen tools. A kernel is a
+  backend on the host, so entering python mode is an assignment rather than a replacement host.
+- `Host.capabilities` is replaced by `Host.provides`. A host declares a capability group by
+  inheriting the class that names it, and declaring one without writing its methods refuses to
+  build. `_declared`, `_probe`, `_supports`, `_has` and `_takes_reading` are gone.
+- `public_api` is offered only to a host that has a code index. It used to be offered to every host
+  and then refuse every call.
+- `mk_host` no longer builds a class with `type()` per session. `VaultSpecHost` is declared.
+- `AgentError` is `shalya.core.HostError` under the name the harness has always used, so
+  `except AgentError` still catches what a host refuses.
+
 ## 0.1.29
 fixes delegate search errors
 

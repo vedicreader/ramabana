@@ -1711,15 +1711,14 @@ async def enter_python(self:Ui):
                 self.note('left the attached session; starting a kernel of your own')
             if missing := [m for m in PYREPL_MODULES if find_spec(m) is None]:
                 return self.note(f"python mode needs {' and '.join(missing)}: pip install 'ramabana[pyrepl]'", 'error')
-            from ramabana.pyrepl import DhrishtiHost, Kernel
+            from ramabana.pyrepl import Kernel, use_kernel
             self.note('starting a kernel')
             try: self.kernel = await Kernel(self.agent.host.roots[0]).start()
             except Exception as e:
                 self.kernel = None
                 return self.note(f'no kernel: {agent_err(e)}', 'error')
-            old = self.agent.host
-            self.use_host(DhrishtiHost(old.roots, self.kernel.base, approvals=old.approvals,
-                                       web=old.web, read_outside=old.read_outside))
+            # the host the agent already has, given a kernel. Nothing is copied, so nothing is lost
+            self.use_host(use_kernel(self.agent.host, self.kernel.base))
         self.mode = 'python'
         return self.note('python mode · /agent hands the line back')
     finally:
