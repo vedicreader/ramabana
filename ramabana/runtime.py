@@ -964,7 +964,7 @@ class RishiBackend(Backend):
             raise RuntimeError(f'{type(self.chat).__name__} cannot have its history replaced')
         self.chat.hist[:]=self.chat.mk_msgs([summary,*keep]); self.chat._recreate_conv()
     def _usage(self):
-        # a replay spent no tokens. Zeros are the truthful answer
+        # a chat with no counter at all, rather than one that spent nothing
         if (u:=getattr(self.chat,'use',None)) is None: return Usage(model=self.spec.model_id)
         return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
                      total=u.total_tokens,cached=u.cached_tokens,cost=u.cost,turns=u.n)

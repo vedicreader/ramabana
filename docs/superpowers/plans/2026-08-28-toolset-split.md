@@ -230,15 +230,22 @@ builds its harness chat through `ChatOpts.create`, because `sp` is a property ov
 and an uninitialised chat has none.
 
 What the upgrade buys is the accounting on the agent page. `uraiyadal` 0.0.5 folds a recording's
-usage block into `CachedChat.use`. It reports the last reply's occupancy as `token_count`, which is
-what `Backend.used_tokens` reads. A replayed turn now reports what it cost and how full the window
-is, and `nbs/03_agent.ipynb` asserts both against a real recording.
+usage block into `CachedChat.use`. It also records the answering chat's own `token_count` beside
+the reply, which is what `Backend.used_tokens` reads. The two are different numbers: a turn's usage
+block sums its model steps, and occupancy is the last step alone. Recording only the usage block
+reported a two-step turn's whole bill as the window's contents. `ToolLoopMixin` now exposes the
+`token_count` that `Chat.pct_full` always referenced and no base class defined.
+
+A replayed turn reports what it cost and how full the window is, and `nbs/03_agent.ipynb` asserts
+both against a real recording. Compaction stays out of reach from that page: a recorded chat has
+no `_recreate_conv`, so `replace_hist` refuses it and `Compactor` returns the summary anyway.
 
 One thing is still not ours. `vishalakshi` 0.1.12 imports `Chat`, `is_ctx_error`,
 `resolve_runtime`, `resp_text`, `split_think` and `thought` from `rishi.core`, and 0.1.32 exports
-none of them, so the package will not import. All 16 tests in `tests/test_vault.py` open a vault.
-The file skips at module level with that reason, and the skip clears itself once vishalakshi ships
-against the newer rishi. Nothing else in the suite touches it: 354 pass.
+none of them, so the package will not import. `VaultHost` degrades rather than raising. What
+needs marking is the 15 tests in `tests/test_vault.py` that read or write a vault; the one that
+only checks the degraded spellings still runs. The marks clear themselves once vishalakshi ships
+against the newer rishi.
 
 ## Left to do
 

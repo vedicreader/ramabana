@@ -73,11 +73,10 @@ def _harness_chat(cls, hist, billed=260_915, sp='BRIEFING'):
     chat = cls.__new__(cls)
     # `sp` is a property over `opts` in urai, so an uninitialised chat has to be given one
     chat.opts = ChatOpts.create(None, sp=sp)
-    chat.hist, chat.toolspecs, chat._ctx_tokens = list(hist), [], billed
     # `token_count` renders the prompt, which asks the chat which channel its tools are on, which
-    # reads these. Without them it raises, `used_tokens` swallows that and answers with the bill
-    # -- so the read-out under test here silently was not being read at all.
-    chat.via, chat.mode = 'cli', ''
+    # reads `opts.tool_mode`. Without it that raises, `used_tokens` swallows it and answers with
+    # the bill -- so the read-out under test here silently was not being read at all.
+    chat.hist, chat.toolspecs, chat._ctx_tokens = list(hist), [], billed
     return chat
 
 
