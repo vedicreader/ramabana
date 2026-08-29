@@ -1,15 +1,15 @@
 # Work that outlives the turn that started it
 
 > **Decisions taken on 2026-08-29.** Async delegation is in. Approvals reach background work.
-> The CLI gets a control for the approvals mode. The scheduler is not in this plan: pobblebonk
-> already has polling and a tick on `claude/pobblebonk-cron-trigger-scf5k6`, and how Ramabana
-> reaches it is the one open question below.
+> The CLI gets a control for the approvals mode. pobblebonk owns the clock and drives Ramabana
+> from outside, so no scheduler goes in the agent core.
 
-**Goal:** a delegated task can outlive the turn that started it, and the writes it wants are
-gated by someone who is actually there to answer.
+The goal: a task can outlive the turn that started it, and the writes it wants are gated by
+someone who is there to answer.
 
-Three tasks. Task 1 is the capability, Task 2 is what makes it safe, Task 3 is what makes it
-usable. Task 2 does not ship without Task 1, and Task 1 should not ship without Task 2.
+Four tasks. Task 1 is the capability, Task 2 is what makes it safe, Task 3 is what makes it
+usable, Task 4 is what makes it fire with nobody watching. Task 1 does not ship without Task 2,
+and neither does Task 4.
 
 ## State on 2026-08-29
 
@@ -100,19 +100,52 @@ someone hits by accident. So the two directions get different controls.
 - [ ] `a` during a pending ask keeps its meaning and keeps setting `mode='auto'`. It is an
       approval, so the invariant holds.
 
-## Not in this plan: the tick
+## Task 4: the tick, through pobblebonk
 
-pobblebonk has polling and a tick already, on `claude/pobblebonk-cron-trigger-scf5k6`. Ramabana's
-`poll_watches` and `poll_monitors` are correct in shape and only ever called from `_prepare`, so
-what they need is a clock, not a rewrite.
+**Decided.** pobblebonk drives Ramabana from outside. Ramabana gains one entry point and no
+scheduler. The reasoning is in what pobblebonk already is, read on 2026-08-29.
 
-**Open question, and it changes the work:** does Ramabana depend on pobblebonk, or does
-pobblebonk drive Ramabana from outside? A dependency puts a scheduler in the agent core and every
-frontend inherits it. Driving from outside keeps Ramabana a library and makes the tick the
-application's business, which is what Leela would want. Decide before writing any of it.
+`heartbeat.install(cmd)` writes a launcher to `~/.pobblebonk/pobblebonk.sh` and registers it with
+cron, launchd or `schtasks`, whichever this machine has, to run every 60 seconds. That is an
+operating-system job, not a thread. It fires with no session open and it survives a reboot.
+`Pob` is a honker database over SQLite. It holds the schedules, a fire queue with retries and
+exponential backoff, a `pob_items` work list with dedup keys, and a notes stream that remembers
+a read offset per reader.
 
-Whichever way it goes, Task 2 is the prerequisite: a tick that can start a turn with the
-approvals policy unresolved is a tick that does unwatched writes.
+So the two halves never talk directly. They share a database.
+
+- [ ] A `ramabana-tick` console entry point. It opens the `Pob`, calls `tick()`, and returns. The
+      callbacks registered under `Pob.on` are what poll watches and check folders.
+- [ ] `_prepare` drains `Pob` notes with the session id as the reader, beside the `Monitors.drain()`
+      it already does. A live session picks up what the beat found without the beat reaching into
+      it.
+- [ ] pobblebonk is an optional extra, `ramabana[cron]`. honker is not installed here today, so
+      this is a new dependency chain and does not belong in the base install.
+- [ ] `Monitors.pending` is backed by the notes stream when pobblebonk is present, and stays the
+      deque when it is not. Same degradation the host capability groups already use.
+
+**Why not a thread in the agent.** A scheduler in the core is inherited by every frontend, and
+Leela would carry one it never asked for. An entry point is the smaller commitment, and it is the
+only shape that runs when no session is open, which was the point.
+
+**What the beat's environment is.** `launcher()` writes `#!/bin/sh` with a bare `exec`, and cron
+gives it almost nothing: no PATH from a shell profile, no venv, no API keys. The entry point has
+to work from that or fail loudly, and its only output goes to `~/.pobblebonk/pobblebonk.log`.
+Test it under `env -i` before believing it works.
+
+**Task 2 is the hard prerequisite.** A beat that starts a turn is an unattended agent holding
+write tools with nobody registered to answer an approval. Task 4 does not ship first.
+
+`catchup='once'` is the right default for a watch. A machine off for a week should fire the
+latest missed reminder, not four hundred of them, and pobblebonk already has that policy.
+
+### What this lets Ramabana retire
+
+Not in this plan, but worth recording. `Monitors.pending` (`maxlen=20`, oldest dropped, gone on
+exit) and `Monitors.drain()` are the lossy version of `Pob.stream` and `Pob.drain(reader)`.
+`push`/`items`/`used` is a durable work list Ramabana has no equivalent of. An async
+delegation result could live there instead of in the bounded dict Task 1 proposes. Two duration parsers now exist across the family. `monitor.secs` wraps
+vishalakshi's. pobblebonk's also takes `w`, `M`, `y` and compound forms like `1h30m`.
 
 ## Tests
 
@@ -130,3 +163,6 @@ readable page.
 - An ask with no listener refuses at once rather than waiting out the timeout.
 - `ctrl+g` tightens and never loosens, from each of the three modes.
 - `/approve` loosens, and the transcript records the change.
+- `ramabana-tick` runs under `env -i` and reports why rather than dying silently.
+- A session drains a note the beat wrote, once, and a second session with its own reader id
+  drains the same note.
