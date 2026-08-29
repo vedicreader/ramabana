@@ -218,6 +218,28 @@ Fetch-on-demand is still worth building for skills that are not inlined, with th
 - How long Ramabana re-exports the moved names. Task 7 is Leela's session and Leela is pinned, so one release is enough.
 - Whether `Compactor`, `surgical_history` and `summarise_prompt` in `runtime.py` should move down into `urai` alongside `evict_middle` and `SlidingWindowCallback`. Urai's are mechanical eviction and Ramabana's summarise through a model, so they are related and not duplicates. Not part of this plan.
 
+## The rishi 0.1.32 upgrade is blocked on vishalakshi
+
+Measured on 2026-08-29. Ramabana is pinned to `rishi>=0.1.27` and resolves to 0.1.30, which still
+carries its own copy of `core.py` at 1715 lines, `CachedChat` included. rishi 0.1.32 is the migrated
+one: 106 lines, re-exporting `uraiyadal`.
+
+Upgrading is Task 1's prerequisite and it does not work yet. Three things break.
+
+- `vishalakshi` 0.1.12 imports `Chat`, `is_ctx_error`, `resolve_runtime`, `resp_text`, `split_think`
+  and `thought` from `rishi.core`, and 0.1.32 exports none of them. That is 16 of Ramabana's tests,
+  and the fix belongs in vishalakshi.
+- `rishi.claude.ClaudeChat` stores its options as `_opts`, and `urai.chat._opt_prop` sets `opts`. Any
+  assignment to `sp`, `max_steps` or `tool_max_len` on a Claude chat raises `AttributeError`.
+- `mk_toolspec` moved from `rishi.core` to `urai`, which `tests/test_briefing.py` imports.
+
+The third is a one-line change here. The first two are not Ramabana's, so the upgrade waits on a
+vishalakshi release and on rishi settling `opts` against urai's property.
+
+Everything on the Ramabana side that the upgrade would enable is written and reverted rather than
+guessed at: `uraiyadal` 0.0.5 has the `CachedChat.use` counter, and `nbs/03_agent.ipynb` says where
+its usage assertion becomes real.
+
 ## Left to do
 
 - **Publish `shalya` to PyPI**, then delete `[tool.uv.sources]` from Ramabana's `pyproject.toml`. It points at `../shalya`, which no published Ramabana can resolve. Nothing else reads it.
