@@ -24,7 +24,7 @@ except ImportError as e: raise ImportError(
 from fastcore.basics import ifnone
 from fastcore.script import call_parse
 from . import __version__
-from .agent import DFLT_TIMEOUT, Agent, Approvals
+from .agent import DFLT_TIMEOUT, Agent, Approvals, REPLAYED
 from .core import accepts
 from .tools import WRITE_TOOLS, LocalHost
 
@@ -344,8 +344,10 @@ class AcpAgent(acp.Agent):
                 raise acp.RequestError.resource_not_found(f'no saved session {session_id} ({e})')
             got = picked['id']
         else: got = s.agent.session_id
-        # only this conversation: `agent.history` is the whole log, every session in it
-        for turn in [t for t in s.agent.history if t.get('session') == got]:
+        # only this conversation, and only the turns the model also gets back: an editor showing a
+        # stopped turn's fragment as a whole reply would disagree with the context behind it
+        for turn in [t for t in s.agent.history if t.get('session') == got
+                     and t.get('state', 'complete') in REPLAYED]:
             if turn.get('prompt'):
                 await self.conn.session_update(s.sid, acp.update_user_message_text(str(turn['prompt'])))
             if turn.get('reply'):

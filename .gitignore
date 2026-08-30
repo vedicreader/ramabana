@@ -176,3 +176,8 @@ media/frames/
 .leela-attachments/
 # pictures a turn generated, when the CLI is run from the repo root
 media/generated-*.png
+
+# diskcache writes these beside `cache.db`. They are ephemeral: the recordings live in the db
+# itself once the write-ahead log is checkpointed, which is what `nbdev-clean` leaves behind.
+chatcache/*.db-shm
+chatcache/*.db-wal

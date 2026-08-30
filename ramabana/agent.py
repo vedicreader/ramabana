@@ -7,10 +7,10 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE',
-           'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'COMPLETE_SP',
-           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES', 'summarise',
-           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'Approvals', 'always', 'never', 'policy',
-           'applied', 'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context',
+           'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'REPLAYED',
+           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES',
+           'summarise', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'Approvals', 'always', 'never',
+           'policy', 'applied', 'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context',
            'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
@@ -1577,16 +1577,29 @@ def beat_drain(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #0ccb8d65
 @patch
+def _begin_turn(self:Agent, run=None):
+    """This turn's own identity, before anything can go wrong with it.
+
+    A turn stopped before `_prepare` still gets a row, and a row carrying the *previous* turn's id
+    would collide with it in `conversation_parts`, where two rows sharing an id share group names.
+    """
+    rid = getattr(run, 'id', '')
+    if rid and getattr(self, '_begun', None) == rid: return self.current_turn_id   # once per run
+    self._begun = rid
+    self.turn_use = Usage()                  # a stopped turn cannot inherit the last one's cost
+    self._tool_calls_turn = 0                # applies even when a native engine owns the loop
+    self.turn_seq += 1
+    self.current_turn_id = f'{self.session_id}:turn_{self.turn_seq:06d}'
+    self.activity.mark(self.current_turn_id)  # and so does `turn_md()`
+    return self.current_turn_id
+
+@patch
 def _prepare(self:Agent, prompt):
     "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
     self.before.clear()                    # `changes()` reports this turn, not the session
     self._drawn = []                       # pictures this turn's tools wrote, for the frontend
     self._walked, self._tree = False, {}
-    self.turn_use = Usage()                # a failed turn cannot inherit the previous turn's cost
-    self._tool_calls_turn = 0               # applies even when a native engine owns the loop
-    self.turn_seq += 1
-    self.current_turn_id = f'{self.session_id}:turn_{self.turn_seq:06d}'
-    self.activity.mark(self.current_turn_id) # and so does `turn_md()`
+    self._begin_turn(current_run())
     self.checkpoints[self.current_turn_id] = {'before': self._be('turn').snapshot_hist(),
                                               'branch_id': self.current_branch_id}
     # each checkpoint is a whole conversation. The dict stays bounded
@@ -1662,6 +1675,9 @@ def session_added_roots(self:Agent, session_id):
     out = []
     for turn in self.history:
         if turn.get('session') != session_id: continue
+        # a turn that is not replayed does not widen the boundary either: honouring a root from a
+        # turn whose context is left out would open a folder this session never agreed to
+        if turn.get('state', 'complete') not in REPLAYED: continue
         for row in (turn.get('activity') or []):
             if row.get('tool') != 'add_root' or not row.get('ok', True): continue
             p = (row.get('args') or {}).get('path')
@@ -1683,7 +1699,9 @@ def resume_session(self:Agent, selector='latest'):
         picked = matches[0]
     # the widening lapses: a log may say the boundary was wider, and may not move it back
     self.resumed_roots = self.session_added_roots(picked['id'])
-    turns = [t for t in self.history if t.get('session') == picked['id']]
+    # a stopped turn is in the log but never goes back as model context: its reply is a fragment
+    turns = [t for t in self.history if t.get('session') == picked['id']
+             and t.get('state', 'complete') in REPLAYED]
     canonical = []
     # A resume rebuilds context from the durable log, not from a snapshot. The persisted args
     # and results are already clipped. They go back as text rather than as provider tool
@@ -1703,9 +1721,13 @@ def resume_session(self:Agent, selector='latest'):
     return picked
 
 # %% ../nbs/03_agent.ipynb #3fd8838b
+#: Turn states a resume puts back as model context. A row written before `state` existed has
+#: none and reads as `complete`, so nothing already on disk changes meaning.
+REPLAYED = ('complete', 'failed')
+
 @patch
-def _remember(self:Agent, prompt, text, error=''):
-    turn = {'at': time.time(), 'session': getattr(self, 'session_id', '') or '',
+def _remember(self:Agent, prompt, text, error='', state='complete'):
+    turn = {'at': time.time(), 'session': getattr(self, 'session_id', '') or '', 'state': state,
             'turn_id': self.current_turn_id, 'branch_id': self.current_branch_id,
             'model': self._be('turn').spec.name,
             'prompt': str(prompt), 'reply': text, 'error': error,
@@ -1860,7 +1882,10 @@ def conversation_parts(self:Agent, sid=None):
     """
     sid = sid or self.session_id
     out = []
-    for turn in [t for t in self.history if t.get('session') == sid]:
+    # `compile_conversation` writes the result straight into the live chat, so this is the second
+    # route a stopped turn could reach the model as though it had finished. `REPLAYED` guards both
+    for turn in [t for t in self.history if t.get('session') == sid
+                 and t.get('state', 'complete') in REPLAYED]:
         tid = str(turn.get('turn_id') or '')
         group = 0
         def part(kind, text, editable, extra=None):
@@ -2234,51 +2259,83 @@ def _release_run(self:Agent, run):
 
 @patch
 def ask(self:Agent, prompt, **kw):
-    "One registered turn. Cancelled output is not persisted."
-    run = self._new_run(prompt)
-    if self.start() is None: run.finish('failed'); return self.note
-    backend = self._be('turn')
-    if not run.start(backend): return run.dict()
+    "One registered turn. A stopped turn is recorded, and not replayed."
+    run, kept = self._new_run(prompt), [False]
+    def keep(state, text='', error=''):
+        "Write the row once, whichever way the turn ended. The flag is set by a write that happened."
+        if kept[0]: return
+        self._remember(prompt, text, error, state=state)
+        kept[0] = True
     try:
+        self._begin_turn(run)                  # its own id, before anything can stop it
+        if self.start() is None:
+            run.finish('failed'); keep('failed', self.note, self.note); return self.note
+        backend = self._be('turn')
+        # `run.start` is False when something cancelled it while the backend was being built
+        if not run.start(backend): keep('cancelled'); return run.dict()
         with run_context(run):
             outgoing = self._prepare(prompt)
             text = backend.send(outgoing, run=run, **kw)
-        if run.cancelled:return run.finish().dict()
+        if run.cancelled:
+            run.finish(); keep('cancelled'); return run.dict()
         run.finish()
-        return self._finish(text, prompt)
+        out = self._finish(text, prompt)       # writes its own row, and may raise before it does
+        kept[0] = True
+        return out
     except Exception as e:
-        if run.cancelled:return run.finish().dict()
+        if run.cancelled:
+            run.finish(); keep('cancelled'); return run.dict()
         run.finish('failed')
         self.note = f'the assistant failed ({agent_err(e)})'
-        self._remember(prompt, self.note, agent_err(e))
+        keep('failed', self.note, agent_err(e))
         return self.note
+    finally:
+        # `finish`, not `detach`: detaching marks live child runs terminal without stopping them
+        if not run.terminal: run.finish('cancelled')
+        keep('abandoned')
 
 @patch
 def stream(self:Agent, prompt, on_registered=None, **kw):
-    "One registered turn as markdown chunks. Cancelled output is not persisted."
-    run = self._new_run(prompt)
-    if self.start() is None:
-        run.finish('failed'); yield self.note; return
-    backend = self._be('turn')
-    if not run.start(backend): return
+    "One registered turn as markdown chunks. A stopped turn is recorded, and not replayed."
+    run, out, kept = self._new_run(prompt), [], [False]
+    def keep(state, text='', error=''):
+        "Write the row once, whichever way the turn ended. The flag is set by a write that happened."
+        if kept[0]: return
+        self._remember(prompt, text, error, state=state)
+        kept[0] = True
     try:
+        self._begin_turn(run)                  # its own id, before anything can stop it
+        if self.start() is None:
+            run.finish('failed'); keep('failed', self.note, self.note); yield self.note; return
+        backend = self._be('turn')
+        # `run.start` is False when something cancelled it while the backend was being built
+        if not run.start(backend): keep('cancelled'); return
         if on_registered is not None: on_registered(run)
-        if run.cancelled: run.finish(); return
+        if run.cancelled: run.finish(); keep('cancelled'); return
         with run_context(run):
-            outgoing, out = self._prepare(prompt), []
+            outgoing = self._prepare(prompt)
             for chunk in backend.stream(outgoing, run=run, **kw):
-                if run.cancelled:break
+                if run.cancelled: break
                 chunk = _stream_chunk(out, chunk)
                 if chunk: out.append(chunk); yield chunk
-        if not run.cancelled:
-            run.finish(); self._finish(''.join(out), prompt)
-        else: run.finish()
+        run.finish()
+        if run.cancelled: keep('cancelled', ''.join(out))
+        else:
+            self._finish(''.join(out), prompt)   # writes its own row, and may raise before it does
+            kept[0] = True
     except Exception as e:
-        if run.cancelled:run.finish(); return
+        if run.cancelled: run.finish(); keep('cancelled', ''.join(out)); return
         run.finish('failed')
         self.note = f'the assistant failed ({agent_err(e)})'
-        self._remember(prompt, self.note, agent_err(e))
+        keep('failed', self.note, agent_err(e))
         yield f'\n\n{self.note}'
+    finally:
+        # a caller that stops iterating drops the generator, which raises `GeneratorExit`. That
+        # derives from `BaseException`, so neither handler above ever runs: the row was never
+        # written, and the run was left live, which kept the agent busy for the rest of the session.
+        # `finish`, not `detach`: detaching marks live child runs terminal without stopping them
+        if not run.terminal: run.finish('cancelled')
+        keep('abandoned', ''.join(out))
 
 @patch
 def cancel(self:Agent, run_id='', grace=None):
@@ -2690,8 +2747,8 @@ def sessions(self:Agent):
     return [merge(row) for row in rows]
 
 @patch
-def _remember(self:Agent, prompt, text, error=''):
-    with _history_lock(self): _agent_remember(self, prompt, text, error)
+def _remember(self:Agent, prompt, text, error='', state='complete'):
+    with _history_lock(self): _agent_remember(self, prompt, text, error, state)
 
 # %% ../nbs/03_agent.ipynb #491879ee
 @patch
