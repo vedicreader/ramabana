@@ -233,19 +233,25 @@ def test_a_typed_model_name_fails_as_a_sentence_not_a_traceback():
     assert 'claude-sonnet-4-6' in r.stderr, r.stderr
     assert r.stderr.count('\n') <= 2, f'{r.stderr.count(chr(10))} lines: {r.stderr}'
 
-def test_only_a_local_backend_is_a_pip_extra():
-    """Rishi carries the hosted and harness dependencies itself now, and `rishi[claude]`,
-    `[copilot]` and `[remote]` are empty. Telling someone to install one sends them to do nothing
-    and come back to the same error."""
+def test_a_remedy_names_an_extra_only_where_rishi_still_declares_one():
+    """Telling someone to install an extra rishi does not declare sends them to do nothing and come
+    back to the same error: pip reports an unknown extra as a warning and installs nothing.
+
+    `rishi[claude]`, `[copilot]` and `[remote]` went when rishi took those dependencies on itself,
+    and `[litert]` went the same way in 0.1.32."""
+    import importlib.metadata as md, re
     from ramabana.core import RUNTIMES, runtime_remedy
-    for local in ('litert', 'mlx', 'llama'):
-        assert f'pip install rishi[{local}]' in runtime_remedy(local), local
-    for shipped in ('claude', 'copilot', 'remote'):
-        assert 'pip install' not in runtime_remedy(shipped), shipped
+    declared = set(md.metadata('rishi').get_all('Provides-Extra') or [])
+    assert 'litert' not in declared, 'litert-lm-api is a base dependency now'
+    for r in RUNTIMES:
+        remedy = runtime_remedy(r)
+        assert remedy, f'{r} has no answer'
+        named = re.search(r'pip install rishi\[([\w-]+)\]', remedy)
+        if named: assert named[1] in declared, f'{r} names an extra rishi does not declare'
+    assert 'ships with rishi' in runtime_remedy('litert')
     assert 'claude /login' in runtime_remedy('claude')
     assert 'sign in' in runtime_remedy('copilot')
     assert 'API key' in runtime_remedy('remote')
-    assert all(runtime_remedy(r) for r in RUNTIMES), 'every runtime has an answer'
 
 
 def test_a_harness_is_reachable_through_its_module_and_its_binary():
