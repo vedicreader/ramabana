@@ -111,10 +111,13 @@ def _copilot_available():
         return bool(m.copilot_oauth())
     except Exception: return False
         
+#: rishi 0.1.32 made `litert-lm-api` a base dependency and retired the `litert` extra, so the
+#: default remedy would name an extra pip resolves to nothing.
 RUNTIME_REMEDY = {
     'remote': 'hosted models need an API key in the environment',
     'claude': 'install Claude Code (https://claude.com/claude-code) and run `claude /login`',
     'copilot': 'sign in to GitHub Copilot in an editor, or run `copilot_login()` from rishi.copilot',
+    'litert': 'LiteRT ships with rishi; reinstall it with `pip install --upgrade rishi`',
 }
 
 def runtime_remedy(runtime):
