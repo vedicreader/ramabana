@@ -2869,7 +2869,8 @@ def sessions(self:Agent):
     rows = self.rebuild_index()
     if not rows: return _agent_sessions(self)
     return sorted([{'id': sid, 'turns': int(r.get('turns', 0)), 'at': r.get('last_at', 0),
-                    'model': r.get('model', ''), 'title': r.get('title') or r.get('first_prompt', ''),
+                    'first_at': r.get('first_at', 0), 'model': r.get('model', ''),
+                    'title': r.get('title') or r.get('first_prompt', ''),
                     'title_turns': r.get('title_turns', 0), 'muted': bool(r.get('muted', False))}
                    for sid, r in rows.items() if r.get('turns')],
                   key=lambda row: row['at'], reverse=True)
