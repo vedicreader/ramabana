@@ -123,9 +123,20 @@ def test_only_a_complete_or_failed_turn_goes_back_as_model_context(tmp_path):
         assert (f'a {state} turn' in back) is wanted, f'{state} replayed={not wanted}'
 
 
+def restore(a, rows_):
+    """Put `rows_` on disk and read them back, because the log is what a resume rebuilds from.
+
+    Setting `a.history` was enough while every route read it. They read the session index now, so
+    a row that never reached the log is a row a resume cannot see -- which is the contract this
+    file is about."""
+    a.history_path.write_text('\n'.join(json.dumps(r) for r in rows_) + '\n')
+    a.rebuild_index(force=True)
+    a.refresh_history()
+
+
 def _replayed(a, rows_):
     "The messages a resume puts back, from rows this session really wrote."
-    a.history = [dict(r, model=MODEL) for r in rows_]
+    restore(a, [dict(r, model=MODEL) for r in rows_])
     a.resume_session(a.session_id)
     # a turn has already built a chat, so the resume restores into it rather than stashing
     b = a._be('turn')
@@ -262,7 +273,7 @@ def test_a_stopped_turn_does_not_widen_the_folder_boundary_on_a_resume(agent):
     list(agent.stream('opened a folder'))
     got = rows(agent)
     act = [{'tool': 'add_root', 'args': {'path': '/somewhere/else'}, 'ok': True}]
-    agent.history = [dict(got[0], state='abandoned', activity=act)]
+    restore(agent, [dict(got[0], state='abandoned', activity=act)])
     assert agent.session_added_roots(agent.session_id) == []
-    agent.history = [dict(got[0], state='complete', activity=act)]
+    restore(agent, [dict(got[0], state='complete', activity=act)])
     assert agent.session_added_roots(agent.session_id) == ['/somewhere/else']

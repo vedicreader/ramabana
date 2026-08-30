@@ -7,11 +7,12 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE',
-           'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'REPLAYED',
-           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES',
-           'summarise', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'Approvals', 'always', 'never',
-           'policy', 'applied', 'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context',
-           'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent', 'Completer']
+           'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'HISTORY_TAIL',
+           'HISTORY_TURNS', 'REPLAYED', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE',
+           'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'summarise', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md',
+           'answer_md', 'Approvals', 'always', 'never', 'policy', 'applied', 'apply', 'note', 'tool_plan',
+           'request_text', 'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan',
+           'parse_plan_items', 'plan_tools', 'Agent', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, functools, json, re, threading, time, uuid
@@ -1209,11 +1210,26 @@ def _be(self:Agent, job='turn'):
     return self._backends[key]
 
 # %% ../nbs/03_agent.ipynb #1b4fa81d
+#: bytes of the log read back for the live context. Whichever of the two bounds bites first wins,
+#: so a log under the window behaves exactly as it did before there was one
+HISTORY_TAIL = 8_000_000
+HISTORY_TURNS = 2000
+
 @patch
 def _load_history(self:Agent):
+    """The tail of the log, not the whole of it.
+
+    A shared log reaches tens of megabytes, and this ran on every resume and after every turn.
+    """
     p = self.history_path
     if p is None or not p.exists(): return
-    try: self.history = [json.loads(line) for line in p.read_text().splitlines() if line.strip()][-2000:]
+    try:
+        start = max(0, p.stat().st_size - HISTORY_TAIL)
+        with p.open('rb') as f:
+            f.seek(start); raw = f.read()
+        lines = raw.decode('utf-8', 'replace').splitlines()
+        if start and lines: del lines[0]   # the seek landed inside a line, and half a turn is not one
+        self.history = [json.loads(line) for line in lines if line.strip()][-HISTORY_TURNS:]
     except Exception: self.history = []
 
 # %% ../nbs/03_agent.ipynb #d8f9fcfe
@@ -1664,17 +1680,23 @@ def sessions(self:Agent):
              'title': str(turns[0].get('prompt', '')).replace('\n', ' ')[:72]}
             for sid, turns in sorted(grouped.items(), key=lambda x: x[1][-1].get('at', 0), reverse=True)]
 
+@patch
+def session_turns(self:Agent, sid):
+    "One conversation's turns. From the turns in memory; a log-backed agent seeks to them instead."
+    return [t for t in self.history if (t.get('session') or '') == str(sid)]
+
 # %% ../nbs/03_agent.ipynb #6a449082
 @patch
 def session_added_roots(self:Agent, session_id):
     """Folders a saved session opened with `add_root`, in the order it opened them.
 
     Read back from the log rather than carried in a snapshot, because the log is what a resume
-    rebuilds from. Nothing here re-opens them: see `resume_session`.
+    rebuilds from. Through `session_turns`, because a resumed conversation is usually older than
+    the tail: reading `history` here silently dropped the folders it had opened.
+    Nothing here re-opens them: see `resume_session`.
     """
     out = []
-    for turn in self.history:
-        if turn.get('session') != session_id: continue
+    for turn in self.session_turns(session_id):
         # a turn that is not replayed does not widen the boundary either: honouring a root from a
         # turn whose context is left out would open a folder this session never agreed to
         if turn.get('state', 'complete') not in REPLAYED: continue
@@ -1699,9 +1721,10 @@ def resume_session(self:Agent, selector='latest'):
         picked = matches[0]
     # the widening lapses: a log may say the boundary was wider, and may not move it back
     self.resumed_roots = self.session_added_roots(picked['id'])
-    # a stopped turn is in the log but never goes back as model context: its reply is a fragment
-    turns = [t for t in self.history if t.get('session') == picked['id']
-             and t.get('state', 'complete') in REPLAYED]
+    # a stopped turn is in the log but never goes back as model context: its reply is a fragment.
+    # `session_turns`, because `history` is a tail and a resumed conversation is rarely inside it
+    turns = [t for t in self.session_turns(picked['id'])
+             if t.get('state', 'complete') in REPLAYED]
     canonical = []
     # A resume rebuilds context from the durable log, not from a snapshot. The persisted args
     # and results are already clipped. They go back as text rather than as provider tool
@@ -1735,11 +1758,16 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
             'usage': self.turn_use.dict(), 'usage_label': repr(self.turn_use),
             'activity': self.activity.rows(mark=self.activity._mark)}
     self.history.append(turn)
-    del self.history[:-2000]
+    del self.history[:-HISTORY_TURNS]
     if (p := self.history_path) is not None:
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
-            with p.open('a') as f: f.write(json.dumps(turn, ensure_ascii=False) + '\n')
+            line = json.dumps(turn, ensure_ascii=False) + '\n'
+            with p.open('a') as f:
+                f.write(line); f.flush(); end = f.tell()
+            # `tell` after the write, not `stat` before it: another process appending to the same
+            # log would make a size read beforehand describe somebody else's line
+            self._last_span = (max(0, end - len(line.encode())), end)
         except Exception: pass
 
 # %% ../nbs/03_agent.ipynb #728d1a4e
@@ -1884,8 +1912,7 @@ def conversation_parts(self:Agent, sid=None):
     out = []
     # `compile_conversation` writes the result straight into the live chat, so this is the second
     # route a stopped turn could reach the model as though it had finished. `REPLAYED` guards both
-    for turn in [t for t in self.history if t.get('session') == sid
-                 and t.get('state', 'complete') in REPLAYED]:
+    for turn in [t for t in self.session_turns(sid) if t.get('state', 'complete') in REPLAYED]:
         tid = str(turn.get('turn_id') or '')
         group = 0
         def part(kind, text, editable, extra=None):
@@ -2558,7 +2585,13 @@ def close(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #d29d008a
 _HISTORY_LOCKS, _HISTORY_LOCKS_LOCK = {}, threading.RLock()
-_SESSION_META_VERSION = 1
+#: bumped to 2 for the byte-offset index. A sidecar written by an older version has no offsets
+#: and is rebuilt from the log rather than trusted
+_SESSION_META_VERSION = 2
+#: seconds between turns that split one run of untagged history from the next. The same bound
+#: Leela's `history_sessions` uses, so the two cannot disagree about where a `legacy-N` begins
+LEGACY_GAP = 1800
+_SESSION_DEFAULTS = {'title': '', 'title_turns': 0, 'muted': False, 'manual': False}
 
 def _history_lock(agent):
     "One lock per history file, so agents sharing a log serialise their writes to it."
@@ -2670,7 +2703,93 @@ def save_branch(self:Agent, branch_id, revision=None, **changes):
         _write_branch_rows(self, rows)
         return dict(row)
 
-def _session_turns(agent, sid): return [t for t in agent.history if t.get('session') == sid]
+def _index_turn(agent, turn, start, end):
+    "Fold one appended turn into the index. The caller holds `_history_lock`, and has just written it."
+    sid = turn.get('session') or ''
+    if not sid: return
+    rows = _session_rows(agent)
+    if rows is None: return
+    row = dict(rows.get(sid) or {})
+    row['turns'] = int(row.get('turns', 0)) + 1
+    row['last_at'], row['last_offset'] = turn.get('at', 0), end
+    row['model'] = turn.get('model', '')
+    if row.get('first_offset') is None:
+        row['first_offset'], row['first_at'] = start, turn.get('at', 0)
+        row['first_prompt'] = str(turn.get('prompt', '')).replace('\n', ' ')[:72]
+    rows[sid] = {'version': _SESSION_META_VERSION, **_SESSION_DEFAULTS} | row
+    _write_session_rows(agent, rows)
+
+def _index_stale(agent, rows):
+    "Whether the index has to be built again rather than trusted."
+    if not rows: return True
+    if any(int(r.get('version', 0)) < _SESSION_META_VERSION or 'last_offset' not in r
+           for r in rows.values()): return True
+    p = agent.history_path
+    if p is None or not p.exists(): return False
+    # a log smaller than an offset it is supposed to contain was rotated or replaced
+    return p.stat().st_size < max((int(r.get('last_offset', 0)) for r in rows.values()), default=0)
+
+def _index_from_log(p):
+    "Stream the log a line at a time and describe every conversation in it, with its byte range."
+    found, legacy_n, legacy_last, offset = {}, 0, None, 0
+    with p.open('rb') as f:
+        for raw in f:
+            start, offset = offset, offset + len(raw)
+            line = raw.decode('utf-8', 'replace').strip()
+            if not line: continue
+            try: turn = json.loads(line)
+            except Exception: continue
+            sid, at = turn.get('session') or '', float(turn.get('at') or 0)
+            if not sid:
+                if legacy_last is None or at - legacy_last > LEGACY_GAP: legacy_n += 1
+                sid, legacy_last = f'legacy-{legacy_n}', at
+            row = found.setdefault(sid, {'turns': 0, 'first_at': at, 'first_offset': start,
+                'first_prompt': str(turn.get('prompt', '')).replace('\n', ' ')[:72]})
+            row['turns'] += 1
+            row['last_at'], row['last_offset'] = at, offset
+            row['model'] = turn.get('model', '')
+    return found
+
+def _index_from_history(agent):
+    "The same description, for turns held in memory with no file behind them. No offsets to give."
+    found, legacy_n, legacy_last = {}, 0, None
+    for turn in agent.history:
+        sid, at = turn.get('session') or '', float(turn.get('at') or 0)
+        if not sid:
+            if legacy_last is None or at - legacy_last > LEGACY_GAP: legacy_n += 1
+            sid, legacy_last = f'legacy-{legacy_n}', at
+        row = found.setdefault(sid, {'turns': 0, 'first_at': at,
+            'first_prompt': str(turn.get('prompt', '')).replace('\n', ' ')[:72]})
+        row['turns'] += 1
+        row['last_at'], row['model'] = at, turn.get('model', '')
+    return found
+
+@patch
+def rebuild_index(self:Agent, force=False):
+    """The session index: what conversations the log holds, and which bytes each one occupies.
+
+    Streams the log a line at a time. Nothing here reads it whole, which is the point: the index
+    is what lets `sessions` and `session_turns` answer without one. With no log there is nothing
+    to index and nothing to persist, so the turns in memory are the whole account.
+    """
+    with _history_lock(self):
+        rows = _session_rows(self)
+        if rows is None: return {}          # malformed, reported, and never written over
+        p = self.history_path
+        logged = p is not None and p.exists()
+        if logged and not force and not _index_stale(self, rows): return rows
+        found = _index_from_log(p) if logged else _index_from_history(self)
+        out = {sid: {'version': _SESSION_META_VERSION, **_SESSION_DEFAULTS}
+                    | {k: v for k, v in (rows.get(sid) or {}).items() if k in _SESSION_DEFAULTS}
+                    | row
+               for sid, row in found.items()}
+        # a conversation somebody named but whose turns are gone keeps its row rather than its bytes
+        for sid, row in rows.items():
+            if sid not in out: out[sid] = {**row, 'version': _SESSION_META_VERSION}
+        if logged: _write_session_rows(self, out)
+        return out
+
+def _session_turns(agent, sid): return agent.session_turns(sid)
 
 @patch
 def session_meta(self:Agent, sid=None):
@@ -2678,13 +2797,13 @@ def session_meta(self:Agent, sid=None):
     with _history_lock(self):
         rows = _session_rows(self)
         row = {} if rows is None else dict(rows.get(sid, {}))
-    return {'version': _SESSION_META_VERSION, 'title': '', 'title_turns': 0, 'muted': False, 'manual': False} | row
+    return {'version': _SESSION_META_VERSION, **_SESSION_DEFAULTS} | row
 
 def _set_session_meta(agent, sid, **changes):
     with _history_lock(agent):
         rows = _session_rows(agent)
         if rows is None: raise ValueError(agent.history_problem)
-        row = {'version': _SESSION_META_VERSION, 'title': '', 'title_turns': 0, 'muted': False, 'manual': False} | dict(rows.get(sid, {})) | changes
+        row = {'version': _SESSION_META_VERSION, **_SESSION_DEFAULTS} | dict(rows.get(sid, {})) | changes
         rows[sid] = row
         _write_session_rows(agent, rows)
         return dict(row)
@@ -2719,7 +2838,8 @@ def summarize_session(self:Agent, sid=None, force=False):
     return _set_session_meta(self, sid, title=title, title_turns=n, manual=False)
 
 if '_agent_load_history' not in globals():
-    _agent_load_history, _agent_remember, _agent_sessions = Agent._load_history, Agent._remember, Agent.sessions
+    _agent_load_history, _agent_remember = Agent._load_history, Agent._remember
+    _agent_sessions, _agent_session_turns = Agent.sessions, Agent.session_turns
 
 @patch
 def _load_history(self:Agent):
@@ -2734,21 +2854,61 @@ def refresh_history(self:Agent):
     return self.sessions()
 
 @patch
+def session_count(self:Agent):
+    "How many turns the whole log holds, from the index rather than from a parse of it."
+    return sum(int(r.get('turns', 0)) for r in self.rebuild_index().values())
+
+@patch
 def sessions(self:Agent):
-    rows = _agent_sessions(self)
-    with _history_lock(self): meta = _session_rows(self)
-    if meta is None: return rows
-    def merge(row):
-        held = {k: v for k, v in (meta.get(row['id']) or {}).items()
-                if k in ('title', 'title_turns', 'muted')}
-        # the sidecar names what a person set; silence about a title leaves the derived one standing
-        if not held.get('title'): held.pop('title', None)
-        return {'title_turns': 0, 'muted': False} | row | held
-    return [merge(row) for row in rows]
+    """Every conversation the log holds, newest first, read from the index.
+
+    Not from `self.history`, which is a tail: the conversations a picker has to offer are mostly
+    older than the window. The title a person set wins; silence about one leaves the derived
+    opening prompt standing.
+    """
+    rows = self.rebuild_index()
+    if not rows: return _agent_sessions(self)
+    return sorted([{'id': sid, 'turns': int(r.get('turns', 0)), 'at': r.get('last_at', 0),
+                    'model': r.get('model', ''), 'title': r.get('title') or r.get('first_prompt', ''),
+                    'title_turns': r.get('title_turns', 0), 'muted': bool(r.get('muted', False))}
+                   for sid, r in rows.items() if r.get('turns')],
+                  key=lambda row: row['at'], reverse=True)
+
+@patch
+def session_turns(self:Agent, sid):
+    """One conversation's turns, read from the byte range the index names.
+
+    A range with a filter, not a list of offsets. Leela and the CLI append to one log, so two live
+    conversations interleave and a session's lines are not contiguous. A range is correct for any
+    interleaving; it costs reading the other traffic that happened during that conversation, which
+    is bounded by the conversation rather than by the log.
+    """
+    sid = str(sid)
+    row, p = self.rebuild_index().get(sid), self.history_path
+    if row is None or 'first_offset' not in row or p is None or not p.exists():
+        return _agent_session_turns(self, sid)
+    start, end = int(row['first_offset']), int(row.get('last_offset', 0))
+    with _history_lock(self):
+        with p.open('rb') as f:
+            f.seek(start); raw = f.read(max(0, end - start))
+    # a `legacy-N` turn predates the field, so having none is what identifies it. The ranges of two
+    # legacy runs never overlap, so within one range that is enough
+    mine = (lambda t: not (t.get('session') or '')) if sid.startswith('legacy-') else \
+           (lambda t: (t.get('session') or '') == sid)
+    out = []
+    for line in raw.decode('utf-8', 'replace').splitlines():
+        if not line.strip(): continue
+        try: turn = json.loads(line)
+        except Exception: continue
+        if mine(turn): out.append(turn)
+    return out
 
 @patch
 def _remember(self:Agent, prompt, text, error='', state='complete'):
-    with _history_lock(self): _agent_remember(self, prompt, text, error, state)
+    with _history_lock(self):
+        _agent_remember(self, prompt, text, error, state)
+        if (span := self.__dict__.pop('_last_span', None)) and self.history:
+            _index_turn(self, self.history[-1], *span)
 
 # %% ../nbs/03_agent.ipynb #491879ee
 @patch
