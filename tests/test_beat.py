@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 
 from ramabana.agent import Agent
-from ramabana.monitor import POB_READER, TICKS, beat_notes, beat_notice, on_tick, pob, tick
+from ramabana.monitor import (BEAT_TAG, POB_READER, TICKS, beat_notes, beat_notice, heartbeat,
+                              on_tick, pob, pob_path, tick)
 from ramabana.testing import MemHost
 
 pobblebonk = pytest.importorskip('pobblebonk')
@@ -131,3 +132,66 @@ def test_the_entry_point_says_what_is_missing_rather_than_dying_silently(monkeyp
     monkeypatch.setitem(sys.modules, 'pobblebonk.core', None)
     assert tick.__wrapped__(db='', quiet=True) == 1
     assert "pobblebonk is not installed" in capsys.readouterr().err
+
+
+# -- scheduling the beat on this machine --------------------------------------------------
+
+class _FakeBeat:
+    "A scheduler of our own, so a test never touches the real crontab."
+    def __init__(self): self.jobs = {}
+    def install(self, script, tag=BEAT_TAG, every=60): self.jobs[tag] = (str(script), every); return script
+    def installed(self, tag=BEAT_TAG): return self.jobs.get(tag, (None,))[0]
+    def uninstall(self, tag=BEAT_TAG): return self.jobs.pop(tag, None) is not None
+
+
+@pytest.fixture
+def scheduler(tmp_path, monkeypatch):
+    import pobblebonk.heartbeat as ph
+    fake, install, uninstall = _FakeBeat(), ph.install, ph.uninstall
+    monkeypatch.setattr(ph, 'install', lambda cmd, dirn=None, tag=BEAT_TAG, on=None, every=60:
+                        install(cmd, dirn=tmp_path, tag=tag, on=fake, every=every))
+    monkeypatch.setattr(ph, 'uninstall', lambda tag=BEAT_TAG, on=None: uninstall(tag, on=fake))
+    return fake
+
+
+def test_the_beat_is_installed_under_this_package_s_own_tag(scheduler, capsys):
+    "One machine may run several beats. Ours must not replace pobblebonk's own."
+    assert tick.__wrapped__(install=True) == 0
+    assert scheduler.installed(BEAT_TAG), capsys.readouterr().out
+    assert BEAT_TAG != 'pobblebonk', 'this package would overwrite pobblebonk\'s own job'
+
+
+def test_the_launcher_runs_the_quiet_entry_point(scheduler, tmp_path):
+    tick.__wrapped__(install=True)
+    launcher = Path(scheduler.installed(BEAT_TAG))
+    assert 'ramabana-tick' in launcher.read_text()
+    assert '--quiet' in launcher.read_text(), 'a beat every minute would fill its own log'
+
+
+def test_the_interval_reaches_the_scheduler(scheduler):
+    tick.__wrapped__(install=True, every=300)
+    assert scheduler.jobs[BEAT_TAG][1] == 300
+
+
+def test_an_interval_that_is_not_whole_minutes_is_refused(scheduler):
+    with pytest.raises(ValueError, match='whole minutes'):
+        tick.__wrapped__(install=True, every=90)
+    assert not scheduler.installed(BEAT_TAG), 'a refused interval scheduled something anyway'
+
+
+def test_uninstalling_says_whether_there_was_anything_to_stop(scheduler, capsys):
+    tick.__wrapped__(install=True)
+    capsys.readouterr()
+    assert tick.__wrapped__(uninstall=True) == 0
+    assert capsys.readouterr().out.strip() == 'stopped'
+    assert tick.__wrapped__(uninstall=True) == 0
+    assert capsys.readouterr().out.strip() == 'nothing was scheduled'
+
+
+def test_scheduling_without_pobblebonk_says_so_rather_than_raising(monkeypatch, capsys):
+    import sys
+    # the package, not the submodule: `from pobblebonk import heartbeat` reads the attribute
+    monkeypatch.setitem(sys.modules, 'pobblebonk', None)
+    assert heartbeat() is None
+    assert tick.__wrapped__(install=True) == 1
+    assert 'scheduling needs pobblebonk' in capsys.readouterr().err

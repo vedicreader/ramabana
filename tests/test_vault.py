@@ -15,17 +15,6 @@ import pytest
 from ramabana.agent import Agent
 from ramabana.tools import ERR, WRITE_TOOLS, LocalHost, NullHost, failed, tools_for, watch_tools
 
-# vishalakshi 0.1.12 imports names that rishi 0.1.32 moved to urai, so it will not import at all.
-# `VaultHost` degrades rather than raising, so what needs marking is every test that reads or
-# writes the vault behind it. Drop the marks when vishalakshi is released against the newer rishi.
-try:
-    import vishalakshi  # noqa: F401
-    NO_VAULT = ''
-except ImportError as e: NO_VAULT = f'vishalakshi will not import: {e}'
-
-needs_vault = pytest.mark.skipif(bool(NO_VAULT), reason=NO_VAULT)
-
-
 def names(ts): return {t.__name__ for t in ts}
 
 
@@ -90,7 +79,6 @@ def test_the_watch_and_memory_groups_arrive_with_a_vault_and_never_raise_without
     assert 'set_reminder' not in WRITE_TOOLS        # setting one is cheap and reversible
 
 
-@needs_vault
 def test_a_reminder_reschedules_itself_and_becomes_something_memory_can_find(host):
     w = host.watch('buy milk', action='remind', every='1d', start=time.time() - 1)
     assert host.poll()['ran'] == 1
@@ -99,7 +87,6 @@ def test_a_reminder_reschedules_itself_and_becomes_something_memory_can_find(hos
     assert host.watches()[0]['next_run'] > w['next_run']
 
 
-@needs_vault
 def test_a_failing_watch_is_recorded_rather_than_raised_and_the_rest_still_run(host):
     def down(target, **kw): raise ConnectionError('name not resolved')
     original = host._worker_vault
@@ -122,7 +109,6 @@ def test_a_failing_watch_is_recorded_rather_than_raised_and_the_rest_still_run(h
     assert good['error'] is None and good['result']['title'] == 'still fine'
 
 
-@needs_vault
 def test_search_degrades_to_the_local_leg_when_the_vault_cannot_answer(host, tmp_path):
     "A broken vault must cost the extra leg, not the tool. And switching it off leaves no trace."
     (tmp_path/'a.py').write_text('def widget(): pass\n')
@@ -137,7 +123,6 @@ def test_search_degrades_to_the_local_leg_when_the_vault_cannot_answer(host, tmp
 
 # -- whose model answers ---------------------------------------------------------------
 
-@needs_vault
 def test_the_vault_answers_on_this_sessions_model_rather_than_loading_its_own(tmp_path, hide_runtime):
     """vishalakshi builds a `rishi.Chat` per `ask` from `$VISHALAKSHI_MODEL`. Unlent, that is a
     second engine beside the one already running, answering on a different model from the one the
@@ -175,7 +160,6 @@ def test_the_vault_answers_on_this_sessions_model_rather_than_loading_its_own(tm
 
 # -- when the answer would leave the machine -------------------------------------------
 
-@needs_vault
 def test_private_sections_never_reach_a_hosted_model(tmp_path):
     """Refused before a character is sent, and `pii='off'` is a caller's setting rather than an
     argument reachable from the far end of a tool call."""
@@ -188,7 +172,6 @@ def test_private_sections_never_reach_a_hosted_model(tmp_path):
     assert sent == []
 
 
-@needs_vault
 def test_a_local_model_answers_it_under_a_briefing_that_forbids_the_details(tmp_path):
     "Shape and quantity instead of detail, and the questioner's instruction carried into the prompt."
     from vishalakshi.ask import PII_SP
@@ -207,7 +190,6 @@ def test_a_local_model_answers_it_under_a_briefing_that_forbids_the_details(tmp_
     assert r2.answer == 'Total 240.00 GBP, due 2026-09-01.'
 
 
-@needs_vault
 def test_a_local_model_that_leaks_anyway_is_masked_on_the_way_out(tmp_path):
     "The same arithmetic runs over the answer, where a slip costs a masked token not an account number."
     host, sent = private_host(tmp_path), []
@@ -217,7 +199,6 @@ def test_a_local_model_that_leaks_anyway_is_masked_on_the_way_out(tmp_path):
     assert set(r.leaked) == {'email', 'card'}
 
 
-@needs_vault
 def test_private_filler_is_dropped_rather_than_making_the_question_private(tmp_path):
     """`doc_context` puts sections from elsewhere behind the document asked about. One of those
     being private should cost that section, not send the whole answer to a smaller model."""
@@ -228,7 +209,6 @@ def test_private_filler_is_dropped_rather_than_making_the_question_private(tmp_p
     assert sent[0][0] == 'remote' and 'ada@example.com' not in sent[0][2]
 
 
-@needs_vault
 def test_ask_memory_appears_only_for_a_host_that_can_ask_and_says_what_to_ask_next(tmp_path):
     from ramabana.testing import FullHost
     host, sent = private_host(tmp_path), []
@@ -244,7 +224,6 @@ def test_ask_memory_appears_only_for_a_host_that_can_ask_and_says_what_to_ask_ne
 
 # -- when retrieval itself would leave the machine --------------------------------------
 
-@needs_vault
 def test_retrieval_carries_no_policy_unless_the_host_was_given_one(tmp_path):
     "The default is what it always was, so raising the floor changes nothing for an existing caller."
     host = private_host(tmp_path)
@@ -252,9 +231,7 @@ def test_retrieval_carries_no_policy_unless_the_host_was_given_one(tmp_path):
     assert 'ada@example.com' in str(host.memory_read(private_node(host)))
 
 
-@needs_vault
 @pytest.mark.parametrize('act', ['redact', 'refuse'])
-@needs_vault
 def test_a_policy_reaches_every_tool_that_returns_section_text(tmp_path, act):
     """`ask` was the only one that had a gate, so these four handed raw sections to the turn model.
 
@@ -269,7 +246,6 @@ def test_a_policy_reaches_every_tool_that_returns_section_text(tmp_path, act):
         assert '020 7946 0958' not in str(got)
 
 
-@needs_vault
 def test_a_gated_section_says_why_its_text_is_missing(tmp_path):
     "`_sect` keeps `pii`, or a caller cannot tell a withheld section from an empty one."
     host = private_host(tmp_path)
@@ -278,7 +254,6 @@ def test_a_gated_section_says_why_its_text_is_missing(tmp_path):
     assert hit and sorted(hit['pii']) == ['card', 'email', 'phone']
 
 
-@needs_vault
 def test_the_policy_is_read_per_call(tmp_path):
     "A browser changes it while a session runs, and the host outlives the request that changed it."
     host, choice = private_host(tmp_path), ['off']
@@ -289,7 +264,6 @@ def test_the_policy_is_read_per_call(tmp_path):
     assert 'ada@example.com' not in str(host.memory_read(nid))
 
 
-@needs_vault
 def test_a_policy_that_cannot_be_read_keeps_the_gate_shut_without_failing(tmp_path):
     host = private_host(tmp_path)
     host.pii = lambda: (_ for _ in ()).throw(RuntimeError('the panel is mid-write'))
@@ -297,7 +271,6 @@ def test_a_policy_that_cannot_be_read_keeps_the_gate_shut_without_failing(tmp_pa
     assert host.memory_read(private_node(host))       # and the turn still gets an answer
 
 
-@needs_vault
 def test_titled_names_gate_only_when_asked_for(tmp_path):
     host = private_host(tmp_path)
     host.vault.note('Dr Charles Babbage signed the minutes.', title='minutes')

@@ -54,9 +54,10 @@ The clock is [pobblebonk](https://github.com/vedicreader/pobblebonk), an optiona
 extra. It schedules an operating-system job through cron, launchd or `schtasks`, so it fires when no
 session is open. Ramabana holds only the seam, in `ramabana/monitor.py`. `pob` opens the shared
 SQLite database. `beat_notes` reads what the beat left, under a per-session reader id.
-`ramabana-tick` is the entry point a beat runs. The two halves share that database and never call
-each other. Register a schedule's callback with `on_tick`. The schedules themselves belong to
-whichever package owns the work.
+`ramabana-tick` is the entry point a beat runs, and `ramabana-tick --install` schedules it under
+this package's own tag. The two halves share that database and never call each other. Register a
+schedule's callback with `on_tick`. The schedules themselves belong to whichever package owns the
+work: vishalakshi owns the watches.
 
 A host declares a capability group by inheriting the class that names it, and `Host.provides` is the
 only way to ask what a host supports. `without` is the runtime half: a group whose backend was never

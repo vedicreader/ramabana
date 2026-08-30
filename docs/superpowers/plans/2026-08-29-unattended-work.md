@@ -1,8 +1,9 @@
 # Work that outlives the turn that started it
 
-> **Done on 2026-08-29.** All four tasks are implemented, tested and pushed. pobblebonk 0.0.2 is
-> a `ramabana[cron]` extra, and the published release carries `core` but not `heartbeat`, so `pob`
-> falls back to naming the directory itself. Every box below is ticked.
+> **Done on 2026-08-29, upgraded on 2026-08-30.** All four tasks are implemented, tested and
+> pushed. pobblebonk 0.0.3 is a `ramabana[cron]` extra and now carries a real `heartbeat`, so
+> `ramabana-tick --install` schedules the beat and `--uninstall` stops it. vishalakshi 0.1.14
+> imports against rishi 0.1.32, so the vault tests run again. Every box below is ticked.
 
 The goal: a task can outlive the turn that started it, and the writes it wants are gated by
 someone who is there to answer.
@@ -149,6 +150,20 @@ vishalakshi's, which fixes the notebook and moves the family onto one parser rat
 
 `Background` finishes a run its callback left non-terminal. `delegate` finishes its own, but a
 callback that did not would have shown as running forever.
+
+### The upgrade on 2026-08-30
+
+vishalakshi 0.1.14, pobblebonk 0.0.3, fossick 0.1.17 and koshas 0.1.7. The seventeen vault tests
+run again and their `needs_vault` marks are gone. pobblebonk 0.0.3 ships `heartbeat`, which made
+`POB_HOME` and `pob_path` disagree: `pob_path` preferred the package's `HOME` while `Agent.beat`
+read the module constant, and two tests caught it. `POB_HOME` is now read once from pobblebonk and
+is the only knob.
+
+`read_url` was not simplified onto `fossick.read`, though that is where the reader dispatch now
+lives. Two reasons, both measured. `fossick.fetch(auto=True)` escalates on bot-blocking and
+shalya's loop escalates on a thin page, so they are not the same ladder and dropping one loses
+that case. `fossick.read` returns markdown and never the html, so the JSON-LD block a product page
+is mostly made of would go. Worth revisiting when a page can be fetched from a test.
 
 `Approvals.close()` is new. `request` already refused when nothing was listening, which is half of
 what unattended work needs. The other half is waking a caller that is already blocked when the

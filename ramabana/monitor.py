@@ -20,9 +20,9 @@ from .tools import MAX_TOOL_CHARS, _diff, clip, delegate, err
 
 # %% auto #0
 __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_STEPS', 'PENDING_MAX', 'DFLT_SETTLE', 'REVIEW_SP',
-           'POB_READER', 'TICKS', 'POB_HOME', 'secs', 'files_under', 'snapshot', 'changed', 'summarise', 'report',
-           'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'monitor_tools', 'on_tick', 'pob_path', 'pob',
-           'beat_notes', 'beat_notice', 'tick']
+           'POB_READER', 'TICKS', 'POB_HOME', 'BEAT_TAG', 'secs', 'files_under', 'snapshot', 'changed', 'summarise',
+           'report', 'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'monitor_tools', 'on_tick',
+           'pob_path', 'pob', 'beat_notes', 'beat_notice', 'heartbeat', 'tick']
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
 #: What one look at a folder may hold. Past this the folder is being watched too widely, and
@@ -387,14 +387,16 @@ def on_tick(name):
         return fn
     return _f
 
-POB_HOME = Path.home()/'.pobblebonk'   #: where the beat keeps its launcher, its log and the database
-
-def pob_path():
-    "The one file the beat and a session meet in. Both sides ask here, so they cannot disagree."
-    # the released package may not carry `heartbeat` yet, and its directory is all that is wanted
+def _pob_home():
+    "Where the beat keeps its launcher, its log and the database. pobblebonk's answer, or its default."
     try: from pobblebonk.heartbeat import HOME
-    except ImportError: HOME = POB_HOME
-    return Path(HOME).expanduser()/'pob.db'
+    except ImportError: return Path.home()/'.pobblebonk'
+    return Path(HOME)
+
+#: One knob, read once. Both halves ask `pob_path`, so neither can open a file the other does not
+POB_HOME = _pob_home()
+
+def pob_path(): return Path(POB_HOME).expanduser()/'pob.db'
 
 def pob(path=None):
     "The database the beat and this session share. None when pobblebonk is not installed."
@@ -417,10 +419,32 @@ def beat_notice(notes, mx=REVIEW_MAX_CHARS):
 
 
 # %% ../nbs/17_monitor.ipynb #18ac0628
+BEAT_TAG = 'ramabana'   #: names this package's launcher, its log and the scheduled job
+
+def heartbeat():
+    "pobblebonk's scheduler seam, or None when it is not installed."
+    try: from pobblebonk import heartbeat
+    except ImportError: return None
+    return heartbeat
+
 @call_parse
 def tick(db: str = '',         # the shared database; pobblebonk's own by default
-         quiet: bool = False): # say nothing on success
+         quiet: bool = False,  # say nothing on success
+         install: bool = False,# schedule this command instead of running one beat
+         uninstall: bool = False,  # stop the scheduled beat
+         every: int = 60):     # seconds between beats, when installing. Whole minutes
     "One beat: run the schedules that are due and leave what they found as notes."
+    if install or uninstall:
+        hb = heartbeat()
+        if hb is None:
+            print("scheduling needs pobblebonk: pip install 'ramabana[cron]'", file=sys.stderr)
+            return 1
+        if uninstall:
+            print('stopped' if hb.uninstall(BEAT_TAG) else 'nothing was scheduled')
+            return 0
+        cmd = f'{Path(sys.executable).parent/"ramabana-tick"} --quiet'
+        print(f'every {every}s: {hb.install(cmd, tag=BEAT_TAG, every=every)}')
+        return 0
     p = pob(db or None)
     if p is None:
         print("pobblebonk is not installed: pip install 'ramabana[cron]'", file=sys.stderr)

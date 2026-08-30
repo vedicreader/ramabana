@@ -24,13 +24,13 @@ dependencies = [
     "exhash>=0.4.9",
     "fastcore>=2.1.16",
     "rishi>=0.1.32",
-    "fossick>=0.1.11",
-    "koshas>=0.0.31",
+    "fossick>=0.1.17",
+    "koshas>=0.1.7",
     "litesearch>=0.1.1",
     "liteparse>=2.12,<2.13",
     "rgapi>=0.1.19",
     "fastllm-claude-code>=0.0.7",
-    "vishalakshi>=0.1.11",
+    "vishalakshi>=0.1.14",
     "fastspec>=0.2.1",
     "pyyaml>=6.0",
     "toolslm>=0.3.48",
@@ -39,7 +39,7 @@ dependencies = [
 [project.optional-dependencies]
 cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0"]
 mcp = ["mcp>=1.2"]
-cron = ["pobblebonk>=0.0.2"]   # the beat and the shared database. See `ramabana.monitor.pob`
+cron = ["pobblebonk>=0.0.3"]   # the beat and the shared database. See `ramabana.monitor.pob`
 copilot = ["rishi>=0.1.32"]
 dev = ["ramabana[all]", "rishi[all]>=0.1.32", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0"]
 pyrepl = [
