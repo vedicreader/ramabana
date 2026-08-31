@@ -21,7 +21,7 @@ from pathlib import Path
 from fastcore.basics import patch
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
-from .tools import (mime_for, MAX_TOOL_CHARS, NO_EFFECTS, WRITE_TOOLS, Registry, clip, discover,
+from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, clip, discover,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background)
 from .monitor import (Monitors, POB_READER, beat_notes, beat_notice, monitor_tools,
@@ -1181,7 +1181,7 @@ def tools(self:Agent):
                           get_spec=self.spec_or_none, on_media=self._drew)
         # taken off the built list, not off the briefing: a tool the model cannot see is a
         # guarantee, and a tool it is merely asked not to reach for is a hope
-        if self.readonly: plain = read_only(plain, self.readonly_calls, also=NO_EFFECTS)
+        if self.readonly: plain = read_only(plain, self.readonly_calls, effects=False, block=NO_SUB)
         self._plain = plain
         self._tools = [self._record(t) for t in plain]
     return self._tools

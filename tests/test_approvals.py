@@ -4,8 +4,11 @@ The point of the whole module is the reason, not the refusal. "Denied" teaches a
 gets retried; "that file is generated, edit the notebook instead" changes its approach. So every
 test here is really about whether the reason survives the trip back.
 """
+import inspect
 import threading
 import time
+
+import pytest
 
 from ramabana import agent
 from ramabana.testing import fake_agent
@@ -62,7 +65,7 @@ def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
     assert not ({t.__name__ for t in read_only(a.tools)} & WRITE_TOOLS)
 
     a.command('/subagents on')
-    granted = {t.__name__ for t in read_only(a.tools, writes=True)}
+    granted = {t.__name__ for t in read_only(a.tools, writes=True, block=NO_SUB)}
     assert 'edit_file' in granted and not (granted & NO_SUB), 'writes yes, recursion never'
     assert a._sub_plain() is a.tools
 
@@ -147,14 +150,14 @@ def test_a_readonly_agent_is_not_given_the_tools_that_act():
     """`read_only` existed but only the sub-agent path reached it, and the nearest thing an agent
     had was a briefing that asked it not to write while `edit_file` stayed on the list. A surface
     that only proposes needs the tools gone, not discouraged."""
-    from ramabana.tools import NO_EFFECTS, NO_SUB, read_only
+    from ramabana.tools import ACTING_TOOLS, NO_SUB, read_only
 
     open_agent, _ = fake_agent()
     shut, _ = fake_agent(readonly=True)
     names = {t.__name__ for t in shut.tools}
 
     assert not (names & WRITE_TOOLS), f'a write survived: {sorted(names & WRITE_TOOLS)}'
-    assert not (names & NO_EFFECTS), f'an effect survived: {sorted(names & NO_EFFECTS)}'
+    assert not (names & ACTING_TOOLS), f'an effect survived: {sorted(names & ACTING_TOOLS)}'
     assert not (names & NO_SUB), 'a read-only agent does not delegate its way around the refusal'
     assert 'search_code' in names, 'it can still look, or it is no use'
     # `_plain` is what the briefing is written from: it has to agree with what was built, or the
@@ -191,8 +194,11 @@ def test_a_readonly_agent_cannot_leave_a_page_it_read_in_the_vault():
     ts = tools_for(Host({'/p/a.py': 'x=1'}))
     fetch = next(t for t in read_only(ts) if t.__name__ == 'read_url')
     fetch(url='https://example.com')
-    fetch(url='https://example.com', remember=True)
-    assert seen == [False, False], f'the vault write survived: {seen}'
+    assert seen == [False], f'the vault write survived: {seen}'
+    # shalya swaps in the safe variant rather than pinning the argument, so `remember` is not in
+    # the schema the model is given and there is nothing for it to ask for
+    with pytest.raises(TypeError): fetch(url='https://example.com', remember=True)
+    assert 'remember' not in inspect.signature(fetch).parameters
 
     seen.clear()
     writer = next(t for t in read_only(ts, writes=True) if t.__name__ == 'read_url')

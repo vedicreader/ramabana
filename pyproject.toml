@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.0.1",
+    "shalya>=0.0.2",
     "uraiyadal>=0.0.5",
     "gheasy>=0.0.9",
     "exhash>=0.4.9",
@@ -84,3 +84,8 @@ path = "ramabana/__init__.py"
 
 [dependency-groups]
 dev = ["ramabana[dev]"]
+
+# shalya 0.0.2 is not on PyPI yet. Replace this with the plain floor above once it is: a published
+# ramabana cannot resolve a git source either, and only `uv sync` in this checkout reads it.
+[tool.uv.sources]
+shalya = { git = "https://github.com/vedicreader/shalya", branch = "claude/ramabana-post-release-cleanup-czjuk8" }
