@@ -34,6 +34,12 @@ moved name, so nothing that imports them has to change.
   `effects=False` withholds them. Ramabana passes `block=NO_SUB`, which is the only part shalya
   cannot know. `read_url` now loses its `remember` argument entirely rather than having it
   overridden, so the parameter never reaches the schema the model is given.
+- The activity summary is marked on each tool beside its docstring, and `summarise` is shalya's.
+  The dispatch on tool names that used to hold it here is gone, and with it the drift it invited:
+  the git group had moved to shalya without one and the four background delegation tools were
+  added here without one, so all ten rendered as `git_status(path='/proj')` in the feed. A tool
+  built without a summary now fails a test rather than saying nothing.
+
 
 ## 0.1.31
 one shot model should error loudly if it can't take the context

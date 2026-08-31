@@ -34,7 +34,8 @@ __all__ = ['MAX_PRODUCTS', 'SHOP_PORT', 'SHOP_TOUT', 'CATALOGUE', 'CartError', '
 import json
 from fastcore.basics import store_attr
 from .core import AgentError, agent_err
-from .tools import clip, err
+from .tools import clip, err, summary
+from shalya.core import one_line as _1
 
 # %% ../nbs/08_shop.ipynb #aa16daf7
 MAX_PRODUCTS = 24        # products listed back per search. A supermarket page holds far more
@@ -203,16 +204,19 @@ class FakeCart(Cart):
 def cart_tools(cart):
     "The trolley, as tools. `cart_add` and `cart_remove` are in `WRITE_TOOLS`: they spend money."
 
+    @summary(lambda a: 'List stores')
     def cart_stores() -> str:
         "The stores whose search and trolley pages are known, and anything worth knowing about each."
         try: return clip('\n'.join(f'{k}  {v}' for k, v in cart.stores().items()))
         except Exception as e: return err('could not list stores', e)
 
+    @summary(lambda a: f'Shop at {_1(a.get("url"), 100)}')
     def cart_open(url: str) -> str:
         "Point the shopping session at a store, or at one product page. Do this before searching."
         try: return f'now at {cart.open(url)}'
         except Exception as e: return err(f'could not open {url}', e)
 
+    @summary(lambda a: f'Shop search: {_1(a.get("query"))}')
     def cart_find(query: str, limit: int = 10) -> str:
         """Search the store you are on. Returns numbered products. The number is what `cart_add` takes.
 
@@ -225,6 +229,7 @@ def cart_tools(cart):
             return clip('\n'.join(f"{r['i']:>3}  {r['price'] or '?':>8}  {r['title']}" for r in rows))
         except Exception as e: return err('search failed', e)
 
+    @summary(lambda a: f'Add to trolley: {a.get("qty", 1)} x {_1(a.get("item"))}')
     def cart_add(item: str, qty: int = 1, variant: str = '') -> str:
         """Put a product in the trolley. `item` is a number from `cart_find`, or an exact title.
 
@@ -240,6 +245,7 @@ def cart_tools(cart):
                         + (f"\n{r.get('error')}" if r.get('error') else ''))
         except Exception as e: return err(f'could not add {item!r}', e)
 
+    @summary(lambda a: 'Read the trolley')
     def cart_show() -> str:
         "Read the trolley back: every line, and the count and subtotal."
         try:
@@ -248,6 +254,7 @@ def cart_tools(cart):
             return clip(f"{t.get('count')} items, subtotal {t.get('subtotal')}\n{body}")
         except Exception as e: return err('could not read the trolley', e)
 
+    @summary(lambda a: f'Remove from trolley: {_1(a.get("line"))}')
     def cart_remove(line: str) -> str:
         "Take one line out of the trolley, by its number in `cart_show` or by exact title."
         try: return clip(json.dumps(cart.remove(line), default=str))

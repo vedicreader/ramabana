@@ -15,10 +15,11 @@ __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP', 'SUB_WRITE_SP', 'NO_SUB', '
            'Skill', '_apply_edits', '_cmds', '_diff', '_edits', 'api_model', 'api_tools', 'ask_tools', 'apply_edits',
            'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs',
            'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write', 'acts',
-           'has_effect', 'ACTING_TOOLS', 'read_only', 'ld_json', '_fuse', 'CodeHost', 'WebHost', 'NotebookHost',
-           'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir',
-           'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools',
-           'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes']
+           'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', '_fuse',
+           'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost',
+           'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media',
+           'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools',
+           'writes']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, functools, json, re, threading, time, uuid
@@ -28,7 +29,8 @@ from fastcore.parallel import parallel
 from shalya.core import (ERR, GIT_READ_TOOLS, GIT_TOOLS, GIT_WRITE_TOOLS, Hit, MAX_API, MAX_FILE,
                          MAX_GREP_HITS, MAX_HITS, MAX_TOOL_CHARS, apply_edits, clip,
                          clip_lines, cmds, diff_text, edits, err, failed, is_write, writes,
-                         ACTING_TOOLS, acts, has_effect)
+                         ACTING_TOOLS, acts, has_effect, summarise, summary,
+                         one_line, one_line as _1)
 from shalya.host import (Capability, DENY, Host, HostError, LD_CHARS, LocalHost, MAX_VARS, NO_ROOTS,
                          SANDBOX, SECRET, SKIP_DIRS, SKIP_SUFFIXES, denied, implemented, ld_json, _fuse,
                          CodeHost, WebHost, NotebookHost, MemoryHost, WatchHost, SessionHost,
@@ -58,7 +60,7 @@ WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove'}
 
 # %% ../nbs/02_tools.ipynb #694f6d5d
 #: shalya's names, re-exported so `from ramabana.tools import *` still finds them.
-_all_ = ['frontmatter', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', '_apply_edits', '_cmds', '_diff', '_edits', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'read_only', 'ld_json', '_fuse', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes']
+_all_ = ['frontmatter', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', '_apply_edits', '_cmds', '_diff', '_edits', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', '_fuse', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes']
 
 # %% ../nbs/02_tools.ipynb #1ec6c57a
 @implemented
@@ -364,6 +366,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
     def _writes(): return bool(get_writes()) if get_writes is not None else False
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
 
+    @summary(lambda a: f'Delegate: {_1(a.get("question"), 120)}')
     def delegate_search(question: str, skills: str = '') -> str:
         """Hand a broad search question to a sub-agent and get back only its conclusion.
 
@@ -390,6 +393,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         return clip(delegate(b, question, get_tools(), skills=sk, writes=_writes(),
                              approve=_approve()), MAX_TOOL_CHARS) + note
 
+    @summary(lambda a: f'Delegate in parallel: {_1(a.get("questions"), 110)}')
     def delegate_parallel(questions: str, skills: str = '', cloud_model: str = '') -> str:
         """Hand several independent questions to sub-agents at once, and get back every answer.
 
@@ -422,6 +426,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         answers = delegate_many(b, qs, get_tools(), skills=sk, writes=_writes(), approve=_approve())
         return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2) + note
 
+    @summary(lambda a: f'Delegate in the background: {_1(a.get("question"), 110)}')
     def delegate_async(question: str, skills: str = '', writes: bool = False) -> str:
         """Start a sub-agent on `question` and come back for the answer later. Returns a run id.
 
@@ -454,6 +459,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         asked = 'with write tools' if w else 'read-only'
         return f'started {rid} ({asked}). Collect it with delegate_result({rid!r}).' + note
 
+    @summary(lambda a: f'Check delegation {a["run_id"]}' if a.get('run_id') else 'Check the background delegations')
     def delegate_status(run_id: str = '') -> str:
         """What a background delegation is doing. No `run_id` lists every one this session started.
 
@@ -465,10 +471,12 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         if not rows: return 'nothing has been delegated in the background'
         return clip('\n'.join(f"{r['id']}  {r['state']:10} {r['question'][:80]}" for r in rows), MAX_TOOL_CHARS)
 
+    @summary(lambda a: f'Collect delegation {a.get("run_id","?")}')
     def delegate_result(run_id: str) -> str:
         "The answer a background delegation left, or what it is still doing."
         return clip(bg.result(run_id), MAX_TOOL_CHARS)
 
+    @summary(lambda a: f'Cancel delegation {a.get("run_id","?")}')
     def delegate_cancel(run_id: str) -> str:
         "Stop a background delegation. What it had already done is not undone."
         return bg.cancel(run_id)

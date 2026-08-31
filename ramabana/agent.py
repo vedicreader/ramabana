@@ -9,10 +9,10 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE',
            'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'HISTORY_TAIL',
            'HISTORY_TURNS', 'REPLAYED', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE',
-           'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'summarise', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md',
-           'answer_md', 'Approvals', 'always', 'never', 'policy', 'applied', 'apply', 'note', 'tool_plan',
-           'request_text', 'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan',
-           'parse_plan_items', 'plan_tools', 'Agent', 'Completer']
+           'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
+           'Approvals', 'always', 'never', 'policy', 'applied', 'apply', 'note', 'tool_plan', 'request_text',
+           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items',
+           'plan_tools', 'Agent', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, functools, json, re, threading, time, uuid
@@ -22,6 +22,7 @@ from fastcore.basics import patch
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, clip, discover,
+                            summarise, summary, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background)
 from .monitor import (Monitors, POB_READER, beat_notes, beat_notice, monitor_tools,
@@ -69,81 +70,10 @@ _KIND = {
 #: its sub-agent's calls scattered among the caller's own.
 DELEGATE_TOOLS = {t for t, k in _KIND.items() if k == 'delegate'}
 
-#: Tools whose useful summary is the same words every time: they take nothing worth showing.
-_LABEL = {'list_vars': 'List variables', 'read_terminal': 'Read terminal',
-          'list_watches': 'List watches', 'poll_watches': 'Poll watches',
-          'list_folder_watches': 'List watched folders', 'check_folders': 'Check watched folders',
-          'memory_topics': 'Map remembered topics', 'cart_stores': 'List stores',
-          'cart_show': 'Read the trolley'}
-
-def _s(v, n=90):
-    "One line of a value, short enough to sit in a list."
-    t = ' '.join(str(v or '').split())
-    return t if len(t) <= n else t[:n - 1] + '…'
 
 # %% ../nbs/03_agent.ipynb #3f508bca
-def summarise(tool, args):
-    "The imperative one-liner for a call: what a person would say they just did."
-    a = args if isinstance(args, dict) else {}
-    p, q = a.get('path', ''), a.get('query', '')
-    if tool in _LABEL:           return _LABEL[tool]
-    if tool == 'search_code':    return f'Search {_s(q)}'
-    if tool == 'similar_code':   return f'Similar to {p}:{a.get("line", 1)}'
-    if tool == 'outline':        return f'Outline {p}'
-    if tool == 'list_files':     return f'List files {_s(a.get("pattern", "")) or "(all)"}'
-    if tool == 'grep':
-        where = f' in {a["path_filter"]}' if a.get('path_filter') else ''
-        return f'Grep {_s(a.get("pattern", ""))}{where}'
-    if tool == 'ls':             return f'List {p or "(open folders)"}'
-    if tool == 'view_file':
-        start, end = a.get('start', ''), a.get('end', '')
-        rng = f':{start}-{end}' if start or end else ''
-        return f'View {p}{rng}'
-    if tool == 'edit_file':      return f'Edit {p}'
-    if tool == 'replace_text':   return f'Edit {p}'
-    if tool == 'create_file':    return f'Create {p}'
-    if tool == 'notebook_cells': return f'Cells of {p}'
-    if tool == 'view_cell':      return f'View {p} cell {a.get("cell_id", "?")}'
-    if tool == 'edit_cell':      return f'Edit {p} cell {a.get("cell_id", "?")}'
-    if tool == 'add_cell':       return f'Add {a.get("cell_type", "code")} cell to {p}'
-    if tool == 'web_search':     return f'Web search: {_s(q)}'
-    if tool == 'read_url':       return f'Web fetch: {_s(a.get("url", ""), 120)}'
-    if tool == 'research':       return f'Research: {_s(q)}'
-    if tool == 'run_python':     return f'Run python: {_s((a.get("code", "") or "").strip().splitlines()[0] if a.get("code") else "")}'
-    if tool == 'inspect_python':
-        sc = a.get('scope') or 'isolated'
-        body = _s((a.get('code', '') or '').strip().splitlines()[0] if a.get('code') else '')
-        return f'Inspect: {body}' + ('' if sc == 'isolated' else f'  [{sc}]')
-    if tool == 'run_shell':      return f'Run {_s(a.get("command", ""), 110)}'
-    if tool == 'read_skill':     return f'Read skill {a.get("name", "?")}'
-    if tool == 'create_skill':   return f'Create skill {a.get("name", "?")}'
-    if tool == 'memory_search':  return f'Memory search: {_s(q)}'
-    if tool == 'memory_tree':    return f'Memory tree {_s(a.get("document", "")) or "(everything)"}'
-    if tool == 'memory_read':    return f'Memory read {a.get("node_id", "?")}'
-    if tool == 'memory_forget':  return f'Forget {a.get("doc_id", "?")}'
-    if tool == 'remember':       return f'Remember {_s(a.get("title") or a.get("text", ""))}'
-    if tool == 'set_reminder':   return f'Remind every {a.get("every", "1w")}: {_s(a.get("text", ""))}'
-    if tool == 'watch_url':      return f'Watch {_s(a.get("url", ""), 100)} every {a.get("every", "1d")}'
-    if tool == 'cancel_watch':   return f'Cancel watch {a.get("watch_id", "?")}'
-    if tool == 'watch_folder':   return f'Watch folder {_s(a.get("folder", ""), 80)}'
-    if tool == 'cancel_folder_watch': return f'Stop watching {a.get("watch_id", "?")}'
-    if tool == 'cart_open':      return f'Shop at {_s(a.get("url", ""), 100)}'
-    if tool == 'cart_find':      return f'Shop search: {_s(q)}'
-    if tool == 'cart_add':       return f'Add to trolley: {a.get("qty", 1)} x {_s(a.get("item", ""))}'
-    if tool == 'cart_remove':    return f'Remove from trolley: {_s(a.get("line", ""))}'
-    if tool == 'set_plan':       return f'Set plan: {_s(a.get("title", ""))}'
-    if tool == 'add_todo':       return f'Add todo: {_s(a.get("text", ""))}'
-    if tool == 'update_todo':    return f'Todo {a.get("id", "?")} → {a.get("status") or "update"}'
-    if tool == 'list_plan':      return 'List plan'
-    if tool == 'delegate_search': return f'Delegate: {_s(a.get("question", ""), 120)}'
-    if tool == 'delegate_parallel':
-        try:
-            import json as _j
-            qs = _j.loads(a.get('questions') or '[]')
-            return f'Delegate {len(qs)} questions in parallel: ' + _s('; '.join(qs), 110)
-        except Exception: return f'Delegate in parallel: {_s(a.get("questions", ""), 110)}'
-    inner = ', '.join(f'{k}={_s(v, 30)!r}' for k, v in a.items())
-    return f'{tool}({inner})'
+#: `summarise` is shalya's. Every tool carries its own summary, marked beside its docstring, so
+#: there is no table here to fall out of step with what the toolset actually offers.
 
 # %% ../nbs/03_agent.ipynb #9ab2cd3c
 @dataclass
@@ -196,7 +126,7 @@ class Act:
                 'tool': self.tool, 'kind': self.kind, 'icon': self.icon,
                 'summary': self.summary, 'line': self.line(), 'detail': self.detail,
                 'ok': self.ok, 'done': self.done, 'secs': self.secs,
-                'args': {k: _s(v, 300) for k, v in (self.args or {}).items()}}
+                'args': {k: _1(v, 300) for k, v in (self.args or {}).items()}}
 
 
 def _clip(out, n=MAX_DETAIL):
@@ -233,8 +163,12 @@ class Activity:
 
     def __len__(self): return len(self.acts)
 
-    def start(self, tool, args, action_id='', turn_id='', revision=0, branch_id='main', parent_action_id=''):
-        a = Act(tool=tool, args=dict(args or {}), summary=summarise(tool, args),
+    def start(self, tool, args, action_id='', turn_id='', revision=0, branch_id='main',
+              parent_action_id='', summary=None):
+        # the caller holds the tool itself and passes its summary; a name alone still gets one,
+        # from the mark shalya indexed when the tool was built
+        a = Act(tool=tool, args=dict(args or {}),
+                summary=summary if summary is not None else summarise(tool, args),
                 id=action_id or uuid.uuid4().hex[:12], turn_id=turn_id or self.turn_id,
                 revision=int(revision or 0), branch_id=branch_id or 'main',
                 parent_action_id=parent_action_id or '')
@@ -897,6 +831,7 @@ def plan_tools(get_plan, save=None):
             try: save()
             except Exception: pass
 
+    @summary(lambda a: f'Set plan: {_1(a.get("title"))}')
     def set_plan(title: str, items: str = '') -> str:
         "Replace the session plan. `items` is a newline list or a JSON list of step texts."
         todos = parse_plan_items(items)
@@ -905,6 +840,7 @@ def plan_tools(get_plan, save=None):
         get_plan().set(title, todos); _save()
         return get_plan().md()
 
+    @summary(lambda a: f'Add todo: {_1(a.get("text"))}')
     def add_todo(text: str, status: str = 'pending') -> str:
         "Append one step to the session plan."
         try: t = get_plan().add(text, status=status or 'pending')
@@ -912,6 +848,7 @@ def plan_tools(get_plan, save=None):
         _save()
         return f'added `{t.id}` ({t.status}): {t.text}\n\n{get_plan().md()}'
 
+    @summary(lambda a: f'Todo {a.get("id","?")} → {a.get("status") or "update"}')
     def update_todo(id: str, status: str = '', note: str = '', text: str = '') -> str:
         """Update a todo by id or unique prefix. Status: pending, active, done, cancelled.
 
@@ -928,6 +865,7 @@ def plan_tools(get_plan, save=None):
         _save()
         return f'`{t.id}` → {t.status}: {t.text}' + (f' -- {t.note}' if t.note else '') + f'\n\n{get_plan().md()}'
 
+    @summary(lambda a: 'List plan')
     def list_plan() -> str:
         "The current session plan as a checklist."
         return get_plan().md()
@@ -1087,7 +1025,7 @@ def _record(self:Agent, f):
                     'summarise the evidence and unfinished work now.')
         self.calls.append((name, args))
         meta = self._action_meta(name, args)
-        act = self.activity.start(name, args, **meta)
+        act = self.activity.start(name, args, summary=summarise(f, args), **meta)
         self.registry.fire('before_tool', self, name, args)
         if name in WRITE_TOOLS:   # first touch only: later edits are part of one change
             if (p := args.get('path')):

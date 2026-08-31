@@ -16,7 +16,8 @@ from fastcore.basics import patch
 from fastcore.script import call_parse
 
 from .core import AgentError, agent_err
-from .tools import MAX_TOOL_CHARS, _diff, clip, delegate, err
+from .tools import MAX_TOOL_CHARS, _diff, clip, delegate, err, summary
+from shalya.core import one_line as _1
 
 # %% auto #0
 __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_STEPS', 'PENDING_MAX', 'DFLT_SETTLE', 'REVIEW_SP',
@@ -320,6 +321,7 @@ def _file(self: Monitors, rec):
 def monitor_tools(get_monitors, mx=MAX_TOOL_CHARS):
     "Watching a folder somebody else is changing, and the review that fires when it moves."
 
+    @summary(lambda a: f'Watch folder {_1(a.get("folder"), 80)}')
     def watch_folder(folder: str, instructions: str, pattern: str = '', settle: str = DFLT_SETTLE) -> str:
         """Watch `folder`, and review every later change to it against `instructions`.
 
@@ -342,6 +344,7 @@ def monitor_tools(get_monitors, mx=MAX_TOOL_CHARS):
         which = f' matching {w.pattern}' if w.pattern else ''
         return f'watching {w.folder} as {w.id} ({len(w.snap)} files{which}); every change is reviewed'
 
+    @summary(lambda a: 'List watched folders')
     def list_folder_watches() -> str:
         "Every folder being watched, what it is reviewed for, and how many reviews it has produced."
         ws = get_monitors().all()
@@ -350,11 +353,13 @@ def monitor_tools(get_monitors, mx=MAX_TOOL_CHARS):
             f"{w.id}  {w.folder}  {len(w.snap)} files  settle={int(w.settle)}s  reviews={w.reviews}"
             f"  {w.last_status or 'never fired'}  {w.instructions[:80]}" for w in ws), mx)
 
+    @summary(lambda a: f'Stop watching {a.get("watch_id","?")}')
     def cancel_folder_watch(watch_id: str) -> str:
         "Stop watching one folder. Only when the user asks. Reviews already filed stay in memory."
         if get_monitors().remove(watch_id): return f'stopped watching {watch_id}'
         return f'no such folder watch: {watch_id}'
 
+    @summary(lambda a: 'Check watched folders')
     def check_folders() -> str:
         """Look at every watched folder now, and report every review that is waiting.
 

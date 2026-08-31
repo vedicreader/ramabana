@@ -4519,8 +4519,8 @@ wheels = [
 
 [[package]]
 name = "shalya"
-version = "0.0.2"
-source = { git = "https://github.com/vedicreader/shalya?branch=claude%2Framabana-post-release-cleanup-czjuk8#70c33adfebbafe698f5648b1543dec15e3c46c04" }
+version = "0.0.3"
+source = { git = "https://github.com/vedicreader/shalya?branch=claude%2Framabana-post-release-cleanup-czjuk8#d5c2103f94fe8b09890664902202ca3ebedae2f7" }
 dependencies = [
     { name = "dhrishti" },
     { name = "exhash" },
