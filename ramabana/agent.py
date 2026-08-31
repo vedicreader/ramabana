@@ -21,8 +21,9 @@ from pathlib import Path
 from fastcore.basics import patch
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
-from .tools import (mime_for, MAX_TOOL_CHARS, WRITE_TOOLS, Registry, clip, discover, err, failed,
-                            find, load, skill_index, subagent_tools, tools_for, Background)
+from .tools import (mime_for, MAX_TOOL_CHARS, NO_EFFECTS, WRITE_TOOLS, Registry, clip, discover,
+                            err, failed, find, load, read_only, skill_index, subagent_tools,
+                            tools_for, Background)
 from .monitor import (Monitors, POB_READER, beat_notes, beat_notice, monitor_tools,
                               pob, pob_path, review_notice)
 
@@ -953,6 +954,8 @@ class Agent:
                  inline_skills=INLINE_SKILLS,
                  subagents=True,
                  subagent_writes=False,     # sub-agents get the write tools too, behind the same approvals
+                 readonly=False,            # withhold every tool that acts: this agent may only propose
+                 readonly_calls=None,       # and, when set, a hard budget on how many it may make
                  local_multimodal=False,       # load LiteRT vision/audio encoders for local models
                  tool_max_len=MAX_TOOL_CHARS,
                  on_compact=None,
@@ -971,6 +974,7 @@ class Agent:
         if model: self.routing.set(model)
         self.approvals, self.tool_max_len, self.subagents = approvals, tool_max_len, subagents
         self.subagent_writes = bool(subagent_writes)
+        self.readonly, self.readonly_calls = bool(readonly), readonly_calls
         self.local_multimodal = bool(local_multimodal)
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
         self._sp = sp
@@ -1175,6 +1179,9 @@ def tools(self:Agent):
         extra += monitor_tools(lambda: self.monitors, mx=b.tool_max)
         plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop,
                           get_spec=self.spec_or_none, on_media=self._drew)
+        # taken off the built list, not off the briefing: a tool the model cannot see is a
+        # guarantee, and a tool it is merely asked not to reach for is a hope
+        if self.readonly: plain = read_only(plain, self.readonly_calls, also=NO_EFFECTS)
         self._plain = plain
         self._tools = [self._record(t) for t in plain]
     return self._tools
@@ -2068,7 +2075,8 @@ def revise(self:Agent, turn_id, text, branch_id=''):
 def oneshot(self:Agent, prompt, sp='', job='oneshot', max_tokens=None):
     "A question on whichever model `job` routes to, in a conversation that is thrown away."
     b = self._be_or_none(job)
-    return '' if b is None else b.oneshot(prompt, sp, max_tokens)
+    # the job, not the transport's method name: a summary that failed said `one-shot failed`
+    return '' if b is None else b.oneshot(prompt, sp, max_tokens, job=job)
 
 # %% ../nbs/03_agent.ipynb #7b71fdf3
 @patch

@@ -20,8 +20,9 @@ import pytest
 
 from ramabana import core, runtime
 from ramabana.core import DFLT_LOCAL_CTX, ModelSpec, local_ctx, resolve
-from ramabana.runtime import (ONESHOT_TOKENS, RESERVE, Compactor, RishiBackend, ThinkFilter,
-                              answer_only, captured, interesting, prefills_think, threshold)
+from ramabana.runtime import (ONESHOT_CUT, ONESHOT_HEADROOM, ONESHOT_TOKENS, RESERVE, Compactor,
+                              RishiBackend, ThinkFilter, answer_only, captured, estimate_tokens,
+                              interesting, prefills_think, threshold)
 from ramabana.runtime import capture as native_capture
 from ramabana.testing import GEMMA, FakeBackend, MutteringBackend
 
@@ -78,6 +79,45 @@ def _harness_chat(cls, hist, billed=260_915, sp='BRIEFING'):
     # the bill -- so the read-out under test here silently was not being read at all.
     chat.hist, chat.toolspecs, chat._ctx_tokens = list(hist), [], billed
     return chat
+
+
+class _Counting(FakeBackend):
+    "Counts its own tokens, so the fit is measured rather than merely exercised."
+    def count_tokens(self, text): return estimate_tokens(text)
+    def _oneshot(self, prompt, sp, max_tokens):
+        self.seen = prompt
+        return 'a title'
+
+
+def test_a_one_shot_is_fitted_to_the_window_and_names_its_job_when_it_fails():
+    """The window arithmetic above covers a turn. A one-shot had none, and its conversation is new,
+    so the whole window is its own and nobody was measuring the prompt against it.
+
+    `summarize_session` joins the last eight prompts of a session with no cap. On gemma-e4b that
+    reached litert as more tokens than the window holds, litert refused the input instead of
+    truncating it, and its binding raised `litert_lm_conversation_send_message failed` with the
+    reason -- `INVALID_ARGUMENT: Input token ids are too long` -- left on a file descriptor. The
+    IDE printed `gemma-e4b one-shot failed`, naming the transport's method for what was a summary.
+    """
+    small = ModelSpec('gemma-e2b', 'litert', 'litert-community/x', 512)
+    b = _Counting(small)
+    long = 'the kernel wrote its outputs into the pane and the reader read them. ' * 200
+    assert b.oneshot(long, 'Write a short conversation title.', 32) == 'a title'
+    room = 512 - estimate_tokens('Write a short conversation title.') - 32 - ONESHOT_HEADROOM
+    assert estimate_tokens(b.seen) <= room, f'{estimate_tokens(b.seen)} tokens into {room} of room'
+    assert b.seen.startswith(ONESHOT_CUT), 'the model was not told the text had been cut'
+    assert b.seen.endswith(long[-60:]), 'the tail is where a prompt puts its question'
+
+    short = 'name this conversation'
+    b.oneshot(short, 'Write a short conversation title.', 32)
+    assert b.seen == short, 'a prompt that fits is passed through untouched'
+
+    class Refusing(_Counting):
+        def _oneshot(self, prompt, sp, max_tokens): raise RuntimeError('litert_lm_conversation_send_message failed')
+    r = Refusing(small)
+    assert r.oneshot('name this conversation', job='summary') == ''
+    assert 'summary failed' in r.note, r.note
+    assert 'one-shot' not in r.note, r.note
 
 
 def test_an_agent_harness_reports_occupancy_rather_than_what_the_turn_was_billed():

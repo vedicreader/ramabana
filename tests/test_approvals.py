@@ -141,3 +141,60 @@ def test_every_watcher_and_the_recorder_hear_the_same_ask_with_a_preview():
 
     # Hosted approvals reach rishi's own remote path now, so the shim is three functions saying so.
     assert agent.apply() and agent.apply() and agent.applied()
+
+
+def test_a_readonly_agent_is_not_given_the_tools_that_act():
+    """`read_only` existed but only the sub-agent path reached it, and the nearest thing an agent
+    had was a briefing that asked it not to write while `edit_file` stayed on the list. A surface
+    that only proposes needs the tools gone, not discouraged."""
+    from ramabana.tools import NO_EFFECTS, NO_SUB, read_only
+
+    open_agent, _ = fake_agent()
+    shut, _ = fake_agent(readonly=True)
+    names = {t.__name__ for t in shut.tools}
+
+    assert not (names & WRITE_TOOLS), f'a write survived: {sorted(names & WRITE_TOOLS)}'
+    assert not (names & NO_EFFECTS), f'an effect survived: {sorted(names & NO_EFFECTS)}'
+    assert not (names & NO_SUB), 'a read-only agent does not delegate its way around the refusal'
+    assert 'search_code' in names, 'it can still look, or it is no use'
+    # `_plain` is what the briefing is written from: it has to agree with what was built, or the
+    # model is told about a tool it has not got.
+    assert {t.__name__ for t in shut._plain} == names
+    assert WRITE_TOOLS & {t.__name__ for t in open_agent.tools}, 'the default is unchanged'
+
+
+def test_a_readonly_agent_can_be_held_to_a_number_of_calls():
+    "The budget guard `read_only` already had, reachable now without delegating."
+    a, _ = fake_agent(readonly=True, readonly_calls=1)
+    look = next(t for t in a.tools if t.__name__ == 'search_code')
+    look(query='a')
+    spent = str(look(query='a'))
+    assert 'budget exhausted' in spent.lower()
+    assert 'sub-agent' not in spent.lower(), 'the guard is no longer only a sub-agent one'
+
+
+def test_a_readonly_agent_cannot_leave_a_page_it_read_in_the_vault():
+    "`read_url` is a read, but its `remember=True` default writes; the argument is not the model's."
+    from ramabana.testing import MemHost
+    from ramabana.tools import WebHost, read_only, tools_for
+
+    seen = []
+    class Page: text = 'page'
+    # the web group is declared by inheriting `WebHost`, and declaring it means writing all three
+    class Host(MemHost, WebHost):
+        def web_search(self, query, n=20): return []
+        def research(self, query): return ''
+        def read_url(self, url, remember=True):
+            seen.append(remember)
+            return Page()
+
+    ts = tools_for(Host({'/p/a.py': 'x=1'}))
+    fetch = next(t for t in read_only(ts) if t.__name__ == 'read_url')
+    fetch(url='https://example.com')
+    fetch(url='https://example.com', remember=True)
+    assert seen == [False, False], f'the vault write survived: {seen}'
+
+    seen.clear()
+    writer = next(t for t in read_only(ts, writes=True) if t.__name__ == 'read_url')
+    writer(url='https://example.com')
+    assert seen == [True], 'an agent allowed writes keeps the default'

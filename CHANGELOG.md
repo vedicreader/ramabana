@@ -25,6 +25,12 @@ moved name, so nothing that imports them has to change.
 - The local path overrides for `shalya` and `uraiyadal` are gone from `[tool.uv.sources]`. Both are
   on PyPI, and the `uraiyadal` path had stopped resolving, which broke `uv sync` in a fresh checkout.
 
+## 0.1.31
+one shot model should error loudly if it can't take the context
+
+## 0.1.30
+read tools should not allow remember in vault. to be used by completions and inline model in leela
+
 ## 0.1.29
 fixes delegate search errors
 
