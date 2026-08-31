@@ -9,12 +9,13 @@ __all__ = ['MAX_GREP_HITS', 'MAX_API', 'SANDBOX', 'SECRET', 'NO_ROOTS', 'DENY', 
            'MAX_VARS', 'LD_CHARS', 'GROUP', 'EXTRA_MODULES', 'MAX_SKILL_CHARS', 'SKILL_DESC_MAX', 'EVENTS',
            'MAX_TOOL_CHARS', 'MAX_HITS', 'GIT_READ_TOOLS', 'GIT_WRITE_TOOLS', 'GIT_TOOLS', 'WRITE_TOOLS', 'ERR',
            'RESPONSES_API', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'API_VENDORS', 'SUB_MAX_STEPS', 'SUB_SP',
-           'SUB_WRITE_SP', 'NO_SUB', 'Hit', 'Host', 'NullHost', 'denied', 'ld_json', 'LocalHost', 'Skill', 'skill_dirs',
-           'discover', 'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'err', 'failed', 'clip', 'clip_lines',
-           'readable', 'code_tools', 'file_tools', 'notebook_tools', 'media_dir', 'mime_for', 'save_media',
-           'image_available', 'api_model', 'draws_itself', 'image_tools', 'web_tools', 'memory_tools', 'api_tools',
-           'watch_tools', 'session_tools', 'shell_tools', 'skill_tools', 'tools_for', 'sub_briefing', 'read_only',
-           'sub_sp', 'bad_json', 'delegate', 'delegate_many', 'named_skills', 'subagent_tools']
+           'SUB_WRITE_SP', 'NO_SUB', 'NO_EFFECTS', 'NO_KEEP', 'Hit', 'Host', 'NullHost', 'denied', 'ld_json',
+           'LocalHost', 'Skill', 'skill_dirs', 'discover', 'skill_index', 'find', 'Registry', 'ext_dirs', 'load', 'err',
+           'failed', 'clip', 'clip_lines', 'readable', 'code_tools', 'file_tools', 'notebook_tools', 'media_dir',
+           'mime_for', 'save_media', 'image_available', 'api_model', 'draws_itself', 'image_tools', 'web_tools',
+           'memory_tools', 'api_tools', 'watch_tools', 'session_tools', 'shell_tools', 'skill_tools', 'tools_for',
+           'sub_briefing', 'read_only', 'sub_sp', 'bad_json', 'delegate', 'delegate_many', 'named_skills',
+           'subagent_tools']
 
 # %% ../nbs/02_tools.ipynb #48255398
 import ast, concurrent.futures, functools, json, mimetypes, os, re, runpy, shutil, threading, time, uuid
@@ -2029,11 +2030,29 @@ def sub_briefing(writes=False):
 NO_SUB = frozenset({'delegate_search', 'delegate_parallel',
                     'watch_folder', 'cancel_folder_watch', 'check_folders'})
 
+# Effects `WRITE_TOOLS` does not name, because none of them writes a file the user owns: running
+# code under another name, an API call that can POST, an image that costs money, and standing work
+# that outlives the turn. An agent asked to propose and not to act must be refused these too.
+NO_EFFECTS = frozenset({'inspect_python', 'api_call', 'generate_image', 'research',
+                        'watch_url', 'set_reminder'})
+
 # %% ../nbs/02_tools.ipynb #8ca3589d
-def read_only(tools, max_calls=None, writes=False):
-    "The tools a sub-agent may have, optionally behind a hard per-task call budget."
-    blocked = NO_SUB if writes else (WRITE_TOOLS | NO_SUB)
-    allowed = [t for t in tools if getattr(t, '__name__', '') not in blocked]
+#: Kept, but with the argument that would leave something behind taken out of the model's hands.
+#: Fetching a page is a read; the vault entry `remember=True` writes is not.
+NO_KEEP = {'read_url': {'remember': False}}
+
+def _pinned(f, fixed):
+    "`f` with the arguments the caller is not allowed to choose."
+    @functools.wraps(f)
+    def call(*args, **kw): return f(*args, **{**kw, **fixed})
+    return call
+
+def read_only(tools, max_calls=None, writes=False, also=()):
+    "The tools an agent may have when it must not act, optionally behind a hard call budget."
+    blocked = (NO_SUB if writes else (WRITE_TOOLS | NO_SUB)) | frozenset(also)
+    keep = {} if writes else NO_KEEP
+    allowed = [_pinned(t, keep[n]) if (n := getattr(t, '__name__', '')) in keep else t
+               for t in tools if getattr(t, '__name__', '') not in blocked]
     if max_calls is None: return allowed
     state, lock = {'n': 0}, threading.Lock()
 
@@ -2044,7 +2063,7 @@ def read_only(tools, max_calls=None, writes=False):
                 state['n'] += 1
                 over = state['n'] > max_calls
             if over:
-                return ('Sub-agent tool budget exhausted. Stop calling tools and return the '
+                return ('Tool budget exhausted. Stop calling tools and return the '
                         'best evidence-backed answer now.')
             return f(*args, **kw)
         return call
