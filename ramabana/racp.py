@@ -25,7 +25,7 @@ from fastcore.basics import ifnone
 from fastcore.script import call_parse
 from . import __version__
 from .agent import DFLT_TIMEOUT, Agent, Approvals, REPLAYED
-from .core import accepts
+from .core import PII_OFF, accepts
 from .tools import WRITE_TOOLS, LocalHost
 
 # %% ../nbs/16_acp.ipynb #8e6cca6b
@@ -140,7 +140,8 @@ class EditorHost(LocalHost):
             except Exception: pass
 
 # %% ../nbs/16_acp.ipynb #fbddbe89
-def mk_agent(roots, model=None, approve='ask', web=True, vault=False, timeout=DFLT_TIMEOUT, **kw):
+def mk_agent(roots, model=None, approve='ask', web=True, vault=False, pii=PII_OFF, pii_ner=False,
+             timeout=DFLT_TIMEOUT, **kw):
     "An `EditorHost` over `roots` and a gated `Agent` on it, without the terminal frontend's imports."
     approvals = Approvals(tools=WRITE_TOOLS, mode=approve, timeout=timeout)
     bases = [EditorHost]
@@ -149,7 +150,9 @@ def mk_agent(roots, model=None, approve='ask', web=True, vault=False, timeout=DF
         bases.append(VaultHost)
     Host = bases[0] if len(bases) == 1 else type('EditorVaultHost', tuple(bases), {})
     # read_outside stays off: an editor never names a path outside the folders it opened
-    host = Host(list(roots), approvals=approvals, web=web, read_outside=False)
+    #: only a vault has retrieval to gate, and `EditorHost` alone would refuse the arguments
+    gate = dict(pii=pii, pii_ner=pii_ner) if vault else {}
+    host = Host(list(roots), approvals=approvals, web=web, read_outside=False, **gate)
     approvals.host = host
     a = Agent(host, model=model, approvals=approvals, project_extensions=False, **kw)
     a.lend_model()
@@ -400,10 +403,12 @@ def main(
     model: str = None,      # the turn model. Omit for the routing default
     web: bool = True,       # let the web tools reach the network through fossick
     vault: bool = False,    # keep what is read in a vishalakshi vault, for the next session
+    pii: str = PII_OFF,     # off | redact | refuse for what vault retrieval hands the model
+    pii_ner: bool = False,  # --pii also gates titled names, not only patterns
     cfg: str = None,        # config dir, for skills, extensions and history
 ):
     "Serve Ramabana over the Agent Client Protocol, the way an editor launches an agent."
     from pathlib import Path
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
-    asyncio.run(serve(AcpAgent(model=model, roots=roots, web=web, vault=vault,
+    asyncio.run(serve(AcpAgent(model=model, roots=roots, web=web, vault=vault, pii=pii, pii_ner=pii_ner,
                                cfg=Path(cfg).expanduser() if cfg else None)))

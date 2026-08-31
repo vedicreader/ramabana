@@ -38,7 +38,7 @@ from teleprint.compositor import Compositor
 from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
-from .core import accepts, agent_err, env, model_note
+from .core import PII_MODES, PII_OFF, accepts, agent_err, env, model_note
 from .tools import WRITE_TOOLS, LocalHost, media_dir, save_media
 from .agent import Agent, Approvals, answer_md
 from datetime import datetime
@@ -1935,11 +1935,15 @@ def mk_host(roots=('.',),
             web=True,                # wire the web tools to fossick
             vault=False,             # keep what is read in a vishalakshi vault, for the next session
             spec=False,              # let the agent read an API specification and call it
-            read_outside=False):     # let the read-only tools name any path on this machine
+            read_outside=False,      # let the read-only tools name any path on this machine
+            pii=PII_OFF,             # off | redact | refuse for what vault retrieval returns
+            pii_ner=False):          # gate on titled names too, not only on patterns
     "The host both frontends run on: `LocalHost`, plus a vault and an API spec when asked."
     kw = dict(approvals=approvals, web=web, read_outside=read_outside)
-    if vault and spec: return VaultSpecHost(roots, **kw)
-    if vault: return VaultHost(roots, **kw)
+    #: only a vault retrieves anything to gate, so the two settings go no further than one
+    vkw = dict(kw, pii=pii, pii_ner=pii_ner)
+    if vault and spec: return VaultSpecHost(roots, **vkw)
+    if vault: return VaultHost(roots, **vkw)
     if spec: return SpecHost(roots, **kw)
     return LocalHost(roots, **kw)
 
@@ -1951,10 +1955,13 @@ def mk_agent(roots=('.',),
              vault=False,             # keep what is read in a vishalakshi vault, for the next session
              spec=False,              # let the agent load OpenAPI/Azure/GCP specifications
              read_outside=False,      # let the read-only tools name any path on this machine
+             pii=PII_OFF,             # off | redact | refuse for what vault retrieval returns
+             pii_ner=False,           # gate on titled names too, not only on patterns
              **kw):                   # forwarded to `Agent`
     "A host over the named folders and an `Agent` over that, gated the way `approve` says."
     approvals = None if approve == 'none' else Approvals(tools=WRITE_TOOLS, mode=approve)
-    host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec, read_outside=read_outside)
+    host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec,
+                   read_outside=read_outside, pii=pii, pii_ner=pii_ner)
     if approvals is not None: approvals.host = host   # the gate previews `create_file` via the host
     agent = Agent(host, model=model, approvals=approvals, **kw)
     agent.lend_model()   # or a `--vault` session loads a second runtime for vishalakshi
@@ -2028,6 +2035,8 @@ def main(
     read_outside: bool = False,          # widen reads to any path. Writing still needs the folder in --root
     subagent_writes: bool = False,       # let delegated sub-agents write, run commands and run Python too
     vault: bool = False,                 # vishalakshi vault for what is read. Not offered in python mode
+    pii: str = PII_OFF,                  # off | redact | refuse for what vault retrieval hands the model
+    pii_ner: bool = False,               # --pii also gates titled names, not only patterns
     spec: bool = False,                  # enable OpenAPI, Azure and Google Discovery tools
     theme: str = 'auto',                 # auto | dark | light terminal palette
     max_tool_calls: str = 'auto',        # auto | 20..400 tool calls per turn
@@ -2056,6 +2065,12 @@ def main(
         except RuntimeError as e:
             print(e, file=sys.stderr)
             return 2
+    if pii not in PII_MODES:
+        print(f"unknown --pii {pii!r}; choose one of {', '.join(PII_MODES)}", file=sys.stderr)
+        return 2
+    if pii != PII_OFF and not vault:
+        print('--pii gates what a vault returns; add --vault', file=sys.stderr)
+        return 2
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     try: set_theme(theme)
     except ValueError as e:
@@ -2063,6 +2078,7 @@ def main(
         return 2
     try: agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault, spec=spec,
                                read_outside=read_outside, subagent_writes=subagent_writes,
+                               pii=pii, pii_ner=pii_ner,
                                max_tool_calls=max_tool_calls, max_steps=max_steps,
                                cfg=Path(cfg).expanduser() if cfg else None)
     except KeyError as e:

@@ -7,13 +7,13 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE', 'CLAUDE_ALIASES', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIMES', 'AGENTS', 'HOSTED',
-           'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'DFLT_LOCAL', 'completer', 'cheap',
-           'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
-           'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx',
-           'runtime_remedy', 'runtime_available', 'auth_status', 'copilot_catalog', 'available_models', 'local_window',
-           'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget',
-           'budget_for', 'register_model', 'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel',
-           'Routing']
+           'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'DFLT_LOCAL',
+           'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX',
+           'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'BranchChanged', 'agent_err',
+           'use_env_prefix', 'env', 'claude_ctx', 'runtime_remedy', 'runtime_available', 'auth_status',
+           'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve',
+           'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model',
+           'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
@@ -147,6 +147,12 @@ MODELS = {**{k: ('litert', v) for k, v in LOCAL.items()},
           **{k: ('llama', v) for k, v in LLAMA.items()},
           **{k: ('claude', v) for k, v in {**CLAUDE, **CLAUDE_ALIASES}.items()},
           **{k: ('remote', v) for k, v in CLOUD.items()}}
+
+#: What a `--pii` flag accepts, and what `VaultHost(pii=)` carries into every vault read.
+#: `off` is what every earlier release did, so turning the gate on is a choice a caller makes
+#: rather than a floor that moves under one. vishalakshi applies it; the host only carries it.
+PII_OFF = 'off'
+PII_MODES = (PII_OFF, 'redact', 'refuse')
 
 # %% ../nbs/00_core.ipynb #9881cc3b
 def _json_has(path, *keys):

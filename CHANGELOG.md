@@ -24,6 +24,16 @@ moved name, so nothing that imports them has to change.
   only runs on a conflicted file, so the break did not show at import time.
 - The local path overrides for `shalya` and `uraiyadal` are gone from `[tool.uv.sources]`. Both are
   on PyPI, and the `uraiyadal` path had stopped resolving, which broke `uv sync` in a fresh checkout.
+- `--pii off|redact|refuse` and `--pii-ner` reach the terminal, MCP and ACP entry points, and
+  `mk_host` carries both into the vault. `VaultHost` has taken them since the gate was written and
+  nothing built one with them, so no Ramabana frontend could turn retrieval gating on at all. `off`
+  stays the default. `--pii` without `--vault` prints one line and returns 2, since there is nothing
+  to gate.
+- `read_only` is shalya's function rather than a second copy of it. `NO_EFFECTS`, `NO_KEEP` and
+  `_pinned` are gone: shalya marks the tools that act with `acts`, names them in `ACTING_TOOLS`, and
+  `effects=False` withholds them. Ramabana passes `block=NO_SUB`, which is the only part shalya
+  cannot know. `read_url` now loses its `remember` argument entirely rather than having it
+  overridden, so the parameter never reaches the schema the model is given.
 
 ## 0.1.31
 one shot model should error loudly if it can't take the context

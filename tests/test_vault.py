@@ -9,6 +9,7 @@ The PII tests stay granular where merging them would make a failure ambiguous. E
 this file is one scenario per contract; a security gate is the wrong place to save a line.
 """
 import time
+from pathlib import Path
 
 import pytest
 
@@ -279,3 +280,69 @@ def test_titled_names_gate_only_when_asked_for(tmp_path):
     assert 'Babbage' in str(host.memory_read(nid))     # a name is not looked for by default
     host.pii_ner = True
     assert 'Babbage' not in str(host.memory_read(nid))
+
+
+# -- the surface that turns the gate on ------------------------------------------------
+
+@pytest.fixture
+def own_vault(tmp_path, monkeypatch):
+    """`mk_host` names no vault file, so a `--vault` session opens the shared `~/.vishalakshi` one.
+
+    That is right for a session and wrong for a test, which would write its invoice into whatever
+    the person running it keeps there. Moving `HOME` is what keeps the two apart.
+    """
+    home = tmp_path/'home'
+    home.mkdir()
+    monkeypatch.setenv('HOME', str(home))
+    monkeypatch.setattr(Path, 'home', staticmethod(lambda: home))
+    return tmp_path
+
+
+def test_the_retrieval_gate_is_off_until_a_caller_asks_for_it(own_vault):
+    "The default is what every earlier release did, so raising the floor changes nothing for one."
+    from ramabana.cli import mk_host
+    h = mk_host([own_vault], vault=True, web=False)
+    assert h._policy() == ('off', False)
+
+
+@pytest.mark.parametrize('mode', ['redact', 'refuse'])
+def test_mk_host_carries_pii_into_every_vault_read(own_vault, mode):
+    """`VaultHost` took `pii` and nothing built one with it, so no ramabana frontend could reach
+    the gate at all. Leela set it from its own panel; a `ramabana --vault` session could not."""
+    from ramabana.cli import mk_host
+    h = mk_host([own_vault], vault=True, web=False, pii=mode)
+    h.open_vault(wait=True)
+    h.vault.note('Ada Lovelace, ada@example.com, phone 020 7946 0958.', title='contact')
+    assert h._policy() == (mode, False)
+    got = str(h.memory_read(h.vault.doc('contact')['id'] + '#0'))
+    assert 'ada@example.com' not in got and '020 7946 0958' not in got
+
+
+def test_pii_ner_reaches_the_host_the_same_way(own_vault):
+    from ramabana.cli import mk_host
+    h = mk_host([own_vault], vault=True, web=False, pii='refuse', pii_ner=True)
+    assert h._policy() == ('refuse', True)
+
+
+def test_a_host_without_a_vault_is_never_handed_the_gate(own_vault):
+    "`LocalHost` and `SpecHost` retrieve nothing to gate, and would refuse the arguments."
+    from ramabana.cli import mk_host
+    assert not hasattr(mk_host([own_vault], vault=False, web=False), 'pii')
+    assert not hasattr(mk_host([own_vault], vault=False, spec=True, web=False), 'pii')
+    both = mk_host([own_vault], vault=True, spec=True, web=False, pii='redact')
+    assert both._policy() == ('redact', False)      # VaultSpecHost still carries it
+
+
+def test_every_frontend_offers_the_flag_and_the_cli_refuses_a_name_it_does_not_know():
+    """A gate nothing can turn on is not a gate. `--pii` has to reach the terminal, MCP and ACP
+    entry points, and an unknown mode has to print one line rather than raise through."""
+    import inspect
+    from ramabana import mcp, racp
+    from ramabana.cli import main as cli_main
+    from ramabana.core import PII_MODES
+    for f in (cli_main, mcp.main, racp.main):
+        src = inspect.getsource(getattr(f, '__wrapped__', f))
+        assert 'pii: str' in src and 'pii_ner: bool' in src, f
+    assert PII_MODES == ('off', 'redact', 'refuse')
+    refuse = inspect.getsource(getattr(cli_main, '__wrapped__', cli_main))
+    assert 'unknown --pii' in refuse and 'add --vault' in refuse

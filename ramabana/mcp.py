@@ -34,6 +34,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from .tools import WRITE_TOOLS, LocalHost, discover, find, skill_index, tools_for
 from .cli import mk_agent, mk_host
+from .core import PII_OFF
 
 # %% ../nbs/06_mcp.ipynb #6d6ba498
 UNSAFE = WRITE_TOOLS | {'delegate_search', 'delegate_parallel'}
@@ -120,6 +121,8 @@ def main(
     web: bool = True,                # let the web tools reach the network through fossick
     read_outside: bool = False,      # let reads name any path on this machine. Writes stay inside
     vault: bool = False,             # keep what is read in a vishalakshi vault, for the next session
+    pii: str = PII_OFF,              # off | redact | refuse for what vault retrieval hands the model
+    pii_ner: bool = False,           # --pii also gates titled names, not only patterns
     transport: str = 'stdio',        # stdio | sse | streamable-http
     cfg: str = None,                 # config dir, for skills and extensions
 ):
@@ -127,8 +130,9 @@ def main(
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     if model:
         agent, host = mk_agent(roots, model=model, approve='none', web=web, vault=vault,
-                               read_outside=read_outside,
+                               read_outside=read_outside, pii=pii, pii_ner=pii_ner,
                                cfg=Path(cfg).expanduser() if cfg else None)
     else:
-        agent, host = None, mk_host(roots, web=web, vault=vault, read_outside=read_outside)
+        agent, host = None, mk_host(roots, web=web, vault=vault, read_outside=read_outside,
+                                    pii=pii, pii_ner=pii_ner)
     server(host, agent, readonly=not write).run(transport=transport)
