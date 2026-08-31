@@ -2029,16 +2029,9 @@ def sub_briefing(writes=False):
 # asked for the reviews it would keep producing after the delegation is forgotten.
 NO_SUB = frozenset({'delegate_search', 'delegate_parallel',
                     'watch_folder', 'cancel_folder_watch', 'check_folders'})
-
-# Effects `WRITE_TOOLS` does not name, because none of them writes a file the user owns: running
-# code under another name, an API call that can POST, an image that costs money, and standing work
-# that outlives the turn. An agent asked to propose and not to act must be refused these too.
-NO_EFFECTS = frozenset({'inspect_python', 'api_call', 'generate_image', 'research',
-                        'watch_url', 'set_reminder'})
+NO_EFFECTS = frozenset({'inspect_python', 'api_call', 'generate_image', 'research', 'watch_url', 'set_reminder'})
 
 # %% ../nbs/02_tools.ipynb #8ca3589d
-#: Kept, but with the argument that would leave something behind taken out of the model's hands.
-#: Fetching a page is a read; the vault entry `remember=True` writes is not.
 NO_KEEP = {'read_url': {'remember': False}}
 
 def _pinned(f, fixed):
@@ -2051,8 +2044,7 @@ def read_only(tools, max_calls=None, writes=False, also=()):
     "The tools an agent may have when it must not act, optionally behind a hard call budget."
     blocked = (NO_SUB if writes else (WRITE_TOOLS | NO_SUB)) | frozenset(also)
     keep = {} if writes else NO_KEEP
-    allowed = [_pinned(t, keep[n]) if (n := getattr(t, '__name__', '')) in keep else t
-               for t in tools if getattr(t, '__name__', '') not in blocked]
+    allowed = [_pinned(t, keep[n]) if (n := getattr(t, '__name__', '')) in keep else t for t in tools if getattr(t, '__name__', '') not in blocked]
     if max_calls is None: return allowed
     state, lock = {'n': 0}, threading.Lock()
 
@@ -2062,9 +2054,7 @@ def read_only(tools, max_calls=None, writes=False, also=()):
             with lock:
                 state['n'] += 1
                 over = state['n'] > max_calls
-            if over:
-                return ('Tool budget exhausted. Stop calling tools and return the '
-                        'best evidence-backed answer now.')
+            if over: return ('Tool budget exhausted. Stop calling tools and return the best evidence-backed answer now.')
             return f(*args, **kw)
         return call
     return [guarded(t) for t in allowed]

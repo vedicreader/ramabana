@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.1.30
+read tools should not allow remember in vault. to be used by completions and inline model in leela
+
 ## 0.1.29
 fixes delegate search errors
 
