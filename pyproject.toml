@@ -84,10 +84,3 @@ path = "ramabana/__init__.py"
 
 [dependency-groups]
 dev = ["ramabana[dev]"]
-
-# Until shalya is on PyPI. Remove this before the next release: a published ramabana cannot
-# resolve a relative path, and `uv sync` here is the only thing that reads it.
-[tool.uv.sources]
-shalya = { path = "../shalya", editable = true }
-# and the local urai, until the `CachedChat` usage counter ships as uraiyadal 0.0.5
-uraiyadal = { path = "../urai", editable = true }

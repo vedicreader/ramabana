@@ -4017,13 +4017,13 @@ requires-dist = [
     { name = "rishi", extras = ["all"], marker = "extra == 'all'" },
     { name = "rishi", extras = ["all"], marker = "extra == 'dev'" },
     { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.32" },
-    { name = "shalya", editable = "../shalya" },
+    { name = "shalya", specifier = ">=0.0.1" },
     { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'pyrepl'", specifier = ">=0.1.1" },
     { name = "toolslm", specifier = ">=0.3.48" },
-    { name = "uraiyadal", editable = "../urai" },
+    { name = "uraiyadal", specifier = ">=0.0.5" },
     { name = "vishalakshi", specifier = ">=0.1.14" },
 ]
 provides-extras = ["acp", "all", "cli", "copilot", "cron", "dev", "mcp", "pyrepl"]
@@ -4519,48 +4519,21 @@ wheels = [
 
 [[package]]
 name = "shalya"
-source = { editable = "../shalya" }
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "dhrishti" },
     { name = "exhash" },
     { name = "fastcore" },
+    { name = "fastspec" },
+    { name = "gheasy" },
+    { name = "jupyter-client" },
+    { name = "vishalakshi" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "dhrishti", marker = "extra == 'all'", specifier = ">=0.1.2" },
-    { name = "dhrishti", marker = "extra == 'dev'", specifier = ">=0.1.2" },
-    { name = "dhrishti", marker = "extra == 'kernel'", specifier = ">=0.1.2" },
-    { name = "exhash", specifier = ">=0.4.9" },
-    { name = "fastcore", specifier = ">=2.1.16" },
-    { name = "fastspec", marker = "extra == 'all'", specifier = ">=0.2.1" },
-    { name = "fastspec", marker = "extra == 'api'", specifier = ">=0.2.1" },
-    { name = "fastspec", marker = "extra == 'dev'", specifier = ">=0.2.1" },
-    { name = "fossick", marker = "extra == 'all'", specifier = ">=0.1.11" },
-    { name = "fossick", marker = "extra == 'dev'", specifier = ">=0.1.11" },
-    { name = "fossick", marker = "extra == 'web'", specifier = ">=0.1.11" },
-    { name = "gheasy", marker = "extra == 'all'", specifier = ">=0.0.9" },
-    { name = "gheasy", marker = "extra == 'dev'", specifier = ">=0.0.9" },
-    { name = "gheasy", marker = "extra == 'git'", specifier = ">=0.0.9" },
-    { name = "jupyter-client", marker = "extra == 'all'", specifier = ">=8.9.1" },
-    { name = "jupyter-client", marker = "extra == 'dev'", specifier = ">=8.9.1" },
-    { name = "jupyter-client", marker = "extra == 'kernel'", specifier = ">=8.9.1" },
-    { name = "koshas", marker = "extra == 'all'", specifier = ">=0.0.31" },
-    { name = "koshas", marker = "extra == 'code'", specifier = ">=0.0.31" },
-    { name = "koshas", marker = "extra == 'dev'", specifier = ">=0.0.31" },
-    { name = "litesearch", marker = "extra == 'all'", specifier = ">=0.1.1" },
-    { name = "litesearch", marker = "extra == 'code'", specifier = ">=0.1.1" },
-    { name = "litesearch", marker = "extra == 'dev'", specifier = ">=0.1.1" },
-    { name = "nbdev", marker = "extra == 'dev'", specifier = ">=3.3.11" },
-    { name = "notebook", marker = "extra == 'dev'", specifier = ">=7.6.1" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "vishalakshi", marker = "extra == 'all'", specifier = ">=0.1.11" },
-    { name = "vishalakshi", marker = "extra == 'dev'", specifier = ">=0.1.11" },
-    { name = "vishalakshi", marker = "extra == 'memory'", specifier = ">=0.1.11" },
+sdist = { url = "https://files.pythonhosted.org/packages/00/39/edfe059a54b96febfff3618c16e25e515aaeb20bda22286dee0ff4a334cb/shalya-0.0.1.tar.gz", hash = "sha256:2853ab884f494389cafad7fc4415b6695e3e069d3cfc9931b46095b6698e24c0", size = 40133, upload-time = "2026-08-31T09:41:08.393Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/40/fa/c967a2e7ad3273dfdc1dba6fea47dbef5503559c00a1ca861503067a0100/shalya-0.0.1-py3-none-any.whl", hash = "sha256:0500cdf931b33893ac31a9f133a379ce3739121a0a3c2151d6f91afccecbe9cb", size = 43337, upload-time = "2026-08-31T09:41:07.085Z" },
 ]
-provides-extras = ["all", "api", "code", "dev", "git", "kernel", "memory", "web"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "shalya", extras = ["dev"] }]
 
 [[package]]
 name = "shellingham"
@@ -4933,7 +4906,8 @@ wheels = [
 
 [[package]]
 name = "uraiyadal"
-source = { editable = "../urai" }
+version = "0.0.5"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
     { name = "diskcache" },
@@ -4943,24 +4917,9 @@ dependencies = [
     { name = "safepyrun" },
     { name = "truststore" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "aidialog", specifier = ">=0.0.22" },
-    { name = "diskcache", specifier = ">=5.6.3" },
-    { name = "fastcore", specifier = ">=2.1.16" },
-    { name = "httpx" },
-    { name = "python-fastllm", specifier = ">=0.0.41" },
-    { name = "safepyrun", specifier = ">=0.2.3" },
-    { name = "truststore", specifier = ">=0.10" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "ipykernel", specifier = ">=7.3.0" },
-    { name = "nbdev", specifier = ">=3.1.0" },
-    { name = "notebook", specifier = ">=7.6.0" },
-    { name = "pytest", specifier = ">=8.0.0" },
+sdist = { url = "https://files.pythonhosted.org/packages/df/53/51fbf7cef149dbe87e553f895687846ca95fa6fc8bf0f476bb6fa8ad8675/uraiyadal-0.0.5.tar.gz", hash = "sha256:f8beedd635fb4db994cab4a32f6b9eea4be654e5e273a9a05fe6347a6c13d4da", size = 46509, upload-time = "2026-08-30T22:40:03.145Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/9b/c131ec43da0fdb64e8f563d7ede2af400b3c7fedd8c400592cb9933a5cdb/uraiyadal-0.0.5-py3-none-any.whl", hash = "sha256:fdbc49248de0e952f86950946f9734309b1ac2b47086347378c3d79dacb6d084", size = 53264, upload-time = "2026-08-30T22:40:01.608Z" },
 ]
 
 [[package]]
