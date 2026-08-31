@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.1.31
+one shot model should error loudly if it can'ttake the context
+
 ## 0.1.30
 read tools should not allow remember in vault. to be used by completions and inline model in leela
 

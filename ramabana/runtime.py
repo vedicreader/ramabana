@@ -759,17 +759,7 @@ class Backend:
         return self.problem(why) if strict else (f'({why})' if self.last_native else '(no reply)')
     
     def _fit_oneshot(self,prompt,sp='',max_tokens=None):
-        """`prompt` cut down to what is left of the window once `sp` and the reply have their room.
-
-        A one-shot's conversation is new, so the whole window is its own and nothing upstream was
-        measuring the prompt against it. A local engine refuses an oversized input rather than
-        truncating it: litert answers `INVALID_ARGUMENT: Input token ids are too long`, and its
-        binding raises with none of that in the exception, so a title over a long session failed
-        for no stated reason. `test_the_window_arithmetic_holds_at_both_ends` covers a turn; this
-        is the same window, on the path that had no arithmetic at all.
-
-        The tail is what survives, because a prompt puts its question last.
-        """
+        "`prompt` cut down to what is left of the window once `sp` and the reply have room"
         ctx=self.spec.ctx
         if not ctx:return prompt
         room=ctx-self.count_tokens(sp)-(max_tokens or ONESHOT_TOKENS)-ONESHOT_HEADROOM
