@@ -181,7 +181,7 @@ class SpecHost(LocalHost):
         return rows[offset:] if not n else rows[offset:offset + int(n)]
 
     def api_ops(self, group='', name='', match='', limit=None, offset=0):
-        """Operations, optionally narrowed to one group or a substring of the name or summary.Narrowing happens before paging, """
+        "Operations, narrowed by group or by a substring of the name or summary, then paged."
         _, parsed = self._spec(name)
         rows = [op_row(o) for o in parsed.ops]
         if group: rows = [r for r in rows if r['group'] == group]

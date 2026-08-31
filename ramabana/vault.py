@@ -93,10 +93,9 @@ class VaultHost(LocalHost):
         return self
 
     def _open(self):
-        """Open the write shelf once under a lock.
-
-        The lock prevents concurrent creation of the FTS shadow tables. Opening a shelf through the root vault reuses its encoder.
-        """
+        "Open the write shelf once under a lock."
+        #: the lock keeps two threads from creating the FTS shadow tables at once, and opening a
+        #: shelf through the root vault reuses its encoder rather than loading a second one.
         with self._vlock:
             v = self._vault
             if v is None or isinstance(v, (str, Path)):

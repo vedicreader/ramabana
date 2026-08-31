@@ -18,6 +18,12 @@ moved name, so nothing that imports them has to change.
 - `mk_host` no longer builds a class with `type()` per session. `VaultSpecHost` is declared.
 - `AgentError` is `shalya.core.HostError` under the name the harness has always used, so
   `except AgentError` still catches what a host refuses.
+- `ramabana.git` re-exports `_run`, `_conflict_blocks` and the three git tool sets again.
+  `from gheasy.repo import *` skips the underscored names, and `GIT_TOOLS`, `GIT_READ_TOOLS` and
+  `GIT_WRITE_TOOLS` are `shalya.core`'s. Leela imports all five, one of them from a code path that
+  only runs on a conflicted file, so the break did not show at import time.
+- The local path overrides for `shalya` and `uraiyadal` are gone from `[tool.uv.sources]`. Both are
+  on PyPI, and the `uraiyadal` path had stopped resolving, which broke `uv sync` in a fresh checkout.
 
 ## 0.1.29
 fixes delegate search errors
@@ -51,7 +57,7 @@ cli fixes to default graph indexing to false and splitting prose
 plan displays once and is repainted and in theme. auto tool budget flows through
 
 ## 0.1.18
-cli fixes to remove claude models tool calss as tags. remove multiple tool results in rmabana cli. 
+cli fixes to remove claude models tool calls as tags. remove multiple tool results in ramabana cli. 
 
 ## 0.1.17
 slopometer v2
