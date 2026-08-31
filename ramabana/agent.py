@@ -1765,7 +1765,8 @@ class Agent:
     def oneshot(self, prompt, sp='', job='oneshot', max_tokens=None):
         "A question on whichever model `job` routes to, in a conversation that is thrown away."
         b = self._be_or_none(job)
-        return '' if b is None else b.oneshot(prompt, sp, max_tokens)
+        # the job, not the transport's method name: a summary that failed said `one-shot failed`
+        return '' if b is None else b.oneshot(prompt, sp, max_tokens, job=job)
 
     def classify(self, text, labels):
         "One label for `text`, on the cheap model. Returns the matched label, or the raw reply."

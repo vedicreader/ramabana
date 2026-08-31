@@ -7,12 +7,12 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 # %% auto #0
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
-           'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'IMG_TOKENS', 'CHAT_CALLBACKS',
-           'interesting', 'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact',
-           'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient',
-           'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think',
-           'ThinkFilter', 'Usage', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'Run', 'current_run',
-           'run_context', 'TokenLogger']
+           'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM', 'ONESHOT_CUT',
+           'IMG_TOKENS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture', 'estimate_tokens', 'halvings',
+           'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle',
+           'surgical_history', 'reorient', 'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor',
+           'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend', 'use_chat', 'RishiBackend',
+           'make_backend', 'Run', 'current_run', 'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import contextvars, copy, math, os, re, sys, threading, time
@@ -576,6 +576,8 @@ class ThinkFilter:
 # %% ../nbs/01_runtime.ipynb #e4819aa1
 MAX_STEPS = 40
 ONESHOT_TOKENS = 1024     # a cheap job's default output cap
+ONESHOT_HEADROOM = 64     # what a chat template costs on top of the prompt it wraps
+ONESHOT_CUT = '[earlier text omitted]\n'
 
 @dataclass
 class Usage:
@@ -756,10 +758,34 @@ class Backend:
         why=f'{self.spec.name} returned nothing'+(f' -- {self.last_native}' if self.last_native else '')
         return self.problem(why) if strict else (f'({why})' if self.last_native else '(no reply)')
     
-    def oneshot(self,prompt,sp='',max_tokens=None):
+    def _fit_oneshot(self,prompt,sp='',max_tokens=None):
+        """`prompt` cut down to what is left of the window once `sp` and the reply have their room.
+
+        A one-shot's conversation is new, so the whole window is its own and nothing upstream was
+        measuring the prompt against it. A local engine refuses an oversized input rather than
+        truncating it: litert answers `INVALID_ARGUMENT: Input token ids are too long`, and its
+        binding raises with none of that in the exception, so a title over a long session failed
+        for no stated reason. `test_the_window_arithmetic_holds_at_both_ends` covers a turn; this
+        is the same window, on the path that had no arithmetic at all.
+
+        The tail is what survives, because a prompt puts its question last.
+        """
+        ctx=self.spec.ctx
+        if not ctx:return prompt
+        room=ctx-self.count_tokens(sp)-(max_tokens or ONESHOT_TOKENS)-ONESHOT_HEADROOM
+        if room<=0 or self.count_tokens(prompt)<=room:return prompt
+        body=prompt
+        for _ in range(6):
+            n=self.count_tokens(ONESHOT_CUT+body)
+            if n<=room:break
+            body=body[-max(1,int(len(body)*room*.95/n)):]
+        return ONESHOT_CUT+body
+
+    def oneshot(self,prompt,sp='',max_tokens=None,job='one-shot'):
+        "One question in a conversation that is thrown away. `job` is what a failure is named after."
         if self.start() is None or not self.lock.acquire(False):return ''
-        try:return answer_only(self._oneshot(prompt,sp,max_tokens) or '')
-        except Exception as e:self._failed('one-shot failed',e); return ''
+        try:return answer_only(self._oneshot(self._fit_oneshot(prompt,sp,max_tokens),sp,max_tokens) or '')
+        except Exception as e:self._failed(f'{job} failed',e); return ''
         finally:self.lock.release()
     
     def spawn(self,sp='',tools=(),**kw): raise NotImplementedError
