@@ -26,8 +26,6 @@ __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_S
            'pob_path', 'pob', 'beat_notes', 'beat_notice', 'heartbeat', 'tick']
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
-#: What one look at a folder may hold. Past this the folder is being watched too widely, and
-#: taking the first `SNAP_MAX_FILES` beats stalling a turn on a walk of somebody's home directory.
 SNAP_MAX_FILES = 2000
 SNAP_MAX_BYTES = 400_000     # per file. Past this a snapshot keeps the size, so a change still shows
 REVIEW_MAX_CHARS = 24_000    # of change report one review prompt carries
@@ -38,7 +36,6 @@ DFLT_SETTLE = '20s'          # least time between two reviews of one folder
 
 def secs(every):
     "Seconds from `'30s'`, `'5m'`, `'1h'`, or a number. One parser for the family, never our own."
-    # pobblebonk first: it is where the family's schedules are moving, and it also takes `1h30m`
     try: from pobblebonk.core import secs as _secs
     except ImportError: from vishalakshi.acquire import secs as _secs
     return _secs(every)
@@ -56,17 +53,9 @@ def _matches(path, globs):
 
 
 def files_under(host, folder, pattern=''):
-    """Every readable file under `folder` matching `pattern`, sandbox-checked.
-
-    The host's own `walk` decides what is readable, so a monitor skips exactly the generated
-    directories and binary suffixes the rest of the tools skip. `check` refuses a folder outside
-    the open roots, and it runs once rather than per file. Naming a single file watches that file.
-    """
-    root = host.check(folder, must_exist=True)
-    globs = _globs(pattern)
-    out = [p for p in (Path(x) for x in host.walk())
-           if (p == root or root in p.parents) and _matches(p, globs)]
-    return sorted(out)[:SNAP_MAX_FILES]
+    "Returns readable files under `folder` matching `pattern`."
+    root, globs = host.check(folder, must_exist=True), _globs(pattern)
+    return sorted(p for p in map(Path, host.walk()) if (p == root or root in p.parents) and _matches(p, globs))[:SNAP_MAX_FILES]
 
 
 def snapshot(host, folder, pattern=''):
@@ -74,7 +63,7 @@ def snapshot(host, folder, pattern=''):
     out = {}
     for p in files_under(host, folder, pattern):
         t = host.text_at(p)
-        if t is None: continue                     # unreadable this time; a later look may get it
+        if t is None: continue                    
         out[str(p)] = t if len(t) <= SNAP_MAX_BYTES else f'({len(t)} bytes, too large to diff)'
     return out
 
@@ -119,50 +108,31 @@ def summarise(changes):
 
 
 def report(changes, folder='', mx=REVIEW_MAX_CHARS):
-    """What changed: a line per file, then the unified diffs.
-
-    The summary lines come first and are not clipped, so a review of a very large change still
-    knows every file that moved even where it cannot see every diff.
-    """
+    """Summarizes changed files and clips their unified diffs."""
     root = Path(folder) if folder else None
-    heads, diffs = [], []
-    for p in sorted(changes):
-        was, now = changes[p]
-        rel = _rel(p, root)
-        d = _diff(was, now, rel)
-        add, rem = _counts(d)
-        heads.append(f'{_verb(was, now):8} {rel}  +{add}/-{rem}')
-        if d: diffs.append(d)
-    head = '\n'.join(heads)
+    rows = [(_verb(*changes[p]), _rel(p, root), _diff(*changes[p], _rel(p, root))) for p in sorted(changes)]
+    head = '\n'.join(f'{verb:8} {rel}  +{_counts(d)[0]}/-{_counts(d)[1]}' for verb, rel, d in rows)
+    diffs = [d for _, _, d in rows if d]
     if not diffs: return head
     room = max(0, mx - len(head) - 2)
-    return head + '\n\n' + clip('\n\n'.join(diffs), room, more='read the files themselves')
+    return f'{head}\n\n{clip("\n\n".join(diffs), room, more="read the files themselves")}'
 
 # %% ../nbs/17_monitor.ipynb #9fa40e4f
-REVIEW_SP = """You are a review sub-agent inside a Python IDE. A folder the user is watching has \
-changed, and you are being shown what changed together with the standing instructions they left \
-for exactly this moment.
+REVIEW_SP = """You review changes in a watched folder. Follow the user's instructions for these changes only.
 
-- Do what the instructions ask, about these changes, and nothing else.
-- The diff is what moved. Read the surrounding files when the diff alone cannot answer the question.
-- Report what you found, with paths and line numbers. Say so plainly when the change is fine: "no \
-problem in these three files" is a useful answer and a manufactured concern is not.
-- You cannot edit anything, and that is deliberate: something else is editing this folder right \
-now. Describe the change you would make and stop.
-- Nobody reads your working. Your answer is the only thing that reaches the user, and they cannot \
-see the diff you were given, so name what you are talking about."""
-
+- Inspect the diff; read surrounding files when needed.
+- Report findings with paths and line numbers. If the change is sound, say so without inventing concerns.
+- You cannot edit the folder. Describe any fix and stop.
+- The user sees only your report, so identify each change clearly."""
 
 def review_prompt(instructions, changes, folder=''):
     "The one self-contained question a reviewing sub-agent gets: the standing brief, then what moved."
     where = f' under {folder}' if folder else ''
     return f'{instructions}\n\nThese files changed{where}:\n\n{changes}'
 
-
 def _attr(s):
     "One value, safe to sit inside a double-quoted tag attribute."
     return str(s).replace('"', "'")
-
 
 def review_notice(recs, mx=REVIEW_MAX_CHARS):
     "The reviews that arrived since the last turn, as the block a prompt carries."
@@ -194,12 +164,7 @@ class FolderWatch:
 
 # %% ../nbs/17_monitor.ipynb #fb13c644
 class Monitors:
-    """Every folder this session watches, and the reviews they have produced.
-
-    Session-scoped, which is the life of the thing it is for: another agent working the same
-    checkout while this conversation is open. `check` is the tick, and it is safe to call from a
-    background thread; `drain` is what the next turn's prompt takes.
-    """
+    "Lists this session's watched folders and their reviews. `check` runs safely in the background; `drain` returns reviews for the next turn."
 
     def __init__(self,
                  host,
@@ -211,14 +176,11 @@ class Monitors:
         self.watches = {}
         self.pending = deque(maxlen=PENDING_MAX)   # reviews no turn has carried yet
         self.lock = threading.Lock()               # guards `watches` and `pending`
-        # one check at a time, whoever asked for it. The background tick and a `check_folders`
-        # call otherwise both find the same change and pay for the same review twice
         self.checking = threading.Lock()
 
     def add(self, folder, instructions, pattern='', settle=DFLT_SETTLE, note=''):
         "Start watching `folder`. The first look is taken now, so only later changes are reviewed."
-        if not str(instructions or '').strip():
-            raise AgentError('a folder watch needs instructions: they are all the reviewer gets')
+        if not str(instructions or '').strip(): raise AgentError('a folder watch needs instructions: they are all the reviewer gets')
         w = FolderWatch(folder, instructions, pattern, settle, note)
         w.snap = snapshot(self.host, w.folder, w.pattern)
         with self.lock: self.watches[w.id] = w
@@ -245,11 +207,7 @@ def check(self: Monitors,
           force=False,   # look even inside a watch's settle window
           block=True     # wait for a check already running, rather than answering `None`
 ):
-    """Look at every watched folder and review the ones that moved. One record per review.
-
-    `None` rather than `[]` when another check holds the pass and `block` is off: "somebody is
-    already reviewing this" and "nothing moved" are different answers to give a caller.
-    """
+    "Reviews each changed watched folder, returning one record per review. Returns `None` when another check owns the pass and `block` is disabled; returns `[]` when nothing changed."
     if not self.checking.acquire(blocking=block): return None
     try:
         out = []
@@ -271,8 +229,6 @@ def _check(self: Monitors, w, force=False):
     after = snapshot(self.host, w.folder, w.pattern)
     chg = changed(w.snap, after)
     if not chg: return None
-    # the snapshot advances whether the review succeeds or not: a model that keeps failing must
-    # not turn one edit into a diff that grows for the rest of the session
     w.snap, w.reviewed = after, now
     return self._review(w, chg)
 
@@ -323,21 +279,13 @@ def monitor_tools(get_monitors, mx=MAX_TOOL_CHARS):
 
     @summary(lambda a: f'Watch folder {_1(a.get("folder"), 80)}')
     def watch_folder(folder: str, instructions: str, pattern: str = '', settle: str = DFLT_SETTLE) -> str:
-        """Watch `folder`, and review every later change to it against `instructions`.
+        """Watches `folder` and reviews later matching changes against `instructions`.
 
-        For work happening beside this conversation: another agent editing the repo, a build
-        writing output, the user's own editor. Nothing fires for what is already there. The
-        first look is taken now, and only what moves after it is reviewed.
+        The initial snapshot is taken immediately; existing files are ignored. `instructions` is
+        the reviewer's complete brief, so make it self-contained. `pattern` filters files; empty
+        matches all readable files. `settle` groups nearby edits into one review.
 
-        `instructions` is the standing brief, and it is all the reviewer gets: it cannot see this
-        conversation. Write it self-contained -- "Review each change for correctness against the
-        tests in tests/, and report anything that breaks a contract those tests assert."
-
-        `pattern` limits the watch to matching files ('*.py', or '*.py,*.ipynb'). Empty watches
-        everything readable. `settle` is the least time between two reviews, so one multi-file
-        edit lands as one review rather than five.
-
-        Reviews arrive on their own, in the turn after they finish. `check_folders` looks now.
+        Reviews appear in the next turn after completion. Use `check_folders` to run reviews now.
         """
         try: w = get_monitors().add(folder, instructions, pattern=pattern, settle=settle)
         except Exception as e: return err('could not watch that folder', e)
@@ -361,12 +309,7 @@ def monitor_tools(get_monitors, mx=MAX_TOOL_CHARS):
 
     @summary(lambda a: 'Check watched folders')
     def check_folders() -> str:
-        """Look at every watched folder now, and report every review that is waiting.
-
-        Ignores the settle window, so this is the tool for "what has that other agent just done".
-        Each review is reported once: what this returns will not arrive again on a later turn.
-        A review already running is not waited for; its answer arrives on your next turn.
-        """
+        "Reports waiting reviews for all watched folders, ignoring `settle`. Each review is returned once; running reviews finish for the next turn."
         m = get_monitors()
         if not m.all(): return 'no folder is being watched'
         try: busy = m.check(force=True, block=False) is None

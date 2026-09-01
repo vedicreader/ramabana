@@ -1,4 +1,4 @@
-"""The turn: what the model is told, what it is allowed to do, what it did, and what that cost.
+"""One routed conversation with tools, approvals, activity, and usage.
 
 Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 
@@ -19,6 +19,7 @@ import datetime, functools, json, re, threading, time, uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from fastcore.basics import patch
+from urai import parse_args, tc_name
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, clip, discover,
@@ -34,15 +35,9 @@ MAX_ACTS = 500        # a very long turn should not grow without bound
 RESUME_DETAIL = 600   # chars of a replayed tool result: a resume rebuilds every turn at once
 MAX_CHECKPOINTS = 20  # turn boundaries kept for `fork`. Each one is a whole conversation
 POLL_EVERY = 900      # seconds between automatic `Host.poll` ticks. A turn is what triggers one
-
-#: Characters of the open folders `changes()` will hold in order to watch a shell command.
-#: A command names no files, so the only way to know what it moved is to have read them
-#: first; past this much text that costs more than the answer is worth.
 SHELL_SNAPSHOT = 32_000_000
 
-ICONS = {'search': '🔍', 'view': '📄', 'edit': '✏️', 'web': '🌐', 'run': '▶️',
-         'skill': '📚', 'delegate': '🤝', 'memory': '🧠', 'watch': '⏰', 'cart': '🛒',
-         'tool': '🔧'}
+ICONS = {'search': '🔍', 'view': '📄', 'edit': '✏️', 'web': '🌐', 'run': '▶️','skill': '📚', 'delegate': '🤝', 'memory': '🧠', 'watch': '⏰', 'cart': '🛒','tool': '🔧'}
 
 _KIND = {
     'search_code': 'search', 'similar_code': 'search', 'outline': 'search', 'list_files': 'search',
@@ -64,16 +59,7 @@ _KIND = {
     'cart_stores': 'cart', 'cart_open': 'cart', 'cart_find': 'cart',
     'cart_add': 'cart', 'cart_show': 'cart', 'cart_remove': 'cart',
 }
-
-#: The tools that run a sub-agent. Calls made while one of these is on the stack are that call's
-#: children, which is what lets a frontend show a delegation as one foldable step rather than as
-#: its sub-agent's calls scattered among the caller's own.
 DELEGATE_TOOLS = {t for t, k in _KIND.items() if k == 'delegate'}
-
-
-# %% ../nbs/03_agent.ipynb #3f508bca
-#: `summarise` is shalya's. Every tool carries its own summary, marked beside its docstring, so
-#: there is no table here to fall out of step with what the toolset actually offers.
 
 # %% ../nbs/03_agent.ipynb #9ab2cd3c
 @dataclass
@@ -134,9 +120,7 @@ def _clip(out, n=MAX_DETAIL):
     return s if len(s) <= n else s[:n] + f'\n…[{len(s)-n} more chars]'
 
 
-def _indent(s, pad='  '):
-    return '\n'.join(pad + l for l in s.splitlines())
-
+def _indent(s, pad='  '): return '\n'.join(pad + l for l in s.splitlines())
 
 def _resumed_acts(acts):
     "Persisted tool calls as text, for a context rebuilt from the log rather than a snapshot."
@@ -165,8 +149,6 @@ class Activity:
 
     def start(self, tool, args, action_id='', turn_id='', revision=0, branch_id='main',
               parent_action_id='', summary=None):
-        # the caller holds the tool itself and passes its summary; a name alone still gets one,
-        # from the mark shalya indexed when the tool was built
         a = Act(tool=tool, args=dict(args or {}),
                 summary=summary if summary is not None else summarise(tool, args),
                 id=action_id or uuid.uuid4().hex[:12], turn_id=turn_id or self.turn_id,
@@ -175,9 +157,6 @@ class Activity:
         with self._lock:
             self.acts.append(a)
             if len(self.acts) > self.max_acts:
-                # the window slides, so the turn boundary has to slide with it. Without this `_mark`
-                # stayed at `max_acts` while `len(acts)` was pinned there too, and `since()` -- the
-                # turn's own calls, which a status pane reads -- returned nothing ever again
                 n = len(self.acts) - self.max_acts
                 del self.acts[:n]
                 self._mark = max(0, self._mark - n)
@@ -193,7 +172,6 @@ class Activity:
         if not self.on_change: return
         try: self.on_change(act)
         except Exception: pass
-
 
     def mark(self, turn_id=''):
         "Remember where the stream is now and bind new actions to one durable turn id."
@@ -226,20 +204,10 @@ DENIED = 'Denied by human operator'
 DFLT_TIMEOUT = 300      # seconds to wait for a person before giving up on one request
 MAX_PREVIEW = 2000      # chars of "what would change". A person will not read more
 
-
-def _args(args):
-    "A tool call's arguments as a dict, whether the model sent a dict or a JSON string."
-    if isinstance(args, str):
-        try: args = json.loads(args)
-        except Exception: return {}
-    return args if isinstance(args, dict) else {}
-
-
 def _tc(tool_call):
-    "`(name, args)` from a tool call in either backend's shape."
-    if hasattr(tool_call, 'name'): return tool_call.name, _args(getattr(tool_call, 'arguments', {}))
-    fn = (tool_call or {}).get('function', {}) if isinstance(tool_call, dict) else {}
-    return fn.get('name', '?'), _args(fn.get('arguments', {}))
+    "Canonical `(name, args)` from a tool call."
+    fn = tool_call.get('function') or {}
+    return tc_name(tool_call), parse_args(fn.get('arguments'))
 
 # %% ../nbs/03_agent.ipynb #f0c058fe
 def _fmt_cmds(commands):
@@ -539,8 +507,6 @@ def project_context(host, mx=MAX_CONTEXT_FILE):
             'override the general guidance above where they disagree.\n\n' + '\n\n'.join(out) +
             '\n</project_context>')
 
-
-# The briefing's working rules, tagged with the tool each is about. `None` always applies.
 RULES = (
     (None, 'Act on the user’s verb. “Create”, “run”, “fix”, “add” and “as NAME” request a\n'
            '  result, not a plan: use the tool that produces it, verify it, then report what exists.\n'
@@ -942,8 +908,7 @@ class Agent:
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self._monitor_thread = None
         # the folders something *else* is changing. Reviews run on the sub-agent model, read-only
-        self.monitors = Monitors(host, get_backend=lambda: self._be_or_none('subagent'),
-                                 get_tools=self._sub_plain)
+        self.monitors = Monitors(host, get_backend=lambda: self._be_or_none('subagent'), get_tools=self._sub_plain)
         self.lock = threading.Lock()
 
 # %% ../nbs/03_agent.ipynb #8f4741e8
@@ -1117,8 +1082,6 @@ def tools(self:Agent):
         extra += monitor_tools(lambda: self.monitors, mx=b.tool_max)
         plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop,
                           get_spec=self.spec_or_none, on_media=self._drew)
-        # taken off the built list, not off the briefing: a tool the model cannot see is a
-        # guarantee, and a tool it is merely asked not to reach for is a hope
         if self.readonly: plain = read_only(plain, self.readonly_calls, effects=False, block=NO_SUB)
         self._plain = plain
         self._tools = [self._record(t) for t in plain]
@@ -1146,7 +1109,6 @@ def _be(self:Agent, job='turn'):
     key = (spec.backend, spec.model_id)
     if key not in self._backends:
         is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
-        # rishi defaults multimodal on, which builds encoders even for text-only bundles
         kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
         if is_turn:
             kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.tool_max_len,
@@ -1162,10 +1124,7 @@ HISTORY_TURNS = 2000
 
 @patch
 def _load_history(self:Agent):
-    """The tail of the log, not the whole of it.
-
-    A shared log reaches tens of megabytes, and this ran on every resume and after every turn.
-    """
+    "The tail of the log"
     p = self.history_path
     if p is None or not p.exists(): return
     try:
@@ -1206,12 +1165,7 @@ def resp_media(self: Agent):
 
 @patch(as_prop=True)
 def last_media(self: Agent):
-    """Every picture from the newest turn, as `{'mime','data'}` dicts.
-
-    Two routes produce one: the model returns the image on its response, or a tool writes a file
-    and returns its path. A frontend cannot draw a filename, so both arrive here as bytes. One
-    that can draw a path takes `resp_media` plus the `on_media` paths instead, and a picture a
-    tool already saved is then never written a second time."""
+    "Returns images from the latest turn as `{'mime','data'}` dicts, regardless of source (model or tool). All images are bytes for frontends. Paths are used only if a frontend supports them, avoiding duplicate writes."
     out = self.resp_media
     for p in getattr(self, '_drawn', []):
         p = Path(p)
@@ -1343,8 +1297,6 @@ def snapshot_tree(self:Agent):
 @patch
 def settle_tree(self:Agent):
     "Decide what the command moved the moment it finishes, not when the turn does."
-    # The baseline is dropped, not carried: what happens while the model thinks between two
-    # commands is neither one's doing, and `changes()` is what undo is built from.
     if not self._walked: return
     tree, self._tree, self._walked = self._tree, {}, False
     for p, was in tree.items():
@@ -1563,7 +1515,6 @@ def _prepare(self:Agent, prompt):
     self._begin_turn(current_run())
     self.checkpoints[self.current_turn_id] = {'before': self._be('turn').snapshot_hist(),
                                               'branch_id': self.current_branch_id}
-    # each checkpoint is a whole conversation. The dict stays bounded
     for old in list(self.checkpoints)[:-MAX_CHECKPOINTS]: self.checkpoints.pop(old, None)
     self.registry.fire('before_turn', self, prompt)
     self.poll_watches()
@@ -1633,13 +1584,7 @@ def session_turns(self:Agent, sid):
 # %% ../nbs/03_agent.ipynb #6a449082
 @patch
 def session_added_roots(self:Agent, session_id):
-    """Folders a saved session opened with `add_root`, in the order it opened them.
-
-    Read back from the log rather than carried in a snapshot, because the log is what a resume
-    rebuilds from. Through `session_turns`, because a resumed conversation is usually older than
-    the tail: reading `history` here silently dropped the folders it had opened.
-    Nothing here re-opens them: see `resume_session`.
-    """
+    "Returns folders opened with `add_root` in order, read from the log for accurate session reconstruction. Does not reopen; see `resume_session`."
     out = []
     for turn in self.session_turns(session_id):
         # a turn that is not replayed does not widen the boundary either: honouring a root from a
@@ -1664,17 +1609,9 @@ def resume_session(self:Agent, selector='latest'):
         matches = [s for s in choices if s['id'] == selector or s['id'].startswith(selector)]
         if len(matches) != 1: raise KeyError(f'session {selector!r} matched {len(matches)} conversations')
         picked = matches[0]
-    # the widening lapses: a log may say the boundary was wider, and may not move it back
     self.resumed_roots = self.session_added_roots(picked['id'])
-    # a stopped turn is in the log but never goes back as model context: its reply is a fragment.
-    # `session_turns`, because `history` is a tail and a resumed conversation is rarely inside it
-    turns = [t for t in self.session_turns(picked['id'])
-             if t.get('state', 'complete') in REPLAYED]
+    turns = [t for t in self.session_turns(picked['id']) if t.get('state', 'complete') in REPLAYED]
     canonical = []
-    # A resume rebuilds context from the durable log, not from a snapshot. The persisted args
-    # and results are already clipped. They go back as text rather than as provider tool
-    # calls: that shape would assert a fidelity the record does not have, and its id and JSON
-    # validation differs per backend. For calls a local model may never have numbered.
     for turn in turns:
         canonical.append({'role': 'user', 'content': str(turn.get('prompt', ''))})
         body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
@@ -1689,8 +1626,6 @@ def resume_session(self:Agent, selector='latest'):
     return picked
 
 # %% ../nbs/03_agent.ipynb #3fd8838b
-#: Turn states a resume puts back as model context. A row written before `state` existed has
-#: none and reads as `complete`, so nothing already on disk changes meaning.
 REPLAYED = ('complete', 'failed')
 
 @patch
@@ -1709,9 +1644,9 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
             p.parent.mkdir(parents=True, exist_ok=True)
             line = json.dumps(turn, ensure_ascii=False) + '\n'
             with p.open('a') as f:
-                f.write(line); f.flush(); end = f.tell()
-            # `tell` after the write, not `stat` before it: another process appending to the same
-            # log would make a size read beforehand describe somebody else's line
+                f.write(line)
+                f.flush()
+                end = f.tell()
             self._last_span = (max(0, end - len(line.encode())), end)
         except Exception: pass
 
@@ -1719,11 +1654,9 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
 @patch
 def _finish(self:Agent, text, prompt=''):
     b = self._be('turn')
-    # a backend counts cumulatively. Fold in each backend's delta
     turn_use = Usage(model=b.use.model)
     backends = list(self._backends.items())
-    if all(backend is not b for _, backend in backends):
-        backends.append(((b.spec.backend, b.spec.model_id), b))
+    if all(backend is not b for _, backend in backends): backends.append(((b.spec.backend, b.spec.model_id), b))
     for key, backend in backends:
         previous = self._usage_seen.get(key, Usage(model=backend.use.model))
         turn_use = turn_use + (backend.use - previous)
@@ -1804,12 +1737,7 @@ def stream_with(self:Agent, prompt, context='', screen='', image=None, context_p
 # %% ../nbs/03_agent.ipynb #3482d795
 @patch
 def cancel(self:Agent):
-    """Stop the turn in flight, and say whether there was one to stop.
-
-    The answer is about the turn, not about the backend. A caller asking "did I stop anything?"
-    wants to know whether the assistant was working. A backend that took the request but cannot
-    abort a completion already in flight has still stopped the turn at its next step.
-    """
+    "Stops an active turn and returns if one was running, regardless of backend abort capability."
     running = self.busy
     if self.approvals is not None: self.approvals.cancel_all('the turn was stopped')
     self._be('turn').cancel()
@@ -1826,9 +1754,7 @@ def close(self:Agent):
 # %% ../nbs/03_agent.ipynb #4c0be3cb
 @patch
 def context_parts(self:Agent, turn_id, stage='after'):
-    """One branchable part per message in a checkpoint, grouped so that a call and the results
-    it produced move together. A part id names its turn and its position, and survives a
-    reload because both do."""
+    "Each message in a checkpoint is a branchable part, grouped to keep calls and results together. Part IDs persist across reloads."
     cp = self.checkpoints.get(str(turn_id))
     if cp is None or stage not in cp: raise KeyError(f'no {stage} checkpoint for {turn_id}')
     out, group = [], 0
@@ -1846,17 +1772,9 @@ def context_parts(self:Agent, turn_id, stage='after'):
 # %% ../nbs/03_agent.ipynb #fc6aaf3a
 @patch
 def conversation_parts(self:Agent, sid=None):
-    """One stored conversation as the ordered parts a person can keep, drop or rewrite.
-
-    Built from the turn log rather than from a live checkpoint, because the conversation a
-    person wants to reshape is usually one they have just resumed -- and a resumed assistant has
-    no snapshots. Part ids are derived from the turn and its position, so they name the same
-    part in the next process as in this one.
-    """
+    "A stored conversation as ordered, editable parts reconstructed from the turn log, with consistent part IDs across processes."
     sid = sid or self.session_id
     out = []
-    # `compile_conversation` writes the result straight into the live chat, so this is the second
-    # route a stopped turn could reach the model as though it had finished. `REPLAYED` guards both
     for turn in [t for t in self.session_turns(sid) if t.get('state', 'complete') in REPLAYED]:
         tid = str(turn.get('turn_id') or '')
         group = 0
@@ -1868,7 +1786,6 @@ def conversation_parts(self:Agent, sid=None):
         part('user', str(turn.get('prompt') or ''), True)
         for act in (turn.get('activity') or []):
             group += 1
-            # a call and what it returned are one decision, so they share a group
             part('call', str(act.get('line') or act.get('summary') or act.get('tool') or ''), False,
                  {'tool': act.get('tool') or '', 'action_id': act.get('action_id') or act.get('id') or '',
                   'parent_action_id': act.get('parent_action_id') or '', 'ok': bool(act.get('ok'))})
@@ -1932,10 +1849,7 @@ def reshape(self:Agent, sid=None, manifest=None, rewrites=None, branch_id='', re
 # %% ../nbs/03_agent.ipynb #2aadac5c
 @patch
 def compile_context(self:Agent, turn_id, stage='after', part_id='', manifest=None):
-    """The provider messages a branch compiles to: a checkpoint, cut short at `part_id` when
-    one is named, with each part's policy applied. A call and its results are one decision --
-    included together or stopped before -- because half of an exchange is not a conversation.
-    """
+    "A provider message is a checkpoint truncated at `part_id`, with each part's policy applied. Calls and results form a decision unit, not a partial exchange."
     cp = self.checkpoints.get(str(turn_id))
     if cp is None or stage not in cp: raise KeyError(f'no {stage} checkpoint for {turn_id}')
     msgs, manifest = cp[stage], dict(manifest or {})
@@ -1950,11 +1864,9 @@ def compile_context(self:Agent, turn_id, stage='after', part_id='', manifest=Non
     forced = {p['group'] for p in parts if manifest.get(p['part_id']) == 'keep'}
     gone = {p['group'] for p in parts if manifest.get(p['part_id']) == 'discard'} - forced
     kept = [p for p in parts if p['group'] not in gone]
-    return {'messages': [msgs[p['index']] for p in kept], 'parts': parts,
-            'omitted': len(parts) - len(kept), 'kept': len(kept),
-            'groups': sorted({p['group'] for p in parts}),
-            'adjusted': sorted({p['part_id'] for p in parts
-                                if p['group'] in gone and manifest.get(p['part_id']) != 'discard'})}
+    return {'messages': [msgs[p['index']] for p in kept], 'parts': parts, 'omitted': len(parts) - len(kept), 'kept': len(kept),
+            'groups': sorted({p['group'] for p in parts}), 
+            'adjusted': sorted({p['part_id'] for p in parts if p['group'] in gone and manifest.get(p['part_id']) != 'discard'})}
 
 # %% ../nbs/03_agent.ipynb #2212115e
 @patch
@@ -1966,11 +1878,10 @@ def fork(self:Agent, turn_id, stage='after', branch_id='', part_id='', manifest=
     self._be('turn').restore_hist(compiled['messages'])
     parent, self.current_branch_id = self.current_branch_id, branch_id
     self._branch_hist[branch_id] = compiled['messages']
-    record = self.save_branch(branch_id, revision=revision, parent_branch_id=parent,
-                             parent_turn_id=str(turn_id), parent_part_id=str(part_id or ''),
-                             stage=stage, manifest=dict(manifest or {}))
-    return {**record, 'omitted': compiled['omitted'], 'kept': compiled['kept'],
-            'adjusted': compiled['adjusted'], 'parent_turn_id': str(turn_id), 'stage': stage}
+    record = self.save_branch(branch_id, revision=revision, parent_branch_id=parent, parent_turn_id=str(turn_id),
+                parent_part_id=str(part_id or ''), stage=stage, manifest=dict(manifest or {}))
+    return {**record, 'omitted': compiled['omitted'], 'kept': compiled['kept'], 'adjusted': compiled['adjusted'], 
+            'parent_turn_id': str(turn_id), 'stage': stage}
 
 # %% ../nbs/03_agent.ipynb #e18699fc
 @patch
@@ -2039,7 +1950,6 @@ def compact(self:Agent, extra=''):
         return ''
     sub = self._be_or_none('summary')
     summary_backend = sub if sub is not None else b
-    # derived from the model actually used: a 4k model cannot reserve 4k output tokens
     summary_output = min(1024, max(256, summary_backend.spec.ctx // 4))
     summariser = summary_backend.oneshot
     text = self.compactor.compact(
@@ -2125,8 +2035,7 @@ def command(self:Agent, line):
         except Exception as e: return agent_err(e)
     if name == 'sessions':
         rows = self.sessions()
-        if rows:
-            return '\n'.join(f"{s['id']}  {s['turns']:>3} turns  {s['model']:<20} {s['title']}" for s in rows)
+        if rows: return '\n'.join(f"{s['id']}  {s['turns']:>3} turns  {s['model']:<20} {s['title']}" for s in rows)
         where = str(self.history_path) if self.history_path is not None else '(history disabled: no cfg directory)'
         return f'no saved sessions in {where}; a session is saved after its first completed turn'
     if name == 'resume':
@@ -2151,8 +2060,7 @@ def command(self:Agent, line):
     if name == 'compact':
         t = self.compact(arg)
         return f'{self.compactor.note}\n\n{t}' if t else self.compactor.note
-    if name == 'skills':
-        return '\n'.join(f'{s.name:16} {s.source:8} {s.description[:90]}' for s in self.skills) or 'no skills found'
+    if name == 'skills': return '\n'.join(f'{s.name:16} {s.source:8} {s.description[:90]}' for s in self.skills) or 'no skills found'
     if name == 'skill': return clip(_skill_text(self.skills, arg))
     if name == 'tools': return '\n'.join(sorted(getattr(t, '__name__', '?') for t in self.tools))
     if name == 'extensions': return '\n'.join(self.registry.notes) or 'no extensions loaded'
@@ -2161,8 +2069,7 @@ def command(self:Agent, line):
         return f'reloaded: {len(self.tools)} tools, {len(self.skills)} skills'
     if name in ('plan', 'todos'):
         if not arg: return self.plan.md()
-        if arg.lower() in ('clear', 'reset', 'none'):
-            self.plan.clear(); self._save_plan(); return 'plan cleared'
+        if arg.lower() in ('clear', 'reset', 'none'): self.plan.clear(); self._save_plan(); return 'plan cleared'
         if '|' in arg:
             title, _, rest = arg.partition('|')
             items = [x.strip() for x in rest.split('|') if x.strip()]
@@ -2218,8 +2125,7 @@ def _new_run(self:Agent, prompt):
     with self._runs_lock:
         current = self.run()
         if current is not None and not current.terminal: raise RuntimeError('the assistant is already running')
-        r = Run(f'run_{uuid.uuid4().hex[:12]}', question=str(prompt), model=self.model.name,
-                grace=self.cancel_grace)
+        r = Run(f'run_{uuid.uuid4().hex[:12]}', question=str(prompt), model=self.model.name, grace=self.cancel_grace)
         self._runs[r.id], self._foreground = r, r.id
         for old in list(self._runs)[:-100]: self._runs.pop(old, None)
         return r
@@ -2240,11 +2146,10 @@ def ask(self:Agent, prompt, **kw):
         self._remember(prompt, text, error, state=state)
         kept[0] = True
     try:
-        self._begin_turn(run)                  # its own id, before anything can stop it
+        self._begin_turn(run)
         if self.start() is None:
             run.finish('failed'); keep('failed', self.note, self.note); return self.note
         backend = self._be('turn')
-        # `run.start` is False when something cancelled it while the backend was being built
         if not run.start(backend): keep('cancelled'); return run.dict()
         with run_context(run):
             outgoing = self._prepare(prompt)
@@ -2252,7 +2157,7 @@ def ask(self:Agent, prompt, **kw):
         if run.cancelled:
             run.finish(); keep('cancelled'); return run.dict()
         run.finish()
-        out = self._finish(text, prompt)       # writes its own row, and may raise before it does
+        out = self._finish(text, prompt)
         kept[0] = True
         return out
     except Exception as e:
@@ -2263,7 +2168,6 @@ def ask(self:Agent, prompt, **kw):
         keep('failed', self.note, agent_err(e))
         return self.note
     finally:
-        # `finish`, not `detach`: detaching marks live child runs terminal without stopping them
         if not run.terminal: run.finish('cancelled')
         keep('abandoned')
 
@@ -2277,11 +2181,12 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
         self._remember(prompt, text, error, state=state)
         kept[0] = True
     try:
-        self._begin_turn(run)                  # its own id, before anything can stop it
+        self._begin_turn(run)                  
         if self.start() is None:
-            run.finish('failed'); keep('failed', self.note, self.note); yield self.note; return
+            run.finish('failed')
+            keep('failed', self.note, self.note)
+            yield self.note; return
         backend = self._be('turn')
-        # `run.start` is False when something cancelled it while the backend was being built
         if not run.start(backend): keep('cancelled'); return
         if on_registered is not None: on_registered(run)
         if run.cancelled: run.finish(); keep('cancelled'); return
@@ -2294,7 +2199,7 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
         run.finish()
         if run.cancelled: keep('cancelled', ''.join(out))
         else:
-            self._finish(''.join(out), prompt)   # writes its own row, and may raise before it does
+            self._finish(''.join(out), prompt)   
             kept[0] = True
     except Exception as e:
         if run.cancelled: run.finish(); keep('cancelled', ''.join(out)); return
@@ -2303,10 +2208,6 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
         keep('failed', self.note, agent_err(e))
         yield f'\n\n{self.note}'
     finally:
-        # a caller that stops iterating drops the generator, which raises `GeneratorExit`. That
-        # derives from `BaseException`, so neither handler above ever runs: the row was never
-        # written, and the run was left live, which kept the agent busy for the rest of the session.
-        # `finish`, not `detach`: detaching marks live child runs terminal without stopping them
         if not run.terminal: run.finish('cancelled')
         keep('abandoned', ''.join(out))
 
@@ -2412,7 +2313,6 @@ class Completer:
         support = ''
         if context: support += f'<related_code>\n{context[-6000:]}\n</related_code>\n'
         if variables: support += f'<runtime_variables>\n{variables[:4000]}\n</runtime_variables>\n'
-        # whatever the application pinned to completion. A host that keeps none has no `ws`
         try: memory = self.a.ws.agent_memory_context('completion', max_chars=6000)
         except Exception: memory = ''
         if memory: support += f'<user_memory>\n{memory}\n</user_memory>\n'
@@ -2446,9 +2346,6 @@ def _limit(value, lo, hi, default):
     try: return max(lo, min(hi, int(value)))
     except (TypeError, ValueError): return default
 
-
-
-
 _agent_init_limits = Agent.__init__
 def _init_limits(self, *args, max_tool_calls='auto', max_steps='auto', **kwargs):
     _agent_init_limits(self, *args, **kwargs)
@@ -2456,7 +2353,6 @@ def _init_limits(self, *args, max_tool_calls='auto', max_steps='auto', **kwargs)
     self.step_budget = _limit(max_steps, _STEP_MIN, _STEP_MAX, 'auto')
     self.max_tool_calls = self.max_steps = None
 Agent.__init__ = _init_limits
-
 
 _agent_prepare_limits = Agent._prepare
 def _prepare_limits(self, prompt):
@@ -2469,7 +2365,6 @@ def _prepare_limits(self, prompt):
     return _agent_prepare_limits(self, prompt)
 Agent._prepare = _prepare_limits
 
-
 _agent_command_limits = Agent.command
 def _command_limits(self, line):
     raw = (line or '').strip().lstrip('/')
@@ -2479,8 +2374,7 @@ def _command_limits(self, line):
         attr, lo, hi = ('tool_budget', _TOOL_MIN, _TOOL_MAX) if name == 'tool-budget' else ('step_budget', _STEP_MIN, _STEP_MAX)
         if arg:
             value = _limit(arg, lo, hi, getattr(self, attr))
-            if value == getattr(self, attr) and str(arg).lower() != 'auto' and not str(arg).isdigit():
-                return f'usage: /{name} [auto|{lo}..{hi}]'
+            if value == getattr(self, attr) and str(arg).lower() != 'auto' and not str(arg).isdigit(): return f'usage: /{name} [auto|{lo}..{hi}]'
             setattr(self, attr, value)
         value = getattr(self, attr)
         active = self.max_tool_calls if name == 'tool-budget' else self.max_steps
@@ -2506,7 +2400,6 @@ def _record(self:Agent, f):
         return wrapped(*a, **kw)
     return call
 
-
 # %% ../nbs/03_agent.ipynb #50e37dec
 _agent_commands_runs, _agent_close_runs = Agent.commands, Agent.close
 
@@ -2517,8 +2410,6 @@ def commands(self:Agent): return sorted(set(_agent_commands_runs(self)) | {'stop
 def close(self:Agent):
     "Cancel active runs before closing their backends."
     backends = list(self._backends.values())
-    # the register first: a background run blocked on an approval is woken by closing the gate,
-    # and one still queued never reaches a model at all
     if getattr(self, '_background', None) is not None: self._background.close()
     if self.approvals is not None: self.approvals.close()
     for row in self.runs(active=True): self.cancel(row['id'])
@@ -2531,11 +2422,7 @@ def close(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #d29d008a
 _HISTORY_LOCKS, _HISTORY_LOCKS_LOCK = {}, threading.RLock()
-#: bumped to 2 for the byte-offset index. A sidecar written by an older version has no offsets
-#: and is rebuilt from the log rather than trusted
 _SESSION_META_VERSION = 2
-#: seconds between turns that split one run of untagged history from the next. The same bound
-#: Leela's `history_sessions` uses, so the two cannot disagree about where a `legacy-N` begins
 LEGACY_GAP = 1800
 _SESSION_DEFAULTS = {'title': '', 'title_turns': 0, 'muted': False, 'manual': False}
 
@@ -2712,12 +2599,7 @@ def _index_from_history(agent):
 
 @patch
 def rebuild_index(self:Agent, force=False):
-    """The session index: what conversations the log holds, and which bytes each one occupies.
-
-    Streams the log a line at a time. Nothing here reads it whole, which is the point: the index
-    is what lets `sessions` and `session_turns` answer without one. With no log there is nothing
-    to index and nothing to persist, so the turns in memory are the whole account.
-    """
+    "Indexes conversations in the log with byte ranges, enabling `sessions` and `session_turns` to operate without a full log. If no log exists, in-memory turns constitute the entire conversation."
     with _history_lock(self):
         rows = _session_rows(self)
         if rows is None: return {}          # malformed, reported, and never written over
@@ -2729,7 +2611,6 @@ def rebuild_index(self:Agent, force=False):
                     | {k: v for k, v in (rows.get(sid) or {}).items() if k in _SESSION_DEFAULTS}
                     | row
                for sid, row in found.items()}
-        # a conversation somebody named but whose turns are gone keeps its row rather than its bytes
         for sid, row in rows.items():
             if sid not in out: out[sid] = {**row, 'version': _SESSION_META_VERSION}
         if logged: _write_session_rows(self, out)
@@ -2806,12 +2687,7 @@ def session_count(self:Agent):
 
 @patch
 def sessions(self:Agent):
-    """Every conversation the log holds, newest first, read from the index.
-
-    Not from `self.history`, which is a tail: the conversations a picker has to offer are mostly
-    older than the window. The title a person set wins; silence about one leaves the derived
-    opening prompt standing.
-    """
+    "Lists conversations from the log in reverse order, based on the index. Titles are from user input; silent conversations retain the derived prompt."
     rows = self.rebuild_index()
     if not rows: return _agent_sessions(self)
     return sorted([{'id': sid, 'turns': int(r.get('turns', 0)), 'at': r.get('last_at', 0),
@@ -2823,13 +2699,7 @@ def sessions(self:Agent):
 
 @patch
 def session_turns(self:Agent, sid):
-    """One conversation's turns, read from the byte range the index names.
-
-    A range with a filter, not a list of offsets. Leela and the CLI append to one log, so two live
-    conversations interleave and a session's lines are not contiguous. A range is correct for any
-    interleaving; it costs reading the other traffic that happened during that conversation, which
-    is bounded by the conversation rather than by the log.
-    """
+    "Reads a conversation's turns from index byte ranges, allowing filtering. Interleaved sessions are handled by reading during the conversation, bounded by its range."
     sid = str(sid)
     row, p = self.rebuild_index().get(sid), self.history_path
     if row is None or 'first_offset' not in row or p is None or not p.exists():
@@ -2837,11 +2707,9 @@ def session_turns(self:Agent, sid):
     start, end = int(row['first_offset']), int(row.get('last_offset', 0))
     with _history_lock(self):
         with p.open('rb') as f:
-            f.seek(start); raw = f.read(max(0, end - start))
-    # a `legacy-N` turn predates the field, so having none is what identifies it. The ranges of two
-    # legacy runs never overlap, so within one range that is enough
-    mine = (lambda t: not (t.get('session') or '')) if sid.startswith('legacy-') else \
-           (lambda t: (t.get('session') or '') == sid)
+            f.seek(start)
+            raw = f.read(max(0, end - start))
+    mine = (lambda t: not (t.get('session') or '')) if sid.startswith('legacy-') else (lambda t: (t.get('session') or '') == sid)
     out = []
     for line in raw.decode('utf-8', 'replace').splitlines():
         if not line.strip(): continue
@@ -2854,24 +2722,17 @@ def session_turns(self:Agent, sid):
 def _remember(self:Agent, prompt, text, error='', state='complete'):
     with _history_lock(self):
         _agent_remember(self, prompt, text, error, state)
-        if (span := self.__dict__.pop('_last_span', None)) and self.history:
-            _index_turn(self, self.history[-1], *span)
+        if (span := self.__dict__.pop('_last_span', None)) and self.history: _index_turn(self, self.history[-1], *span)
 
 # %% ../nbs/03_agent.ipynb #491879ee
 @patch
 def add_chat_callback(self:Agent, name):
-    """Attach one named Rishi callback to the turn chat, and to whatever chat replaces it.
-
-    The registry holds what was asked for, not the catalogue. Seeding it with every known callback
-    meant asking for one attached all of them, because `_be` applies the whole registry to a chat
-    it builds.
-    """
+    "Attaches a named Rishi callback to the turn chat and its replacements. The registry contains the callbacks to attach, not the catalogue; seeding with all callbacks causes `_be` to attach all of them to each chat."
     from .runtime import CHAT_CALLBACKS
     held = getattr(self, '_chat_callbacks', None)
     if held is None: held = self._chat_callbacks = {}
     if name in held: return name
-    if name not in CHAT_CALLBACKS:
-        raise KeyError(f'unknown callback {name!r}; known: {", ".join(sorted(CHAT_CALLBACKS))}')
+    if name not in CHAT_CALLBACKS: raise KeyError(f'unknown callback {name!r}; known: {", ".join(sorted(CHAT_CALLBACKS))}')
     held[name] = CHAT_CALLBACKS[name]
     self.backend.add_cb(held[name])
     return name

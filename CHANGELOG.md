@@ -2,44 +2,21 @@
 
 <!-- do not remove -->
 
-## Unreleased
+## 0.1.32
 
-The toolset moved to [shalya](https://github.com/vedicreader/shalya) and the git plumbing to
-[gheasy](https://github.com/vedicreader/gheasy). `ramabana.tools` and `ramabana.git` re-export every
-moved name, so nothing that imports them has to change.
+The toolset moved to [shalya](https://github.com/vedicreader/shalya), and git plumbing moved to [gheasy](https://github.com/vedicreader/gheasy). `ramabana.tools` and `ramabana.git` re-export the moved names, so existing imports still work.
 
-- `ramabana --vault --spec` followed by `/python` no longer drops fifteen tools. A kernel is a
-  backend on the host, so entering python mode is an assignment rather than a replacement host.
-- `Host.capabilities` is replaced by `Host.provides`. A host declares a capability group by
-  inheriting the class that names it, and declaring one without writing its methods refuses to
-  build. `_declared`, `_probe`, `_supports`, `_has` and `_takes_reading` are gone.
-- `public_api` is offered only to a host that has a code index. It used to be offered to every host
-  and then refuse every call.
-- `mk_host` no longer builds a class with `type()` per session. `VaultSpecHost` is declared.
-- `AgentError` is `shalya.core.HostError` under the name the harness has always used, so
-  `except AgentError` still catches what a host refuses.
-- `ramabana.git` re-exports `_run`, `_conflict_blocks` and the three git tool sets again.
-  `from gheasy.repo import *` skips the underscored names, and `GIT_TOOLS`, `GIT_READ_TOOLS` and
-  `GIT_WRITE_TOOLS` are `shalya.core`'s. Leela imports all five, one of them from a code path that
-  only runs on a conflicted file, so the break did not show at import time.
-- The local path overrides for `shalya` and `uraiyadal` are gone from `[tool.uv.sources]`. Both are
-  on PyPI, and the `uraiyadal` path had stopped resolving, which broke `uv sync` in a fresh checkout.
-- `--pii off|redact|refuse` and `--pii-ner` reach the terminal, MCP and ACP entry points, and
-  `mk_host` carries both into the vault. `VaultHost` has taken them since the gate was written and
-  nothing built one with them, so no Ramabana frontend could turn retrieval gating on at all. `off`
-  stays the default. `--pii` without `--vault` prints one line and returns 2, since there is nothing
-  to gate.
-- `read_only` is shalya's function rather than a second copy of it. `NO_EFFECTS`, `NO_KEEP` and
-  `_pinned` are gone: shalya marks the tools that act with `acts`, names them in `ACTING_TOOLS`, and
-  `effects=False` withholds them. Ramabana passes `block=NO_SUB`, which is the only part shalya
-  cannot know. `read_url` now loses its `remember` argument entirely rather than having it
-  overridden, so the parameter never reaches the schema the model is given.
-- The activity summary is marked on each tool beside its docstring, and `summarise` is shalya's.
-  The dispatch on tool names that used to hold it here is gone, and with it the drift it invited:
-  the git group had moved to shalya without one and the four background delegation tools were
-  added here without one, so all ten rendered as `git_status(path='/proj')` in the feed. A tool
-  built without a summary now fails a test rather than saying nothing.
-
+- `/python` now assigns a kernel backend instead of replacing the host, preserving all fifteen tools in `ramabana --vault --spec`.
+- `Host.capabilities` is now `Host.provides`. Hosts declare capability groups by inheritance; incomplete declarations fail to build. `_declared`, `_probe`, `_supports`, `_has`, and `_takes_reading` were removed.
+- `public_api` is available only to hosts with a code index.
+- `mk_host` uses the declared `VaultSpecHost` instead of creating a class per session.
+- `AgentError` aliases `shalya.core.HostError`, so existing `except AgentError` handlers still work.
+- `ramabana.git` re-exports `_run`, `_conflict_blocks`, and all three git tool sets from `shalya.core`.
+- The local `[tool.uv.sources]` overrides for `shalya` and `uraiyadal` were removed; both now install from PyPI.
+- `--pii off|redact|refuse` and `--pii-ner` now reach terminal, MCP, ACP, and vault hosts. `off` remains the default. Using `--pii` without `--vault` exits with status 2.
+- `read_only` now comes from shalya. `NO_EFFECTS`, `NO_KEEP`, and `_pinned` were removed. `effects=False` withholds shalya's acting tools; Ramabana supplies `block=NO_SUB`.
+- `read_url` accepts `remember=True` or `remember=False`. Only `read_only(..., writes=False)` substitutes the restricted form, which uses `remember=False` and omits the argument from the model's tool schema. `read_only(..., writes=True)` retains the ordinary tool.
+- Tool activity summaries now live beside tool docstrings and use shalya's `summarise`. Missing summaries fail tests instead of silently omitting activity.
 
 ## 0.1.31
 one shot model should error loudly if it can't take the context
@@ -73,13 +50,13 @@ cli, themes, runtime fixes
 removed claude cli and converged on one claude sdk model
 
 ## 0.1.20
-cli fixes to default graph indexing to false and splitting prose 
+cli fixes to default graph indexing to false and splitting prose
 
 ## 0.1.19
 plan displays once and is repainted and in theme. auto tool budget flows through
 
 ## 0.1.18
-cli fixes to remove claude models tool calls as tags. remove multiple tool results in ramabana cli. 
+cli fixes to remove claude models tool calls as tags. remove multiple tool results in ramabana cli.
 
 ## 0.1.17
 slopometer v2

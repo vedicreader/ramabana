@@ -1,4 +1,4 @@
-"""The doubles: a host with no disk, backends with no model, and a script that behaves like a bad local engine.
+"""In-memory hosts and scripted backends for tests and documentation.
 
 Docs: https://vedicreader.github.io/ramabana/testing.html.md"""
 
@@ -119,7 +119,6 @@ class FullHost(LocalHost):
 
     @property
     def research_note(self): return f'{len(self.pages)} page(s) in this host'
-
 
     def _sections(self, text):
         "A markdown document split at its headings, which is the unit memory recalls."

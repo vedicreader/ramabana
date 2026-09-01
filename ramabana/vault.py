@@ -44,17 +44,11 @@ def _sect(s):
 
 
 def _fed_hit(h):
-    """One federated row as a `Hit`, keeping the handle that reopens it.
-
-    The legs return different things. A repo hit is a file and a line, a prose hit is a
-    section of something read months ago. So `symbol` carries whichever identifier the
-    follow-up tool needs: a `mod_name` for `symbols`, a `node_id` for `memory_read`.
-    """
+    "A federated row as a `Hit`, with a handle for reopening. The handle's `symbol` identifies relevant info: `mod_name` for symbols, `node_id` for `memory_read`. It varies by hit type."
     where = str(h.get('where') or h.get('ref') or '')
     path, _, num = where.rpartition(':')
     if h.get('source') == 'prose': return Hit(where, 1, str(h.get('ref') or ''), str(h.get('text') or '')[:200])
-    return Hit(path if num.isdigit() else where, int(num) if num.isdigit() else 1,
-               str(h.get('ref') or h.get('title') or ''), str(h.get('text') or '')[:200])
+    return Hit(path if num.isdigit() else where, int(num) if num.isdigit() else 1, str(h.get('ref') or h.get('title') or ''), str(h.get('text') or '')[:200])
 
 # %% ../nbs/07_vault.ipynb #bc5c6436
 class VaultHost(LocalHost):
@@ -79,7 +73,6 @@ class VaultHost(LocalHost):
         self._vault, self._vlock, self._vthread = vault, threading.Lock(), None
         self.federate, self.remember_reads = federate, remember_reads
         self._legs, self._cthread = None, None
-        # this class answers the memory, ask and watch groups itself, without a store handed in
         self.without = self.without - {'memory', 'ask', 'watch'}
         if warm: self.open_vault()
 
@@ -94,8 +87,6 @@ class VaultHost(LocalHost):
 
     def _open(self):
         "Open the write shelf once under a lock."
-        #: the lock keeps two threads from creating the FTS shadow tables at once, and opening a
-        #: shelf through the root vault reuses its encoder rather than loading a second one.
         with self._vlock:
             v = self._vault
             if v is None or isinstance(v, (str, Path)):
@@ -176,10 +167,7 @@ class VaultHost(LocalHost):
         return True
 
     def search(self, query, limit=20):
-        """Prose, kosha and ripgrep in one ranking via `Vault.federate` (`litesearch.rrf_all`).
-
-        A vault that will not open degrades to `LocalHost.search`.
-        """
+        "Ranks prose, kosha, and ripgrep via `Vault.federate` (`litesearch.rrf_all`). If the vault can't open, it defaults to `LocalHost.search`."
         if not self.federate: return super().search(query, limit)
         pii, ner = self._policy()
         try:
@@ -199,11 +187,7 @@ class VaultHost(LocalHost):
 
 
     def read_url(self, url, remember=True):
-        """Read a page, and keep it unless asked not to.
-
-        `remember=False` is honoured literally. The page is fetched and returned and never
-        touches the vault, which is what it is for. Filing failing is not a read failing. The text is returned either way.
-        """
+        "Fetches a page and returns it without storing, unless `remember=False` is set, in which case it still fetches and returns the text."
         d = super().read_url(url, remember=remember)
         if d is not None and remember and self.remember_reads:
             try:
@@ -214,13 +198,7 @@ class VaultHost(LocalHost):
         return d
 
     def research(self, query):
-        """Search, read every source into the vault, then answer out of the vault.
-
-        One network pass rather than two: `Vault.web` *is* fossick's `research` with the sources
-        kept. The digest is assembled by asking the vault the same question immediately
-        afterwards. What the model reads and what a later session can recall are then the same
-        text, instead of a summary of pages nobody kept.
-        """
+        "Searches and reads sources into the vault, then answers from it. This consolidates web research into the vault, making recall accurate and consistent."
         v, q = self.vault, str(query)
         pii, ner = self._policy()
         r = v.web(q, n=5)
@@ -230,31 +208,17 @@ class VaultHost(LocalHost):
         return '\n\n'.join([head] + [f"## {s['breadcrumb']}\n\n{s['text']}" for s in c.results])
 
     def ask(self, question, ref=None, instruction='', **kw):
-        """Have the vault answer `question` with citations, on this session's model.
-
-        `mk_chat` lends the session's chat factory so the vault does not load a second engine
-        from `$VISHALAKSHI_MODEL`. `pii` is stripped: a tool argument must not be able to send
-        retrieved private sections to a hosted API. `instruction` is what a second turn carries,
-        and it travels as itself rather than as `sp`. The comment below says why.
-        """
+        "Asks the vault to answer `question` with citations using the session's model, avoiding duplicate engine loads and stripping PII; `instruction` follows the turn directly."
         kw.pop('pii', None)
         if self.mk_chat is not None: kw.setdefault('mk_chat', self.mk_chat)
-        # `instruction=`, not `sp=`: `sp` replaces the briefing that asks for citations
         return self.vault.ask(question, ref=ref, instruction=str(instruction or ''), **kw)
 
     @property
     def research_note(self): return f'fossick, filed in {Path(self.vault.path).name}'
+    def remember(self, text, title=None, tags=()): return self.vault.note(str(text), title=title, tags=list(tags or []))
+    def watch(self, target, action='remind', every='1d', note=None, **params): return self.vault.watch(str(target), action=action, every=every, note=note, **params)
 
-
-    def remember(self, text, title=None, tags=()):
-        return self.vault.note(str(text), title=title, tags=list(tags or []))
-
-    def watch(self, target, action='remind', every='1d', note=None, **params):
-        return self.vault.watch(str(target), action=action, every=every, note=note, **params)
-
-    def watches(self, due_only=False):
-        return [dict(w) for w in self.vault.watches(due_only=bool(due_only))]
-
+    def watches(self, due_only=False): return [dict(w) for w in self.vault.watches(due_only=bool(due_only))]
     def unwatch(self, watch_id): return self.vault.unwatch(str(watch_id))
 
     def poll(self):

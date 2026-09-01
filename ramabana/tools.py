@@ -26,36 +26,17 @@ import concurrent.futures, functools, json, re, threading, time, uuid
 from fastcore.basics import AttrDict, ifnone
 from fastcore.foundation import L
 from fastcore.parallel import parallel
-from shalya.core import (ERR, GIT_READ_TOOLS, GIT_TOOLS, GIT_WRITE_TOOLS, Hit, MAX_API, MAX_FILE,
-                         MAX_GREP_HITS, MAX_HITS, MAX_TOOL_CHARS, apply_edits, clip,
-                         clip_lines, cmds, diff_text, edits, err, failed, is_write, writes,
-                         ACTING_TOOLS, acts, has_effect, summarise, summary,
-                         one_line, one_line as _1)
-from shalya.host import (Capability, DENY, Host, HostError, LD_CHARS, LocalHost, MAX_VARS, NO_ROOTS,
-                         SANDBOX, SECRET, SKIP_DIRS, SKIP_SUFFIXES, denied, implemented, ld_json, _fuse,
-                         CodeHost, WebHost, NotebookHost, MemoryHost, WatchHost, SessionHost,
-                         ShellHost, ApiHost, GitHost)
-from shalya.skills import (EVENTS, EXTRA_MODULES, GROUP, MAX_SKILL_CHARS, Registry, SKILL_DESC_MAX,
-                           Skill, discover, ext_dirs, find, load, skill_dirs, skill_index)
-from shalya.tools import (API_VENDORS, GROUPS, IMAGE_API, IMAGE_MODEL, IMAGE_SIZES, RESPONSES_API,
-                          _post_responses, api_model, api_tools, ask_tools, code_tools, file_tools,
-                          image_available, media_dir, memory_tools, mime_for, notebook_tools,
-                          readable, save_media, session_tools, shell_tools, skill_tools, watch_tools,
-                          web_tools, git_tools)
-from shalya.tools import read_only
-from shalya.tools import image_tools as _image_tools
-from shalya.tools import tools_for as _tools_for
+from shalya import *
+from shalya.core import one_line as _1
+from shalya.host import _fuse
+from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for
 from .core import AgentError, agent_err, spec_caps
 from .runtime import Run, current_run, run_context
 
 # %% ../nbs/02_tools.ipynb #e0ca9981
 from fastcore.docments import frontmatter
 from shalya.core import WRITE_TOOLS as _TOOL_WRITES
-
-#: Names Leela imports from `ramabana.tools`. They are shalya's now, under the spellings Leela knows.
 _cmds, _edits, _apply_edits, _diff = cmds, edits, apply_edits, diff_text
-
-#: `cart_tools` is an extension rather than a host group, so its two spenders are added by name here.
 WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove'}
 
 # %% ../nbs/02_tools.ipynb #694f6d5d
@@ -66,9 +47,7 @@ _all_ = ['frontmatter', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'E
 @implemented
 class NullHost(Host):
     "A host with nothing behind it. The reference implementation of 'this host cannot'."
-
     def __init__(self, roots=()): self._roots = [str(r) for r in roots]
-
     @property
     def roots(self): return self._roots
     def check(self, path, must_exist=False, reading=False): raise HostError(f'{NO_ROOTS}: {path}')
@@ -98,59 +77,30 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
 
 # %% ../nbs/02_tools.ipynb #de2cd1e8
 def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None):
-    """Every tool this host declares it can support, plus whatever extensions registered.
-
-    Groups come from `Host.provides`. `drop` withholds a group the host does support, decided by
-    `core.budget_for` and reported by `Agent.budget`.
-    """
-    # credentialled, never probed: a key is either there or it is not
-    image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
-             if image_available() and 'image' not in set(drop or ()) else None)
+    "Lists all tools supported by the host and registered extensions. Groups are from `Host.provides`. Use `drop` to exclude groups, based on `core.budget_for` and `Agent.budget`."
+    image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media) if image_available() and 'image' not in set(drop or ()) else None)
     return _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image)
 
 # %% ../nbs/02_tools.ipynb #e3b29ea1
 SUB_MAX_STEPS = 12
 
-SUB_SP = """You are a research sub-agent inside a Python IDE. Another agent has delegated one \
-question to you because answering it takes many tool calls and the answer is short.
+SUB_SP = """You are a research sub-agent in a Python IDE. Answer the delegated question only.
+- Use tools as needed. Report findings with file paths and line numbers.
+- State plainly when you find nothing. Do not guess.
+- You cannot edit. Describe any required change and stop.
+- Use `inspect_python` for live variables. Its default scope is sandboxed; use `scope='overlay'` for the real interpreter."""
 
-- Answer exactly the question asked. Nothing else.
-- Use your tools as much as you need; nobody is paying attention to how many calls it takes.
-- Report what you found, with file paths and line numbers, not what you infer or expect.
-- If the answer is that there is nothing, say so plainly. A confident wrong answer is far \
-worse than "no matches, and here is what I searched for".
-- You cannot edit anything. If the answer implies a change, describe the change and stop.
-- `inspect_python` answers questions about the user's live variables without changing them. \
-Its default scope is a sandbox that refuses most library calls; pass `scope='overlay'` to \
-get the real interpreter. Use it rather than guessing at what is in memory."""
-
-
-#: Swapped in for the two read-only lines above when a session grants sub-agents writes.
-SUB_WRITE_SP = """- You have the delegating agent's write tools as well as its read tools: create and \
-edit files, run commands, run Python. Every call is recorded on the session and goes through the \
-approval policy the main agent answers to. A refusal comes back with a reason. Read it and change \
-the approach.
-- Write only what the task asked for. You cannot see the conversation that sent you. Anything \
-else you change is a change nobody reviewed.
-- Verify with the tool that proves it. Run the test. Read the file back. Report the evidence.
-- `run_python` shares the user's kernel namespace. Bind results to NEW names. You cannot rebind or \
-delete what the user made."""
-
+SUB_WRITE_SP = """- You also have the delegating agent's write tools. Write only what the task requires.
+- Verify each change with the appropriate tool, then report the evidence.
+- `run_python` shares the user's kernel. Bind results to new names; do not rebind or delete existing names."""
 
 def sub_briefing(writes=False):
     "The sub-agent standing instructions, with the read-only sentences swapped out when writes are on."
     if not writes: return SUB_SP
-    keep = [ln for ln in SUB_SP.splitlines()
-            if not ln.startswith('- You cannot edit anything') and not ln.startswith('- `inspect_python`')]
+    keep = [ln for ln in SUB_SP.splitlines() if not ln.startswith('- You cannot edit anything') and not ln.startswith('- `inspect_python`')]
     return '\n'.join(keep).rstrip() + '\n' + SUB_WRITE_SP
 
-
-# A sub-agent does not spawn sub-agents: recursion here is a fan-out tree whose width nobody chose.
-# Nor does it open standing work: a folder watch outlives the task that opened it, and nobody
-# asked for the reviews it would keep producing after the delegation is forgotten.
-NO_SUB = frozenset({'delegate_search', 'delegate_parallel', 'delegate_async', 'delegate_status',
-                    'delegate_result', 'delegate_cancel',
-                    'watch_folder', 'cancel_folder_watch', 'check_folders'})
+NO_SUB = frozenset({'delegate_search', 'delegate_parallel', 'delegate_async', 'delegate_status', 'delegate_result', 'delegate_cancel', 'watch_folder', 'cancel_folder_watch', 'check_folders'})
 
 # %% ../nbs/02_tools.ipynb #9424aadf
 def _delegate_result(text):
@@ -168,11 +118,9 @@ def sub_sp(sp=SUB_SP, skills=()):
     if not skills: return sp
     return sp + '\n\n' + '\n\n'.join(f'## {s.name}\n\n{s.text()}' for s in skills)
 
-
 def _stopped(run):
     "A stopped delegation answers in text: a dict would reach the model as its own repr."
     return f'The delegated question was stopped ({run.state}) before it answered.'
-
 
 def bad_json(e, span=120):
     "The fragment a JSON error is about."
@@ -182,12 +130,10 @@ def bad_json(e, span=120):
     tail = '…' if pos + span < len(doc) else ''
     return f'\nit stopped here: {lead}{doc[max(0, pos - span):pos + span]}{tail}'
 
-
 def _model_refused(sub, reply):
     "Whether what came back is the sub-agent's backend reporting its own failure, not an answer."
     problems = getattr(sub, 'problems', None) or []
     return bool(problems) and str(reply or '').strip() == str(problems[-1]).strip()
-
 
 def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skills=(),
              writes=False,      # hand over WRITE_TOOLS as well
@@ -198,10 +144,9 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
     run = run or Run(f'run_{uuid.uuid4().hex[:12]}', 'child', str(question), backend.spec.name, current_run())
     if not run.start(): return _stopped(run)
     try:
-        # the tool wrappers are the hard stop: native engines own their own tool loop
         kw = {'approve': approve} if approve is not None else {}
         sub = backend.spawn(sp=sub_sp(ifnone(sp, sub_briefing(writes)), skills),
-                            tools=read_only(tools, max_calls=max_steps * 4, writes=writes, block=NO_SUB), **kw)
+                tools=read_only(tools, max_calls=max_steps * 4, writes=writes, block=NO_SUB), **kw)
         if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
         if not run.attach(sub): return _stopped(run)
         with run_context(run): reply = sub.send(question, run=run)
@@ -234,8 +179,6 @@ def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS
         if child.cancelled:return _stopped(child)
         return delegate(backend, q, tools, sp, max_steps, skills, writes, approve, child)
     items = list(zip(qs, runs))
-    # writing sub-agents stay serial. `Approvals` holds one pending ask, and nobody can review
-    # concurrent edits to one workspace
     workers = 1 if writes or getattr(backend.spec, 'local', False) else min(n_workers, len(qs))
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers))
     futures = [ex.submit(run, item) for item in items]
@@ -252,7 +195,8 @@ def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS
                 try:out.append(future.result())
                 except Exception as e:out.append(err('delegation failed', e) + bad_json(e))
             else:
-                child.detach(); out.append(_stopped(child))
+                child.detach()
+                out.append(_stopped(child))
         return L(out)
     finally:ex.shutdown(wait=False, cancel_futures=True)
 
@@ -280,14 +224,12 @@ class Background:
         with self.lock:
             self.answers[rid], _ = text, self.seen.add(rid)
             for old in list(self.answers)[:-self.keep]: self.answers.pop(old, None)
-            # runs outlive their answers by one `keep`, so `status` still names what aged out
             for old in list(self.runs)[:-self.keep * 2]:
-                self.runs.pop(old, None); self.seen.discard(old)
+                self.runs.pop(old, None)
+                self.seen.discard(old)
 
     def start(self, fn, run):
         "Register `run`, then work `fn(run)` on a daemon thread. The id names a registered run."
-        # registration is the acceptance, and it happens under the lock a close competes for, so a
-        # handle is never given out for work this `Background` has already refused to own
         with self.lock:
             if not self.open: raise AgentError('nothing new starts while the session is closing')
             self.runs[run.id] = run
@@ -298,7 +240,6 @@ class Background:
                 try: out = fn(run)
                 except Exception as e: out = err('delegation failed', e) + bad_json(e)
             self._answer(run.id, out)
-            # after the answer, so a reader never finds a terminal run whose answer is not there yet
             if not run.terminal: run.finish()
         threading.Thread(target=work, daemon=True, name=f'ramabana-bg-{run.id}').start()
         return run.id
@@ -317,8 +258,6 @@ class Background:
             run, ans, held = self.runs.get(rid), self.answers.get(rid), rid in self.seen
         if run is None: return f'no delegation named {run_id!r} was started here'
         if ans is not None: return ans
-        # only an answer this register actually held can have aged out. A terminal run with none
-        # is one whose worker has not written it yet, and saying "gone" would end the asking
         if held: return f'{run_id} finished ({run.state}) and its answer is no longer held'
         return f'{run_id} is {run.state}; ask again later'
 
@@ -355,37 +294,17 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
                    get_writes=None,     # the session's sub-agent write toggle, read per call
                    get_approve=None,    # the gate those writes answer to
                    background=None):    # the register async delegations live in; one is made if None
-    """The `delegate` tool, bound to whatever backend routing says sub-agents run on.
-
-    Every argument is a callable. A model switch mid-session is picked up. `get_tools` is the
-    sub-agent model's tool list, not the turn model's.
-    """
-
+    "The `delegate` tool routed to the configured sub-agent backend. Arguments are callables; model changes apply mid-session. `get_tools` returns the sub-agent model's tools."
     bg = ifnone(background, Background())
-
     def _writes(): return bool(get_writes()) if get_writes is not None else False
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
 
     @summary(lambda a: f'Delegate: {_1(a.get("question"), 120)}')
     def delegate_search(question: str, skills: str = '') -> str:
-        """Hand a broad search question to a sub-agent and get back only its conclusion.
-
-        Use this when answering would take many `search_code` / `view_file` / `read_url` /
-        `inspect_python` calls whose results you do not need to keep. "where else do we
-        do X", "which files import Y", "what shape is everything in this namespace". Its
-        working is discarded. The cost to your context is one question and one answer.
-
-        The sub-agent has your read-only tools. Whether it also has your write tools is the
-        session's setting rather than yours. With sub-agent writes on it can edit, run commands
-        and run Python under the approval policy you answer to. The task you send may then ask
-        for a change. With them off it can only report.
-
-        `skills` names skills from your skill index, comma separated, whose text the sub-agent
-        should start with: name the one or two its task actually needs. You hold the index and
-        it does not. This is the only way it gets a skill without spending a step reading
-        one. Leave it empty when the task needs no particular skill.
-
-        Ask one self-contained question. The sub-agent cannot see this conversation.
+        """Delegates broad questions to a sub-agent and returns only its conclusion.
+        Use for searches whose intermediate results are unnecessary. The sub-agent cannot see this
+        conversation and receives the configured read tools, plus write tools when enabled.
+        `skills` is a comma-separated list of skills to provide. Ask one self-contained question.
         """
         b = get_backend()
         if b is None: return 'no model is available to delegate to'
@@ -395,24 +314,11 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
     @summary(lambda a: f'Delegate in parallel: {_1(a.get("questions"), 110)}')
     def delegate_parallel(questions: str, skills: str = '', cloud_model: str = '') -> str:
-        """Hand several independent questions to sub-agents at once, and get back every answer.
-
-        `questions` is a JSON array of strings, e.g.
-          ["which files import fastllm?", "where is compaction triggered?", "what is df's shape?"]
-
-        Use it when you have two or more questions that do not depend on each other. They
-        run concurrently, each in its own throwaway conversation with your read-only tools. Three questions cost you three short answers rather than the sixty tool results
-        it would take to answer them yourself. With sub-agent writes on they run one after
-        another instead, because their approvals share one queue.
-
-        `skills` names skills from your skill index, comma separated, given to every one of
-        them. Use it when the questions share a subject. When they do not, ask them in separate
-        `delegate_search` calls so each gets only what its own task needs.
-
-        `cloud_model` optionally selects one configured remote model for this fan-out. It does not
-        change the session's turn or default sub-agent model. Every question must be self-contained:
-        a sub-agent cannot see this conversation or the other questions.
-        """
+        """Delegates independent questions concurrently and returns their answers.
+        `questions` is a JSON array of self-contained strings. Use for independent questions;
+        write-enabled sub-agents run sequentially to share approvals. `skills` is a comma-separated
+        list supplied to every sub-agent. `cloud_model` optionally selects a remote model without
+        changing the session or default sub-agent model."""
         b = get_cloud_backend(cloud_model) if cloud_model and get_cloud_backend is not None else get_backend()
         if b is None: return f"no model is available to delegate to{f' ({cloud_model})' if cloud_model else ''}"
         try:
@@ -428,44 +334,27 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
     @summary(lambda a: f'Delegate in the background: {_1(a.get("question"), 110)}')
     def delegate_async(question: str, skills: str = '', writes: bool = False) -> str:
-        """Start a sub-agent on `question` and come back for the answer later. Returns a run id.
-
-        Use this when the work takes long enough that waiting for it wastes the turn: a
-        survey of a large tree, a refactor across many files, anything you would otherwise
-        sit through. The turn you are in can end. A later turn collects the answer.
-
-        Read the id back with `delegate_result`. `delegate_status` says whether it has
-        finished, and `delegate_cancel` stops it. An answer is kept until the session ends.
-
-        `writes` is per call and off by default. A background sub-agent is running when
-        nobody is watching, so its write tools are withheld unless you ask for them here,
-        whatever the session's own sub-agent setting says. Ask for them only when the task
-        you are sending is a change rather than a question.
-
-        `skills` names skills from your skill index, comma separated, the same as
-        `delegate_search`. Ask one self-contained question: a sub-agent cannot see this
-        conversation.
-        """
+        """Starts an asynchronous sub-agent task and returns its run ID.
+        Use for long-running searches or changes. Retrieve results with `delegate_result`, check
+        progress with `delegate_status`, and stop it with `delegate_cancel`. Results persist until
+        the session ends.
+        `writes` enables write tools for this call and defaults to `False`. `skills` is a
+        comma-separated list from the skill index. Ask one self-contained question."""
         b = get_backend()
         if b is None: return 'no model is available to delegate to'
         sk, note = named_skills(get_skills, skills)
         w = bool(writes) and _writes()
-        # no parent: a background run outlives the turn that started it, and a turn whose child is
-        # still live never goes idle. `Background.close` is what stops these, not the turn ending
         child = Run(f'run_{uuid.uuid4().hex[:12]}', 'background', str(question), b.spec.name)
         try: rid = bg.start(lambda r: delegate(b, question, get_tools(), skills=sk, writes=w,
-                                               approve=_approve() if w else None, run=r), child)
+                       approve=_approve() if w else None, run=r), child)
         except Exception as e: return err('could not start the delegation', e)
         asked = 'with write tools' if w else 'read-only'
         return f'started {rid} ({asked}). Collect it with delegate_result({rid!r}).' + note
 
     @summary(lambda a: f'Check delegation {a["run_id"]}' if a.get('run_id') else 'Check the background delegations')
     def delegate_status(run_id: str = '') -> str:
-        """What a background delegation is doing. No `run_id` lists every one this session started.
-
-        A run reads `pending` while it waits for a free slot, `running` once it has one, and
-        `completed`, `cancelled` or `failed` when there is an answer to collect.
-        """
+        """Returns a background delegation's status. Without `run_id`, lists all delegations started this session.
+        Statuses are `pending`, `running`, `completed`, `cancelled`, and `failed`."""
         rows = bg.status(run_id)
         if isinstance(rows, str): return rows
         if not rows: return 'nothing has been delegated in the background'

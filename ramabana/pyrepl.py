@@ -254,12 +254,7 @@ class Dhrishti:
 
 
 def use_kernel(host, base):
-    """Point `host`'s Python at a Dhrishti overlay, in place. Returns the host.
-
-    One assignment, on the host that is already there. `/python` used to build a replacement from
-    four attributes of the old host, and every group the old host had and `LocalHost` does not went
-    with it: for `--vault --spec` that was fifteen tools lost and none gained.
-    """
+    "Sets `host`'s Python to a Dhrishti overlay in-place, replacing its attributes. The update preserves existing groups, avoiding loss of tools."
     host.kernel = Dhrishti(base)
     return host
 
@@ -376,18 +371,12 @@ def promote(base, name):
 
 # %% ../nbs/11_pyrepl.ipynb #11a10f63
 class AgentBridge:
-    """A loopback-only control surface for one CLI-owned agent.
-
-    Whatever can run a cell in the kernel can read the token out of the namespace, so joining a
-    kernel is joining its agent. That is what the feature is for, and it is the entire access
-    boundary: there is no second check behind the token.
-    """
+    "A kernel-based control surface for an agent, allowing reading the token from the namespace. Joining the kernel equates to joining the agent; no second security check exists."
     FIELDS = ('model', 'input', 'output', 'total', 'cached', 'cache_write', 'reasoning', 'cost', 'turns')
 
     def __init__(self, agent, dispatch=None):
         self.agent, self.token = agent, os.urandom(24).hex()
         self.server = self.thread = None
-        # handlers are threads of their own, and `attach_callback` mutates the agent from one
         self.lock = threading.Lock()
         self.dispatch = dispatch
 
@@ -412,12 +401,7 @@ class AgentBridge:
             raise ValueError(f'unknown agent operation {op!r}')
 
     def _as_owner(self, work):
-        """Run a mutation where the agent lives, and hand back what it returned.
-
-        Reading a counter from a handler thread is harmless. Attaching a callback is not: it can
-        build a backend and it reaches into a chat a turn may be walking. `dispatch` is the owner's
-        way of running it on its own thread; without one this is the owner's thread already.
-        """
+        "Executes a mutation in the agent's environment and returns its output. Reading counters is safe; attaching callbacks can build backends and access ongoing chats. `dispatch` runs on its own thread; otherwise, on the owner's thread."
         return work() if self.dispatch is None else self.dispatch(work)
 
     async def start(self):
@@ -461,14 +445,12 @@ PROXY_CLASS = """import json as _json, urllib.parse as _parse, urllib.request as
 
 class AgentProxy:
     "One ramabana agent, reached over the loopback bridge its session opened."
-    def __init__(self, url, token, label):
-        self.url, self.token, self.label = url, token, label
+    def __init__(self, url, token, label): self.url, self.token, self.label = url, token, label
     def __repr__(self): return 'AgentProxy(' + repr(self.label) + ')'
     def _call(self, op, name=None):
         args = {'op': op}
         if name: args['name'] = name
-        req = _req.Request(self.url + '/agent?' + _parse.urlencode(args),
-                           headers={'Authorization': 'Bearer ' + self.token})
+        req = _req.Request(self.url + '/agent?' + _parse.urlencode(args), headers={'Authorization': 'Bearer ' + self.token})
         try:
             with _req.urlopen(req) as resp: body = _json.load(resp)
         except _req.HTTPError as e:
@@ -484,20 +466,13 @@ class AgentProxy:
 """
 
 def agent_proxy_code(url, token, label='local'):
-    """The source that binds one agent's proxy, for whichever namespace is going to run it.
-
-    `ramabana_agent` is whoever bound last, which is the session doing the asking. `ramabana_agents`
-    keeps every one of them by label, because a kernel shared between sessions holds more than one
-    and the bare name cannot mean both.
-    """
+    "The source binding an agent's proxy for its namespace. `ramabana_agent` is the last bound session; `ramabana_agents` stores all by label for shared kernels."
     return PROXY_CLASS + (
         '\ntry: ramabana_agents\nexcept NameError: ramabana_agents = {}\n'
         f'ramabana_agent = AgentProxy({url!r}, {token!r}, {label!r})\n'
         f'ramabana_agents[{label!r}] = ramabana_agent\n')
 
 def inject_agent_proxy(host, url, token, label='local'):
-    """Bind the proxy in Dhrishti's overlay: what an agent's own Python tools see, and what another
-    session attached to the same kernel sees. The prompt a person types at is a different namespace
-    and needs `agent_proxy_code` run there as well."""
+    "Binds the agent proxy in Dhrishti's overlay for each session's namespace, including the prompt namespace via `agent_proxy_code`."
     return host.run_python(agent_proxy_code(url, token, label))
 

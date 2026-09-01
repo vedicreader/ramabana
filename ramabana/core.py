@@ -46,54 +46,41 @@ def env(name, dflt=None):
 
 # %% ../nbs/00_core.ipynb #9df3b26a
 JOBS = ('turn', 'oneshot', 'inline', 'completion', 'classify', 'summary', 'subagent')
-
-#: One-shot jobs share the `oneshot` policy unless set individually. Not `turn` or `subagent`.
-#: Not `summary` either. A summary of this conversation belongs on the model holding it. Under
-#: `oneshot` it loaded a second local runtime to summarise the first.
 ONESHOT_JOBS = ('oneshot', 'completion', 'classify', 'inline')
-LOCAL = {'gemma-e2b': 'litert-community/gemma-4-E2B-it-litert-lm',
-    'gemma-e4b': 'litert-community/gemma-4-E4B-it-litert-lm',
-    'gemma-12b': 'litert-community/gemma-4-12B-it-litert-lm'}
-MLX = {'qwen-4b': 'mlx-community/Qwen3.5-4B-MLX-4bit',
-       'mini-coder-4b': 'mlx-community/mini-coder-4b-OptiQ-4bit',
-       'ornith-9b': 'mlx-community/Ornith-1.0-9B-8bit'}
-LLAMA = {'llama-qwen-0.6b': 'Qwen/Qwen3-0.6B-GGUF',
-         'llama-qwen-1.7b': 'Qwen/Qwen3-1.7B-GGUF',
-         'llama-qwen-4b': 'Qwen/Qwen3-4B-GGUF'}
-
-GPT = {name: f'openai/{name}' for name in (
-    'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
-    'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.6', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra')}
-GPT.update({name: f'codex/{name}' for name in (
-    'gpt-5.3-codex-spark', 'gpt-5.5')})
-CLOUD = {**GPT, 'gpt': GPT['gpt-5.6-terra'],
-    'gpt-mini': GPT['gpt-5.6-luna'], 'gpt-sol': GPT['gpt-5.6-sol']}
-
-#: Claude Code's catalogue, prefixed the same way and for the same reason
-CLAUDE_MODELS = ('claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'claude-fable-5',
-                 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-opus-4-6')
+LOCAL = {'gemma-e2b': 'litert-community/gemma-4-E2B-it-litert-lm','gemma-e4b': 'litert-community/gemma-4-E4B-it-litert-lm','gemma-12b': 'litert-community/gemma-4-12B-it-litert-lm'}
+MLX = {'qwen-4b': 'mlx-community/Qwen3.5-4B-MLX-4bit','mini-coder-4b': 'mlx-community/mini-coder-4b-OptiQ-4bit','ornith-9b': 'mlx-community/Ornith-1.0-9B-8bit'}
+LLAMA = {'llama-qwen-0.6b': 'Qwen/Qwen3-0.6B-GGUF','llama-qwen-1.7b': 'Qwen/Qwen3-1.7B-GGUF','llama-qwen-4b': 'Qwen/Qwen3-4B-GGUF'}
+GPT = {name: f'openai/{name}' for name in ('gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano','gpt-5.4', 'gpt-5.4-mini', 'gpt-5.6', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra')}
+GPT.update({name: f'codex/{name}' for name in ('gpt-5.3-codex-spark', 'gpt-5.5')})
+CLOUD = {**GPT, 'gpt': GPT['gpt-5.6-terra'],'gpt-mini': GPT['gpt-5.6-luna'], 'gpt-sol': GPT['gpt-5.6-sol']}
+CLAUDE_MODELS = ('claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'claude-fable-5','claude-opus-4-8', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-opus-4-6')
 CLAUDE = {f'claude/{mid}': mid for mid in CLAUDE_MODELS}
-
-#: The same models under their bare names and the short aliases.
-CLAUDE_ALIASES = {**{mid: mid for mid in CLAUDE_MODELS},
-                  'sonnet': 'claude-sonnet-5', 'opus': 'claude-opus-5', 'fable': 'claude-fable-5'}
-
-#: The ceiling for a harness model whose real window we do not know.
+CLAUDE_ALIASES = {**{mid: mid for mid in CLAUDE_MODELS},'sonnet': 'claude-sonnet-5', 'opus': 'claude-opus-5', 'fable': 'claude-fable-5'}
 DFLT_AGENT_CTX = 128_000
 CLAUDE_CTX = {'claude-opus': 200_000, 'claude-sonnet': 200_000}
+RUNTIMES = ('litert', 'mlx', 'llama', 'ollama', 'claude', 'copilot', 'remote')
+AGENTS = ('claude',)
+HOSTED = ('remote', 'copilot', *AGENTS)
+COPILOT_UNAVAILABLE = ('copilot runtime is unavailable; sign in to Copilot in an editor or run `python -c "from rishi.copilot import copilot_login; copilot_login()"`')
+CUSTOM = {}
+_RUNTIME_DEPS = {'litert': 'litert_lm', 'mlx': 'mlx_lm', 'llama': 'llama_cpp'}
+RUNTIME_REMEDY = {
+    'remote': 'hosted models need an API key in the environment',
+    'claude': 'install Claude Code (https://claude.com/claude-code) and run `claude /login`',
+    'copilot': 'sign in to GitHub Copilot in an editor, or run `copilot_login()` from rishi.copilot',
+    'litert': 'LiteRT ships with rishi; reinstall it with `pip install --upgrade rishi`',
+}
+MODELS = {**{k: ('litert', v) for k, v in LOCAL.items()}, **{k: ('mlx', v) for k, v in MLX.items()},**{k: ('llama', v) for k, v in LLAMA.items()},**{k: ('claude', v) for k, v in {**CLAUDE, **CLAUDE_ALIASES}.items()},**{k: ('remote', v) for k, v in CLOUD.items()}}
+PII_OFF = 'off'
+PII_MODES = (PII_OFF, 'redact', 'refuse')
 
+# %% ../nbs/00_core.ipynb #68d2ad3a
 def claude_ctx(model_id):
     "What a Claude Code model holds, or `DFLT_AGENT_CTX` when its window is not known here."
     mid = str(model_id or '')
     return next((c for p, c in CLAUDE_CTX.items() if mid.startswith(p)), DFLT_AGENT_CTX)
-RUNTIMES = ('litert', 'mlx', 'llama', 'ollama', 'claude', 'copilot', 'remote')
-AGENTS = ('claude',)
-HOSTED = ('remote', 'copilot', *AGENTS)
-COPILOT_UNAVAILABLE = ('copilot runtime is unavailable; sign in to Copilot in an editor or run '
-    '`python -c "from rishi.copilot import copilot_login; copilot_login()"`')
-CUSTOM = {}
-_RUNTIME_DEPS = {'litert': 'litert_lm', 'mlx': 'mlx_lm', 'llama': 'llama_cpp'}
 
+# %% ../nbs/00_core.ipynb #de745a4a
 def _harness_available(mod, binary):
     "Whether an agent harness can be reached: its module imports, and the binary its SDK spawns."
     try: m = importlib.import_module(mod)
@@ -101,29 +88,24 @@ def _harness_available(mod, binary):
     try: return bool(getattr(m, binary)())
     except Exception: return False
 
+# %% ../nbs/00_core.ipynb #8f978b99
 def _claude_available(): return _harness_available('rishi.claude', 'claude_bin')
 
+# %% ../nbs/00_core.ipynb #ae0f2158
 def _copilot_available():
-    """Whether Copilot can be reached: rishi imports it, and a GitHub OAuth token is on hand to
-    exchange. Reads the environment and the editor config files, and never the network."""
+    "Checks if Copilot is reachable by verifying the GitHub OAuth token and reading environment/editor config files, without making network calls."
     try:
-        m = importlib.import_module('rishi.copilot')
-        return bool(m.copilot_oauth())
+        from rishi.copilot import copilot_oauth as co
+        return bool(co())
     except Exception: return False
         
-#: rishi 0.1.32 made `litert-lm-api` a base dependency and retired the `litert` extra, so the
-#: default remedy would name an extra pip resolves to nothing.
-RUNTIME_REMEDY = {
-    'remote': 'hosted models need an API key in the environment',
-    'claude': 'install Claude Code (https://claude.com/claude-code) and run `claude /login`',
-    'copilot': 'sign in to GitHub Copilot in an editor, or run `copilot_login()` from rishi.copilot',
-    'litert': 'LiteRT ships with rishi; reinstall it with `pip install --upgrade rishi`',
-}
 
+# %% ../nbs/00_core.ipynb #3613bae4
 def runtime_remedy(runtime):
     "One sentence saying what to do about a runtime that cannot be reached here."
     return RUNTIME_REMEDY.get(runtime, f'install the backend with `pip install rishi[{runtime}]`')
 
+# %% ../nbs/00_core.ipynb #3af627ce
 @functools.lru_cache(maxsize=1)
 def _ollama_available():
     "Whether ollama can serve here: the daemon is answering, or its binary is on hand."
@@ -133,6 +115,7 @@ def _ollama_available():
         except Exception: return bool(ollama_bin())
     except Exception: return False
 
+# %% ../nbs/00_core.ipynb #174500b5
 def runtime_available(runtime):
     "Whether Rishi's optional dependency for `runtime` can be reached. Never raises."
     if runtime == 'remote': return True
@@ -141,18 +124,6 @@ def runtime_available(runtime):
     if runtime == 'ollama': return _ollama_available()
     try: return importlib.util.find_spec(_RUNTIME_DEPS[runtime]) is not None
     except (ImportError, KeyError, ValueError): return False
-
-MODELS = {**{k: ('litert', v) for k, v in LOCAL.items()},
-          **{k: ('mlx', v) for k, v in MLX.items()},
-          **{k: ('llama', v) for k, v in LLAMA.items()},
-          **{k: ('claude', v) for k, v in {**CLAUDE, **CLAUDE_ALIASES}.items()},
-          **{k: ('remote', v) for k, v in CLOUD.items()}}
-
-#: What a `--pii` flag accepts, and what `VaultHost(pii=)` carries into every vault read.
-#: `off` is what every earlier release did, so turning the gate on is a choice a caller makes
-#: rather than a floor that moves under one. vishalakshi applies it; the host only carries it.
-PII_OFF = 'off'
-PII_MODES = (PII_OFF, 'redact', 'refuse')
 
 # %% ../nbs/00_core.ipynb #9881cc3b
 def _json_has(path, *keys):
@@ -217,35 +188,29 @@ def copilot_catalog(ttl=300):
 
 def _copilot_chat_models():
     "Chat ids this Copilot plan can reach. Per-plan and it moves. It is asked for, never tabled."
-    return [i for i, m in copilot_catalog().items()
-            if (m.get('capabilities') or {}).get('type') == 'chat']
+    return [i for i, m in copilot_catalog().items() if (m.get('capabilities') or {}).get('type') == 'chat']
 
 def available_models(include_legacy=False):
     "Models selectable here. Specialized older generations appear only when requested."
     rows = []
     for runtime, models in (('litert', LOCAL), ('mlx', MLX), ('llama', LLAMA)):
         if not runtime_available(runtime): continue
-        rows += [{'value': name, 'label': name, 'provider': runtime,
-                  'source': f'on device via Rishi {runtime}'} for name in models]
+        rows += [{'value': name, 'label': name, 'provider': runtime, 'source': f'on device via Rishi {runtime}'} for name in models]
     if runtime_available('ollama'):
         try:
             from rishi.ollama import OllamaClient
             for m in OllamaClient().models():          # names, not rows
-                rows.append({'value': f'ollama/{m}', 'label': m, 'provider': 'ollama',
-                             'source': 'on device via the ollama daemon'})
+                rows.append({'value': f'ollama/{m}', 'label': m, 'provider': 'ollama', 'source': 'on device via the ollama daemon'})
         except Exception: pass
     if runtime_available('claude'):
-        rows += [{'value': name, 'label': mid, 'provider': 'claude',
-                  'source': 'Claude Code (CLI or SDK)'} for name, mid in CLAUDE.items()]
+        rows += [{'value': name, 'label': mid, 'provider': 'claude', 'source': 'Claude Code (CLI or SDK)'} for name, mid in CLAUDE.items()]
     if runtime_available('copilot'):
         for model in _copilot_chat_models():
-            rows.append({'value': f'copilot/{model}', 'label': model, 'provider': 'copilot',
-                         'source': 'GitHub Copilot subscription'})
+            rows.append({'value': f'copilot/{model}', 'label': model, 'provider': 'copilot', 'source': 'GitHub Copilot subscription'})
     auth = auth_status()
     if auth['openai']['available']:
         for model in _openai_models(include_legacy):
-            rows.append({'value': f'openai/{model}', 'label': model, 'provider': 'openai',
-                         'source': auth['openai']['source']})
+            rows.append({'value': f'openai/{model}', 'label': model, 'provider': 'openai', 'source': auth['openai']['source']})
     try:
         from fastllm.types import model_info_registry
         vendors = ('openai', 'codex', 'gemini')
@@ -254,8 +219,7 @@ def available_models(include_legacy=False):
             for v, model in model_info_registry:
                 if v != vendor: continue
                 if not include_legacy and re.match(r'^gpt-4(?:\.|-|$)', model): continue
-                rows.append({'value': f'{vendor}/{model}', 'label': model, 'provider': vendor,
-                             'source': auth[vendor]['source']})
+                rows.append({'value': f'{vendor}/{model}', 'label': model, 'provider': vendor, 'source': auth[vendor]['source']})
     except Exception: pass
     if auth['anthropic']['available']:
         catalog = set()
@@ -264,8 +228,7 @@ def available_models(include_legacy=False):
             catalog = {model for vendor, model in model_info_registry if vendor == 'anthropic' and model.startswith('claude-')}
         except Exception: pass
         catalog.update(model.split('/', 1)[1] for model in CLOUD.values() if model.startswith('anthropic/'))
-        for model in sorted(catalog): rows.append({'value': f'anthropic/{model}', 'label': model,
-                                                   'provider': 'anthropic', 'source': auth['anthropic']['source']})
+        for model in sorted(catalog): rows.append({'value': f'anthropic/{model}', 'label': model, 'provider': 'anthropic', 'source': auth['anthropic']['source']})
     seen, out = set(), []
     for row in rows:
         if row['value'] in seen: continue
@@ -277,12 +240,8 @@ DFLT_LOCAL = 'gemma-e4b'
 completer = DFLT_LOCAL
 cheap = completer          # back-compat alias
 
-DEFAULT_POLICY = {'turn': None, 'oneshot': completer, 'inline': None, 'completion': None,
-                  'classify': None, 'summary': None, 'subagent': 'gpt-4.1'}
-
-_LOCAL_CTX = {'gemma-e2b': 16_384, 'gemma-e4b': 16_384, 'gemma-12b': 32_000,
-              'qwen-4b': 32_768, 'mini-coder-4b': 32_768, 'ornith-9b': 32_768,
-              'llama-qwen-0.6b': 32_768, 'llama-qwen-1.7b': 32_768, 'llama-qwen-4b': 32_768}
+DEFAULT_POLICY = {'turn': None, 'oneshot': completer, 'inline': None, 'completion': None, 'classify': None, 'summary': None, 'subagent': 'gpt-4.1'}
+_LOCAL_CTX = {'gemma-e2b': 16_384, 'gemma-e4b': 16_384, 'gemma-12b': 32_000, 'qwen-4b': 32_768, 'mini-coder-4b': 32_768, 'ornith-9b': 32_768, 'llama-qwen-0.6b': 32_768, 'llama-qwen-1.7b': 32_768, 'llama-qwen-4b': 32_768}
 DFLT_LOCAL_CTX = 32_768
 
 
@@ -332,12 +291,10 @@ class ModelSpec:
     def __str__(self): return f'{self.name} ({self.model_id})'
 
 def _copilot_ctx(model_id):
-    """Context window and a note for a Copilot model. Copilot reports its own. Nothing is guessed.
-    Reads the entry here rather than through `rishi.copilot.copilot_ctx`: the catalogue is already
-    in hand, and this then needs no rishi newer than the one that fetched it."""
+    "Context window and a note for a Copilot model."
     lim = ((copilot_catalog().get(model_id) or {}).get('capabilities') or {}).get('limits') or {}
     if (n := lim.get('max_prompt_tokens') or lim.get('max_context_window_tokens')): return int(n), ''
-    return _cloud_ctx(model_id)      # the same id under its own vendor is the next best answer
+    return _cloud_ctx(model_id)
 
 def _cloud_ctx(model_id):
     "Context window and a note for a cloud model, from fastllm's tables. Silent about failure."
@@ -352,20 +309,12 @@ def _cloud_ctx(model_id):
 
 # %% ../nbs/00_core.ipynb #1d37d28a
 def unknown_model(name):
-    """What to say about a name nothing matches.
-
-    Printing all of `MODELS` buried the useful part: `claude-sonnet-4.6` for `claude-sonnet-4-6` is
-    one character, and the reader had to find it among forty-odd names. `/models` lists them.
-    """
     near = difflib.get_close_matches(str(name), MODELS, n=2, cutoff=0.6)
     hint = f'; did you mean {" or ".join(repr(n) for n in near)}?' if near else '.'
-    return (f'unknown model {name!r}{hint} `/models` lists what is configured, and any '
-            f'vendor/model spec works too.')
+    return (f'unknown model {name!r}{hint} `/models` lists what is configured, and any vendor/model spec works too.')
 
-#: Prefixes that name a runtime or a transport rather than a vendor, in the spelling that works.
 PREFIXES = RUNTIMES
-RETIRED = {'claude_code': 'use `claude/` instead: the same models, through Claude Code itself',
-           'cursor': 'the Cursor backend was removed'}
+RETIRED = {'claude_code': 'use `claude/` instead: the same models, through Claude Code itself', 'cursor': 'the Cursor backend was removed'}
 
 def resolve(name, default_local=DFLT_LOCAL):
     'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec.'
@@ -375,8 +324,7 @@ def resolve(name, default_local=DFLT_LOCAL):
         config = CUSTOM.get(name, {}).get('config', {})
         if backend not in ('remote', 'copilot'):
             if not runtime_available(backend): raise RuntimeError(f'{backend} runtime is unavailable; {runtime_remedy(backend)}')
-            ctx = claude_ctx(mid) if backend == 'claude' else \
-                  DFLT_AGENT_CTX if backend in AGENTS else local_ctx(name)
+            ctx = claude_ctx(mid) if backend == 'claude' else DFLT_AGENT_CTX if backend in AGENTS else local_ctx(name)
             return ModelSpec(name, backend, mid, ctx, config=config)
         if backend == 'copilot':
             ctx, note = _copilot_ctx(mid)
@@ -392,13 +340,11 @@ def resolve(name, default_local=DFLT_LOCAL):
             return ModelSpec(name, 'copilot', model_id, ctx, note)
         if runtime in ('litert', 'mlx', 'llama', 'ollama', *AGENTS):
             if not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
-            ctx = claude_ctx(model_id) if runtime == 'claude' else \
-                  DFLT_AGENT_CTX if runtime in AGENTS else local_ctx(name)
+            ctx = claude_ctx(model_id) if runtime == 'claude' else DFLT_AGENT_CTX if runtime in AGENTS else local_ctx(name)
             return ModelSpec(name, runtime, model_id, ctx)
         from urai import infer_runtime
         if (inferred := infer_runtime(name)) in ('litert', 'mlx', 'llama'):
-            if not runtime_available(inferred):
-                raise RuntimeError(f'{inferred} runtime is unavailable; {runtime_remedy(inferred)}')
+            if not runtime_available(inferred): raise RuntimeError(f'{inferred} runtime is unavailable; {runtime_remedy(inferred)}')
             return ModelSpec(name, inferred, name, local_ctx(name))
         ctx, note = _cloud_ctx(name)
         return ModelSpec(name, 'remote', name, ctx, note)
@@ -406,7 +352,7 @@ def resolve(name, default_local=DFLT_LOCAL):
 
 @functools.lru_cache(maxsize=256)
 def _caps(model_id, runtime):
-    "`urai.model_caps`, memoised. `None` where the installed urai predates it."
+    "`urai.model_caps`, memoised."
     try:
         from urai import model_caps
         return model_caps(model_id, runtime=runtime)
@@ -432,6 +378,7 @@ def model_note(spec):
 SMALL_CTX = 24_000       # at or below this window, a model is briefed frugally
 TOOL_MAX_FLOOR = 1500    # chars. Below this a file view stops being a file view
 FRUGAL_DROP = ('memory', 'web')
+TAGS_SCHEMA_TOKENS = 3300
 
 @dataclass(frozen=True)
 class Budget:
@@ -441,46 +388,29 @@ class Budget:
     tool_max: int = 0        # chars one tool result may spend
     note: str = ''           # why, for a status bar
 
-TAGS_SCHEMA_TOKENS = 3300
-
 def budget_for(spec, tool_max, channel='native'):
-    """The briefing `spec`'s model can afford, from its context window.
-
-    `tool_max` is the caller's own default, and this only ever lowers it. Raising the clip on a
-    large window would change the case that already works, and the case that does not is the
-    only reason this exists.
-
-    A spec with no window, or one we could not read, gets the full briefing. Withholding tools
-    from a model whose size is unknown turns not knowing into a smaller agent, and `_cloud_ctx`
-    already assumes 128k when a table fails it.
-    """
+    "Restricts tool context to the model's window as defined in `spec`, or to `tool_max` if unset. If the window size can't be determined, defaults to the full briefing. Never increases the context size."
     ctx = getattr(spec, 'ctx', 0) or 0
     if ctx > 0 and channel == 'tags': ctx = max(1, ctx - TAGS_SCHEMA_TOKENS)
     if ctx <= 0 or ctx > SMALL_CTX: return Budget(tool_max=tool_max, note='full briefing')
     mx = min(tool_max, max(TOOL_MAX_FLOOR, (ctx//16)*4))
-    return Budget(FRUGAL_DROP, False, mx,
-                  f'{ctx//1000}k window: no inlined skills, no {"/".join(FRUGAL_DROP)} tools, '
-                  f'tool results clipped to {mx} chars')
+    return Budget(FRUGAL_DROP, False, mx, f'{ctx//1000}k window: no inlined skills, no {"/".join(FRUGAL_DROP)} tools, tool results clipped to {mx} chars')
 
 # %% ../nbs/00_core.ipynb #3e2adbad
 def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):
     "Register a configurable model alias for this process. Persistence belongs to the host app."
     name, model_id = (name or '').strip(), (model_id or '').strip()
-    if model_id.startswith(('https://huggingface.co/', 'http://huggingface.co/')):
+    if model_id.startswith(('https://huggingface.co/', 'http://huggingface.co/')): 
         model_id = model_id.split('huggingface.co/', 1)[1].strip('/').split('/tree/', 1)[0]
     if not name: name = model_id.rsplit('/', 1)[-1]
     if not name or not model_id: raise ValueError('model name and model id are required')
     if runtime is None:
         from urai import resolve_runtime
         runtime, model_id = resolve_runtime(model_id)
-    # `RUNTIMES`, not a literal: whatever `resolve_runtime` can infer has to be here, or
-    # `register_model` fails on the answer it just asked for
     if runtime not in RUNTIMES: raise ValueError(f'unknown runtime {runtime!r}')
-    if runtime != 'remote' and not runtime_available(runtime):
-        raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
+    if runtime != 'remote' and not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
     MODELS[name] = (runtime, model_id); _LOCAL_CTX[name] = int(ctx or 128_000)
-    CUSTOM[name] = {'name': name, 'model_id': model_id, 'runtime': runtime,
-                    'ctx': int(ctx or 128_000), 'note': note, 'config': config}
+    CUSTOM[name] = {'name': name, 'model_id': model_id, 'runtime': runtime, 'ctx': int(ctx or 128_000), 'note': note, 'config': config}
     return resolve(name)
 
 def unregister_model(name):
@@ -489,9 +419,7 @@ def unregister_model(name):
 
 # %% ../nbs/00_core.ipynb #1e5cd7ee
 TOOL_CHANNELS = ('native', 'tags')
-
 _forced_tags = {}   # model_id -> why its wire tool channel is closed on this machine
-
 
 def force_tags(model_id, why=''):
     "Record that this model's tools cannot travel on the wire here. Later turns stop trying."
@@ -499,15 +427,12 @@ def force_tags(model_id, why=''):
     _forced_tags[str(model_id)] = why
     return why
 
-
 def forget_forced_tags():
     "Forget what was learned about wire channels. A fixed configuration is tried again."
     _forced_tags.clear()
 
-
 def tool_channel(spec, chat=None):
-    """Which channel a model's tool schemas travel on: `'native'` on the wire, `'tags'` in the
-    system prompt. Takes a `ModelSpec` or a bare model id, and the live chat when there is one."""
+    "Returns the channel ('native' or 'tags') for a model's tool schemas, given a `ModelSpec` or model id and optional live chat."
     if (v := (env('TOOL_CHANNEL') or '').strip().lower()) in TOOL_CHANNELS: return v
     if (ch := getattr(chat, 'tool_channel', None)) in TOOL_CHANNELS: return ch
     mid = str(getattr(spec, 'model_id', spec) or '')

@@ -16,5 +16,4 @@ from shalya.tools import git_tools
 
 # %% ../nbs/12_git.ipynb #0c138d01
 #: `from gheasy.repo import *` skips the underscored names, and the git tool sets are shalya's.
-_all_ = ['git_tools', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS',
-         '_conflict_blocks', '_invalidate', '_plural', '_run', '_unborn']
+_all_ = ['git_tools', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS','_conflict_blocks', '_invalidate', '_plural', '_run', '_unborn']

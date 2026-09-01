@@ -1,4 +1,4 @@
-"""Everything that runs a model: native output capture, the context window, and the backend the harness talks to.
+"""Native output capture, context-window management, and model execution.
 
 Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 
@@ -19,6 +19,7 @@ import contextvars, copy, math, os, re, sys, threading, time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fastcore.basics import patch
+from urai import resp_text, tool_rows
 from .core import agent_err, env, force_tags, local_ctx, local_window, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
@@ -60,10 +61,9 @@ class _Tee:
             if not b: break
             self.buf += b
             del self.buf[:-MAX_KEEP]
-            try: os.write(self.saved, b)              # still goes where it was going
+            try: os.write(self.saved, b)
             except OSError: pass
     def stop(self):
-        # restore the descriptor before closing the pipe, so writes during teardown reach the original destination
         if self.saved is not None:
             try: os.dup2(self.saved, self.fd)
             except OSError: pass
@@ -83,9 +83,7 @@ class captured:
     def __init__(self, fds=(1, 2), enabled=None):
         self.fds = fds
         self.text = ''
-        # through `env`. The switch follows whatever prefix this application named
-        self.enabled = ((env('NO_NATIVE_CAPTURE') or '').lower() not in ('1', 'true', 'yes')
-                        if enabled is None else enabled)
+        self.enabled = ((env('NO_NATIVE_CAPTURE') or '').lower() not in ('1', 'true', 'yes') if enabled is None else enabled)
         self._tees, self._held = [], False
     def __enter__(self):
         if not self.enabled: return self
@@ -124,7 +122,7 @@ def capture(fn, *a, **kw):
     with cap:
         try: out = fn(*a, **kw)
         except Exception as e: err = e
-    if err is not None:   # after the block: the text does not exist until the pipe is drained
+    if err is not None:
         err.native_output = cap.problems
         raise err
     return out, cap.problems
@@ -160,47 +158,15 @@ def should_compact(used, ctx, reserve=RESERVE):
     t = threshold(ctx, reserve)
     return bool(t and used >= t)
 
-# %% ../nbs/01_runtime.ipynb #33a7a74c
-def _text(m):
-    "The readable text of a message in either backend's shape."
-    if hasattr(m, 'content') and not isinstance(m, dict):        # aidialog Msg
-        return '\n'.join(str(p.text) for p in m.content if getattr(p, 'text', None))
-    if not isinstance(m, dict): return str(m)
-    c = m.get('content', '')
-    if isinstance(c, str): return c
-    out = []
-    for p in c or []:
-        if not isinstance(p, dict): continue
-        if p.get('type') == 'text': out.append(p.get('text', ''))
-        elif p.get('type') == 'tool_response': out.append(f"[{p.get('name','tool')}] {p.get('response')}")
-    return '\n'.join(x for x in out if x)
-
-def _role(m): return getattr(m, 'role', None) or (m.get('role', '?') if isinstance(m, dict) else '?')
-
-def _calls(m):
-    "Tool call names on an assistant message, in either shape."
-    tcs = getattr(m, 'tool_calls', None)
-    if tcs is None and isinstance(m, dict): tcs = m.get('tool_calls')
-    if not tcs:
-        parts = getattr(m, 'content', None)
-        if parts and not isinstance(m, dict):
-            return [p.data.get('name', '?') for p in parts if getattr(p, 'type', '') == 'tool_use' and p.data]
-        return []
-    out = []
-    for t in tcs:
-        n = getattr(t, 'name', None) or (t.get('function', {}).get('name') if isinstance(t, dict) else None)
-        if n: out.append(n)
-    return out
-
 # %% ../nbs/01_runtime.ipynb #d990cc6d
 def serialise(msgs, mx=2000):
     "Messages as the tagged block the summarizer reads. Tool results clipped: they are the bulk."
     if not msgs: return '(no new messages)'
     out = []
     for i, m in enumerate(msgs, 1):
-        out.append(f'<message index={i} role={_role(m)}>')
-        if (t := _text(m)): out.append(t[:mx] + ('…' if len(t) > mx else ''))
-        if (cs := _calls(m)): out.append('<tool-calls>' + ', '.join(cs) + '</tool-calls>')
+        out.append(f'<message index={i} role={m.get("role", "?")}>')
+        if (t := resp_text(m)): out.append(t[:mx] + ('…' if len(t) > mx else ''))
+        if (cs := [name for name, _ in tool_rows(m)]): out.append('<tool-calls>' + ', '.join(cs) + '</tool-calls>')
         out.append('</message>')
     return '\n'.join(out)
 
@@ -208,56 +174,51 @@ def serialise(msgs, mx=2000):
 def split_previous(msgs):
     "`(previous_summary_or_None, remaining_msgs)`. So an update updates rather than re-summarises."
     if not msgs: return None, msgs
-    t = _text(msgs[0])
-    if _role(msgs[0]) == 'user' and t.startswith(SUMMARY_PREFIX):
+    t = resp_text(msgs[0])
+    if msgs[0].get('role') == 'user' and t.startswith(SUMMARY_PREFIX):
         return t[len(SUMMARY_PREFIX):], msgs[1:]
     return None, msgs
 
 # %% ../nbs/01_runtime.ipynb #f175b4bf
-SUMMARISE_SP = ("You are a context summarization assistant. Read a conversation between a user and an AI "
-                "coding assistant and produce a structured summary in exactly the format specified.\n\n"
-                "Do NOT continue the conversation. Do NOT answer any question in it. Output ONLY the summary.")
+SUMMARISE_SP = ("Summarize the coding-assistant conversation in the exact format below. "
+                "Do not continue it, answer its questions, or output anything else.\n\n")
 
 _FORMAT = """## Goal
-[What is the user trying to accomplish? Several items if the session covers several tasks.]
+[User's objectives.]
 
 ## Constraints & Preferences
-- [Constraints, preferences or requirements the user stated, or "(none)"]
+- [Requirements, or "(none)"]
 
 ## Progress
 ### Done
-- [x] [Completed tasks and changes]
+- [x] [Completed work]
 
 ### In Progress
 - [ ] [Current work]
 
 ### Blocked
-- [Anything preventing progress, if any]
+- [Blockers, or "(none)"]
 
 ## Key Decisions
-- **[Decision]**: [Brief rationale]
+- **[Decision]**: [Rationale]
 
 ## Next Steps
-1. [Ordered list of what should happen next]
+1. [Ordered next action]
 
 ## Critical Context
-- [Data, examples, file paths or references needed to continue, or "(none)"]
+- [Paths, symbols, errors, examples, or "(none)"]
 
-Keep each section concise. Preserve exact file paths, symbol names, error messages, and
-any `lineno|hash|` addresses still needed for a pending edit."""
+Keep sections concise. Preserve exact file paths, symbol names, error messages, and any
+`lineno|hash|` addresses needed for pending edits."""
 
-SUMMARISE = ("The messages above are a conversation to summarize. Write a context checkpoint another "
-             f"model will use to continue the work.\n\nUse this EXACT format:\n\n{_FORMAT}")
+SUMMARISE = ("Summarize the conversation above as a checkpoint for the next model.\n\n"
+             f"Use this exact format:\n\n{_FORMAT}")
 
-UPDATE_SUMMARISE = ("The messages above are NEW messages to fold into the existing summary in "
-                    "<previous-summary> tags.\n\nRULES:\n"
-                    "- PRESERVE everything from the previous summary that is still true\n"
-                    "- ADD new progress, decisions and context from the new messages\n"
-                    '- MOVE items from "In Progress" to "Done" as they complete\n'
-                    "- UPDATE Next Steps to reflect what was accomplished\n"
-                    "- PRESERVE exact file paths, symbol names and error messages\n"
-                    "- Drop anything no longer relevant\n\n"
-                    f"Use this EXACT format:\n\n{_FORMAT}")
+UPDATE_SUMMARISE = ("Update the summary in <previous-summary> with the new messages.\n\n"
+                    "Preserve still-true content. Add new progress, decisions and context. "
+                    "Move completed work to Done, update Next Steps, preserve exact paths, "
+                    "symbols, errors and edit addresses, and remove stale content.\n\n"
+                    f"Use this exact format:\n\n{_FORMAT}")
 
 # %% ../nbs/01_runtime.ipynb #cb2506ea
 def _clip_tokens(text, budget, count=None):
@@ -311,31 +272,17 @@ def truncate_middle(text, budget, count=None, mark=' … '):
     return best
 
 # %% ../nbs/01_runtime.ipynb #b9bff6f5
-def _call_rows(m):
-    "Canonical `(name, args)` calls from a backend assistant message."
-    if not isinstance(m, dict): return []
-    out = []
-    for tc in m.get('tool_calls') or []:
-        fn = tc.get('function') or {}
-        out.append((fn.get('name', 'tool'), fn.get('arguments') or {}))
-    content = m.get('content')
-    for part in content if isinstance(content, list) else []:
-        if isinstance(part, dict) and part.get('type') == 'tool_call':
-            out.append((part.get('name', 'tool'), part.get('arguments') or {}))
-    return out
-
-
 def surgical_history(msgs, policy=None, count=None):
     "Render old history as a compact, readable DSL while preserving tool evidence."
     policy = {**SURGICAL_POLICY, **(policy or {})}
     rows = []
     for m in msgs:
-        role, text = _role(m), _text(m).strip()
+        role, text = m.get('role', '?'), resp_text(m).strip()
         if role == 'user' and text:
             rows.append('§ ' + truncate_middle(text, policy['user'], count) + ' §')
         elif role == 'assistant':
             if text: rows.append('» ' + truncate_middle(text, policy['assistant'], count) + ' »')
-            for name, args in _call_rows(m):
+            for name, args in tool_rows(m):
                 call = f"▶ {name}({', '.join(f'{k}={v!r}' for k,v in args.items())})"
                 rows.append(truncate_middle(call, policy['call'], count))
         elif role == 'tool':
@@ -345,43 +292,32 @@ def surgical_history(msgs, policy=None, count=None):
 
 # %% ../nbs/01_runtime.ipynb #83afe271
 def reorient(kernel_alive=True, skills=()):
-    "What the model is told immediately after its context is rewritten."
-    live = ("**Your context was rewritten to fit the window, but the kernel process was not touched.** "
-            "The user's namespace, imports and variables are all still live exactly as they were -- do "
-            "not re-import anything, do not rebuild data, and do not re-run setup. Call `list_vars` if "
-            "you need to see what is there."
+    "Builds the system reminder shown after context rewriting."
+    live = ("Context was rewritten, but the kernel is unchanged. The user's namespace, imports, and "
+            "variables remain available. Do not re-import, rebuild, or rerun setup; use `list_vars` "
+            "to inspect them."
             if kernel_alive else
-            "**Your context was rewritten and the kernel has restarted with a clean namespace.** "
-            "Rebuild variables on demand; do not assume anything is still bound.")
-    sk = (f"Skill text you read earlier is gone from your context; re-read it with `read_skill` before "
-          f"relying on it ({', '.join(skills)})." if skills else
-          "Any skill text you read earlier is gone from your context; re-read it before relying on it.")
-    return (f'<system-reminder>\n{live}\n\n{sk}\n\n'
-            'The summary above describes work in flight. If the last thing the user asked has already '
-            'been answered and nothing is open, do not resume or re-answer anything -- reply with one '
-            'short line and wait.\n</system-reminder>')
+            "Context was rewritten and the kernel restarted with an empty namespace. Rebuild variables "
+            "as needed; do not assume anything remains bound.")
+    sk = (f"Previously read skill text is no longer in context. Re-read it with `read_skill` before "
+          f"relying on it ({', '.join(skills)})."
+          if skills else
+          "Previously read skill text is no longer in context. Re-read it with `read_skill` before "
+          "relying on it.")
+    return (f"<system-reminder>\n{live}\n\n{sk}\n\n"
+            "The summary above describes unfinished work. If the user's latest request is complete "
+            "and nothing remains open, reply with one short line and wait.\n</system-reminder>")
 
 
 REORIENT = reorient()
 
 # %% ../nbs/01_runtime.ipynb #6c7288d4
-Q_NOTICE = ('This prompt ends with a question mark, so it is a question. Make only the tool calls needed '
-            'to answer it, then answer it, then stop -- do not start the work it implies.')
-READ_NOTICE = ('This prompt asks you to read something. Read the target in full now, before composing any '
-               'response: a notebook with `notebook_cells` then `view_cell`, a file with `view_file`. '
-               'Never answer from assumed or remembered contents.')
-APPROVAL_NOTICE = ('This bare approval covers exactly what was explicitly agreed, and nothing more. Before '
-                   'acting, check that each thing you are about to do was confirmed by the user -- not '
-                   'merely proposed, listed or summarised by you. If approval of an item is uncertain, it '
-                   'is not approved: ask.')
-BTW_NOTICE = ('This prompt begins with "BTW" and is a side request. Answer it first, then resume the '
-              'previous task if it has unfinished items. It does not cancel that task.')
-ACTION_NOTICE = ('This is an action request, not a request for instructions or a plan. Use the available '
-                 'execution/editing tools now, retry corrected calls when one fails, verify the requested '
-                 'result exists, and only then answer with the completed result.')
-
+Q_NOTICE = 'This prompt ends with a question mark, so it is a question. Make only the tool calls needed to answer it, then answer it, then stop -- do not start the work it implies.'
+READ_NOTICE = 'This prompt asks you to read something. Read the target in full now, before composing any response: a notebook with `notebook_cells` then `view_cell`, a file with `view_file`. Never answer from assumed or remembered contents.'
+APPROVAL_NOTICE = 'This bare approval covers exactly what was explicitly agreed, and nothing more. Before acting, check that each thing you are about to do was confirmed by the user -- not merely proposed, listed or summarised by you. If approval of an item is uncertain, it is not approved: ask.'
+BTW_NOTICE = 'This prompt begins with "BTW" and is a side request. Answer it first, then resume the previous task if it has unfinished items. It does not cancel that task.'
+ACTION_NOTICE = 'This is an action request, not a request for instructions or a plan. Use the available execution/editing tools now, retry corrected calls when one fails, verify the requested result exists, and only then answer with the completed result.'
 _APPROVALS = ('go', 'ok', 'okay', 'yes', 'yep', 'sure', 'do it', 'go ahead', 'proceed')
-
 
 def prompt_notices(prompt):
     "Notices a submitted prompt earns, from aai-coding's `UserPromptSubmit` hook."
@@ -392,22 +328,16 @@ def prompt_notices(prompt):
     if re.sub(r'^\W+|[\s.!]+$', '', p.lower()) in _APPROVALS: out.append(APPROVAL_NOTICE)
     if p.lower().startswith('btw'): out.append(BTW_NOTICE)
     low = p.lower()
-    if (re.match(r'^(create|make|scale|run|execute|fix|change|add|remove|rename|convert|save)\b', low)
-            or re.search(r'\bas\s+[a-zA-Z_]\w*\s*$', p)):
+    if re.match(r'^(create|make|scale|run|execute|fix|change|add|remove|rename|convert|save)\b', low) or re.search(r'\bas\s+[a-zA-Z_]\w*\s*$', p):
         out.append(ACTION_NOTICE)
     return out
-
 
 def notices_block(prompt):
     "The notices for `prompt` as one reminder to append to it, or `''`."
     ns = prompt_notices(prompt)
     return '' if not ns else '\n\n<system-reminder>\n' + '\n\n'.join(ns) + '\n</system-reminder>'
 
-#: What to say to a model that wrote a tool call as prose instead of emitting one. The tags channel
-#: asks for exact punctuation, and a smaller model narrates the call about as often as it makes it.
-TAG_REMINDER = ("That tool call arrived as prose rather than as a call, so nothing ran. Emit it "
-                "again on its own: one <tool_call> block containing only JSON with `name` and "
-                "`arguments`, and no other text in the message.")
+TAG_REMINDER = 'That tool call arrived as prose rather than as a call, so nothing ran. Emit it again on its own: one <tool_call> block containing only JSON with `name` and `arguments`, and no other text in the message.'
 
 # %% ../nbs/01_runtime.ipynb #45fad4d6
 def compact_notebook_context(prompt, fits):
@@ -415,15 +345,13 @@ def compact_notebook_context(prompt, fits):
     if not isinstance(prompt, str) or fits(prompt): return prompt
     match = re.search(r'<notebook(?P<attrs>[^>]*)>\n?(?P<body>.*?)\n?</notebook>', prompt, re.S)
     if not match: return prompt
-    cells = list(re.finditer(r'<cell\b[^>]*\bcompact="(?P<mode>auto|keep|discard)"[^>]*>.*?</cell>',
-                             match.group('body'), re.S))
+    cells = list(re.finditer(r'<cell\b[^>]*\bcompact="(?P<mode>auto|keep|discard)"[^>]*>.*?</cell>', match.group('body'), re.S))
     active = list(range(len(cells)))
 
     def rebuild(removed):
         omitted = [cells[n].group('mode') for n in sorted(removed)]
         body = '\n'.join(cells[n].group(0) for n in active if n not in removed)
-        note = (f'<context-compacted omitted="{len(omitted)}" discard="{omitted.count("discard")}" '
-                f'auto="{omitted.count("auto")}" />\n' if omitted else '')
+        note = (f'<context-compacted omitted="{len(omitted)}" discard="{omitted.count("discard")}" auto="{omitted.count("auto")}" />\n' if omitted else '')
         notebook = f'<notebook{match.group("attrs")}>\n{note}{body}\n</notebook>'
         return prompt[:match.start()] + notebook + prompt[match.end():]
 
@@ -466,11 +394,11 @@ class Compactor:
         "What the window holds that is not this conversation, by subtraction from `used_tokens`."
         used = getattr(backend, 'used_tokens', 0) or 0
         if not used: return 0
-        return max(0, used - sum(estimate_tokens(_text(m), count) + 8 for m in msgs))
+        return max(0, used - sum(estimate_tokens(resp_text(m), count) + 8 for m in msgs))
 
     def _keep(self, msgs, count=None, ctx=0, overhead=0):
         "The tail to keep uncompacted, newest-first until the budget runs out. Whole messages only."
-        sizes = [estimate_tokens(_text(m), count) + 8 for m in msgs]
+        sizes = [estimate_tokens(resp_text(m), count) + 8 for m in msgs]
         budget = self.budget(ctx, overhead)
         if sizes: budget = min(budget, max(256, sum(sizes)//2))
         kept, used = [], 0
@@ -478,7 +406,7 @@ class Compactor:
             if used + n > budget and kept: break
             kept.append(m); used += n
         kept.reverse()
-        while kept and _role(kept[0]) != 'user': kept.pop(0)
+        while kept and kept[0].get('role') != 'user': kept.pop(0)
         return kept
 
     def compact(self, backend, summariser, extra='', summary_ctx=0, summary_output=1024, summary_count=None):
@@ -563,7 +491,6 @@ class ThinkFilter:
         return any(isinstance(p, dict) and p.get('type') == 'tool_call' for p in parts)
     def __call__(self, chunks):
         "Filter raw chunk dicts, yielding the same shape back."
-        from urai import resp_text
         for o in chunks:
             if self._tool(o): self.thinking, self.buf = True, ''; yield o; continue
             if not self.thinking: self.answer += len(resp_text(o)); yield o; continue
@@ -920,7 +847,6 @@ class RishiBackend(Backend):
             self.chat.reasoning_effort = effort
         return kw
     def _send(self,msg,**kw):
-        from urai import resp_text
         return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
     MCP_REFUSED=('mcp','strict_mcp_config','allowed_tools','disallowed','not permitted','policy')
     def _recover(self,e):
@@ -973,7 +899,6 @@ class RishiBackend(Backend):
         c=self._oneshot_chat
         c.sp=sp
         c.hist[:]=[c.mk_msg(prompt)]
-        from urai import resp_text
         return resp_text(c._model_step(max_tokens or ONESHOT_TOKENS))
     def _replace_hist(self,summary,keep):
         if not hasattr(self.chat,'_recreate_conv'):
