@@ -122,6 +122,12 @@ def test_the_openai_and_copilot_catalogues_go_through_the_one_memo(monkeypatch, 
     assert core._openai_models() == [], 'and no key is no models, whatever is memoized'
 
 
+def test_runtime_available_and_runtime_detail_read_the_same_table():
+    "A yes with a reason, or a no without one, would each be a lie about the same machine."
+    from ramabana.core import HARNESS, runtime_available
+    for r in HARNESS: assert runtime_available(r) == (not runtime_detail(r)), r
+
+
 def test_a_runtime_says_why_it_cannot_be_reached_and_not_only_that_it_cannot():
     assert runtime_detail('mlx') == '', 'only a harness has a reason to give'
     assert runtime_detail('nosuch') == ''

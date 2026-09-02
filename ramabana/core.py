@@ -162,7 +162,7 @@ def _harness_available(mod, binary):
     return not _harness_detail(mod, binary)
 
 # %% ../nbs/00_core.ipynb #8f978b99
-def _claude_available(): return _harness_available('rishi.claude', 'claude_bin')
+def _claude_available(): return _harness_available(*HARNESS['claude'])
 
 # %% ../nbs/00_core.ipynb #ae0f2158
 def _copilot_available():
