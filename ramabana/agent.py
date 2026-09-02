@@ -1101,10 +1101,10 @@ def system_prompt(self:Agent):
                  'resume from the active item rather than rewriting the plan.')
     return system_prompt(self.host, self.skills, inline, tools=self._plain, extra=extra)
 
-# %% ../nbs/03_agent.ipynb #9707b4ac
+# %% ../nbs/03_agent.ipynb #bf85c66d
 @patch
 def memory_context(self:Agent, surface, max_chars=6000):
-    "The durable notes an embedder wants in front of the model, or `''` where it keeps none."
+    "Durable user notes for one model surface. Nothing here; an embedder with a vault overrides it."
     return ''
 
 # %% ../nbs/03_agent.ipynb #00efc09f
@@ -1375,7 +1375,7 @@ def set_model(self:Agent, name, job='turn'):
     before = self.budget
     spec = self.routing.set(name, job)
     new = (spec.backend, spec.model_id)
-    # tools and briefing are built from the turn model, not only from its budget
+    # tools and briefing are built from the turn model, not from its budget alone
     if job == 'turn' and (self.budget != before or new != old): self._tools = None
     if job == 'subagent': self._subtools = self._subrec = None
     if job == 'turn' and new != old:
@@ -2320,7 +2320,7 @@ class Completer:
         if context: support += f'<related_code>\n{context[-6000:]}\n</related_code>\n'
         if variables: support += f'<runtime_variables>\n{variables[:4000]}\n</runtime_variables>\n'
         try: memory = self.a.memory_context('completion', max_chars=6000)
-        except Exception: memory = ''
+        except Exception: memory = ''   # a vault that cannot be read costs a note, never the completion
         if memory: support += f'<user_memory>\n{memory}\n</user_memory>\n'
         return (f'Language: {lang}\n\n{support}<before>\n{code[:pos][-CTX_BEFORE:]}\n</before>\n'
                 f'<after>\n{code[pos:][:CTX_AFTER]}\n</after>')

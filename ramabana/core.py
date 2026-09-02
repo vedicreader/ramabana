@@ -7,14 +7,15 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE', 'CLAUDE_ALIASES', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIMES', 'AGENTS', 'HOSTED',
-           'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'HARNESS', 'PROBE_TTL',
-           'PROBE_DIR', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED',
-           'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'API_KEYS', 'MODEL_FIELDS',
-           'TOOL_CHANNELS', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'runtime_detail',
-           'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_available', 'auth_status',
-           'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve',
-           'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model',
-           'load_models', 'save_model', 'delete_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
+           'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'PROBE_TTL',
+           'PROBE_DIR', 'HARNESS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES',
+           'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'API_KEYS', 'MODEL_ALIASES',
+           'TOOL_CHANNELS', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'probe_path', 'probed',
+           'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available', 'auth_status', 'copilot_catalog',
+           'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps',
+           'accepts', 'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model', 'alias_path',
+           'saved_models', 'load_models', 'save_model', 'delete_model', 'force_tags', 'forget_forced_tags',
+           'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
@@ -81,119 +82,102 @@ def claude_ctx(model_id):
     mid = str(model_id or '')
     return next((c for p, c in CLAUDE_CTX.items() if mid.startswith(p)), DFLT_AGENT_CTX)
 
-# %% ../nbs/00_core.ipynb #de745a4a
-#: runtime -> (module, the callable that finds the binary its SDK spawns)
-HARNESS = {'claude': ('rishi.claude', 'claude_bin')}
-
-def _harness_available(mod, binary):
-    "Whether an agent harness can be reached: its module imports, and the binary its SDK spawns."
-    try: m = importlib.import_module(mod)
-    except Exception: return False
-    try: return bool(getattr(m, binary)())
-    except Exception: return False
-
-def runtime_detail(runtime):
-    "Why a harness cannot be reached here, or `''` when it can be or is not a harness."
-    got = HARNESS.get(runtime)
-    if got is None: return ''
-    mod, binary = got
-    try: m = importlib.import_module(mod)
-    except Exception as e: return f'import {mod}: {agent_err(e)}'
-    try: found = getattr(m, binary)()
-    except Exception as e: return f'{binary}(): {agent_err(e)}'
-    return '' if found else f'{binary}() found nothing'
-
-# %% ../nbs/00_core.ipynb #254c938a
-PROBE_TTL = 900         #: seconds an answer about this machine stays fresh
-PROBE_DIR = 'probes'    #: under the caller's config directory
-
-_probes, _probe_lock, _probing = {}, threading.Lock(), set()
-_probe_age = 0          #: bumped by `forget_probes`, so an answer gathered before it is discarded
+# %% ../nbs/00_core.ipynb #07efd167
+PROBE_TTL = 90                                  #: seconds an answer about this machine stays fresh
+PROBE_DIR = Path('~/.config/ramabana/probes')   #: where an answer is kept between runs
+#: The last answer from each probe. Process-wide, because what it holds is the machine's.
+_PROBED, _probe_lock = {}, threading.Lock()
+#: Bumped whenever the answers are dropped. A probe gathering across that moment was asked about a
+#: machine that no longer applies, and its answer is discarded rather than written in behind.
+_probe_gen = 0
 
 def probe_path(key, dir=None):
     "Where one probe's last answer is kept between runs."
-    d = Path(dir) if dir else Path.home()/'.ramabana'/PROBE_DIR
-    return d/f"{re.sub(r'[^A-Za-z0-9_.-]', '_', str(key))}.json"
+    return Path(dir or PROBE_DIR).expanduser()/f"{re.sub(r'[^A-Za-z0-9_.-]', '_', str(key))}.json"
 
-def _probe_read(key, dir):
-    "The answer left on disk, or None. `dir=False` is a probe that never touches one."
-    if dir is False: return None
-    try: got = json.loads(probe_path(key, dir).read_text())
+def _read_probe(key, dir):
+    "The answer a previous run left, or None. A malformed one is simply not there."
+    try: return json.loads(probe_path(key, dir).read_text())['value']
     except Exception: return None
-    return got if isinstance(got, dict) and 'at' in got else None
 
-def _probe_write(key, value, dir, age):
-    "Keep `value`, in memory and on disk, unless the cache was dropped while it was gathered."
-    row = {'at': time.time(), 'value': value}
-    with _probe_lock:                         # the same lock `forget_probes` unlinks under
-        if age != _probe_age: return          # dropped while this was gathering
-        _probes[str(key)] = row
-        if dir is False: return
-        p = probe_path(key, dir)
-        try:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(json.dumps(row, default=str))
-        except Exception: pass
+def _write_probe(key, value, dir):
+    p = probe_path(key, dir)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(f'.{p.name}.{os.getpid()}.tmp')
+        tmp.write_text(json.dumps({'at': time.time(), 'value': value}))
+        tmp.replace(p)
+    except Exception: pass          # a probe that cannot be kept is still an answer
 
-def _probe_behind(key, fn, dir, age):
-    "Refresh a stale answer on a daemon thread, so the caller waits for nothing."
-    def work():
-        try: _probe_write(key, fn(), dir, age)
-        except Exception: pass
-        finally:
-            with _probe_lock: _probing.discard(str(key))
+def _keep(key, value, gen, dir, disk):
+    "Write an answer in, unless it was gathered about a machine `forget_probes` has since dropped."
     with _probe_lock:
-        if str(key) in _probing: return
-        _probing.add(str(key))
-    threading.Thread(target=work, daemon=True, name=f'ramabana-probe-{key}').start()
+        if gen != _probe_gen: return
+        _PROBED[key] = {'at': time.time(), 'value': value, 'busy': False}
+    if disk: _write_probe(key, value, dir)
 
-def probed(key, fn, ttl=PROBE_TTL, dir=None):
+def probed(key, fn, ttl=PROBE_TTL, dir=None, disk=True):
     "`fn()`'s last answer, with a stale one refreshed behind whoever asked."
-    key, warm = str(key), True
-    with _probe_lock:
-        row, age = _probes.get(key), _probe_age
-    if row is None and (row := _probe_read(key, dir)) is not None:
-        warm = False        # a previous process left it: a starting point, not news
+    with _probe_lock: row, gen = _PROBED.get(key), _probe_gen
+    if row is None and disk and (kept := _read_probe(key, dir)) is not None:
+        # `at: 0` so the refresh below fires: what a previous run saw is a starting point, not news.
+        row = {'at': 0.0, 'value': kept, 'busy': False}
         with _probe_lock:
-            if age == _probe_age: _probes[key] = row
+            if gen == _probe_gen: _PROBED[key] = row
     if row is None:
-        got = fn()
-        _probe_write(key, got, dir, age)
-        return got
-    if not warm or time.time() - float(row.get('at') or 0) > float(ttl):
-        _probe_behind(key, fn, dir, age)
-    return row.get('value')
+        value = fn()
+        _keep(key, value, gen, dir, disk)
+        return value
+    if time.time() - row['at'] < ttl or row['busy']: return row['value']
+    row['busy'] = True
+    def again():
+        try: _keep(key, fn(), gen, dir, disk)
+        except Exception:
+            with _probe_lock: row['at'], row['busy'] = time.time(), False
+    threading.Thread(target=again, daemon=True, name=f'ramabana-probe-{key}').start()
+    return row['value']
 
 def forget_probes(disk=False, dir=None):
-    "Drop every cached probe. What it holds is the machine's, so it is process-wide."
-    global _probe_age
-    with _probe_lock:
-        _probe_age += 1               # discards an answer already gathering
-        n = len(_probes)
-        _probes.clear()
-        _probing.clear()
-        if disk:
-            for p in (Path(dir) if dir else Path.home()/'.ramabana'/PROBE_DIR).glob('*.json'):
-                try: p.unlink()
-                except Exception: pass
-    return n
+    "Drop every cached answer, so the next ask is a fresh one."
+    global _probe_gen
+    with _probe_lock: keys, _probe_gen, _ = list(_PROBED), _probe_gen+1, _PROBED.clear()
+    if not disk: return
+    for key in keys:
+        try: probe_path(key, dir).unlink(missing_ok=True)
+        except Exception: pass
+
+# %% ../nbs/00_core.ipynb #de745a4a
+#: The harness runtimes and what reaching one needs, so an unavailable one can say more than "no".
+HARNESS = {'claude': ('rishi.claude', 'claude_bin'), 'copilot': ('rishi.copilot', 'copilot_oauth')}
+
+def _harness_detail(mod, binary):
+    "Empty when an agent harness can be reached; otherwise what stopped it."
+    try: m = importlib.import_module(mod)
+    except Exception as e: return f'import {mod}: {agent_err(e)}'
+    try: return '' if getattr(m, binary)() else f'{binary}() found nothing'
+    except Exception as e: return f'{binary}(): {agent_err(e)}'
+
+def _harness_available(mod, binary):
+    "Whether an agent harness can be reached: its module imports, and the binary its SDK spawns."
+    return not _harness_detail(mod, binary)
 
 # %% ../nbs/00_core.ipynb #8f978b99
 def _claude_available(): return _harness_available(*HARNESS['claude'])
 
 # %% ../nbs/00_core.ipynb #ae0f2158
 def _copilot_available():
-    "Checks if Copilot is reachable by verifying the GitHub OAuth token and reading environment/editor config files, without making network calls."
-    try:
-        from rishi.copilot import copilot_oauth as co
-        return bool(co())
-    except Exception: return False
-        
+    "Whether Copilot is reachable: the GitHub OAuth token and the editor config, and no network call."
+    return _harness_available(*HARNESS['copilot'])
 
 # %% ../nbs/00_core.ipynb #3613bae4
 def runtime_remedy(runtime):
     "One sentence saying what to do about a runtime that cannot be reached here."
     return RUNTIME_REMEDY.get(runtime, f'install the backend with `pip install rishi[{runtime}]`')
+
+def runtime_detail(runtime):
+    "Why a harness runtime cannot be reached, or `''` when it can. `runtime_available` only says yes or no."
+    mod, binary = HARNESS.get(runtime) or (None, None)
+    return _harness_detail(mod, binary) if mod else ''
 
 # %% ../nbs/00_core.ipynb #3af627ce
 @functools.lru_cache(maxsize=1)
@@ -236,16 +220,18 @@ def auth_status():
     codex = bool(os.getenv('CODEX_AUTH_TOKEN') or _json_has(os.getenv('CODEX_AUTH_PATH', '~/.codex/auth.json'), 'tokens', 'access_token'))
     claude_login = _claude_login() and _claude_available()
     copilot = _copilot_available()
-    out = {v: {'available': bool(os.getenv(k)), 'source': k} for v, k in API_KEYS.items()}
-    return out | {
+    return {
+        'openai': {'available': bool(os.getenv('OPENAI_API_KEY')), 'source': 'OPENAI_API_KEY'},
         'codex': {'available': codex, 'source': 'Codex login' if codex else ''},
+        'anthropic': {'available': bool(os.getenv('ANTHROPIC_API_KEY')), 'source': 'ANTHROPIC_API_KEY'},
         'claude': {'available': claude_login, 'source': 'Claude Code login' if claude_login else ''},
+        'gemini': {'available': bool(os.getenv('GEMINI_API_KEY')), 'source': 'GEMINI_API_KEY'},
         'copilot': {'available': copilot, 'source': 'GitHub Copilot sign-in' if copilot else ''},
     }
 
 # %% ../nbs/00_core.ipynb #56303cec
 def _openai_ids():
-    "Every model id the current OpenAI key can list, unfiltered. `[]` where it cannot be asked."
+    "Every model id the current OpenAI key can list, or `[]` when it cannot be asked."
     if not (key := os.getenv('OPENAI_API_KEY')): return []
     try:
         import httpx2 as httpx
@@ -257,21 +243,20 @@ def _openai_ids():
 def _openai_models(include_legacy=False):
     "Canonical models the current OpenAI key can list. Older coding models are opt-in."
     if not os.getenv('OPENAI_API_KEY'): return []
-    ids = probed('openai-ids', _openai_ids, ttl=300, dir=False)   # this key's, so never a file
+    ids = probed('openai-models', _openai_ids, ttl=300, disk=False)
     current = re.compile(r'^(?:gpt-5(?:\.\d+)?(?:-(?:mini|nano|pro|codex(?:-mini|-max)?|chat-latest|search-api|[a-z]+))?|o[34](?:-mini|-pro)?)$')
     legacy = re.compile(r'^gpt-4\.1(?:-mini|-nano)?$')
     return sorted({x for x in ids if (current.match(x) or (include_legacy and legacy.match(x))) and not re.search(r'-20\d\d-', x)})
 
-def _copilot_fetch():
-    "Copilot's catalogue for this account, asked for fresh."
+def _copilot_catalog():
     try:
         from rishi.copilot import copilot_catalog as cat
         return cat()
     except Exception: return {}
 
 def copilot_catalog(ttl=300):
-    "Copilot's catalogue for this account: `{id: entry}`, or `{}` when it cannot be reached."
-    return probed('copilot-catalog', _copilot_fetch, ttl=ttl, dir=False)
+    "Copilot's catalogue for this account, cached: `{id: entry}`, or `{}` when it cannot be reached."
+    return probed('copilot-catalog', _copilot_catalog, ttl=ttl, disk=False)
 
 def _copilot_chat_models():
     "Chat ids this Copilot plan can reach. Per-plan and it moves. It is asked for, never tabled."
@@ -485,7 +470,7 @@ def budget_for(spec, tool_max, channel='native'):
 
 # %% ../nbs/00_core.ipynb #3e2adbad
 def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):
-    "Register a configurable model alias for this process. Persistence belongs to the host app."
+    "Register a configurable model alias for this process. `save_model` is the persistent form."
     name, model_id = (name or '').strip(), (model_id or '').strip()
     if model_id.startswith(('https://huggingface.co/', 'http://huggingface.co/')): 
         model_id = model_id.split('huggingface.co/', 1)[1].strip('/').split('/tree/', 1)[0]
@@ -504,64 +489,61 @@ def unregister_model(name):
     "Remove one process-local configurable model alias."
     CUSTOM.pop(name, None); MODELS.pop(name, None); _LOCAL_CTX.pop(name, None)
 
-# %% ../nbs/00_core.ipynb #06481fae
-#: vendor -> the environment variable holding its key
-API_KEYS = {'openai': 'OPENAI_API_KEY', 'anthropic': 'ANTHROPIC_API_KEY', 'gemini': 'GEMINI_API_KEY'}
+# %% ../nbs/00_core.ipynb #17dbd05c
+#: The remote-runtime settings an alias may carry. A key itself is never among them: `api_key_env`
+#: names the environment variable, and the value stays in the environment.
+API_KEYS = ('base_url', 'api_key_env', 'vendor_name', 'api_name')
+MODEL_ALIASES = Path('~/.config/ramabana/models.json')   #: where aliases are kept by default
 
-#: what an alias row keeps. `api_key_env` names a variable; a key itself is never written
-MODEL_FIELDS = ('name', 'model_id', 'runtime', 'ctx', 'note')
+def alias_path(path=None):
+    "The file one application keeps its model aliases in."
+    return Path(path or MODEL_ALIASES).expanduser()
 
-def _alias_row(spec_row):
-    "One saved row: the fields worth keeping, and the configuration that is not a secret."
-    cfg = {k: v for k, v in (spec_row.get('config') or {}).items()
-           if not any(s in k.lower() for s in ('key', 'token', 'secret', 'password'))
-           or k.lower().endswith('_env')}
-    return {k: spec_row.get(k) for k in MODEL_FIELDS} | cfg
-
-def _alias_read(path):
-    "The rows on disk, or `[]` where there are none."
-    try: got = json.loads(Path(path).read_text())
+def saved_models(path=None):
+    "The alias rows on disk. A missing or malformed file is an empty list, never an error."
+    try: rows = json.loads(alias_path(path).read_text())
     except Exception: return []
-    return [r for r in got if isinstance(r, dict) and r.get('name')] if isinstance(got, list) else []
+    return rows if isinstance(rows, list) else []
 
-def _alias_write(rows, path):
-    "Replace the file, through a temporary one so a crash mid-write leaves the old rows."
-    p = Path(path)
+def _write_aliases(rows, path=None):
+    p = alias_path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(p.suffix + '.tmp')
-    tmp.write_text(json.dumps(rows, indent=2, default=str))
-    tmp.replace(p)
-    return rows
+    p.write_text(json.dumps(rows, indent=2)+'\n')
 
-def load_models(path):
-    "Register every saved alias in this process, and return the rows that took."
+def load_models(path=None):
+    "Register every saved alias and return the rows that took. A row that no longer resolves is skipped."
     out = []
-    for r in _alias_read(path):
+    for row in saved_models(path):
         try:
-            register_model(r['name'], r.get('model_id'), r.get('runtime'), r.get('ctx'),
-                           r.get('note') or 'custom model',
-                           **{k: v for k, v in r.items() if k not in MODEL_FIELDS})
-            out.append(r)
-        except Exception: pass   # a runtime that is gone is not a reason to lose the rest
+            cfg = {k: row.get(k) for k in API_KEYS if row.get(k)}
+            spec = register_model(row.get('name'), row.get('model_id'), row.get('runtime'),
+                                  row.get('ctx', 128_000), 'saved model', **cfg)
+            out.append({**row, 'name': spec.name, 'model_id': spec.model_id, 'runtime': spec.runtime, 'ctx': spec.ctx})
+        except Exception: continue
     return out
 
-def save_model(row, path):
-    "Validate, register and persist one alias. Returns the row as it was stored."
-    spec = register_model(row.get('name'), row.get('model_id'), row.get('runtime'), row.get('ctx'),
-                          row.get('note') or 'custom model',
-                          **{k: v for k, v in row.items() if k not in MODEL_FIELDS})
-    kept = _alias_row(CUSTOM[spec.name])
-    _alias_write([r for r in _alias_read(path) if r.get('name') != spec.name] + [kept], path)
-    return kept
+def save_model(row, path=None):
+    "Validate, register and persist one alias. Returns the row as written."
+    name = str(row.get('name') or '').strip()
+    model_id = str(row.get('model_id') or '').strip()
+    runtime = str(row.get('runtime') or '').strip()
+    if not re.match(r'^[A-Za-z0-9][\w.-]{0,63}$', name): raise ValueError('name must use letters, numbers, _, . or -')
+    if runtime not in RUNTIMES: raise ValueError(f'runtime must be one of {", ".join(RUNTIMES)}')
+    if name in MODELS and name not in CUSTOM: raise ValueError(f'{name!r} is a built-in model name')
+    ctx = int(row.get('ctx') or 128_000)
+    if not 1024 <= ctx <= 10_000_000: raise ValueError('context must be between 1,024 and 10,000,000 tokens')
+    cfg = {k: str(row.get(k) or '').strip() for k in API_KEYS if row.get(k)}
+    if runtime != 'remote' and cfg: raise ValueError('API settings apply only to the remote runtime')
+    spec = register_model(name, model_id, runtime, ctx, 'saved model', **cfg)
+    clean = {'name': name, 'model_id': spec.model_id, 'runtime': runtime, 'ctx': ctx, **cfg}
+    _write_aliases([x for x in saved_models(path) if x.get('name') != name] + [clean], path)
+    return clean
 
-def delete_model(name, path):
-    "Forget one alias, on disk and in this process. Returns whether there was one."
-    rows = _alias_read(path)
-    left = [r for r in rows if r.get('name') != name]
-    _alias_write(left, path)
-    try: unregister_model(name)
-    except Exception: pass
-    return len(left) != len(rows)
+def delete_model(name, path=None):
+    "Forget one alias, on disk and in this process."
+    _write_aliases([x for x in saved_models(path) if x.get('name') != name], path)
+    unregister_model(name)
+    return name
 
 # %% ../nbs/00_core.ipynb #1e5cd7ee
 TOOL_CHANNELS = ('native', 'tags')

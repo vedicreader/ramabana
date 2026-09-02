@@ -9,44 +9,32 @@ before either is released.
 
 ### New
 
-- `Agent.memory_context(surface, max_chars)` is the seam an embedder fills to put durable notes in
-  front of the model. The briefing and the completer both ask the agent for it. The completer used
-  to reach `self.a.ws.agent_memory_context`, a name Ramabana sets nowhere, so on any embedder but
-  the one that happened to carry `ws` the call raised into a bare `except` and the notes vanished.
-- `core.runtime_detail(runtime)` says why a harness cannot be reached: the import that failed, or
-  the probe that found nothing. `runtime_available` answers yes or no and swallows the reason, which
-  is how an installed but broken Claude Code read as "not installed" with nothing naming the cause.
-  `core.HARNESS` is the table both read, so the yes/no and the reason cannot drift apart.
-- `mk_host` and `mk_agent` forward host keyword arguments (`index`, `warm`), so a caller can build
-  a vault without its search index. Only a `pii`-shaped hole was reachable before.
-- `load_models`, `save_model`, `delete_model` and `API_KEYS`: the alias file a frontend writes so a
-  model somebody named survives a restart. `register_model` lasts as long as the process, and both
-  frontends wanted the same file for the same reason. The path stays the caller's. A key is never
-  written: `api_key_env` names the variable to read at use. `API_KEYS` is also the one place the
-  three vendor variable names are written down, and `auth_status` reads it rather than repeating them.
-- `_openai_ids` is the fetch `_openai_models` filters, so a caller can stand in for the network
-  without standing in for the filtering. Both it and `copilot_catalog` were memoised by a
-  hand-rolled `(timestamp, value)` module tuple, which `forget_probes` could not reach and a test
-  could not clear; both go through `probed` with `dir=False`, because what one API key can list is
-  this process's answer and no restart should start warm from it.
-- `probed`, `probe_path`, `forget_probes` and `PROBE_TTL`: an answer about this machine, served from
-  the last one and refreshed behind whoever asked. Asking what is installed and who is signed in
-  reaches every backend and every account, which is most of a model picker's first paint. A probe
-  gathering when `forget_probes` runs is discarded rather than written in behind it, because the
-  caller has just said the machine changed. The file is written under the lock the drop empties the
-  cache under, so a refresh already in flight cannot put a dropped answer back after the unlink.
+- `probed` is the one memo for answers about this machine: last answer served, stale one refreshed
+  on a thread behind the caller, kept on disk so the next run starts with something. `probe_path`
+  and `forget_probes` come with it. `_oai_cache` and `_copilot_cat` are gone; `_openai_models` and
+  `copilot_catalog` go through `probed(..., disk=False)`.
+- `runtime_detail` says why a harness runtime cannot be reached, beside `runtime_remedy`, which only
+  ever said what to do about it. `HARNESS` names the two harnesses and what reaching one needs.
+- Model aliases persist: `save_model`, `load_models`, `delete_model`, `saved_models`, `alias_path`
+  and `MODEL_ALIASES`. `register_model` is still the in-process form. `path` is the application's
+  own file, defaulting to `~/.config/ramabana/models.json`.
+- `Agent.memory_context(surface, max_chars)` is the seam an application with a vault fills. The
+  completer asked `self.a.ws.agent_memory_context(...)`, an attribute nothing in Ramabana sets, so
+  a person's pinned notes never reached a completion prompt.
+- `mk_host` and `mk_agent` forward host keyword arguments, so a caller can ask for `index=False`.
+  Only a `pii`-shaped hole was reachable before.
 
 ### Fixed
 
 - A sub-agent granted write tools was told both "You cannot edit" and "You also have the delegating
   agent's write tools". `sub_briefing` swapped the read-only sentences out by matching their text,
-  and the 0.1.32 release reworded them, so both filters silently matched nothing. The briefing is
-  assembled from `SUB_SP_HEAD` plus `SUB_READ_SP` or `SUB_WRITE_SP` now; there is no text to match.
+  and the 0.1.32 release reworded them, so both filters matched nothing. The briefing is assembled
+  from `SUB_SP_HEAD` plus `SUB_READ_SP` or `SUB_WRITE_SP` now; there is no text to match.
 - `cart_add` and `cart_remove` were named in `WRITE_TOOLS` and carried no `@writes`, and `read_only`
   reads the mark. A read-only agent, and every read-only sub-agent, was handed the ability to change
   what someone was about to buy.
 - The image group read the turn's model once, when the tools were built, and `set_model` rebuilt
-  them only when the *budget* changed. Every large-window model shares one budget, so switching to a
+  them only when the budget changed. Every large-window model shares one budget, so switching to a
   model that cannot draw left the group drawing as the old one, at the old model id.
 - `tests/test_vault.py` opened an indexed vault through `mk_host`, which downloads a native SQLite
   extension on first use, from several unjoined daemon threads at once. It segfaulted the

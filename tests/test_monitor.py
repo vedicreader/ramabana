@@ -320,8 +320,8 @@ def test_check_folders_ignores_the_settle_window_and_reports_each_review_once():
 
 
 def test_a_refused_folder_comes_back_as_a_tool_error_not_an_exception(tmp_path):
-    m = Monitors(LocalHost([tmp_path/'proj'], web=False, index=False))
     (tmp_path/'proj').mkdir()
+    m = Monitors(LocalHost([tmp_path/'proj'], web=False, index=False))
     said = tools(m)['watch_folder'](str(tmp_path/'elsewhere'), 'Review.')
     assert failed(said) and 'could not watch that folder' in said
     assert m.all() == []

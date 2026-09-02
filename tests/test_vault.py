@@ -42,6 +42,7 @@ def fake_chat(runtime, reply, sent):
 def private_host(tmp_path):
     "A vault holding one private document and one that is nobody's business but the project's."
     from ramabana.vault import VaultHost
+    Path(tmp_path).mkdir(parents=True, exist_ok=True)
     h = VaultHost(roots=(str(tmp_path),), vault=str(tmp_path/'v.db'), index=False, web=False)
     h.vault.note('Invoice 4471 for Ada Lovelace, ada@example.com, phone 020 7946 0958. '
                  'Card 4111 1111 1111 1111. Amount 240.00 GBP, due 2026-09-01.', title='invoice 4471')
