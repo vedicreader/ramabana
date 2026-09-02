@@ -56,7 +56,7 @@ def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
     sub-agent granted writes would edit with no prompt and leave nothing in `calls`. Both are the
     toggle's to close.
     """
-    from ramabana.tools import NO_SUB, read_only, sub_briefing
+    from ramabana.tools import NO_SUB, SUB_READ_SP, SUB_WRITE_SP, read_only, sub_briefing
     a, be = fake_agent(approvals=agent.Approvals(tools=WRITE_TOOLS, mode='auto'))
     search = next(t for t in a.tools if getattr(t, '__name__', '') == 'delegate_search')
 
@@ -73,14 +73,16 @@ def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
     search(question='add a docstring to a.py')
     spawned = be.spawned[-1]
     assert spawned.approve is not None and len(a.calls) > before
-    assert 'You cannot edit anything' not in spawned.sp
-    assert 'approval policy the main agent answers to' in spawned.sp
+    # the briefing is built from named halves, so these are the halves and not a phrase to match
+    assert SUB_READ_SP not in spawned.sp, 'a writing sub-agent was still told it cannot edit'
+    assert SUB_WRITE_SP in spawned.sp
 
     a.command('/subagents off')
     assert a.subagent_writes is False and a._sub_plain() is a._plain
     search(question='where else do we do X?')
     assert be.spawned[-1].approve is None
-    assert 'You cannot edit anything' in be.spawned[-1].sp
+    assert SUB_READ_SP in be.spawned[-1].sp
+    assert SUB_WRITE_SP not in be.spawned[-1].sp
     assert sub_briefing() != sub_briefing(writes=True)
 
 
@@ -204,3 +206,39 @@ def test_a_readonly_agent_cannot_leave_a_page_it_read_in_the_vault():
     writer = next(t for t in read_only(ts, writes=True) if t.__name__ == 'read_url')
     writer(url='https://example.com')
     assert seen == [True], 'an agent allowed writes keeps the default'
+
+
+def test_the_trolley_writes_are_withheld_from_a_surface_that_may_not_act():
+    """`cart_add` and `cart_remove` were named in `WRITE_TOOLS` and carried no `@writes`, and
+    `read_only` reads the mark rather than the name. A read-only agent, and every read-only
+    sub-agent, was handed the ability to change what someone is about to buy."""
+    from shalya.core import is_write
+    from ramabana.shop import Cart, cart_tools
+    from ramabana.tools import WRITE_TOOLS, read_only
+
+    ts = cart_tools(Cart())
+    writing = {t.__name__ for t in ts if is_write(t)}
+    assert writing == {'cart_add', 'cart_remove'}, writing
+    assert writing <= WRITE_TOOLS, 'the mark and the name set have to agree'
+    kept = {t.__name__ for t in read_only(ts)}
+    assert not (kept & writing), f'a trolley write survived read_only: {sorted(kept & writing)}'
+    assert 'cart_show' in kept and 'cart_find' in kept, 'looking is still allowed'
+    assert not ({t.__name__ for t in read_only(ts, effects=False)} & writing)
+
+
+def test_every_tool_named_a_write_is_also_marked_one():
+    """The two representations are kept in two packages: shalya marks the tool, Ramabana adds the
+    names shalya has never heard of. Nothing failed when they disagreed."""
+    from shalya.core import is_write
+    from ramabana.testing import FullHost, fake_agent
+    from ramabana.shop import Cart, cart_tools
+    from ramabana.tools import WRITE_TOOLS, tools_for
+
+    built = list(tools_for(FullHost())) + list(cart_tools(Cart()))
+    a, _ = fake_agent()
+    built += [t for t in a.tools if t.__name__ not in {x.__name__ for x in built}]
+    by = {t.__name__: t for t in built}
+    named_not_marked = sorted(n for n in WRITE_TOOLS if n in by and not is_write(by[n]))
+    marked_not_named = sorted(n for n, t in by.items() if is_write(t) and n not in WRITE_TOOLS)
+    assert named_not_marked == [], f'in WRITE_TOOLS and not marked: {named_not_marked}'
+    assert marked_not_named == [], f'marked and not in WRITE_TOOLS: {marked_not_named}'

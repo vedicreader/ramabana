@@ -544,3 +544,20 @@ def test_a_harness_is_held_to_its_own_window_not_the_tables():
     # a family whose window is not recorded here still gets the affordable ceiling
     assert resolve('claude-haiku-4-5').ctx == DFLT_AGENT_CTX
     assert claude_ctx('claude-unreleased-9') == DFLT_AGENT_CTX
+
+
+def test_durable_notes_reach_the_model_through_a_seam_every_agent_answers():
+    """`Completer._prompt` reached `self.a.ws.agent_memory_context(...)`, and Ramabana sets
+    `Agent.ws` nowhere, so on any embedder but the one that happened to carry `ws` the call raised
+    into a bare `except` and the notes were dropped in silence."""
+    from ramabana.agent import Agent, Completer
+    from ramabana.testing import fake_agent
+
+    assert Agent.memory_context(None, 'completion') == '', 'an embedder with no notes answers ""'
+
+    asked = []
+    a, _ = fake_agent()
+    a.memory_context = lambda surface, max_chars=6000: asked.append((surface, max_chars)) or 'NOTE-X'
+    p = Completer(a)._prompt('x = ', 4, 'python')
+    assert asked == [('completion', 6000)], asked
+    assert '<user_memory>\nNOTE-X\n</user_memory>' in p, p

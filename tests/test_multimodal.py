@@ -787,3 +787,51 @@ def test_the_draw_quota_is_per_turn_and_not_per_session(tmp_path, monkeypatch):
     assert ui.drawn == 1
     assert len(said) == 2
     assert blob.count('a=t,f=100') == 2
+
+
+def test_the_image_group_reads_the_turns_model_on_every_call(tmp_path, monkeypatch, caps):
+    """`image_tools` read `get_spec()` once, at build time. Every large-window model shares one
+    budget, so `set_model` did not rebuild the tools, and the group kept answering for the model
+    the session had already moved off: it drew as a model that cannot draw, at the old model id."""
+    from base64 import b64encode
+    png = b'\x89PNG\r\n\x1a\nx'
+    drawing = _Caps(('text', 'image'), ('text',)); drawing.tools = ('image',)
+    flat = _Caps(('text', 'image'), ('text',))                  # same windows, cannot draw
+    seen = {}
+
+    current = {'spec': _spec('openai/gpt-5.6-luna')}
+    by_model = {'openai/gpt-5.6-luna': drawing, 'anthropic/claude-opus-4-5': flat}
+    monkeypatch.setattr('ramabana.core._caps', lambda model_id, backend: by_model[model_id])
+    monkeypatch.setenv('OPENAI_API_KEY', 'k')
+    monkeypatch.setattr('shalya.tools._post_responses',
+                        lambda prompt, model, timeout=300: seen.update(responses=model) or
+                        {'output': [{'type': 'image_generation_call', 'result': b64encode(png).decode()}]})
+    monkeypatch.setattr('shalya.tools._post_image',
+                        lambda *a, **kw: seen.update(images=kw.get('model')) or
+                        [{'b64_json': b64encode(png).decode()}])
+
+    gi = _gi(session=str(tmp_path), get_spec=lambda: current['spec'])
+    assert not failed(gi('a bottle'))
+    assert seen == {'responses': 'openai/gpt-5.6-luna'}, seen   # its own model drew it
+
+    seen.clear()
+    current['spec'] = _spec('anthropic/claude-opus-4-5')        # the same built tool, a new model
+    assert not failed(gi('a bottle'))
+    assert 'responses' not in seen, 'it drew as a model that cannot draw'
+    assert seen == {'images': 'gpt-image-1'}, seen              # the endpoint, not the stale id
+
+
+def test_a_turn_model_change_rebuilds_the_tools_even_when_the_budget_is_the_same():
+    "`budget_for` gives every large-window model the same `Budget`, so budget alone is not the test."
+    from ramabana.core import budget_for
+    from ramabana.testing import fake_agent
+
+    one, two = _spec('openai/gpt-5.6-luna'), _spec('anthropic/claude-opus-4-5')
+    assert budget_for(one, 6000) == budget_for(two, 6000), 'the budgets differ, so this proves nothing'
+
+    a, _ = fake_agent()
+    a.routing.turn = one.name
+    a.routing._cache[one.name], a.routing._cache[two.name] = one, two
+    assert a.tools and a._tools is not None
+    a.set_model(two.name)
+    assert a._tools is None, 'the tools were kept across a turn-model change'

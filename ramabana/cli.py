@@ -1937,9 +1937,10 @@ def mk_host(roots=('.',),
             spec=False,              # let the agent read an API specification and call it
             read_outside=False,      # let the read-only tools name any path on this machine
             pii=PII_OFF,             # off | redact | refuse for what vault retrieval returns
-            pii_ner=False):          # gate on titled names too, not only on patterns
+            pii_ner=False,           # gate on titled names too, not only on patterns
+            **kwargs):               # forwarded to the host: `index`, `warm`, `vault=<path>`
     "The host both frontends run on: `LocalHost`, plus a vault and an API spec when asked."
-    kw = dict(approvals=approvals, web=web, read_outside=read_outside)
+    kw = dict(approvals=approvals, web=web, read_outside=read_outside, **kwargs)
     #: only a vault retrieves anything to gate, so the two settings go no further than one
     vkw = dict(kw, pii=pii, pii_ner=pii_ner)
     if vault and spec: return VaultSpecHost(roots, **vkw)
@@ -1957,11 +1958,12 @@ def mk_agent(roots=('.',),
              read_outside=False,      # let the read-only tools name any path on this machine
              pii=PII_OFF,             # off | redact | refuse for what vault retrieval returns
              pii_ner=False,           # gate on titled names too, not only on patterns
+             host_kw=None,            # forwarded to `mk_host`: `index`, `warm`, `vault=<path>`
              **kw):                   # forwarded to `Agent`
     "A host over the named folders and an `Agent` over that, gated the way `approve` says."
     approvals = None if approve == 'none' else Approvals(tools=WRITE_TOOLS, mode=approve)
     host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec,
-                   read_outside=read_outside, pii=pii, pii_ner=pii_ner)
+                   read_outside=read_outside, pii=pii, pii_ner=pii_ner, **(host_kw or {}))
     if approvals is not None: approvals.host = host   # the gate previews `create_file` via the host
     agent = Agent(host, model=model, approvals=approvals, **kw)
     agent.lend_model()   # or a `--vault` session loads a second runtime for vishalakshi

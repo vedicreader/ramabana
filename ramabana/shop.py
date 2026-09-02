@@ -34,7 +34,7 @@ __all__ = ['MAX_PRODUCTS', 'SHOP_PORT', 'SHOP_TOUT', 'CATALOGUE', 'CartError', '
 import json
 from fastcore.basics import store_attr
 from .core import AgentError, agent_err
-from .tools import clip, err, summary
+from .tools import clip, err, summary, writes
 from shalya.core import one_line as _1
 
 # %% ../nbs/08_shop.ipynb #aa16daf7
@@ -229,6 +229,7 @@ def cart_tools(cart):
             return clip('\n'.join(f"{r['i']:>3}  {r['price'] or '?':>8}  {r['title']}" for r in rows))
         except Exception as e: return err('search failed', e)
 
+    @writes
     @summary(lambda a: f'Add to trolley: {a.get("qty", 1)} x {_1(a.get("item"))}')
     def cart_add(item: str, qty: int = 1, variant: str = '') -> str:
         """Put a product in the trolley. `item` is a number from `cart_find`, or an exact title.
@@ -254,6 +255,7 @@ def cart_tools(cart):
             return clip(f"{t.get('count')} items, subtotal {t.get('subtotal')}\n{body}")
         except Exception as e: return err('could not read the trolley', e)
 
+    @writes
     @summary(lambda a: f'Remove from trolley: {_1(a.get("line"))}')
     def cart_remove(line: str) -> str:
         "Take one line out of the trolley, by its number in `cart_show` or by exact title."

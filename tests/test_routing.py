@@ -445,3 +445,31 @@ def test_the_ollama_daemon_is_asked_for_the_window_it_holds(monkeypatch):
     ctx, seen = _measured(spec, 32_768, monkeypatch)
     assert ctx == 32_768, 'capped, since a daemon will happily hold a window nothing budgeted for'
     assert seen['n_ctx'] == 32_768, 'and the daemon is told, rather than left on its 4096 default'
+
+
+def test_a_harness_that_is_installed_but_broken_says_which_half_failed(monkeypatch):
+    """`runtime_available` answers yes or no and swallows the reason, so a harness whose module
+    raises read as "not installed" with nothing naming the cause. `runtime_detail` is the reason,
+    read off the same `HARNESS` table the yes/no is read off, so the two cannot disagree."""
+    import sys, types
+    from ramabana import core
+
+    assert core.runtime_detail('remote') == '', 'only a harness has a module to fail'
+    assert core.runtime_detail('nothing-like-this') == ''
+
+    monkeypatch.setitem(core.HARNESS, 'claude', ('no_such_module_at_all', 'claude_bin'))
+    got = core.runtime_detail('claude')
+    assert got == "import no_such_module_at_all: ModuleNotFoundError: No module named 'no_such_module_at_all'", got
+    assert core.runtime_available('claude') is False, 'the reason and the yes/no agree'
+
+    mod = types.ModuleType('probe_harness')
+    monkeypatch.setitem(sys.modules, 'probe_harness', mod)
+    monkeypatch.setitem(core.HARNESS, 'claude', ('probe_harness', 'probe'))
+
+    mod.probe = lambda: None
+    assert core.runtime_detail('claude') == 'probe() found nothing'
+    mod.probe = lambda: (_ for _ in ()).throw(FileNotFoundError('claude is not on $PATH'))
+    assert core.runtime_detail('claude') == 'probe(): FileNotFoundError: claude is not on $PATH'
+    mod.probe = lambda: '/usr/bin/claude'
+    assert core.runtime_detail('claude') == '', 'a reachable harness has nothing to report'
+    assert core.runtime_available('claude') is True

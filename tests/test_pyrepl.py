@@ -21,7 +21,9 @@ def test_cli_python_mode_and_output_text():
     p = anno_parser(cli.main.__wrapped__, pos=['prompt'])
     assert p.parse_args(['--python']).python is True
     assert p.parse_args(['--attach', 'proj']).attach == 'proj'
-    assert p.parse_args(['--agent_proxy']).agent_proxy is True
+    # fastcore spells a flag with hyphens and binds it to the underscored name
+    assert p.parse_args(['--agent-proxy']).agent_proxy is True
+    assert p.parse_args(['--pii-ner']).pii_ner is True
     assert 'agent_proxy' in cli.SURFACE_COMMANDS
     assert p.parse_args(['--spec']).spec is True
     assert p.parse_args([]).python is False

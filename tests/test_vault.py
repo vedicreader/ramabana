@@ -298,10 +298,16 @@ def own_vault(tmp_path, monkeypatch):
     return tmp_path
 
 
+#: An indexed vault reaches litesearch, which downloads a native SQLite extension on first use.
+#: Every other test in this file says `index=False`; these reach the vault through `mk_host`, so
+#: they say it the same way. `warm=False` keeps the open on this thread, where a failure is visible.
+OFFLINE = dict(index=False, warm=False)
+
+
 def test_the_retrieval_gate_is_off_until_a_caller_asks_for_it(own_vault):
     "The default is what every earlier release did, so raising the floor changes nothing for one."
     from ramabana.cli import mk_host
-    h = mk_host([own_vault], vault=True, web=False)
+    h = mk_host([own_vault], vault=True, web=False, **OFFLINE)
     assert h._policy() == ('off', False)
 
 
@@ -310,7 +316,7 @@ def test_mk_host_carries_pii_into_every_vault_read(own_vault, mode):
     """`VaultHost` took `pii` and nothing built one with it, so no ramabana frontend could reach
     the gate at all. Leela set it from its own panel; a `ramabana --vault` session could not."""
     from ramabana.cli import mk_host
-    h = mk_host([own_vault], vault=True, web=False, pii=mode)
+    h = mk_host([own_vault], vault=True, web=False, pii=mode, **OFFLINE)
     h.open_vault(wait=True)
     h.vault.note('Ada Lovelace, ada@example.com, phone 020 7946 0958.', title='contact')
     assert h._policy() == (mode, False)
@@ -320,16 +326,16 @@ def test_mk_host_carries_pii_into_every_vault_read(own_vault, mode):
 
 def test_pii_ner_reaches_the_host_the_same_way(own_vault):
     from ramabana.cli import mk_host
-    h = mk_host([own_vault], vault=True, web=False, pii='refuse', pii_ner=True)
+    h = mk_host([own_vault], vault=True, web=False, pii='refuse', pii_ner=True, **OFFLINE)
     assert h._policy() == ('refuse', True)
 
 
 def test_a_host_without_a_vault_is_never_handed_the_gate(own_vault):
     "`LocalHost` and `SpecHost` retrieve nothing to gate, and would refuse the arguments."
     from ramabana.cli import mk_host
-    assert not hasattr(mk_host([own_vault], vault=False, web=False), 'pii')
-    assert not hasattr(mk_host([own_vault], vault=False, spec=True, web=False), 'pii')
-    both = mk_host([own_vault], vault=True, spec=True, web=False, pii='redact')
+    assert not hasattr(mk_host([own_vault], vault=False, web=False, index=False), 'pii')
+    assert not hasattr(mk_host([own_vault], vault=False, spec=True, web=False, index=False), 'pii')
+    both = mk_host([own_vault], vault=True, spec=True, web=False, pii='redact', **OFFLINE)
     assert both._policy() == ('redact', False)      # VaultSpecHost still carries it
 
 

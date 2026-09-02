@@ -10,7 +10,7 @@ read back off it.
 import pytest
 
 from ramabana.core import AgentError
-from ramabana.monitor import (DFLT_SETTLE, FolderWatch, Monitors, changed, files_under,
+from ramabana.monitor import (DFLT_SETTLE, REVIEW_SP, FolderWatch, Monitors, changed, files_under,
                               monitor_tools, report, review_notice, snapshot, summarise)
 from ramabana.testing import FakeBackend, MemHost, SPEC, fake_agent
 from ramabana.tools import LocalHost, failed
@@ -147,7 +147,7 @@ def test_the_reviewer_gets_the_standing_brief_and_the_diff_and_cannot_see_the_co
     asked = str(sub.sent[0])
     assert asked.startswith('Report anything that breaks a contract in tests/.')
     assert '-one' in asked and '+two' in asked and 'a.py' in asked
-    assert 'review sub-agent' in sub.sp             # `REVIEW_SP`, not the research briefing
+    assert sub.sp == REVIEW_SP, 'the reviewer got the research briefing, not the review one'
     assert rec['review'] == 'sub answer'
 
 

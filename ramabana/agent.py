@@ -1101,6 +1101,17 @@ def system_prompt(self:Agent):
                  'resume from the active item rather than rewriting the plan.')
     return system_prompt(self.host, self.skills, inline, tools=self._plain, extra=extra)
 
+# %% ../nbs/03_agent.ipynb #9707b4ac
+@patch
+def memory_context(self:Agent, surface, max_chars=6000):
+    """The durable notes an embedder wants in front of the model, or `''` where it keeps none.
+
+    The briefing and the completer both ask for this. It used to be `self.ws.agent_memory_context`,
+    a name Ramabana sets nowhere, so on any embedder but the one that happened to carry `ws` the
+    call raised into a bare `except` and the notes were dropped without a word.
+    """
+    return ''
+
 # %% ../nbs/03_agent.ipynb #00efc09f
 @patch
 def _be(self:Agent, job='turn'):
@@ -1368,10 +1379,12 @@ def set_model(self:Agent, name, job='turn'):
     history = self._backends[old].snapshot_hist() if job == 'turn' and old in self._backends else []
     before = self.budget
     spec = self.routing.set(name, job)
-    # tools and briefing are sized to the turn model. Rebuild before `_be` briefs one
-    if job == 'turn' and self.budget != before: self._tools = None
-    if job == 'subagent': self._subtools = self._subrec = None
     new = (spec.backend, spec.model_id)
+    # tools and briefing are sized to the turn model. Rebuild before `_be` briefs one. Budget is
+    # not the only thing they depend on: every large-window model shares one, and which of them
+    # can draw does not, so rebuild whenever the model itself moved
+    if job == 'turn' and (self.budget != before or new != old): self._tools = None
+    if job == 'subagent': self._subtools = self._subrec = None
     if job == 'turn' and new != old:
         self._be('turn').resume_hist(history)
     still_used = {(self.routing.spec(j).backend, self.routing.spec(j).model_id) for j in JOBS}
@@ -2313,7 +2326,7 @@ class Completer:
         support = ''
         if context: support += f'<related_code>\n{context[-6000:]}\n</related_code>\n'
         if variables: support += f'<runtime_variables>\n{variables[:4000]}\n</runtime_variables>\n'
-        try: memory = self.a.ws.agent_memory_context('completion', max_chars=6000)
+        try: memory = self.a.memory_context('completion', max_chars=6000)
         except Exception: memory = ''
         if memory: support += f'<user_memory>\n{memory}\n</user_memory>\n'
         return (f'Language: {lang}\n\n{support}<before>\n{code[:pos][-CTX_BEFORE:]}\n</before>\n'

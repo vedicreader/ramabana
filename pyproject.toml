@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.0.4",
+    "shalya>=0.0.6",
     "uraiyadal>=0.0.6",
     "gheasy>=0.0.9",
     "exhash>=0.4.9",
@@ -85,3 +85,8 @@ dev = ["ramabana[dev]"]
 
 [tool.uv]
 override-dependencies = ["python-fastllm>=0.0.45"]
+
+#: The toolset is developed beside this package. Point at the checkout so a change to one is
+#: testable against the other before either is released.
+[tool.uv.sources]
+shalya = { path = "../shalya", editable = true }

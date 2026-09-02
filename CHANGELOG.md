@@ -2,6 +2,43 @@
 
 <!-- do not remove -->
 
+## 0.1.33
+
+Built against the shalya checkout beside it, so a change to one is testable against the other
+before either is released.
+
+### New
+
+- `Agent.memory_context(surface, max_chars)` is the seam an embedder fills to put durable notes in
+  front of the model. The briefing and the completer both ask the agent for it. The completer used
+  to reach `self.a.ws.agent_memory_context`, a name Ramabana sets nowhere, so on any embedder but
+  the one that happened to carry `ws` the call raised into a bare `except` and the notes vanished.
+- `core.runtime_detail(runtime)` says why a harness cannot be reached: the import that failed, or
+  the probe that found nothing. `runtime_available` answers yes or no and swallows the reason, which
+  is how an installed but broken Claude Code read as "not installed" with nothing naming the cause.
+  `core.HARNESS` is the table both read, so the yes/no and the reason cannot drift apart.
+- `mk_host` and `mk_agent` forward host keyword arguments (`index`, `warm`), so a caller can build
+  a vault without its search index. Only a `pii`-shaped hole was reachable before.
+
+### Fixed
+
+- A sub-agent granted write tools was told both "You cannot edit" and "You also have the delegating
+  agent's write tools". `sub_briefing` swapped the read-only sentences out by matching their text,
+  and the 0.1.32 release reworded them, so both filters silently matched nothing. The briefing is
+  assembled from `SUB_SP_HEAD` plus `SUB_READ_SP` or `SUB_WRITE_SP` now; there is no text to match.
+- `cart_add` and `cart_remove` were named in `WRITE_TOOLS` and carried no `@writes`, and `read_only`
+  reads the mark. A read-only agent, and every read-only sub-agent, was handed the ability to change
+  what someone was about to buy.
+- The image group read the turn's model once, when the tools were built, and `set_model` rebuilt
+  them only when the *budget* changed. Every large-window model shares one budget, so switching to a
+  model that cannot draw left the group drawing as the old one, at the old model id.
+- `tests/test_vault.py` opened an indexed vault through `mk_host`, which downloads a native SQLite
+  extension on first use, from several unjoined daemon threads at once. It segfaulted the
+  interpreter and took the rest of the suite with it.
+- Three assertions on prose the 0.1.32 release had reworded: the reviewer's briefing, the
+  compaction reminder and the summary-update prompt. Each asserts the value now, not a phrase in it.
+- The `--agent-proxy` flag test asserted the underscored spelling `fastcore` no longer generates.
+
 ## 0.1.32
 
 The toolset moved to [shalya](https://github.com/vedicreader/shalya), and git plumbing moved to [gheasy](https://github.com/vedicreader/gheasy). `ramabana.tools` and `ramabana.git` re-export the moved names, so existing imports still work.

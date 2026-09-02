@@ -7,13 +7,13 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE', 'CLAUDE_ALIASES', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIMES', 'AGENTS', 'HOSTED',
-           'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'DFLT_LOCAL',
+           'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'HARNESS', 'DFLT_LOCAL',
            'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX',
            'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'BranchChanged', 'agent_err',
-           'use_env_prefix', 'env', 'claude_ctx', 'runtime_remedy', 'runtime_available', 'auth_status',
-           'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve',
-           'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model',
-           'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
+           'use_env_prefix', 'env', 'claude_ctx', 'runtime_detail', 'runtime_remedy', 'runtime_available',
+           'auth_status', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec',
+           'unknown_model', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'register_model',
+           'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
@@ -81,6 +81,11 @@ def claude_ctx(model_id):
     return next((c for p, c in CLAUDE_CTX.items() if mid.startswith(p)), DFLT_AGENT_CTX)
 
 # %% ../nbs/00_core.ipynb #de745a4a
+#: An agent harness is a module plus the callable that finds the binary its SDK spawns.
+#: `runtime_detail` reads the table `_harness_available` answers from, so the yes/no and the reason
+#: cannot drift apart.
+HARNESS = {'claude': ('rishi.claude', 'claude_bin')}
+
 def _harness_available(mod, binary):
     "Whether an agent harness can be reached: its module imports, and the binary its SDK spawns."
     try: m = importlib.import_module(mod)
@@ -88,8 +93,23 @@ def _harness_available(mod, binary):
     try: return bool(getattr(m, binary)())
     except Exception: return False
 
+def runtime_detail(runtime):
+    """Why a harness cannot be reached here, or `''` when it can be or is not a harness.
+
+    `runtime_available` answers yes or no and swallows the reason, which is how a harness that is
+    installed but broken reads as "not installed" with nothing naming the cause.
+    """
+    got = HARNESS.get(runtime)
+    if got is None: return ''
+    mod, binary = got
+    try: m = importlib.import_module(mod)
+    except Exception as e: return f'import {mod}: {agent_err(e)}'
+    try: found = getattr(m, binary)()
+    except Exception as e: return f'{binary}(): {agent_err(e)}'
+    return '' if found else f'{binary}() found nothing'
+
 # %% ../nbs/00_core.ipynb #8f978b99
-def _claude_available(): return _harness_available('rishi.claude', 'claude_bin')
+def _claude_available(): return _harness_available(*HARNESS['claude'])
 
 # %% ../nbs/00_core.ipynb #ae0f2158
 def _copilot_available():
