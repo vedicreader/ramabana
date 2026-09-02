@@ -24,6 +24,11 @@ before either is released.
   frontends wanted the same file for the same reason. The path stays the caller's. A key is never
   written: `api_key_env` names the variable to read at use. `API_KEYS` is also the one place the
   three vendor variable names are written down, and `auth_status` reads it rather than repeating them.
+- `_openai_ids` is the fetch `_openai_models` filters, so a caller can stand in for the network
+  without standing in for the filtering. Both it and `copilot_catalog` were memoised by a
+  hand-rolled `(timestamp, value)` module tuple, which `forget_probes` could not reach and a test
+  could not clear; both go through `probed` with `dir=False`, because what one API key can list is
+  this process's answer and no restart should start warm from it.
 - `probed`, `probe_path`, `forget_probes` and `PROBE_TTL`: an answer about this machine, served from
   the last one and refreshed behind whoever asked. Asking what is installed and who is signed in
   reaches every backend and every account, which is most of a model picker's first paint. A probe

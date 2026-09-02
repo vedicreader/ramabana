@@ -122,7 +122,8 @@ def probe_path(key, dir=None):
     return d/f"{re.sub(r'[^A-Za-z0-9_.-]', '_', str(key))}.json"
 
 def _probe_read(key, dir):
-    "The answer left on disk, or None."
+    "The answer left on disk, or None. `dir=False` is a probe that never touches one."
+    if dir is False: return None
     try: got = json.loads(probe_path(key, dir).read_text())
     except Exception: return None
     return got if isinstance(got, dict) and 'at' in got else None
@@ -133,6 +134,7 @@ def _probe_write(key, value, dir, age):
     with _probe_lock:                         # the file is written under the lock `forget_probes`
         if age != _probe_age: return          # empties it under, or a refresh already gathering
         _probes[str(key)] = row               # puts the dropped answer back after the unlink
+        if dir is False: return               # this process's answer, which no restart should reuse
         p = probe_path(key, dir)
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -248,35 +250,34 @@ def auth_status():
     }
 
 # %% ../nbs/00_core.ipynb #56303cec
-_oai_cache = (0.0, [])
+def _openai_ids():
+    "Every model id the current OpenAI key can list, unfiltered. `[]` where it cannot be asked."
+    if not (key := os.getenv('OPENAI_API_KEY')): return []
+    try:
+        import httpx2 as httpx
+        r = httpx.get('https://api.openai.com/v1/models', headers={'Authorization': f'Bearer {key}'}, timeout=10)
+        r.raise_for_status()
+        return [x.get('id', '') for x in r.json().get('data', [])]
+    except Exception: return []
+
 def _openai_models(include_legacy=False):
     "Canonical models the current OpenAI key can list. Older coding models are opt-in."
-    global _oai_cache
-    ids = _oai_cache[1] if (time.time() - _oai_cache[0]) < 300 else None
-    if not (key := os.getenv('OPENAI_API_KEY')): return []
-    if ids is None:
-        try:
-            import httpx2 as httpx
-            r = httpx.get('https://api.openai.com/v1/models', headers={'Authorization': f'Bearer {key}'}, timeout=10)
-            r.raise_for_status()
-            ids = [x.get('id', '') for x in r.json().get('data', [])]
-        except Exception: ids = []
-        _oai_cache = (time.time(), ids)
+    if not os.getenv('OPENAI_API_KEY'): return []
+    ids = probed('openai-ids', _openai_ids, ttl=300, dir=False)   # this key's, so never a file
     current = re.compile(r'^(?:gpt-5(?:\.\d+)?(?:-(?:mini|nano|pro|codex(?:-mini|-max)?|chat-latest|search-api|[a-z]+))?|o[34](?:-mini|-pro)?)$')
     legacy = re.compile(r'^gpt-4\.1(?:-mini|-nano)?$')
     return sorted({x for x in ids if (current.match(x) or (include_legacy and legacy.match(x))) and not re.search(r'-20\d\d-', x)})
 
-_copilot_cat = (0., {})
-def copilot_catalog(ttl=300):
-    "Copilot's catalogue for this account, cached: `{id: entry}`, or `{}` when it cannot be reached."
-    global _copilot_cat
-    if (time.time() - _copilot_cat[0]) < ttl: return _copilot_cat[1]
+def _copilot_fetch():
+    "Copilot's catalogue for this account, asked for fresh."
     try:
         from rishi.copilot import copilot_catalog as cat
-        d = cat()
-    except Exception: d = {}
-    _copilot_cat = (time.time(), d)
-    return d
+        return cat()
+    except Exception: return {}
+
+def copilot_catalog(ttl=300):
+    "Copilot's catalogue: `{id: entry}`, or `{}` when it cannot be reached. This account's, so no file."
+    return probed('copilot-catalog', _copilot_fetch, ttl=ttl, dir=False)
 
 def _copilot_chat_models():
     "Chat ids this Copilot plan can reach. Per-plan and it moves. It is asked for, never tabled."
