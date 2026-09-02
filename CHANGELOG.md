@@ -2,6 +2,21 @@
 
 <!-- do not remove -->
 
+## 0.1.33
+
+- `probed` is the one memo for answers about this machine: last answer served, stale one refreshed
+  on a thread behind the caller, kept on disk so the next run starts with something. `probe_path`
+  and `forget_probes` come with it. `_oai_cache` and `_copilot_cat` are gone; `_openai_models` and
+  `copilot_catalog` go through `probed(..., disk=False)`.
+- `runtime_detail` says why a harness runtime cannot be reached, beside `runtime_remedy`, which only
+  ever said what to do about it. `HARNESS` names the two harnesses and what reaching one needs.
+- Model aliases persist: `save_model`, `load_models`, `delete_model`, `saved_models`, `alias_path`
+  and `MODEL_ALIASES`. `register_model` is still the in-process form. `path` is the application's
+  own file, defaulting to `~/.config/ramabana/models.json`.
+- `Agent.memory_context(surface, max_chars)` is the seam an application with a vault fills. The
+  completer asked `self.a.ws.agent_memory_context(...)`, an attribute nothing in Ramabana sets, so
+  a person's pinned notes never reached a completion prompt.
+
 ## 0.1.32
 
 The toolset moved to [shalya](https://github.com/vedicreader/shalya), and git plumbing moved to [gheasy](https://github.com/vedicreader/gheasy). `ramabana.tools` and `ramabana.git` re-export the moved names, so existing imports still work.

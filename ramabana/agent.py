@@ -1101,6 +1101,12 @@ def system_prompt(self:Agent):
                  'resume from the active item rather than rewriting the plan.')
     return system_prompt(self.host, self.skills, inline, tools=self._plain, extra=extra)
 
+# %% ../nbs/03_agent.ipynb #bf85c66d
+@patch
+def memory_context(self:Agent, surface, max_chars=6000):
+    "Durable user notes for one model surface. Nothing here; an embedder with a vault overrides it."
+    return ''
+
 # %% ../nbs/03_agent.ipynb #00efc09f
 @patch
 def _be(self:Agent, job='turn'):
@@ -2313,8 +2319,8 @@ class Completer:
         support = ''
         if context: support += f'<related_code>\n{context[-6000:]}\n</related_code>\n'
         if variables: support += f'<runtime_variables>\n{variables[:4000]}\n</runtime_variables>\n'
-        try: memory = self.a.ws.agent_memory_context('completion', max_chars=6000)
-        except Exception: memory = ''
+        try: memory = self.a.memory_context('completion', max_chars=6000)
+        except Exception: memory = ''   # a vault that cannot be read costs a note, never the completion
         if memory: support += f'<user_memory>\n{memory}\n</user_memory>\n'
         return (f'Language: {lang}\n\n{support}<before>\n{code[:pos][-CTX_BEFORE:]}\n</before>\n'
                 f'<after>\n{code[pos:][:CTX_AFTER]}\n</after>')
