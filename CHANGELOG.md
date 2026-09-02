@@ -19,6 +19,17 @@ before either is released.
   `core.HARNESS` is the table both read, so the yes/no and the reason cannot drift apart.
 - `mk_host` and `mk_agent` forward host keyword arguments (`index`, `warm`), so a caller can build
   a vault without its search index. Only a `pii`-shaped hole was reachable before.
+- `load_models`, `save_model`, `delete_model` and `API_KEYS`: the alias file a frontend writes so a
+  model somebody named survives a restart. `register_model` lasts as long as the process, and both
+  frontends wanted the same file for the same reason. The path stays the caller's. A key is never
+  written: `api_key_env` names the variable to read at use. `API_KEYS` is also the one place the
+  three vendor variable names are written down, and `auth_status` reads it rather than repeating them.
+- `probed`, `probe_path`, `forget_probes` and `PROBE_TTL`: an answer about this machine, served from
+  the last one and refreshed behind whoever asked. Asking what is installed and who is signed in
+  reaches every backend and every account, which is most of a model picker's first paint. A probe
+  gathering when `forget_probes` runs is discarded rather than written in behind it, because the
+  caller has just said the machine changed. The file is written under the lock the drop empties the
+  cache under, so a refresh already in flight cannot put a dropped answer back after the unlink.
 
 ### Fixed
 

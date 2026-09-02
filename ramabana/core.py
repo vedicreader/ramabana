@@ -7,16 +7,17 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE', 'CLAUDE_ALIASES', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIMES', 'AGENTS', 'HOSTED',
-           'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'HARNESS', 'DFLT_LOCAL',
-           'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX',
-           'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'TOOL_CHANNELS', 'BranchChanged', 'agent_err',
-           'use_env_prefix', 'env', 'claude_ctx', 'runtime_detail', 'runtime_remedy', 'runtime_available',
-           'auth_status', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec',
-           'unknown_model', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'register_model',
-           'unregister_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
+           'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'HARNESS', 'PROBE_TTL',
+           'PROBE_DIR', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED',
+           'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'API_KEYS', 'MODEL_FIELDS',
+           'TOOL_CHANNELS', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'runtime_detail',
+           'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_available', 'auth_status',
+           'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve',
+           'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model',
+           'load_models', 'save_model', 'delete_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
-import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, time
+import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
 from fastcore.all import Path
 from shalya.host import HostError
 from dataclasses import dataclass, field
@@ -108,6 +109,79 @@ def runtime_detail(runtime):
     except Exception as e: return f'{binary}(): {agent_err(e)}'
     return '' if found else f'{binary}() found nothing'
 
+# %% ../nbs/00_core.ipynb #254c938a
+PROBE_TTL = 900         #: seconds an answer about this machine stays fresh
+PROBE_DIR = 'probes'    #: under the caller's config directory
+
+_probes, _probe_lock, _probing = {}, threading.Lock(), set()
+_probe_age = 0          #: bumped by `forget_probes`, so an answer gathered before it is discarded
+
+def probe_path(key, dir=None):
+    "Where one probe's last answer is kept between runs."
+    d = Path(dir) if dir else Path.home()/'.ramabana'/PROBE_DIR
+    return d/f"{re.sub(r'[^A-Za-z0-9_.-]', '_', str(key))}.json"
+
+def _probe_read(key, dir):
+    "The answer left on disk, or None."
+    try: got = json.loads(probe_path(key, dir).read_text())
+    except Exception: return None
+    return got if isinstance(got, dict) and 'at' in got else None
+
+def _probe_write(key, value, dir, age):
+    "Keep `value`, in memory and on disk, unless the cache was dropped while it was gathered."
+    row = {'at': time.time(), 'value': value}
+    with _probe_lock:                         # the file is written under the lock `forget_probes`
+        if age != _probe_age: return          # empties it under, or a refresh already gathering
+        _probes[str(key)] = row               # puts the dropped answer back after the unlink
+        p = probe_path(key, dir)
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(row, default=str))
+        except Exception: pass
+
+def _probe_behind(key, fn, dir, age):
+    "Refresh a stale answer on a daemon thread, so the caller waits for nothing."
+    def work():
+        try: _probe_write(key, fn(), dir, age)
+        except Exception: pass
+        finally:
+            with _probe_lock: _probing.discard(str(key))
+    with _probe_lock:
+        if str(key) in _probing: return
+        _probing.add(str(key))
+    threading.Thread(target=work, daemon=True, name=f'ramabana-probe-{key}').start()
+
+def probed(key, fn, ttl=PROBE_TTL, dir=None):
+    "`fn()`'s last answer, with a stale one refreshed behind whoever asked."
+    key, warm = str(key), True
+    with _probe_lock:
+        row, age = _probes.get(key), _probe_age
+    if row is None and (row := _probe_read(key, dir)) is not None:
+        warm = False        # a previous process learned it: a starting point rather than news
+        with _probe_lock:
+            if age == _probe_age: _probes[key] = row
+    if row is None:
+        got = fn()
+        _probe_write(key, got, dir, age)
+        return got
+    if not warm or time.time() - float(row.get('at') or 0) > float(ttl):
+        _probe_behind(key, fn, dir, age)
+    return row.get('value')
+
+def forget_probes(disk=False, dir=None):
+    "Drop every cached probe. What it holds is the machine's, so it is process-wide."
+    global _probe_age
+    with _probe_lock:
+        _probe_age += 1               # an answer already gathering is about the machine before this
+        n = len(_probes)
+        _probes.clear()
+        _probing.clear()
+        if disk:
+            for p in (Path(dir) if dir else Path.home()/'.ramabana'/PROBE_DIR).glob('*.json'):
+                try: p.unlink()
+                except Exception: pass
+    return n
+
 # %% ../nbs/00_core.ipynb #8f978b99
 def _claude_available(): return _harness_available(*HARNESS['claude'])
 
@@ -166,12 +240,10 @@ def auth_status():
     codex = bool(os.getenv('CODEX_AUTH_TOKEN') or _json_has(os.getenv('CODEX_AUTH_PATH', '~/.codex/auth.json'), 'tokens', 'access_token'))
     claude_login = _claude_login() and _claude_available()
     copilot = _copilot_available()
-    return {
-        'openai': {'available': bool(os.getenv('OPENAI_API_KEY')), 'source': 'OPENAI_API_KEY'},
+    out = {v: {'available': bool(os.getenv(k)), 'source': k} for v, k in API_KEYS.items()}
+    return out | {
         'codex': {'available': codex, 'source': 'Codex login' if codex else ''},
-        'anthropic': {'available': bool(os.getenv('ANTHROPIC_API_KEY')), 'source': 'ANTHROPIC_API_KEY'},
         'claude': {'available': claude_login, 'source': 'Claude Code login' if claude_login else ''},
-        'gemini': {'available': bool(os.getenv('GEMINI_API_KEY')), 'source': 'GEMINI_API_KEY'},
         'copilot': {'available': copilot, 'source': 'GitHub Copilot sign-in' if copilot else ''},
     }
 
@@ -436,6 +508,67 @@ def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model
 def unregister_model(name):
     "Remove one process-local configurable model alias."
     CUSTOM.pop(name, None); MODELS.pop(name, None); _LOCAL_CTX.pop(name, None)
+
+# %% ../nbs/00_core.ipynb #06481fae
+#: vendor -> the environment variable holding its key. `auth_status` reads it, and it is the one
+#: place the three names are written down.
+API_KEYS = {'openai': 'OPENAI_API_KEY', 'anthropic': 'ANTHROPIC_API_KEY', 'gemini': 'GEMINI_API_KEY'}
+
+#: what an alias row keeps. A key itself is never among them: `api_key_env` names the variable to
+#: read at use, so a file somebody syncs between machines carries no secret.
+MODEL_FIELDS = ('name', 'model_id', 'runtime', 'ctx', 'note')
+
+def _alias_row(spec_row):
+    "One saved row: the fields worth keeping, and the configuration that is not a secret."
+    cfg = {k: v for k, v in (spec_row.get('config') or {}).items()
+           if not any(s in k.lower() for s in ('key', 'token', 'secret', 'password'))
+           or k.lower().endswith('_env')}
+    return {k: spec_row.get(k) for k in MODEL_FIELDS} | cfg
+
+def _alias_read(path):
+    "The rows on disk, or `[]` where there are none."
+    try: got = json.loads(Path(path).read_text())
+    except Exception: return []
+    return [r for r in got if isinstance(r, dict) and r.get('name')] if isinstance(got, list) else []
+
+def _alias_write(rows, path):
+    "Replace the file, through a temporary one so a crash mid-write leaves the old rows."
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + '.tmp')
+    tmp.write_text(json.dumps(rows, indent=2, default=str))
+    tmp.replace(p)
+    return rows
+
+def load_models(path):
+    "Register every saved alias in this process, and return the rows that took."
+    out = []
+    for r in _alias_read(path):
+        try:
+            register_model(r['name'], r.get('model_id'), r.get('runtime'), r.get('ctx'),
+                           r.get('note') or 'custom model',
+                           **{k: v for k, v in r.items() if k not in MODEL_FIELDS})
+            out.append(r)
+        except Exception: pass   # a runtime that is gone is not a reason to lose the rest
+    return out
+
+def save_model(row, path):
+    "Validate, register and persist one alias. Returns the row as it was stored."
+    spec = register_model(row.get('name'), row.get('model_id'), row.get('runtime'), row.get('ctx'),
+                          row.get('note') or 'custom model',
+                          **{k: v for k, v in row.items() if k not in MODEL_FIELDS})
+    kept = _alias_row(CUSTOM[spec.name])
+    _alias_write([r for r in _alias_read(path) if r.get('name') != spec.name] + [kept], path)
+    return kept
+
+def delete_model(name, path):
+    "Forget one alias, on disk and in this process. Returns whether there was one."
+    rows = _alias_read(path)
+    left = [r for r in rows if r.get('name') != name]
+    _alias_write(left, path)
+    try: unregister_model(name)
+    except Exception: pass
+    return len(left) != len(rows)
 
 # %% ../nbs/00_core.ipynb #1e5cd7ee
 TOOL_CHANNELS = ('native', 'tags')

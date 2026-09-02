@@ -473,3 +473,114 @@ def test_a_harness_that_is_installed_but_broken_says_which_half_failed(monkeypat
     mod.probe = lambda: '/usr/bin/claude'
     assert core.runtime_detail('claude') == '', 'a reachable harness has nothing to report'
     assert core.runtime_available('claude') is True
+
+
+def test_a_probe_serves_its_last_answer_and_refreshes_behind_whoever_asked(tmp_path):
+    "Asking what is installed and who is signed in reaches every backend and every account."
+    import time
+    from ramabana.core import forget_probes, probe_path, probed
+
+    calls = []
+    def slow(): calls.append(1); return f'answer {len(calls)}'
+
+    forget_probes(disk=True, dir=tmp_path)
+    assert probed('t', slow, dir=tmp_path) == 'answer 1', 'the first caller waits for the truth'
+    assert probed('t', slow, dir=tmp_path) == 'answer 1' and len(calls) == 1, 'the next waits for nothing'
+    assert probed('t', slow, ttl=0, dir=tmp_path) == 'answer 1', 'a stale answer is served at once'
+    for _ in range(100):
+        if len(calls) > 1: break
+        time.sleep(.02)
+    assert len(calls) == 2, 'while it is refreshed behind'
+    assert probed('t', slow, dir=tmp_path) == 'answer 2'
+    assert probe_path('t', tmp_path).exists(), 'and the next run starts warm'
+    assert forget_probes(disk=True, dir=tmp_path) == 1
+    assert not list(tmp_path.glob('*.json'))
+
+
+def test_an_answer_a_previous_process_left_is_served_at_once_and_re_probed(tmp_path):
+    "A desktop app is a fresh process every launch, so memory is empty exactly when it is needed."
+    import threading, time
+    from ramabana.core import forget_probes, probed
+
+    forget_probes(disk=True, dir=tmp_path)
+    probed('warm', lambda: 'from the last run', dir=tmp_path)
+    forget_probes(dir=tmp_path)                  # a new process: memory empty, disk warm
+
+    running, gathered = threading.Event(), threading.Event()
+    def slow():
+        running.set()
+        gathered.wait(5)
+        return 'freshly probed'
+
+    # the disk answer comes back while the probe is still gathering, so the caller waited for none
+    # of it. A row from a previous process is a starting point, however recently it was written.
+    assert probed('warm', slow, dir=tmp_path) == 'from the last run'
+    assert running.wait(5), 'and a refresh is under way behind it'
+    gathered.set()
+    for _ in range(200):
+        if probed('warm', slow, dir=tmp_path) == 'freshly probed': break
+        time.sleep(.02)
+    assert probed('warm', slow, dir=tmp_path) == 'freshly probed'
+    forget_probes(disk=True, dir=tmp_path)
+
+
+def test_a_probe_gathering_when_the_cache_is_dropped_does_not_come_back(tmp_path):
+    """`forget_probes` means the machine changed under us. A probe already gathering wrote its
+    answer in afterwards, so the next caller was served state somebody had just thrown away."""
+    import threading
+    from ramabana.core import forget_probes, probe_path, probed
+
+    forget_probes(dir=tmp_path)
+    gathering, finish = threading.Event(), threading.Event()
+    def slow(): gathering.set(); finish.wait(5); return 'stale'
+
+    t = threading.Thread(target=lambda: probed('inflight', slow, dir=tmp_path), daemon=True)
+    t.start()
+    assert gathering.wait(5), 'the probe is under way'
+    forget_probes(dir=tmp_path)
+    finish.set()
+    t.join(5)
+    assert probed('inflight', lambda: 'fresh', dir=tmp_path) == 'fresh', 'no answer from before the drop'
+    assert probe_path('inflight', tmp_path).read_text().count('stale') == 0, 'nor kept for the next run'
+    forget_probes(disk=True, dir=tmp_path)
+
+
+def test_a_saved_alias_outlives_the_process_and_carries_no_secret(tmp_path):
+    """`register_model` lasts as long as the process, so a person who named a model lost it on
+    restart. The rows are here; the path is the caller's."""
+    import json
+    from ramabana.core import delete_model, load_models, resolve, save_model
+
+    p = tmp_path/'models.json'
+    row = save_model({'name': 'ornith-test', 'ctx': 128_000, 'runtime': 'remote',
+                      'model_id': 'https://huggingface.co/litert-community/Ornith-1.0-9B'}, p)
+    assert row['model_id'] == 'litert-community/Ornith-1.0-9B', 'a hub URL is stored as its id'
+    assert resolve('ornith-test').runtime == 'remote'
+    assert [r['name'] for r in load_models(p)] == ['ornith-test']
+    assert json.loads(p.read_text())[0]['ctx'] == 128_000
+
+    save_model({'name': 'hosted', 'model_id': 'openai/hosted', 'runtime': 'remote', 'ctx': 200_000,
+                'base_url': 'https://api.example.test/v1', 'api_key_env': 'EXAMPLE_API_KEY',
+                'api_key': 'secret-value'}, p)
+    assert resolve('hosted').config['base_url'].endswith('/v1')
+    text = p.read_text()
+    assert 'EXAMPLE_API_KEY' in text, 'the variable to read is worth keeping'
+    assert 'secret-value' not in text, 'the key itself never reaches the file'
+
+    assert delete_model('hosted', p) is True
+    assert delete_model('hosted', p) is False, 'and says when there was nothing to forget'
+    assert [r['name'] for r in load_models(p)] == ['ornith-test']
+    delete_model('ornith-test', p)
+    assert load_models(p) == []
+
+
+def test_a_row_naming_a_runtime_that_is_gone_does_not_cost_the_others(tmp_path):
+    "One unusable alias used to be the whole file, because the loop raised out of the first row."
+    from ramabana.core import load_models, save_model
+
+    p = tmp_path/'models.json'
+    save_model({'name': 'good', 'model_id': 'openai/good', 'runtime': 'remote', 'ctx': 1000}, p)
+    rows = [{'name': 'gone', 'model_id': 'x/y', 'runtime': 'no-such-runtime', 'ctx': 1000},
+            *[r for r in __import__('json').loads(p.read_text())]]
+    p.write_text(__import__('json').dumps(rows))
+    assert [r['name'] for r in load_models(p)] == ['good']
