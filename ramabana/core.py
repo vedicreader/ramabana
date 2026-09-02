@@ -82,9 +82,7 @@ def claude_ctx(model_id):
     return next((c for p, c in CLAUDE_CTX.items() if mid.startswith(p)), DFLT_AGENT_CTX)
 
 # %% ../nbs/00_core.ipynb #de745a4a
-#: An agent harness is a module plus the callable that finds the binary its SDK spawns.
-#: `runtime_detail` reads the table `_harness_available` answers from, so the yes/no and the reason
-#: cannot drift apart.
+#: runtime -> (module, the callable that finds the binary its SDK spawns)
 HARNESS = {'claude': ('rishi.claude', 'claude_bin')}
 
 def _harness_available(mod, binary):
@@ -95,11 +93,7 @@ def _harness_available(mod, binary):
     except Exception: return False
 
 def runtime_detail(runtime):
-    """Why a harness cannot be reached here, or `''` when it can be or is not a harness.
-
-    `runtime_available` answers yes or no and swallows the reason, which is how a harness that is
-    installed but broken reads as "not installed" with nothing naming the cause.
-    """
+    "Why a harness cannot be reached here, or `''` when it can be or is not a harness."
     got = HARNESS.get(runtime)
     if got is None: return ''
     mod, binary = got
@@ -131,10 +125,10 @@ def _probe_read(key, dir):
 def _probe_write(key, value, dir, age):
     "Keep `value`, in memory and on disk, unless the cache was dropped while it was gathered."
     row = {'at': time.time(), 'value': value}
-    with _probe_lock:                         # the file is written under the lock `forget_probes`
-        if age != _probe_age: return          # empties it under, or a refresh already gathering
-        _probes[str(key)] = row               # puts the dropped answer back after the unlink
-        if dir is False: return               # this process's answer, which no restart should reuse
+    with _probe_lock:                         # the same lock `forget_probes` unlinks under
+        if age != _probe_age: return          # dropped while this was gathering
+        _probes[str(key)] = row
+        if dir is False: return
         p = probe_path(key, dir)
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -159,7 +153,7 @@ def probed(key, fn, ttl=PROBE_TTL, dir=None):
     with _probe_lock:
         row, age = _probes.get(key), _probe_age
     if row is None and (row := _probe_read(key, dir)) is not None:
-        warm = False        # a previous process learned it: a starting point rather than news
+        warm = False        # a previous process left it: a starting point, not news
         with _probe_lock:
             if age == _probe_age: _probes[key] = row
     if row is None:
@@ -174,7 +168,7 @@ def forget_probes(disk=False, dir=None):
     "Drop every cached probe. What it holds is the machine's, so it is process-wide."
     global _probe_age
     with _probe_lock:
-        _probe_age += 1               # an answer already gathering is about the machine before this
+        _probe_age += 1               # discards an answer already gathering
         n = len(_probes)
         _probes.clear()
         _probing.clear()
@@ -276,7 +270,7 @@ def _copilot_fetch():
     except Exception: return {}
 
 def copilot_catalog(ttl=300):
-    "Copilot's catalogue: `{id: entry}`, or `{}` when it cannot be reached. This account's, so no file."
+    "Copilot's catalogue for this account: `{id: entry}`, or `{}` when it cannot be reached."
     return probed('copilot-catalog', _copilot_fetch, ttl=ttl, dir=False)
 
 def _copilot_chat_models():
@@ -511,12 +505,10 @@ def unregister_model(name):
     CUSTOM.pop(name, None); MODELS.pop(name, None); _LOCAL_CTX.pop(name, None)
 
 # %% ../nbs/00_core.ipynb #06481fae
-#: vendor -> the environment variable holding its key. `auth_status` reads it, and it is the one
-#: place the three names are written down.
+#: vendor -> the environment variable holding its key
 API_KEYS = {'openai': 'OPENAI_API_KEY', 'anthropic': 'ANTHROPIC_API_KEY', 'gemini': 'GEMINI_API_KEY'}
 
-#: what an alias row keeps. A key itself is never among them: `api_key_env` names the variable to
-#: read at use, so a file somebody syncs between machines carries no secret.
+#: what an alias row keeps. `api_key_env` names a variable; a key itself is never written
 MODEL_FIELDS = ('name', 'model_id', 'runtime', 'ctx', 'note')
 
 def _alias_row(spec_row):

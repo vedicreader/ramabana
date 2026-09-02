@@ -37,9 +37,7 @@ from .runtime import Run, current_run, run_context
 from fastcore.docments import frontmatter
 from shalya.core import WRITE_TOOLS as _TOOL_WRITES
 _cmds, _edits, _apply_edits, _diff = cmds, edits, apply_edits, diff_text
-#: the trolley is an extension rather than a host group, so shalya cannot name its writes. The
-#: tools carry `@writes` too: `read_only` reads the mark, and a name here alone did not stop it
-#: handing a read-only sub-agent the ability to change what someone is about to buy.
+#: the trolley is an extension, not a host group, so shalya cannot name its writes
 WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove'}
 
 # %% ../nbs/02_tools.ipynb #694f6d5d
@@ -72,11 +70,7 @@ def _from_responses(raw):
     return gen_media(raw)
 
 def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=None):
-    """shalya's image group, told what this turn's model can do.
-
-    `get_spec` is read on every call rather than once here: two models can share a budget, so a
-    `/model` switch need not rebuild the tools, and a spec read at build time is then the wrong one.
-    """
+    "shalya's image group, asked on every call what this turn's model can do."
     spec = lambda: (get_spec() if get_spec else None)
     return _image_tools(host, mx, session, draws_itself=lambda: draws_itself(spec()),
                         from_reply=_from_responses,
@@ -91,8 +85,7 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_s
 # %% ../nbs/02_tools.ipynb #e3b29ea1
 SUB_MAX_STEPS = 12
 
-#: The half both briefings share. The two halves below are the ones that swap, so nothing has to
-#: match a sentence to decide: rewording a line used to silently disable the swap.
+#: the half both briefings share; the two below are the ones that swap
 SUB_SP_HEAD = """You are a research sub-agent in a Python IDE. Answer the delegated question only.
 - Use tools as needed. Report findings with file paths and line numbers.
 - State plainly when you find nothing. Do not guess."""

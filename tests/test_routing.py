@@ -512,9 +512,7 @@ def test_an_answer_a_previous_process_left_is_served_at_once_and_re_probed(tmp_p
         gathered.wait(5)
         return 'freshly probed'
 
-    # the disk answer comes back while the probe is still gathering, so the caller waited for none
-    # of it. A row from a previous process is a starting point, however recently it was written.
-    assert probed('warm', slow, dir=tmp_path) == 'from the last run'
+    assert probed('warm', slow, dir=tmp_path) == 'from the last run', 'waiting for none of it'
     assert running.wait(5), 'and a refresh is under way behind it'
     gathered.set()
     for _ in range(200):

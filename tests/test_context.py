@@ -170,10 +170,10 @@ def test_compaction_replaces_the_history_and_reorients_the_model(spec):
     assert out == 'GOAL: ship it'
     head = be.hist[0]['content']
     assert head.startswith(runtime.SUMMARY_PREFIX) and 'GOAL: ship it' in head
-    # the reminder itself, not a phrase from it: rewording it used to fail here for no behaviour change
+    # the reminder itself, not a phrase from it
     assert runtime.reorient(kernel_alive=True) in head
     assert runtime.reorient(kernel_alive=False) not in head
-    # a restarted kernel must not be told its variables survived, whatever words it uses to say so
+    # a restarted kernel must not be told its variables survived
     assert runtime.reorient(kernel_alive=False) != runtime.reorient(kernel_alive=True)
     assert 'Do not re-import' not in runtime.reorient(kernel_alive=False)
 
@@ -188,7 +188,7 @@ def test_compaction_replaces_the_history_and_reorients_the_model(spec):
          {'role': 'assistant', 'content': 'later work'}])
     assert prev == 'old summary' and len(rest) == 1
     p = runtime.summarise_prompt([{'role': 'user', 'content': runtime.SUMMARY_PREFIX + 'old summary'}])
-    # a summary is updated, not re-summarised: the old one arrives in its own block to be carried on
+    # a summary is updated, not re-summarised
     assert '<previous-summary>\nold summary\n</previous-summary>' in p
     assert 'lineno|hash|' in p, 'the prompt must keep the addresses a pending edit needs'
 

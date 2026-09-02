@@ -298,9 +298,7 @@ def own_vault(tmp_path, monkeypatch):
     return tmp_path
 
 
-#: An indexed vault reaches litesearch, which downloads a native SQLite extension on first use.
-#: Every other test in this file says `index=False`; these reach the vault through `mk_host`, so
-#: they say it the same way. `warm=False` keeps the open on this thread, where a failure is visible.
+#: an indexed vault downloads a SQLite extension on first use, and `warm=False` keeps the open here
 OFFLINE = dict(index=False, warm=False)
 
 

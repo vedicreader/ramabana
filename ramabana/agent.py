@@ -1104,12 +1104,7 @@ def system_prompt(self:Agent):
 # %% ../nbs/03_agent.ipynb #9707b4ac
 @patch
 def memory_context(self:Agent, surface, max_chars=6000):
-    """The durable notes an embedder wants in front of the model, or `''` where it keeps none.
-
-    The briefing and the completer both ask for this. It used to be `self.ws.agent_memory_context`,
-    a name Ramabana sets nowhere, so on any embedder but the one that happened to carry `ws` the
-    call raised into a bare `except` and the notes were dropped without a word.
-    """
+    "The durable notes an embedder wants in front of the model, or `''` where it keeps none."
     return ''
 
 # %% ../nbs/03_agent.ipynb #00efc09f
@@ -1380,9 +1375,7 @@ def set_model(self:Agent, name, job='turn'):
     before = self.budget
     spec = self.routing.set(name, job)
     new = (spec.backend, spec.model_id)
-    # tools and briefing are sized to the turn model. Rebuild before `_be` briefs one. Budget is
-    # not the only thing they depend on: every large-window model shares one, and which of them
-    # can draw does not, so rebuild whenever the model itself moved
+    # tools and briefing are built from the turn model, not only from its budget
     if job == 'turn' and (self.budget != before or new != old): self._tools = None
     if job == 'subagent': self._subtools = self._subrec = None
     if job == 'turn' and new != old:
