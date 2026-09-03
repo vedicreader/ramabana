@@ -309,7 +309,7 @@ agent.turn_lines(), repr(agent.turn_use)
 
 Ramabana is the harness, [shalya](https://github.com/vedicreader/shalya) is the toolset, and [vishalakshi](https://github.com/vedicreader/vishalakshi) is the vault. Compose them into whatever a problem needs rather than into what a framework allows.
 
-[Two agents and a wall](https://github.com/vedicreader/ramabana/blob/main/examples/pii_wall.ipynb) is one folder of customer records and five functions. A local model is the only thing that reads a record or writes a fix, a hosted model researches the rule from a schema-shaped brief, and every prompt crossing between them is scanned first.
+`examples/pii_wall.ipynb` is one folder of customer records and four functions. A local model is the only thing that reads a record or writes a fix, a hosted model researches the rule from a schema-shaped brief, and a prompt crossing between them is refused if it carries an identifier the vault holds private.
 
 ## Read the implementation
 
