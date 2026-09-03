@@ -47,6 +47,7 @@ _all_ = ['frontmatter', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'E
 @implemented
 class NullHost(Host):
     "A host with nothing behind it. The reference implementation of 'this host cannot'."
+    writes = False   # so `file_tools` withholds the editors instead of handing over three that raise
     def __init__(self, roots=()): self._roots = [str(r) for r in roots]
     @property
     def roots(self): return self._roots

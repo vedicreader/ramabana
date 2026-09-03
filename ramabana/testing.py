@@ -29,6 +29,8 @@ SCRIPTED = ModelSpec('scripted', 'scripted', 'scripted/model', ctx=8000)
 class MemHost(NullHost, CodeHost, ShellHost):
     "A host whose folders live in a dict. The file tools can be driven without touching disk."
 
+    writes = True    # unlike the `NullHost` it inherits from, `write` really writes
+
     def __init__(self, files=None, root='/proj', commands=None):
         super().__init__([root])
         self.files, self.root = dict(files or {}), root

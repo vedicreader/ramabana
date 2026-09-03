@@ -113,3 +113,58 @@ def test_shared_commands_and_session_resume(monkeypatch):
     assert '2 turns' in a.command('/resume latest')
     assert backend._resume_hist[-1] == {'role': 'assistant', 'content': 'cedar'}
     assert a.session_id == 'agent_20260811-101010'
+
+
+def test_a_tool_registered_while_the_session_runs_survives_a_reload(tmp_path):
+    """`reload` and `refresh` re-read the extension files, and used to discard the whole registry
+    with them. Anything the process registered on it stays, and `add_tool` is the way in after
+    `tools` has already been built."""
+    ext = tmp_path/'extensions'; ext.mkdir()
+    (ext/'wc.py').write_text('def setup(reg):\n'
+                             '    @reg.tool\n'
+                             '    def from_file(x: str) -> str:\n'
+                             '        "A tool an extension file registered."\n'
+                             '        return x\n')
+    a, _ = fake_agent(cfg=tmp_path)
+    a.extensions = True
+
+    def added(x: str) -> str:
+        "A tool the running process registered."
+        return x
+
+    assert 'from_file' in {t.__name__ for t in a.tools}
+    before = a.tools
+    a.add_tool(added)
+    assert a.tools is not before                      # the built list was rebuilt around it
+    assert 'added' in {t.__name__ for t in a.tools}
+
+    for call in (a.reload, a.refresh):
+        call()
+        assert 'added' in {t.__name__ for t in a.tools}, call.__name__
+        assert 'from_file' in {t.__name__ for t in a.tools}, call.__name__
+        assert [t.__name__ for t in a.registry.tools].count('from_file') == 1, 'reloaded twice'
+
+
+def test_a_reload_takes_back_only_what_the_extension_files_registered(tmp_path):
+    "Hooks, commands and skills follow the tools: the files' registrations go, the process's stay."
+    ext = tmp_path/'extensions'; ext.mkdir()
+    (ext/'e.py').write_text('def setup(reg):\n'
+                            '    reg.command("fromfile", lambda a, arg: arg)\n'
+                            '    reg.skill("file-skill", "body")\n'
+                            '    reg.on("after_turn", lambda *a, **k: None)\n')
+    reg = load(Registry(), cfg=tmp_path)
+    reg.command('mine', lambda a, arg: arg)
+    reg.skill('my-skill', 'body')
+    reg.on('after_turn', print)
+    assert reg.loaded
+
+    reg.drop_loaded()
+    assert not reg.loaded
+    assert sorted(reg.commands) == ['mine']
+    assert [s.name for s in reg.skills] == ['my-skill']
+    assert reg.hooks['after_turn'] == [print]
+    assert reg.notes == []
+
+    load(reg, cfg=tmp_path)                            # and the files come back on the next read
+    assert sorted(reg.commands) == ['fromfile', 'mine']
+    assert [s.name for s in reg.skills] == ['my-skill', 'file-skill']

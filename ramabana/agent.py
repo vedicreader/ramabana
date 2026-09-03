@@ -933,12 +933,11 @@ def budget(self:Agent):
 # %% ../nbs/03_agent.ipynb #c2f8f265
 @patch(as_prop=True)
 def registry(self:Agent):
-    "The extension registry, loaded once. Empty when extensions are switched off."
-    if self._reg is None:
-        self._reg = Registry(host=self.host, agent=self)
-        if self.extensions:
-            try: load(self._reg, self.host.roots, self.cfg, self.project_extensions, self.ext_paths)
-            except Exception as e: self._reg.notes.append(f'extension loading failed: {agent_err(e)}')
+    "The extension registry. The object outlives a reload, which re-reads only the extension files."
+    if self._reg is None: self._reg = Registry(host=self.host, agent=self)
+    if self.extensions and not self._reg.loaded:
+        try: load(self._reg, self.host.roots, self.cfg, self.project_extensions, self.ext_paths)
+        except Exception as e: self._reg.notes.append(f'extension loading failed: {agent_err(e)}')
     return self._reg
 
 # %% ../nbs/03_agent.ipynb #47fc0470
@@ -1239,9 +1238,15 @@ def chat_or_none(self:Agent, job='turn'):
 
 # %% ../nbs/03_agent.ipynb #2c471726
 @patch
+def _forget(self:Agent):
+    "Drop what is rebuilt from disk. The registry keeps whatever this process registered on it."
+    self._skills = self._tools = self._subtools = self._subrec = None
+    if self._reg is not None: self._reg.drop_loaded()
+
+@patch
 def reload(self:Agent):
     "Re-discover skills, extensions and tools. What a `/reload` command calls after editing them."
-    self._skills = self._reg = self._tools = self._subtools = self._subrec = None
+    self._forget()
     for b in self._backends.values(): b.close()
     self._backends.clear()
     return self
@@ -1250,11 +1255,18 @@ def reload(self:Agent):
 @patch
 def refresh(self:Agent):
     "Re-discover skills, extensions and tools, and re-brief a running turn backend in place."
-    self._skills = self._reg = self._tools = self._subtools = self._subrec = None
+    self._forget()
     spec = self.routing.spec('turn')
     b = self._backends.get((spec.backend, spec.model_id))
     if b is not None: b.refresh(self.system_prompt(), self.tools)
     return self
+
+@patch
+def add_tool(self:Agent, f):
+    "Give this agent one more tool, now. Mid-turn, the running backend is re-briefed with it."
+    self.registry.tool(f)
+    self.refresh()
+    return f
 
 # %% ../nbs/03_agent.ipynb #58e7f494
 @patch(as_prop=True)
