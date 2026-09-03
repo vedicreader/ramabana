@@ -393,3 +393,18 @@ def test_a_group_whose_backend_is_absent_is_absent_from_provides(tmp_path):
     assert not host.can('memory') and not host.can('api')
     assert host.can('code') and host.can('file')
     with pytest.raises(HostError, match='no vault'): host.memory_tree('')
+
+
+def test_a_host_that_cannot_write_is_offered_no_editors():
+    """`NullHost.write` raises, so advertising `create_file`, `edit_file` and `replace_text`
+    hands a model three tools that can only fail. It gets `view_file` and nothing else, without
+    needing `readonly=True` to make it honest."""
+    assert names(file_tools(NullHost(['/x']))) == {'view_file'}
+    assert names(tools_for(NullHost(['/x']))) == {'view_file'}
+    assert NullHost().writes is False
+
+    assert MemHost().writes is True                      # it writes into its dict, so it keeps them
+    assert {'create_file', 'edit_file', 'replace_text'} <= names(file_tools(MemHost()))
+
+    class Frozen(MemHost): writes = False
+    assert names(file_tools(Frozen())) == {'view_file'}   # the flag decides, not the class
