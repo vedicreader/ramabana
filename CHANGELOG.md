@@ -4,45 +4,24 @@
 
 ## 0.1.33
 
-Built against the shalya checkout beside it, so a change to one is testable against the other
-before either is released.
+Built against the local shalya checkout so both can be tested together before release.
 
 ### New
 
-- `probed` is the one memo for answers about this machine: last answer served, stale one refreshed
-  on a thread behind the caller, kept on disk so the next run starts with something. `probe_path`
-  and `forget_probes` come with it. `_oai_cache` and `_copilot_cat` are gone; `_openai_models` and
-  `copilot_catalog` go through `probed(..., disk=False)`.
-- `runtime_detail` says why a harness runtime cannot be reached, beside `runtime_remedy`, which only
-  ever said what to do about it. `HARNESS` names the two harnesses and what reaching one needs.
-- Model aliases persist: `save_model`, `load_models`, `delete_model`, `saved_models`, `alias_path`
-  and `MODEL_ALIASES`. `register_model` is still the in-process form. `path` is the application's
-  own file, defaulting to `~/.config/ramabana/models.json`.
-- `Agent.memory_context(surface, max_chars)` is the seam an application with a vault fills. The
-  completer asked `self.a.ws.agent_memory_context(...)`, an attribute nothing in Ramabana sets, so
-  a person's pinned notes never reached a completion prompt.
-- `mk_host` and `mk_agent` forward host keyword arguments, so a caller can ask for `index=False`.
-  Only a `pii`-shaped hole was reachable before.
+- `probed`: single memo for machine-probe answers — serves last answer, refreshes stale ones on a background thread, persists to disk. Replaces `_oai_cache` and `_copilot_cat`; `_openai_models` and `copilot_catalog` now go through `probed(..., disk=False)`. `probe_path` and `forget_probes` included.
+- `runtime_detail`: explains why a harness runtime is unreachable. `runtime_remedy` already said what to do; now `runtime_detail` says why. `HARNESS` lists both harnesses and their requirements.
+- Persistent model aliases: `save_model`, `load_models`, `delete_model`, `saved_models`, `alias_path`, `MODEL_ALIASES`. `register_model` remains the in-process form. Defaults to `~/.config/ramabana/models.json`.
+- `Agent.memory_context(surface, max_chars)`: seam for applications with a vault. Previously the completer looked for `self.a.ws.agent_memory_context(...)`, which nothing in Ramabana set, so pinned notes never reached completions.
+- `mk_host` / `mk_agent` forward host kwargs (e.g. `index=False`). Previously only `pii` was reachable.
 
 ### Fixed
 
-- A sub-agent granted write tools was told both "You cannot edit" and "You also have the delegating
-  agent's write tools". `sub_briefing` swapped the read-only sentences out by matching their text,
-  and the 0.1.32 release reworded them, so both filters matched nothing. The briefing is assembled
-  from `SUB_SP_HEAD` plus `SUB_READ_SP` or `SUB_WRITE_SP` now; there is no text to match.
-- `cart_add` and `cart_remove` were named in `WRITE_TOOLS` and carried no `@writes`, and `read_only`
-  reads the mark. A read-only agent, and every read-only sub-agent, was handed the ability to change
-  what someone was about to buy.
-- The image group read the turn's model once, when the tools were built, and `set_model` rebuilt
-  them only when the budget changed. Every large-window model shares one budget, so switching to a
-  model that cannot draw left the group drawing as the old one, at the old model id.
-- `tests/test_vault.py` opened an indexed vault through `mk_host`, which downloads a native SQLite
-  extension on first use, from several unjoined daemon threads at once. It segfaulted the
-  interpreter and took the rest of the suite with it.
-- Three assertions on prose the 0.1.32 release had reworded: the reviewer's briefing, the
-  compaction reminder and the summary-update prompt. Each asserts the value now, not a phrase in it.
-- The `--agent-proxy` flag test asserted the underscored spelling `fastcore` no longer generates.
-
+- `sub_briefing` matched sub-agent read-only sentences by text; 0.1.32 reworded them, breaking the match. Now assembled from `SUB_SP_HEAD` + `SUB_READ_SP` / `SUB_WRITE_SP` — no text matching.
+- `cart_add` / `cart_remove` were in `WRITE_TOOLS` but lacked `@writes`, so `read_only` missed them. Read-only agents could modify carts.
+- Image group captured the model at tool-build time; `set_model` only rebuilt when the budget changed. Switching to a non-drawing model left it drawing as the old one.
+- `tests/test_vault.py` opened an indexed vault via `mk_host`, triggering concurrent downloads of a native SQLite extension from unjoined daemon threads — segfaulting the interpreter.
+- Three string assertions broken by 0.1.32 rewording (reviewer briefing, compaction reminder, summary-update prompt). Now assert the full value, not a substring.
+- `--agent-proxy` flag test asserted the underscored spelling that fastcore no longer generates.
 ## 0.1.32
 
 The toolset moved to [shalya](https://github.com/vedicreader/shalya), and git plumbing moved to [gheasy](https://github.com/vedicreader/gheasy). `ramabana.tools` and `ramabana.git` re-export the moved names, so existing imports still work.

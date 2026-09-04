@@ -306,7 +306,7 @@ Start with the page for the contract you need:
 - [agent](03_agent.ipynb): turns, approvals, activity, plans, history, and branching
 - [testing](04_testing.ipynb): in-memory hosts and deterministic backends
 - [terminal](05_cli.ipynb), [MCP](06_mcp.ipynb), [PyREPL](11_pyrepl.ipynb), and [ACP](16_acp.ipynb): frontend adapters
-- [vault](07_vault.ipynb), [API specifications](10_spec.ipynb), [git](12_git.ipynb), and [folder monitoring](17_monitor.ipynb): optional capabilities
+- [vault](07_vault.ipynb), [API specifications](10_spec.ipynb), and [folder monitoring](17_monitor.ipynb): optional capabilities
 - [shop](08_shop.ipynb): product search tools
 - [coding patterns](09_coding_patterns.ipynb), [theory](13_theory.ipynb), [prose](14_write_prose.ipynb), and [documentation](15_write_docs.ipynb): bundled agent skills
 
