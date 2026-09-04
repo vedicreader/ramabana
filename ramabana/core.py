@@ -111,10 +111,12 @@ def _write_probe(key, value, dir):
 
 def _keep(key, value, gen, dir, disk):
     "Write an answer in, unless it was gathered about a machine `forget_probes` has since dropped."
+    # The write is under the lock with the generation it was checked against: outside it, a
+    # refresh still in flight recreates the file `forget_probes` has just removed.
     with _probe_lock:
         if gen != _probe_gen: return
         _PROBED[key] = {'at': time.time(), 'value': value, 'busy': False}
-    if disk: _write_probe(key, value, dir)
+        if disk: _write_probe(key, value, dir)
 
 def probed(key, fn, ttl=PROBE_TTL, dir=None, disk=True):
     "`fn()`'s last answer, with a stale one refreshed behind whoever asked."
@@ -140,11 +142,12 @@ def probed(key, fn, ttl=PROBE_TTL, dir=None, disk=True):
 def forget_probes(disk=False, dir=None):
     "Drop every cached answer, so the next ask is a fresh one."
     global _probe_gen
-    with _probe_lock: keys, _probe_gen, _ = list(_PROBED), _probe_gen+1, _PROBED.clear()
-    if not disk: return
-    for key in keys:
-        try: probe_path(key, dir).unlink(missing_ok=True)
-        except Exception: pass
+    with _probe_lock:
+        keys, _probe_gen, _ = list(_PROBED), _probe_gen+1, _PROBED.clear()
+        if not disk: return
+        for key in keys:
+            try: probe_path(key, dir).unlink(missing_ok=True)
+            except Exception: pass
 
 # %% ../nbs/00_core.ipynb #de745a4a
 #: The harness runtimes and what reaching one needs, so an unavailable one can say more than "no".

@@ -50,9 +50,9 @@ because `gheasy/__init__.py` does not carry it.
 keeps working. `ramabana/tools.py` adds what needs an agent: delegation, `draws_itself`, and the
 `tools_for` wrapper that builds the image group from the turn's model.
 
-The clock is [pobblebonk](https://github.com/vedicreader/pobblebonk), an optional `ramabana[cron]`
-extra. It schedules an operating-system job through cron, launchd or `schtasks`, so it fires when no
-session is open. Ramabana holds only the seam, in `ramabana/monitor.py`. `pob` opens the shared
+The clock is [pobblebonk](https://github.com/vedicreader/pobblebonk), a dependency rather than an
+extra since the extras collapsed to `cli` and `dev`. It schedules an operating-system job through
+cron, launchd or `schtasks`, so it fires when no session is open. Ramabana holds only the seam, in `ramabana/monitor.py`. `pob` opens the shared
 SQLite database. `beat_notes` reads what the beat left, under a per-session reader id.
 `ramabana-tick` is the entry point a beat runs, and `ramabana-tick --install` schedules it under
 this package's own tag. The two halves share that database and never call each other. Register a

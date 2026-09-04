@@ -385,7 +385,7 @@ def tick(db: str = '',         # the shared database; pobblebonk's own by defaul
     if install or uninstall:
         hb = heartbeat()
         if hb is None:
-            print("scheduling needs pobblebonk: pip install 'ramabana[cron]'", file=sys.stderr)
+            print("scheduling needs pobblebonk: pip install pobblebonk", file=sys.stderr)
             return 1
         if uninstall:
             print('stopped' if hb.uninstall(BEAT_TAG) else 'nothing was scheduled')
@@ -395,7 +395,7 @@ def tick(db: str = '',         # the shared database; pobblebonk's own by defaul
         return 0
     p = pob(db or None)
     if p is None:
-        print("pobblebonk is not installed: pip install 'ramabana[cron]'", file=sys.stderr)
+        print("pobblebonk is not installed: pip install pobblebonk", file=sys.stderr)
         return 1
     for name, fn in TICKS.items(): p.on(name)(fn)
     got = p.tick()

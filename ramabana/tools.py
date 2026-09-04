@@ -80,7 +80,9 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
 # %% ../nbs/02_tools.ipynb #de2cd1e8
 def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None):
     "Lists all tools supported by the host and registered extensions. Groups are from `Host.provides`. Use `drop` to exclude groups, based on `core.budget_for` and `Agent.budget`."
-    image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media) if image_available() and 'image' not in set(drop or ()) else None)
+    # `generate_image` saves what it draws, so a host that cannot write does not get it either.
+    image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
+             if image_available() and host.writes and 'image' not in set(drop or ()) else None)
     return _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image)
 
 # %% ../nbs/02_tools.ipynb #e3b29ea1

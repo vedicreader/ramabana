@@ -471,8 +471,8 @@ def test_every_console_script_resolves():
         assert callable(getattr(m, fn, None)), f'{name} = {target!r} does not resolve'
 
 
-def test_a_missing_acp_extra_names_itself():
-    """`agent-client-protocol` is an optional extra and `ramabana-acp` installs without it.
+def test_a_missing_acp_dependency_names_itself():
+    """`agent-client-protocol` is a dependency, so a broken install is what reaches this path.
 
     The editor launches the binary and shows whatever reached stderr, so a bare
     `ModuleNotFoundError: No module named 'acp'` is all the user gets, with nothing saying which
@@ -484,7 +484,7 @@ def test_a_missing_acp_extra_names_itself():
     try:
         for k in list(saved): sys.modules.pop(k, None)
         sys.modules['acp'] = None                      # `import acp` now raises ImportError
-        with pytest.raises(ImportError, match=r"ramabana\[acp\]"):
+        with pytest.raises(ImportError, match=r"agent-client-protocol"):
             importlib.import_module('ramabana.racp')
     finally:
         sys.modules.pop('acp', None)

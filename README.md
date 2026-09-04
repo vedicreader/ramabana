@@ -19,23 +19,21 @@ Start with one folder. Ramabana can write only inside the folders named by `--ro
 
 ## Install
 
-Ramabana needs Python 3.12 or newer. Each frontend is an extra:
+Ramabana needs Python 3.12 or newer. Everything it imports is a dependency, and the terminal is
+the one extra:
 
 ``` sh
-pip install 'ramabana[cli]'    # the terminal
-pip install 'ramabana[all]'    # every frontend
+pip install ramabana           # the agent, the hosts, the tools, and every server below
+pip install 'ramabana[cli]'    # and the terminal session
 ```
 
-| extra | command | what it adds |
-|----|----|----|
-| `cli` | `ramabana` | the terminal session, on teleprint |
-| `mcp` | `ramabana-mcp` | the MCP server |
-| `acp` | `ramabana-acp` | the Agent Client Protocol server an editor launches |
-| `pyrepl` | `ramabana --python` | the Python prompt, on dhrishti |
-| `cron` | `ramabana-tick` | the scheduled beat, on pobblebonk |
-| `all` | all of them | everything above |
-
-`pip install ramabana` with no extra installs the agent, the hosts and the tools, for use from Python.
+| command | what it is |
+|----|----|
+| `ramabana` | the terminal session, on teleprint. The one that needs `[cli]` |
+| `ramabana-mcp` | the MCP server |
+| `ramabana-acp` | the Agent Client Protocol server an editor launches |
+| `ramabana --python` | the Python prompt, on dhrishti |
+| `ramabana-tick` | the scheduled beat, on pobblebonk |
 
 ## Point it at a model
 
@@ -193,7 +191,6 @@ A resumed session brings back its history and its plan. It prints on stderr any 
 `--python` starts a Jupyter kernel that belongs to you, with the agent in the layer above it:
 
 ``` sh
-pip install 'ramabana[pyrepl]'
 ramabana --root . --python
 ```
 
@@ -210,7 +207,6 @@ A live session is shareable. `ramabana --kernels` lists the ones running, `--att
 `ramabana-tick` runs the schedules that are due and leaves what they found as notes for the next session to read. It schedules itself through cron, launchd or `schtasks`. A beat fires when no session is open:
 
 ``` sh
-pip install 'ramabana[cron]'
 ramabana-tick --install --every 300    # a beat every five minutes
 ramabana-tick                          # one beat now
 ramabana-tick --uninstall
@@ -240,7 +236,6 @@ The hook events are `before_turn(agent, prompt)`, `after_turn(agent, text)`, `be
 `ramabana-mcp` serves one host’s tools over MCP:
 
 ``` sh
-pip install 'ramabana[mcp]'
 ramabana-mcp --root .
 ```
 
@@ -268,10 +263,6 @@ A client that launches its own servers takes the command:
 ## Run it inside an editor
 
 `ramabana-acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com/). An editor launches it and drives it against the editor’s own files and its own terminal:
-
-``` sh
-pip install 'ramabana[acp]'
-```
 
 Zed reads agents from `agent_servers` in `settings.json`:
 

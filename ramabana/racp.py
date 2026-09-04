@@ -17,10 +17,10 @@ try:
     from acp.schema import (AgentCapabilities, AvailableCommand, Implementation, InitializeResponse,
                             LoadSessionResponse, NewSessionResponse, PermissionOption, PromptCapabilities,
                             PromptResponse, ToolCallLocation, ToolCallUpdate)
-# `ramabana-acp` installs whether or not the extra did, and an editor launching it shows the agent
-# failing to start with whatever reached stderr. Name the extra there.
+# An editor launching `ramabana-acp` shows the agent failing to start with whatever reached
+# stderr, so name the package there.
 except ImportError as e: raise ImportError(
-    f"ramabana-acp needs the acp extra: pip install 'ramabana[acp]' ({e})") from None
+    f"ramabana-acp needs agent-client-protocol: pip install agent-client-protocol ({e})") from None
 from fastcore.basics import ifnone
 from fastcore.script import call_parse
 from . import __version__

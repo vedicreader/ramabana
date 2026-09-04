@@ -11,12 +11,12 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEM
            'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE',
            'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS',
            'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'APPROVE_MODES', 'BLOCK_START', 'PYREPL_MODULES', 'code_theme', 'code_bg', 'set_theme', 'plan_text',
-           'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
-           'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
-           'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
-           'ChoiceMenu', 'run_turn', 'Ui', 'ThemedCode', 'Reply', 'compact_md', 'VaultSpecHost', 'mk_host', 'mk_agent',
-           'amain', 'ask_once', 'main']
+           'APPROVE_MODES', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS', 'code_theme', 'code_bg', 'set_theme',
+           'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
+           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size',
+           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
+           'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'ThemedCode', 'Reply', 'compact_md',
+           'VaultSpecHost', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -1725,6 +1725,8 @@ def reply(self:Ui, text):
 
 # %% ../nbs/05_cli.ipynb #pymode01
 PYREPL_MODULES = ('jupyter_client', 'dhrishti')
+#: the module names above, spelled the way pip installs them
+PYREPL_PKGS = {'jupyter_client': 'jupyter-client'}
 
 @patch
 def log_cell(self:Ui, source, outputs=None, cell_type='code'):
@@ -1748,7 +1750,7 @@ async def enter_python(self:Ui):
                 self.attached = ''   # leaving it: their kernel keeps running, we just stop pointing at it
                 self.note('left the attached session; starting a kernel of your own')
             if missing := [m for m in PYREPL_MODULES if find_spec(m) is None]:
-                return self.note(f"python mode needs {' and '.join(missing)}: pip install 'ramabana[pyrepl]'", 'error')
+                return self.note(f"python mode needs {' and '.join(missing)}: pip install {' '.join(PYREPL_PKGS.get(m, m) for m in missing)}", 'error')
             from ramabana.pyrepl import Kernel, use_kernel
             self.note('starting a kernel')
             try: self.kernel = await Kernel(self.agent.host.roots[0]).start()
@@ -2062,7 +2064,7 @@ def main(
         from ramabana.pyrepl import find_session
         try: attach = find_session(attach)
         except ModuleNotFoundError:
-            print("--attach needs the pyrepl extra: pip install 'ramabana[pyrepl]'", file=sys.stderr)
+            print('--attach needs dhrishti and jupyter-client: pip install dhrishti jupyter-client', file=sys.stderr)
             return 2
         except RuntimeError as e:
             print(e, file=sys.stderr)

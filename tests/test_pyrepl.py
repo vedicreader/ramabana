@@ -12,7 +12,7 @@ from ramabana import cli
 from ramabana.pyrepl import (AgentBridge, DhrishtiHost, Kernel, agent_proxy_code,
                              inject_agent_proxy, output_text)
 
-pytest.importorskip('dhrishti', reason='pip install ramabana[pyrepl]')
+pytest.importorskip('dhrishti', reason='pip install dhrishti')
 
 
 def test_cli_python_mode_and_output_text():
