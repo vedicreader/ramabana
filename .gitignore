@@ -181,3 +181,6 @@ media/generated-*.png
 # itself once the write-ahead log is checkpointed, which is what `nbdev-clean` leaves behind.
 chatcache/*.db-shm
 chatcache/*.db-wal
+.claude/edit_audit.jsonl
+media/streaming-images/
+media/ramabana-cli-demo.mp4

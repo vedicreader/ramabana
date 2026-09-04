@@ -18,9 +18,9 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.0.6",
+    "shalya>=0.0.7",   # `Host.writes`, which `tools_for` reads
     "uraiyadal>=0.0.6",
-    "gheasy>=0.0.9",
+    "gheasy>=0.0.10",  # `invalidate`, `plural` and `unborn` are public, and the private names gone
     "exhash>=0.4.9",
     "fastcore>=2.1.16",
     "rishi>=0.1.32",
@@ -32,18 +32,14 @@ dependencies = [
     "vishalakshi>=0.1.14",
     "fastspec>=0.2.1",
     "pyyaml>=6.0",
-    # Was `[mcp]`, `[cron]`, `[pyrepl]` and `[acp]`. Leela is the package that uses ramabana, and it
-    # installs all of them, so the split bought nothing but four ways to have the wrong one.
-    "mcp>=1.2",                        # `ramabana.mcp`, and the `ramabana-mcp` script
-    "pobblebonk>=0.0.3",               # the beat and the shared database. See `ramabana.monitor.pob`
-    "dhrishti>=0.1.2",                 # the python repl
+    "mcp>=1.2",
+    "pobblebonk>=0.0.3",
+    "dhrishti>=0.1.2",
     "jupyter-client>=8.9.1",
-    "agent-client-protocol>=0.12.1",   # `ramabana.racp`, and the `ramabana-acp` script
+    "agent-client-protocol>=0.12.1",
 ]
 
 [project.optional-dependencies]
-# The terminal UI, which a library embedding ramabana does not need. Everything else ramabana
-# imports is a base dependency.
 cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0"]
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
@@ -81,8 +77,3 @@ dev = ["ramabana[cli]", "rishi[all]>=0.1.32", "nbdev>=3.3.11", "notebook>=7.6.1"
 
 [tool.uv]
 override-dependencies = ["python-fastllm>=0.0.45"]
-
-#: The toolset is developed beside this package. Point at the checkout so a change to one is
-#: testable against the other before either is released.
-[tool.uv.sources]
-shalya = { path = "../shalya", editable = true }
