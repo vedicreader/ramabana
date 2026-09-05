@@ -3103,7 +3103,7 @@ wheels = [
 [[package]]
 name = "panjika"
 version = "0.0.3"
-source = { git = "https://github.com/vedicreader/panjika#2e3a7f2894d3b268000317743ca950eb012f2a05" }
+source = { git = "https://github.com/vedicreader/panjika#2068d084922c57cfed2b09dfeb99b511dba0f14e" }
 dependencies = [
     { name = "fastcore" },
     { name = "gheasy" },
