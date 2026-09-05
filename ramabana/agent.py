@@ -2736,11 +2736,34 @@ def session_turns(self:Agent, sid):
         if mine(turn): out.append(turn)
     return out
 
+def _ledger_home(agent):
+    "The panjika ledger for this agent's project, or None. Resolved once per agent."
+    if '_panjika_home' in agent.__dict__: return agent.__dict__['_panjika_home']
+    home = None
+    try:
+        from panjika.core import Home
+        roots = getattr(getattr(agent, 'host', None), 'roots', None) or []
+        found = Home(start=str(roots[0]) if roots else Path.cwd())
+        home = found if found.exists else None
+    except Exception: home = None
+    agent.__dict__['_panjika_home'] = home
+    return home
+
+def _to_ledger(agent, turn):
+    "Hand one turn to panjika, when the project keeps a ledger and panjika is installed."
+    home = _ledger_home(agent)
+    if home is None or not turn.get('session'): return
+    try:
+        from panjika.harness import ingest
+        ingest({**turn, 'cwd': str(home.root)}, 'ramabana', home)
+    except Exception: pass
+
 @patch
 def _remember(self:Agent, prompt, text, error='', state='complete'):
     with _history_lock(self):
         _agent_remember(self, prompt, text, error, state)
         if (span := self.__dict__.pop('_last_span', None)) and self.history: _index_turn(self, self.history[-1], *span)
+    if self.history: _to_ledger(self, self.history[-1])
 
 # %% ../nbs/03_agent.ipynb #491879ee
 @patch
