@@ -2,21 +2,21 @@
 
 ## The server
 
-With an agent, the tools mounted here are the objects a turn gets. A client's call lands in the same activity feed and the same `changes()` report as a turn. `functools.wraps` in `Agent._record` kept their signatures and docstrings, which is what FastMCP reads to build a schema. So no tool is described twice, and nothing can drift. Without an agent the tools are built straight off the host.
+With an agent, the tools mounted here are the objects a turn gets. A client's call lands in the same activity feed and the same `changes()` report as a turn. `functools.wraps` in `Agent._record` keeps their signatures and docstrings. FastMCP reads these to build a schema. So no tool is described twice, and no description can drift. Without an agent, the tools are built directly from the host.
 
-`readonly` defaults to True because the client is another agent whose approval UI this server does not control. Writes are one flag away, and should be gated the usual way when they are mounted.
+`readonly` defaults to True because the client is another agent. This server does not control that agent's approval UI. One flag enables the write tools. Gate them the usual way when they are mounted.
 
 ## Skills as resources
 
-Skills are resources, not tools: text a client can read, not a call with an effect. The index is one resource and each skill another. A client lists what is available and fetches only the one it needs, the same economy `read_skill` gives a model in a turn.
+Skills are resources, not tools. A resource is text a client can read, not a call with an effect. The index is one resource, and each skill is another. A client lists what is available and fetches only the skill it needs. This is the same economy `read_skill` gives a model in a turn.
 
 ## The agent as one tool
 
-With an agent passed in, the server also offers `ask`: a whole Ramabana turn behind a single call. The client spends one question and one answer. The tool loop, the tool results and the compaction all happen on this side and are discarded.
+With an agent passed in, the server also offers `ask`. `ask` runs a whole Ramabana turn behind a single call. The client sends one question and gets one answer. The tool loop, the tool results, and the compaction all happen on this side and are discarded.
 
 ## Running it
 
-`ramabana-mcp` on the command line. `--model` is what turns the `ask` tool on: without a model there is nothing to delegate to. The server offers tools only.
+Run `ramabana-mcp` on the command line. `--model` turns on the `ask` tool. Without a model, there is nothing to delegate to, so the server offers tools only.
 
 Docs: https://vedicreader.github.io/ramabana/mcp.html.md"""
 

@@ -1,5 +1,5 @@
 """Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing
-watches that put things back on the agent's desk.
+watches that return work to the agent.
 
 Docs: https://vedicreader.github.io/ramabana/vault.html.md"""
 

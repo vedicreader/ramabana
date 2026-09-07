@@ -1,4 +1,4 @@
-"""The error type, the environment convention, and the one place that decides which model runs what.
+"""The error type, the environment convention, and the model policy.
 
 Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 

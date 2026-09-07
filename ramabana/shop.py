@@ -3,9 +3,9 @@ grocery run it was written for.
 
 ## A cart, as an interface
 
-`Host` is the harness's one dependency on the world, and a shopping session does not belong in it. An agent editing a repo has no business holding a trolley, and most hosts have no browser to hold one with. A cart is an *extension*: registered through `Registry.tool`, dropped into a config directory, absent unless someone asked for it.
+`Host` is the harness's one connection to the outside world, and a shopping session does not belong in it. An agent editing a repo has no need for a shopping session, and most hosts have no browser to run one. A cart is an *extension*. It is registered through `Registry.tool`, dropped into a config directory, and absent unless someone asks for it.
 
-`Cart` is the interface, for the same reason `Host` is one. `FossickCart` drives a real logged-in Chrome. `FakeCart` is an in-memory double, which is what the tests and the worked example below run against. Filling a real trolley is not something a doc build should do.
+`Cart` is the interface, for the same reason `Host` is one. `FossickCart` drives a real logged-in Chrome. `FakeCart` is an in-memory double. The tests and the worked example below run against `FakeCart`. A doc build should not fill a real trolley.
 
 ## The real one
 
