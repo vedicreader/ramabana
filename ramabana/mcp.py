@@ -2,13 +2,13 @@
 
 ## The server
 
-With an agent, the tools mounted here are the very objects a turn gets. Recorded tool wrappers share the agent activity log. A client's call lands in the same activity feed and the same `changes()` report as a turn. `functools.wraps` in `Agent._record` kept their signatures and docstrings, and that is exactly what FastMCP reads to build a schema. There is no second description of any tool anywhere and nothing to drift. Without an agent the tools are built straight off the host.
+With an agent, the tools mounted here are the objects a turn gets. A client's call lands in the same activity feed and the same `changes()` report as a turn. `functools.wraps` in `Agent._record` kept their signatures and docstrings, which is what FastMCP reads to build a schema. So no tool is described twice, and nothing can drift. Without an agent the tools are built straight off the host.
 
 `readonly` defaults to True because the client is another agent whose approval UI this server does not control. Writes are one flag away, and should be gated the usual way when they are mounted.
 
 ## Skills as resources
 
-Skills are resources rather than tools, because that is what they are: text a client can read, not a call with an effect. The index is one resource and each skill is another. A client can list what is available and fetch only the one it needs. The same economy `read_skill` gives a model in a turn.
+Skills are resources, not tools: text a client can read, not a call with an effect. The index is one resource and each skill another. A client lists what is available and fetches only the one it needs, the same economy `read_skill` gives a model in a turn.
 
 ## The agent as one tool
 
