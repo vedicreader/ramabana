@@ -85,9 +85,8 @@ LIGHT = {
     'red': '#9a443b', 'green': '#3f6d4d', 'yellow': '#87611c',
     'blue': '#246275', 'aqua': '#3e6660', 'orange': '#8a5b2b',
 }
-#: GitHub's Dark Default, taken down to near-black for a conterm window rather than GitHub's own
-#: `#0d1117` canvas. The default: it is the scheme the code themes were built against, so a reply's
-#: prose and the code inside it agree without anything being tuned.
+#: GitHub Dark Default, darkened to near-black for the terminal window. The default palette: the
+#: code themes were built against it, so reply prose and its code agree.
 GITHUB_DARK = {
     'bg0': '#0a0c10', 'bg1': '#11151c', 'bg2': '#1c2128',
     'fg0': '#e6edf3', 'fg1': '#c9d1d9', 'gray': '#8b949e',
@@ -97,10 +96,8 @@ GITHUB_DARK = {
 
 THEMES = {'github-dark': GITHUB_DARK, 'dark': DARK, 'light': LIGHT}
 
-#: The rest are the schemes a Ghostty-family terminal -- conterm, Ghostty itself -- already ships,
-#: mapped onto the twelve semantic keys above rather than onto ANSI slots. Set the terminal's own
-#: theme to the scheme of the same name and the surface stops fighting the window around it.
-#: Adapted from `claude/ramabana-ascii-art-themes`.
+#: More schemes a Ghostty-family terminal ships, mapped onto the twelve semantic keys above. Set
+#: the terminal to the same-name scheme to match. Adapted from `claude/ramabana-ascii-art-themes`.
 THEMES.update({
     'gruvbox': {
         'bg0': '#282828', 'bg1': '#3c3836', 'bg2': '#504945',
@@ -170,8 +167,8 @@ THEMES.update({
     },
 })
 
-#: A pygments style per palette, for the code inside a reply. Only styles pygments really ships, so
-#: `code_theme` falls back for a name nothing recognises rather than raising inside a render.
+#: One pygments style per palette, for code inside a reply. Only styles pygments ships, so
+#: `code_theme` falls back for an unknown name instead of raising.
 CODE_THEMES = {'github-dark': 'github-dark', 'dark': 'github-dark', 'light': 'friendly',
                'gruvbox': 'gruvbox-dark', 'gruvbox-light': 'gruvbox-light', 'nord': 'nord',
                'dracula': 'dracula', 'solarized': 'solarized-dark',
@@ -188,9 +185,7 @@ def code_theme(name=None):
     return CODE_THEMES.get(name or ACTIVE_THEME, 'github-dark')
 
 def code_bg(palette=None):
-    """What a code block sits on. `bg1` per palette rather than one colour or the pygments style's
-    own: a background chosen against a near-black canvas is invisible on `latte`, and a pygments
-    style's own is whatever its author's editor was, which is not the terminal this is in."""
+    "What a code block sits on: `bg1` per palette, so it stays visible on a light theme too."
     return (palette or GRUVBOX)['bg1']
 
 def set_theme(name='github-dark'):
@@ -256,15 +251,11 @@ subagent /subagents shows whether delegated work may write · /subagents on|off 
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
 
-#: `[ ]` pending, `[▸]` active, `[x]` done, `[-]` cancelled -- see `agent.TODO_MARK`
+#: `[ ]` pending, `[▸]` active, `[x]` done, `[-]` cancelled. See `agent.TODO_MARK`.
 _TODO_RE = re.compile(r'^(\[[ x▸\-]\])\s+(`[^`]*`)?\s*(.*)$')
 
 def plan_text(md):
-    """The plan checklist as themed `Text`: one colour for the marks, another for the step text.
-
-    Read as a column of marks first and prose second, so the id and any note recede to gray rather
-    than competing with the step. `GRUVBOX` is read per call, so `/theme` restyles a painted plan.
-    """
+    "The plan checklist as themed `Text`: one colour for the marks, another for the step text. `GRUVBOX` is read per call, so `/theme` restyles a painted plan."
     out = Text()
     for i, line in enumerate(md.splitlines()):
         if i: out.append('\n')
@@ -394,12 +385,7 @@ ATTACH_REF = re.compile(r'(?<!\S)@(\S+)')
 TRAILING = '?!,;:.)]}\'"'
 
 def attach_refs(text):
-    """Media named `@path` inside a typed prompt.
-
-    A reference at the end of a sentence carries the sentence's punctuation. Trailing marks
-    come off one at a time until what is left names a file: `@shot.png?` is a question about a
-    picture rather than a path to one.
-    """
+    "Media named `@path` inside a typed prompt. Trailing sentence punctuation comes off until what is left names a file."
     out = []
     for m in ATTACH_REF.finditer(str(text or '')):
         tok = m.group(1)
@@ -422,10 +408,7 @@ def clipboard_png():
     return None
 
 class Attachment:
-    """One media file riding along with the next prompt.
-    The bytes are read once, when the file is attached: what gets sent is then what was named
-    and measured on screen, even if the file changes or goes away before the turn.
-    """
+    "One media file riding along with the next prompt. The bytes are read once, when attached, so a later change to the file cannot alter what is sent."
     def __init__(self, path):
         self.path = Path(path).expanduser().resolve()
         self.kind, self.mime = MEDIA[self.path.suffix.lower()]
@@ -475,9 +458,9 @@ def kitty_graphics():
     term, prog = os.environ.get('TERM', '').lower(), os.environ.get('TERM_PROGRAM', '')
     return any(t in term for t in KITTY_TERM) or prog in KITTY_PROGRAM
 
-#: The box a picture is drawn in, how tall a cell is relative to its width, and how many one
-#: turn may draw. Small and few on purpose: a tall block is what makes the transcript hard to
-#: scroll, and a placement taller than the window can never have all of its rows on screen.
+#: The box a picture is drawn in, the cell aspect, and how many one turn may draw. Small and few
+#: on purpose: a tall block makes the transcript hard to scroll, and a placement taller than the
+#: window can never show all its rows.
 MAX_IMG_COLS = 24
 MAX_IMG_ROWS = 12
 CELL_ASPECT = 2.1
@@ -494,11 +477,7 @@ def png_size(path):
     return (w, h) if w and h else None
 
 def img_cells(path, cols, rows=MAX_IMG_ROWS):
-    """Cell width and height for `path` inside a `cols` by `rows` box, keeping its aspect.
-
-    Both bounds matter. A tall screenshot at twenty-four columns wide is a hundred rows of
-    block, and one taller than the window could never have all of its rows on screen at once --
-    so it would fill the transcript and still never be drawn."""
+    "Cell width and height for `path` inside a `cols` by `rows` box, keeping aspect. Both bounds cap it, so a tall screenshot cannot fill the transcript."
     if not (wh := png_size(path)): return None
     w, h = wh
     c = max(1, min(cols, MAX_IMG_COLS))
@@ -511,9 +490,9 @@ APC_CHUNK = 4096
 class Picture:
     """One picture on screen: bytes sent once, then re-placed at the end of every frame.
 
-    Image ids are the terminal window's, not the process's, so the counter starts somewhere
-    random: two sessions in the same window that both began at 1 would each replace the other's
-    pictures, and kitty frees an image's placements with it -- including the ones in scrollback.
+    Image ids belong to the terminal window, not the process, so the counter starts at a random
+    value. Two sessions in one window that both began at 1 would each replace the other's pictures,
+    and kitty frees an image's placements with it, including the ones in scrollback.
     """
     _n = randrange(1 << 20, 1 << 28)
     def __init__(self, path, cols=MAX_IMG_COLS, rows=MAX_IMG_ROWS):
@@ -544,12 +523,11 @@ class Picture:
         return f'\x1b_Ga=d,d=i,i={self.id},p=1,q=2\x1b\\'
 
     def gap(self):
-        """The rows the block reserves for it, the first of them naming the file.
+        """The rows the block reserves for it, the first naming the file.
 
-        Blank text is the one thing a repaint can redraw, and the drawing lands on top of it: a
-        kitty placement is drawn above the cells it covers, so the name is what shows only where
-        the picture is not -- in the browsing view, in a fold's summary row, and in a terminal
-        that took the bytes and drew nothing."""
+        The name shows only where the picture is not, since a kitty placement draws above the cells
+        it covers: the browsing view, a fold's summary row, and a terminal that drew nothing.
+        """
         return Text(self.path.name + '\n' * (self.rows - 1), style=GRUVBOX['gray'])
 
 def picture(path, cols=MAX_IMG_COLS, rows=MAX_IMG_ROWS):
@@ -706,14 +684,10 @@ async def run_turn(ui, prompt):
 class Ui:
     """The terminal surface: a transcript of blocks, a status bar, and one line to type in.
 
-    Every method here is synchronous and free of tty work. The whole surface can be
-    driven in a test against an emulated terminal. Which is why the async loop below is
-    as small as it is.
-
-    Callbacks arrive from the model's worker thread (`Activity.on_change`, `Approvals`), and
-    a compositor may only be touched from the loop thread. Everything they do goes
-    through `_post`. Without a loop registered it calls straight through, which is what
-    makes the synchronous tests possible.
+    Every method is synchronous and free of tty work, so the whole surface runs in a test against
+    an emulated terminal. Callbacks arrive from the model's worker thread (`Activity.on_change`,
+    `Approvals`), and a compositor is touched only from the loop thread, so they go through `_post`.
+    Without a loop registered `_post` calls straight through, which is what makes the tests work.
     """
 
     def __init__(self, comp, agent, loop=None):
@@ -779,9 +753,8 @@ class Ui:
     def _as_owner(self, work, timeout=10):
         """Run `work` on the loop that owns the agent and return what it returned.
 
-        The bridge answers on server threads. Everything else that touches the agent runs here, and
-        a callback attachment reaches into a chat a turn may be walking -- so it comes home first.
-        A loop stuck inside a turn raises rather than waits forever, and the caller is told.
+        Everything that touches the agent runs here, since a callback can reach into a chat a turn
+        is walking. A loop stuck inside a turn raises rather than waits forever.
         """
         if self.loop is None: return work()
         held = concurrent.futures.Future()
@@ -807,24 +780,21 @@ class Ui:
         if self.loop is not None: self.loop.call_later(1.5, self.paint)
 
 
-    #: The name in the wordmark's double-ruled letterforms, one row and eight cells of it -- the
-    #: same width the plain text was, so the status bar behind it does not move.
+    #: The name in double-ruled letterforms, one row and eight cells wide, the same width as the
+    #: plain text, so the status bar behind it does not move.
     WORDMARK = 'ℝ𝔸𝕄𝔸𝔹𝔸ℕ𝔸'
 
     SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 
-    #: A track that is always there, and an arrow travelling along it. The bow was one glyph
-    #: in a field of blanks, which read as the bar having nothing in it rather than as art.
-    #: The track is drawn quiet and the arrow in the state's own colour, so the two come
-    #: apart without a box around either.
+    #: A fixed track with an arrow travelling along it. The track is drawn quiet and the arrow in
+    #: the state's own colour, so the two read apart without a box around either.
     TRACK = '·'
     BOW_FRAMES = ('»═▸·····', '·»═▸····', '···»═▸··', '·····»═▸')
-    #: Compacting closes on the middle of the same track: the window being pulled together,
-    #: which is not a shot and should not look like one.
+    #: Compacting closes on the middle of the same track: the window is pulled together.
     COMPACT_BOW = '··▸··◂··'
 
-    #: Which frame each tick shows. The arrow leaves slowly and gains as it goes, because one
-    #: frame per tick read as a metronome rather than as anything moving.
+    #: Which frame each tick shows. The arrow starts slow and gains, since one frame per tick read
+    #: as a metronome.
     BOW_CYCLE = (0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3)
 
     def bow_text(self, busy=False, style=None):
@@ -865,22 +835,13 @@ class Ui:
     def turn_blocks(self):
         """The blocks of the turn on screen: everything printed since its prompt went up.
 
-        Teleprint commits a block only when a borrow ends its epoch, which nothing in an ordinary
-        session does, so `not committed` is every block since startup rather than every block of
-        this turn. Folding or drilling by that reaches back through the whole session -- and
-        unfolding twenty turns of tool results at once pushes thousands of rows across the top
-        edge, where they ink into scrollback and no keystroke can take them back.
+        Teleprint commits a block only when a borrow ends its epoch, which an ordinary session never
+        does, so this filters by the block id the turn started at rather than by `not committed`.
         """
         return [b for b in self.comp.blocks.values() if b.id >= self._turn_from and not b.committed]
 
     def drillable(self):
-        """The foldable entries of the turn on screen, newest first: what alt+1..9 reaches.
-
-        Teleprint has its own alt-digit numbering, but it stamps the digit into the gutter and needs
-        one at least three glyphs wide; these gutters are two, and widening every one of them to
-        carry a digit is a bigger change to how the surface looks than a drill-in is worth. The
-        numbers live in the footer instead, where the eye already is while a turn runs.
-        """
+        "The foldable entries of the turn on screen, newest first: what alt+1..9 reaches. The numbers live in the footer, not the gutter."
         return [b for b in reversed(self.turn_blocks())
                 if b.tag in ('step', 'tool') and b.height > 1][:9]
 
@@ -1160,11 +1121,7 @@ class Ui:
         self.paint()
 
     def answer(self, ok, session=False):
-        """Answer the pending request, using whatever has been typed as the reason.
-
-        A refusal with a reason is the point of the gate: it reaches the model, which can
-        change approach instead of retrying the same edit.
-        """
+        "Answer the pending request, using whatever has been typed as the reason. A refusal with a reason reaches the model, which can change approach."
         if self.ask is None: return None
         note, self.buf.text = self.buf.text.strip(), ''
         return self.agent.approvals.answer(self.ask.id, ok, note, session=session)
@@ -1271,13 +1228,11 @@ class Ui:
         return GUIDE
 
     def submit(self):
-        """Handle the typed line. Returns a coroutine for a turn, `'quit'`, or None when it was handled here.
+        """Handle the typed line. Returns a coroutine for a turn, `'quit'`, or None when handled here.
 
-        Most slash commands are answered by the agent. Every command the IDE has works
-        here too. There is one implementation of `/model`, and it is not in a frontend. The
-        ones kept here are the ones about this surface: its keys, its clipboard, its
-        attachments, its mode. All of them are recognised *before* the options row, or a
-        `/model` with the word "refactor" in it would open a menu instead of running.
+        The agent answers most slash commands. The ones kept here are about this surface: its keys,
+        clipboard, attachments, and mode. They are recognised before the options row, or a `/model`
+        with the word "refactor" in it would open a menu instead of running.
         """
         src, line = self.buf.text, self.buf.text.strip()
         self.complete, self.desc = None, []
@@ -1435,10 +1390,8 @@ class Ui:
     def flush_stream(self):
         """Render the open segment now, whatever `STREAM_EVERY` would have said. Every boundary calls it.
 
-        A no-op when the drawing already matches the model, which is what lets `animate` call it on
-        every frame: without a timer the last chunk before a stall stayed invisible for as long as
-        the model paused, and with one but no `_rendered` check it would re-render the whole reply
-        ten times a second for nothing.
+        A no-op when the drawing already matches the model, so `animate` can call it every frame.
+        The `_rendered` check stops a re-render of the whole reply ten times a second for nothing.
         """
         if self._seg_blk is None or not self._seg or self._seg == self._rendered: return
         self.comp.set_body(self._seg_blk, self.reply(self._seg), source=self._seg)
@@ -1496,16 +1449,11 @@ def _show_pics(self:Ui, paths):
 def place_pics(self:Ui):
     """Put every picture back where its block now sits. Runs at the end of every frame.
 
-    A placement is anchored to the screen rather than to the model, so a frame that moved the
-    block's rows lost it -- and drawing at the cursor, which after a paint is the input line, put
-    it where the next frame's erase would wipe it. Re-placing is forty bytes and idempotent.
-
-    All of its rows, or none of them. A placement fills `rows` rows downwards from wherever it
-    lands, so drawing one whose top has already crossed the top edge would put it that many rows
-    too low, over the blocks below -- and drawing one whose lower rows a transient has taken
-    would put it over the menu the reader is choosing from. Either way the drawing comes off, and
-    goes back the moment every row is the block's again: teleprint slides its window back when the
-    document shrinks, so a fold below a picture can return one that had scrolled away."""
+    A placement is anchored to the screen, not the model, so a moved block loses it. Re-placing is
+    cheap and idempotent. Draw all of a picture's rows or none: a partial placement lands over the
+    blocks below, or over a transient the reader is using, so it comes off until every row is the
+    block's again.
+    """
     if not self.pics or self.comp.paused: return
     comp, out = self.comp, []
     for bid, pic in list(self.pics.items()):
@@ -1556,12 +1504,7 @@ def tighten_approve(self:Ui):
 # %% ../nbs/05_cli.ipynb #280bb985
 @patch
 def model_row(self:Ui):
-    """What the next turn will run on, in the row under the bar.
-
-    Read from the routing table rather than from `agent.note`, which the backend that is *running*
-    sets: `/model` mid-turn changes where the next turn goes, and this row is the answer to which
-    one it is now. Tools are not repeated here; the bar above already counts them.
-    """
+    "What the next turn will run on, in the row under the bar. Read from the routing table, not `agent.note`, so `/model` mid-turn shows where the next turn goes."
     try: note = model_note(self.agent.model)
     except Exception as e: note = agent_err(e)
     return Text(' ' + note, style=GRUVBOX['gray'])
@@ -1885,12 +1828,7 @@ async def _promote(self:Ui, name):
 # %% ../nbs/05_cli.ipynb #d16f206f
 @patch
 def _close_seg(self:Ui):
-    """Drop the prose the model said on its way to a call: the trace of the call replaces it.
-
-    Growing one block across a whole turn put every word of narration above every call and left the
-    answer buried in the middle of it. Keeping the narration as a folded step instead only moved the
-    pile. What `/copy`, `y` and the notebook log want from a turn is its answer.
-    """
+    "Drop the prose the model said on its way to a call: the trace of the call replaces it. A turn's answer is what `/copy`, `y` and the notebook log want, not the narration above it."
     blk = self._seg_blk
     if blk is None: return
     self.flush_stream()
@@ -2193,8 +2131,7 @@ def apply_theme(self:Ui, name=''):
 @patch
 def open_root(self:Ui, path=''):
     """`/root` lists the open folders; `/root add PATH` opens another.
-    Typed by the person whose machine it is, so it is not gated: they are the approval. The agent
-    asking for the same thing goes through `add_root`, which is in `WRITE_TOOLS`.
+    Typed by the person whose machine it is, so it is not gated. The agent goes through `add_root`, in `WRITE_TOOLS`.
     """
     host = self.agent.host
     if not path:
