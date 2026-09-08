@@ -532,8 +532,7 @@ class Usage:
 # %% ../nbs/01_runtime.ipynb #af66f277
 IMG_TOKENS = 1024
 
-#: What a built OpenAI content part calls a picture and a sound, so one that has already been
-#: through `mk_oai_content` is charged as media rather than stringified base64.
+#: what a built OpenAI content part calls a picture or sound, so it is charged as media not stringified base64.
 _MEDIA_PARTS = ('image_url', 'input_audio')
 
 def _parts(msg):
@@ -631,8 +630,7 @@ class Backend:
                         out=self._send(msg,**kw)
                         if run is not None and run.cancelled:return ''
                         self.use=self._usage(); self._check_reply(out)
-                        # one corrective turn, appended rather than a re-run: the narrated call is
-                        # already said, and asking again is the only way to still get the call
+                        # one corrective turn, appended not re-run: the narrated call is already said
                         if not self._tag_reminded and self._needs_tag_retry(out):
                             self._tag_reminded=True
                             out=self._send(TAG_REMINDER,**kw); self.use=self._usage()
@@ -870,11 +868,7 @@ class RishiBackend(Backend):
                          'punctuating the tags channel reliably')
         return text
     def _needs_tag_retry(self,text):
-        """A reply on the tags channel that shows a call it never made.
-
-        The shape is rishi's to know, beside the parser that reads it. Only the tool names are
-        ours: a reply naming something this backend does not carry is prose about JSON.
-        """
+        "A reply on the tags channel that shows a call it never made."
         from urai import tag_call_shape
         if tool_channel(self.spec,self.chat)!='tags': return False
         return tag_call_shape(text,[getattr(t,'__name__','') for t in self.tools])
@@ -977,9 +971,7 @@ class Run:
 
     def _mark_cancel(self):
         "Mark this run and every descendant cancelled, and return the backends left to stop."
-        # Marking is the whole pass and stopping is the pass after: stopping a backend releases the worker
-        # blocked on it, which takes the next queued child at once -- so marking and stopping together let a
-        # released worker start a sibling, and a cancelled run went on spawning what it was cancelled to stop.
+        # mark all first, then stop: stopping a backend frees its worker to take the next queued child, so interleaving would let a cancelled run spawn a sibling
         with self._lock:
             if self.terminal: return []
             # a pending run has nothing of its own to stop, but what it started still does
@@ -1053,12 +1045,7 @@ def run_context(run):
 # %% ../nbs/01_runtime.ipynb #42b75c72
 @patch
 def add_cb(self:Backend, cb):
-    """Register one Rishi callback class, for this chat and for any that replaces it.
-
-    A turn holds `lock` for its whole length and Rishi walks `chat.cbs` while it runs, so a caller
-    on another thread records the callback and the running turn takes it up at its own boundary.
-    Splicing into that list from outside can drop or repeat a callback in the turn already going.
-    """
+    "Register one Rishi callback class, for this chat and for any that replaces it."
     callbacks = getattr(self, '_callbacks', [])
     if cb not in callbacks: callbacks.append(cb)
     self._callbacks = callbacks

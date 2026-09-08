@@ -79,7 +79,7 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
 
 # %% ../nbs/02_tools.ipynb #de2cd1e8
 def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None):
-    "Lists all tools supported by the host and registered extensions. Groups are from `Host.provides`. Use `drop` to exclude groups, based on `core.budget_for` and `Agent.budget`."
+    "Every tool the host and its extensions support; groups from `Host.provides`, `drop` to exclude some."
     # `generate_image` saves what it draws, so a host that cannot write does not get it either.
     image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
              if image_available() and host.writes and 'image' not in set(drop or ()) else None)
@@ -300,18 +300,14 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
                    get_writes=None,     # the session's sub-agent write toggle, read per call
                    get_approve=None,    # the gate those writes answer to
                    background=None):    # the register async delegations live in; one is made if None
-    "The `delegate` tool routed to the configured sub-agent backend. Arguments are callables; model changes apply mid-session. `get_tools` returns the sub-agent model's tools."
+    "The delegation tools, routed to the configured sub-agent backend. Arguments are callables, read per call."
     bg = ifnone(background, Background())
     def _writes(): return bool(get_writes()) if get_writes is not None else False
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
 
     @summary(lambda a: f'Delegate: {_1(a.get("question"), 120)}')
     def delegate_search(question: str, skills: str = '') -> str:
-        """Delegates broad questions to a sub-agent and returns only its conclusion.
-        Use for searches whose intermediate results are unnecessary. The sub-agent cannot see this
-        conversation and receives the configured read tools, plus write tools when enabled.
-        `skills` is a comma-separated list of skills to provide. Ask one self-contained question.
-        """
+        "Delegate a broad question to a sub-agent and return only its conclusion. Ask one self-contained question."
         b = get_backend()
         if b is None: return 'no model is available to delegate to'
         sk, note = named_skills(get_skills, skills)
@@ -320,11 +316,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
     @summary(lambda a: f'Delegate in parallel: {_1(a.get("questions"), 110)}')
     def delegate_parallel(questions: str, skills: str = '', cloud_model: str = '') -> str:
-        """Delegates independent questions concurrently and returns their answers.
-        `questions` is a JSON array of self-contained strings. Use for independent questions;
-        write-enabled sub-agents run sequentially to share approvals. `skills` is a comma-separated
-        list supplied to every sub-agent. `cloud_model` optionally selects a remote model without
-        changing the session or default sub-agent model."""
+        "Delegate independent questions concurrently and return their answers. `questions` is a JSON array of strings."
         b = get_cloud_backend(cloud_model) if cloud_model and get_cloud_backend is not None else get_backend()
         if b is None: return f"no model is available to delegate to{f' ({cloud_model})' if cloud_model else ''}"
         try:
@@ -340,12 +332,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
     @summary(lambda a: f'Delegate in the background: {_1(a.get("question"), 110)}')
     def delegate_async(question: str, skills: str = '', writes: bool = False) -> str:
-        """Starts an asynchronous sub-agent task and returns its run ID.
-        Use for long-running searches or changes. Retrieve results with `delegate_result`, check
-        progress with `delegate_status`, and stop it with `delegate_cancel`. Results persist until
-        the session ends.
-        `writes` enables write tools for this call and defaults to `False`. `skills` is a
-        comma-separated list from the skill index. Ask one self-contained question."""
+        "Start a background sub-agent task and return its run id; collect it with `delegate_result`."
         b = get_backend()
         if b is None: return 'no model is available to delegate to'
         sk, note = named_skills(get_skills, skills)
@@ -359,8 +346,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
     @summary(lambda a: f'Check delegation {a["run_id"]}' if a.get('run_id') else 'Check the background delegations')
     def delegate_status(run_id: str = '') -> str:
-        """Returns a background delegation's status. Without `run_id`, lists all delegations started this session.
-        Statuses are `pending`, `running`, `completed`, `cancelled`, and `failed`."""
+        "A background delegation's status, or every delegation started this session when `run_id` is empty."
         rows = bg.status(run_id)
         if isinstance(rows, str): return rows
         if not rows: return 'nothing has been delegated in the background'

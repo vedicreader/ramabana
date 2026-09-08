@@ -18,6 +18,8 @@ from acp.schema import (AllowedOutcome, ClientCapabilities, DeniedOutcome, FileS
 
 from ramabana.racp import KIND, PLAN, TOOL, EditorHost, blocks
 
+pytestmark = pytest.mark.slow   # every test spawns a subprocess; 147s of the suite
+
 HERE = Path(__file__).parent
 
 

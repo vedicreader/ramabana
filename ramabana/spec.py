@@ -18,14 +18,11 @@ from .core import AgentError, agent_err
 from .tools import LocalHost
 
 # %% ../nbs/10_spec.ipynb #spec06
-MAX_OPS = 400          # a spec larger than this is a catalogue, not a working surface
+MAX_OPS = 400          # larger than this is a catalogue, not a working surface
 class SpecError(AgentError): "A specification could not be read, or an operation could not be called."
 
 def parse_spec(text, why=''):
-    """A spec document as a dict, whether it is JSON or YAML.
-    OpenAPI is published as both, and more often as YAML. Reading only JSON meant the common case
-    failed inside `json.loads` with a character offset, which tells nobody to convert anything.
-    """
+    "A spec document as a dict, whether it is JSON or YAML."
     text = str(text or '')
     if text.lstrip()[:1] == '<':
         raise SpecError(f'{why or "that address"} served a web page, not a specification. '
@@ -44,11 +41,7 @@ def parse_spec(text, why=''):
     return d
 
 def raw_url(s):
-    """The raw file behind a code-host *page* url.
-
-    `github.com/o/r/blob/main/openapi.json` is a web page with the file rendered inside it, and
-    fetching it gets HTML. It is also the url anyone actually has, being the one in the address bar.
-    """
+    "The raw file behind a code-host page url."
     u = urlparse(str(s or ''))
     parts = [p for p in u.path.split('/') if p]
     if u.netloc.removeprefix('www.') == 'github.com' and len(parts) > 4 and parts[2] in ('blob', 'raw'):
@@ -66,9 +59,7 @@ def load_spec(src, timeout=30):
     if not s: raise SpecError('a spec url, path or dict is required')
     if urlparse(s).scheme in ('http', 'https'):
         s = raw_url(s)
-        # Through fossick, which is this agent's web layer everywhere else: it carries the headers
-        # a bare client does not, and a plain `httpx.get` fails outright behind some TLS proxies.
-        from fossick import get_page
+        from fossick import get_page   # carries headers a bare client lacks; httpx.get fails behind some TLS proxies
         try: r = get_page(s, timeout=timeout)
         except Exception as e: raise SpecError(f'could not read the spec at {s}: {agent_err(e)}') from e
         if r.status != 200: raise SpecError(f'{s} answered {r.status}')
@@ -78,12 +69,7 @@ def load_spec(src, timeout=30):
     return parse_spec(p.read_text(), str(p))
 
 def norm_paths(spec):
-    """`spec` with `x-ms-paths` folded into `paths`.
-    Swagger 2.0 cannot express two operations that differ only by query string. Azure puts
-    those under `x-ms-paths` instead. Azure Blob Storage declares sixty of them and leaves `paths`
-    empty, which read as a spec with no operations at all. The whole of Azure's data plane
-    looked like an empty document. `paths` wins a collision, being the standard key.
-    """
+    "`spec` with `x-ms-paths` folded into `paths`."
     extra = spec.get('x-ms-paths') or {}
     if not extra: return spec
     return {**spec, 'paths': {**extra, **(spec.get('paths') or {})}}
@@ -140,8 +126,7 @@ class SpecHost(LocalHost):
         self.max_ops = max_ops
         self._clients = {}
         self.spec_info = {}
-        # this class answers the api group itself, without an `apis` backend handed in
-        self.without = self.without - {'api'}
+        self.without = self.without - {'api'}   # this class answers the api group itself
 
     def api_load(self, src, name=''):
         "Read a spec and remember it under `name` (default: its title, else the host)."
@@ -202,7 +187,7 @@ class SpecHost(LocalHost):
         return sorted(self._creds)
 
     def api_keyed(self):
-        "Which specs carry credentials, and which headers they send — never the values."
+        "Which specs carry credentials, and which headers they send, never the values."
         return {k: sorted(v) for k, v in self._creds.items()}
 
     def _client(self, key, parsed):
@@ -214,11 +199,7 @@ class SpecHost(LocalHost):
         return self._clients[key]
 
     def api_call(self, operation, name='', **params):
-        """Call one operation by name, with its own parameter names.
-
-        Sync on purpose: a tool call is a blocking step in a turn, and an async client here
-        would mean every caller managing a loop to get one response.
-        """
+        "Call one operation by name, with its own parameter names."
         key, parsed = self._spec(name)
         client = self._client(key, parsed)
         fn = getattr(client, str(operation), None)
@@ -242,7 +223,7 @@ def _head(s):
     return s[:1].upper() + s[1:]
 
 def op_heading(r):
-    "`POST /widgets/{id}` — unique per operation, and readable without the spec beside you."
+    "`POST /widgets/{id}`, unique per operation and readable without the spec beside you."
     return f"{str(r.get('verb') or 'GET').upper()} {r.get('path') or r.get('name') or ''}".strip()
 
 def op_markdown(r):
@@ -255,14 +236,8 @@ def op_markdown(r):
     return '\n'.join(lines)
 
 def spec_markdown(host, name=''):
-    """A loaded specification as markdown: one `##` per group, one `###` per operation.
-    Returns `(title, markdown)`. Headings start with an uppercase character on purpose: every name
-    in a spec is lowercase, and readers that infer structure from markdown commonly treat a
-    lowercase `#` line as punctuation rather than a heading.
-    """
+    "A loaded specification as markdown, one `##` per group and one `###` per operation; returns `(title, markdown)`."
     info = dict(getattr(host, 'spec_info', {}).get(name) or {})
-    # `limit=0`: a document is the one place the whole catalogue belongs. The page size is for
-    # a turn, which this is not.
     rows = sorted(host.api_ops(name=name, limit=0), key=lambda r: (r.get('group') or '', r.get('name') or ''))
     title = info.get('title') or _head(name) or 'API'
     version = f" in version {info['version']}" if info.get('version') else ''

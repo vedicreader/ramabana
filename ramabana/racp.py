@@ -17,8 +17,7 @@ try:
     from acp.schema import (AgentCapabilities, AvailableCommand, Implementation, InitializeResponse,
                             LoadSessionResponse, NewSessionResponse, PermissionOption, PromptCapabilities,
                             PromptResponse, ToolCallLocation, ToolCallUpdate)
-# An editor launching `ramabana-acp` shows the agent failing to start with whatever reached
-# stderr, so name the package there.
+# an editor surfaces the startup failure only through stderr, so name the package there
 except ImportError as e: raise ImportError(
     f"ramabana-acp needs agent-client-protocol: pip install agent-client-protocol ({e})") from None
 from fastcore.basics import ifnone
@@ -90,8 +89,7 @@ class EditorHost(LocalHost):
         e = self.editor
         try: p = self.check(path, reading=True)
         except Exception: return None
-        # an unsaved new file is not on disk, so a failed read here is the editor's answer,
-        # not a reason to stop: fall back rather than lose the turn
+        # an unsaved new file is not on disk; fall back rather than lose the turn
         try: return e.call(e.conn.read_text_file(session_id=e.sid, path=str(p))).content
         except Exception: return super().read(path)
 
@@ -102,8 +100,7 @@ class EditorHost(LocalHost):
         return super().text_at(path) if got is None else got
 
     def write(self, path, text):
-        # no fallback here, unlike `read`. A read that the editor cannot serve costs nothing to
-        # answer from disk; a write it *refused* must be reported, not routed around behind it
+        # no fallback, unlike `read`: a write the editor refused must be reported, not routed around
         if not self._ok('write'): return super().write(path, text)
         e, p = self.editor, self.check(path)
         e.call(e.conn.write_text_file(session_id=e.sid, path=str(p), content=str(text)))
@@ -173,8 +170,7 @@ def blocks(prompt, spec=None):
         kind = getattr(b, 'type', '')
         if kind == 'text': text.append(b.text)
         elif kind in ('image', 'audio'):
-            # `accepts` says yes where rishi cannot say, so this only drops what it knows
-            # cannot be sent. Dropping with a reason beats the turn dying inside the engine
+            # accepts errs toward yes, so this drops only what it knows cannot be sent
             if spec is None or accepts(spec, kind): media.append(base64.b64decode(b.data))
             else: text.append(f'[{kind} dropped: {b.mime_type} -- this model does not accept {kind}]')
         elif kind == 'resource': text.append(_res(b))
@@ -190,13 +186,11 @@ class Session:
         self.seen, self.cancelled, self.gated, self.shell = set(), False, {}, ''
         self.agent, self.host = ifnone(mk, mk_agent)(roots, model=model, approve='ask',
                                                      timeout=timeout, on_activity=self._act, **kw)
-        # the harness's own session id, so `session/load` can name a conversation and mean it.
-        # A uuid could never match one, and `resume_session` would silently take the newest
+        # the harness's own session id, so `session/load` can name a conversation and mean it
         self.sid = sid or self.agent.session_id
         self.br = Bridge(conn, self.sid, loop, timeout)
         self.br.on_terminal = self._terminal
-        # nothing listening means Ramabana refuses a write, so this registration is what
-        # makes writes possible at all -- and losing it fails closed
+        # nothing listening means writes are refused, so this registration is what enables them
         self.unhook = self.agent.approvals.listen(self._ask)
         self.agent.on_plan = self._plan
 
@@ -219,8 +213,7 @@ class Session:
     def _act(self, a):
         d = a.dict()
         k = self._key(d['tool'], d['args'])
-        # a gated call already has an entry, opened when permission was asked. Reusing its id
-        # keeps the dialog and the tool call one thing in the editor rather than two
+        # reuse the gated call's id so the dialog and the tool call stay one thing in the editor
         tid = self.gated.get(k, d['id'])
         if d['tool'] == 'run_shell': self.shell = '' if d['done'] else tid
         where = [ToolCallLocation(path=p)] if (p := d['args'].get('path')) else None
@@ -255,8 +248,7 @@ class Session:
         try: ok, note, always = self.br.call(self._permit(a))
         except Exception as e: ok, note, always = False, f'the editor did not answer ({e!r})', False
         answered = self.agent.approvals.answer(a.id, ok, note, session=always)
-        # a refused call never runs, and a cancel may have answered it while the dialog was
-        # open. Either way `_act` will not fire, so the entry has to be closed and dropped here
+        # a refused or cancelled call never fires `_act`, so close and drop the entry here
         if not ok or answered is None:
             self._send(acp.update_tool_call(a.id, status='failed'))
             self.gated.pop(self._key(a.tool, a.args), None)
@@ -272,8 +264,7 @@ class Session:
         tc = ToolCallUpdate(tool_call_id=a.id, title=a.summary or a.tool,
                             kind=TOOL.get(a.tool, 'other'), raw_input=a.args, content=body)
         r = await self.conn.request_permission(session_id=self.sid, tool_call=tc, options=OPTIONS)
-        # the option id, not the discriminator: a client serialising with `exclude_defaults`
-        # drops `outcome`, and only an allowed outcome ever carries an option id
+        # the option id, not the discriminator: `exclude_defaults` can drop `outcome`, and only an allow carries an id
         oid = getattr(r.outcome, 'option_id', '') or ''
         if not oid: return False, 'the editor cancelled the request', False
         return oid.startswith('allow'), f'{oid} in the editor', oid == 'allow_always'
@@ -330,8 +321,7 @@ class AcpAgent(acp.Agent):
         return s
 
     async def new_session(self, cwd, additional_directories=None, mcp_servers=None, **kw):
-        # `mcp_servers` is not honoured: this agent brings its own tools rather than the
-        # editor's. An editor that configured some gets them silently ignored, not an error
+        # `mcp_servers` is ignored: this agent brings its own tools, not the editor's
         return NewSessionResponse(session_id=(await self._open(cwd, additional_directories)).sid)
 
     async def load_session(self, cwd, session_id, mcp_servers=None, additional_directories=None, **kw):
@@ -340,15 +330,13 @@ class AcpAgent(acp.Agent):
             s = await self._open(cwd, additional_directories, session_id)
             try: picked = s.agent.resume_session(session_id)
             except Exception as e:
-                # never fall back to 'latest': that hands the editor whichever conversation
-                # happened to run last, from whichever project, and changes the model with it
+                # never fall back to 'latest': it would hand over whichever conversation ran last
                 self.sessions.pop(s.sid, None)
                 s.close()
                 raise acp.RequestError.resource_not_found(f'no saved session {session_id} ({e})')
             got = picked['id']
         else: got = s.agent.session_id
-        # only this conversation, and only the turns the model also gets back: an editor showing a
-        # stopped turn's fragment as a whole reply would disagree with the context behind it
+        # only this conversation, and only the turns the model also replays back
         for turn in [t for t in s.agent.history if t.get('session') == got
                      and t.get('state', 'complete') in REPLAYED]:
             if turn.get('prompt'):
@@ -382,15 +370,13 @@ class AcpAgent(acp.Agent):
 # %% ../nbs/16_acp.ipynb #2a12348f
 async def serve(agent=None):
     "Speak ACP on stdio until the editor closes it."
-    # stdout is the protocol. The streams take the real one first; after that anything that
-    # prints -- a model loader, a warning -- goes to stderr, where it cannot corrupt a frame
+    # stdout is the protocol; after the streams take it, redirect prints to stderr so they cannot corrupt a frame
     reader, writer = await acp.stdio_streams()
     sys.stdout = sys.stderr
     a = ifnone(agent, AcpAgent())
     try: await acp.run_agent(a, input_stream=writer, output_stream=reader)
     finally:
-        # the editor closing does not stop a turn: it is on a worker thread, and the process
-        # would sit there running tools until it finished. Cancel, then release the backends
+        # the editor closing does not stop a worker-thread turn; cancel, then release the backends
         for s in list(a.sessions.values()):
             try: s.agent.cancel()
             except Exception: pass

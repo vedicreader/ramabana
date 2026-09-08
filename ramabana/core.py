@@ -26,8 +26,7 @@ from dataclasses import dataclass, field
 # %% ../nbs/00_core.ipynb #2049138c
 ENV_PREFIX, ENV_FALLBACK = 'RAMABANA_', 'LEELA_'
 
-#: shalya raises `HostError`, and this is that class under the name the harness has always used.
-#: An alias rather than a subclass, so `except AgentError` still catches what a host refuses.
+#: alias not subclass, so `except AgentError` still catches what a host refuses.
 AgentError = HostError
 class BranchChanged(AgentError): "A branch moved while a person was deciding what to do to it, so nothing was written."
 
@@ -87,8 +86,7 @@ PROBE_TTL = 90                                  #: seconds an answer about this 
 PROBE_DIR = Path('~/.config/ramabana/probes')   #: where an answer is kept between runs
 #: The last answer from each probe. Process-wide, because what it holds is the machine's.
 _PROBED, _probe_lock = {}, threading.Lock()
-#: Bumped whenever the answers are dropped. A probe gathering across that moment was asked about a
-#: machine that no longer applies, and its answer is discarded rather than written in behind.
+#: Bumped when answers are dropped, so a probe crossing that moment discards its stale answer.
 _probe_gen = 0
 
 def probe_path(key, dir=None):
@@ -111,8 +109,7 @@ def _write_probe(key, value, dir):
 
 def _keep(key, value, gen, dir, disk):
     "Write an answer in, unless it was gathered about a machine `forget_probes` has since dropped."
-    # The write is under the lock with the generation it was checked against: outside it, a
-    # refresh still in flight recreates the file `forget_probes` has just removed.
+    # under the lock with the checked generation: an in-flight refresh outside it recreates the file forget_probes just removed
     with _probe_lock:
         if gen != _probe_gen: return
         _PROBED[key] = {'at': time.time(), 'value': value, 'busy': False}
@@ -464,7 +461,7 @@ class Budget:
     note: str = ''           # why, for a status bar
 
 def budget_for(spec, tool_max, channel='native'):
-    "Restricts tool context to the model's window as defined in `spec`, or to `tool_max` if unset. If the window size can't be determined, defaults to the full briefing. Never increases the context size."
+    "Tool context sized to the model's window in `spec`, else `tool_max`. Never grows it."
     ctx = getattr(spec, 'ctx', 0) or 0
     if ctx > 0 and channel == 'tags': ctx = max(1, ctx - TAGS_SCHEMA_TOKENS)
     if ctx <= 0 or ctx > SMALL_CTX: return Budget(tool_max=tool_max, note='full briefing')
@@ -493,8 +490,7 @@ def unregister_model(name):
     CUSTOM.pop(name, None); MODELS.pop(name, None); _LOCAL_CTX.pop(name, None)
 
 # %% ../nbs/00_core.ipynb #17dbd05c
-#: The remote-runtime settings an alias may carry. A key itself is never among them: `api_key_env`
-#: names the environment variable, and the value stays in the environment.
+#: remote-runtime settings an alias may carry; never a secret (`api_key_env` names the env var).
 API_KEYS = ('base_url', 'api_key_env', 'vendor_name', 'api_name')
 MODEL_ALIASES = Path('~/.config/ramabana/models.json')   #: where aliases are kept by default
 
@@ -563,7 +559,7 @@ def forget_forced_tags():
     _forced_tags.clear()
 
 def tool_channel(spec, chat=None):
-    "Returns the channel ('native' or 'tags') for a model's tool schemas, given a `ModelSpec` or model id and optional live chat."
+    "The channel ('native' or 'tags') a model's tool schemas travel on."
     if (v := (env('TOOL_CHANNEL') or '').strip().lower()) in TOOL_CHANNELS: return v
     if (ch := getattr(chat, 'tool_channel', None)) in TOOL_CHANNELS: return ch
     mid = str(getattr(spec, 'model_id', spec) or '')
@@ -575,9 +571,7 @@ def tool_channel(spec, chat=None):
 # %% ../nbs/00_core.ipynb #e81acb32
 @dataclass
 class Routing:
-    """Job -> model. The policy, and the one place that decides what runs where.
-    Environment overrides (`LEELA_MODEL`, `LEELA_MODEL_SUMMARY`, ...) exist.
-    """
+    "Job -> model: the policy, and the one place that decides what runs where."
     turn: str = None
     policy: dict = field(default_factory=lambda: dict(DEFAULT_POLICY))
     default_local: str = DFLT_LOCAL

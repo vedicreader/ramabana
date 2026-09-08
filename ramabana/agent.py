@@ -369,8 +369,7 @@ class Approvals:
         with self._lock:
             if self.closed: return []
             self.closed = True
-            # `history` holds them all. `current` is only the newest, and a background run can
-            # raise one while another is already waiting
+            # `history` holds them all; `current` is only the newest, and a background run can raise one while another waits
             waiting = [a for a in self.history if a.pending]
         for a in waiting:
             a.resolve(False, 'the session closed before this was answered')
@@ -402,9 +401,7 @@ class Approvals:
         if not force and name not in self.tools: return a.resolve(True)   # `force` asks anyway
         if self.mode == 'auto': return a.resolve(True)
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
-        # closing first: it is the more useful reason, and it holds whether or not anyone listens.
-        # `current` is taken under the same lock a close competes for, because checking and then
-        # storing separately left an ask that landed in the gap waiting out its whole timeout
+        # closing first: the more useful reason; `current` taken under the close lock, so an ask landing in the gap does not wait out its timeout
         with self._lock:
             closing = self.closed
             if not closing: self.current = a
@@ -572,9 +569,7 @@ RULES = (
 )
 
 
-#: Re-asserted after the tag block on the tags channel. Rishi appends the tool protocol *after*
-#: the briefing there, so the last thing those models read is tool punctuation rather than the
-#: rules. Riding out with the turn is the only way the rules get to be last instead.
+#: re-asserted after the tag block, so on the tags channel the rules are the last thing the model reads, not tool punctuation.
 OUTPUT_CONTRACT = ('\n\n<output-contract>Reply in plain sentences: no headings, no bullet list, no '
                    'bold, no code fence around prose. Lead with the answer and stop. This outranks any '
                    'formatting habit carried in from another harness.</output-contract>')
@@ -593,8 +588,7 @@ def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=()):
     if getattr(host, 'read_outside', False):   # only when the host says so
         roots += ('\n  Reads may name any path on this machine. Writing, running commands and\n'
                   '  listing files stay inside the folders above.')
-    # Claimed only where it is true: a host says so, and "keep it short, the kernel is busy"
-    # is advice for a problem it may not have.
+    # claimed only where it is true: advice like "keep it short, the kernel is busy" suits a problem the host may not have
     conc = ('\n  Your kernel runs each inspection in its own subshell. This works while one '
             "of the user's cells is still running." if getattr(host, 'concurrent', False) else '')
     live = ('' if 'inspect_python' not in names and names else
@@ -818,11 +812,7 @@ def plan_tools(get_plan, save=None):
 
     @summary(lambda a: f'Todo {a.get("id","?")} → {a.get("status") or "update"}')
     def update_todo(id: str, status: str = '', note: str = '', text: str = '') -> str:
-        """Update a todo by id or unique prefix. Status: pending, active, done, cancelled.
-
-        Mark the step you are working on `active`, and `done` when it is finished. After a
-        stop, resume from the active step rather than rewriting the plan.
-        """
+        "Update a todo by id or unique prefix. Status: pending, active, done, cancelled."
         kw = {}
         if status: kw['status'] = status
         if note != '': kw['note'] = note
@@ -1124,8 +1114,7 @@ def _be(self:Agent, job='turn'):
     return self._backends[key]
 
 # %% ../nbs/03_agent.ipynb #1b4fa81d
-#: bytes of the log read back for the live context. Whichever of the two bounds bites first wins,
-#: so a log under the window behaves exactly as it did before there was one
+#: bytes of the log read back for live context; whichever bound bites first wins, so a small log behaves as before.
 HISTORY_TAIL = 8_000_000
 HISTORY_TURNS = 2000
 
@@ -1280,8 +1269,7 @@ def add_tool(self:Agent, f):
 @patch(as_prop=True)
 def _delegating(self:Agent):
     "The delegate calls whose sub-agents are running on this thread, innermost last."
-    # Per thread because `delegate_many` fans out over a threadpool. It only fans out for *reading*
-    # sub-agents, which are not recorded, but a stack wrong under concurrency is not worth the saving.
+    # per thread because `delegate_many` fans out over a threadpool; a stack wrong under concurrency is not worth the saving
     if not hasattr(self._nested, 'stack'): self._nested.stack = []
     return self._nested.stack
 
@@ -1497,8 +1485,7 @@ def beat(self:Agent):
         # `pob_path` is the one source of truth, so the beat and a session cannot open different files
         p = pob_path()
         self._beat = pob(p) if p.exists() else None
-        # the reader is fixed when the beat is opened: `resume_session` renames the session, and a
-        # reader that moved with it would replay notes this session already carried
+        # the reader is fixed when the beat opens: else `resume_session` renaming the session would replay notes already carried
         self._beat_reader = f'{POB_READER}:{self.session_id}'
     return self._beat
 
@@ -1511,11 +1498,7 @@ def beat_drain(self:Agent):
 # %% ../nbs/03_agent.ipynb #0ccb8d65
 @patch
 def _begin_turn(self:Agent, run=None):
-    """This turn's own identity, before anything can go wrong with it.
-
-    A turn stopped before `_prepare` still gets a row, and a row carrying the *previous* turn's id
-    would collide with it in `conversation_parts`, where two rows sharing an id share group names.
-    """
+    "This turn's own identity, before anything can go wrong with it."
     rid = getattr(run, 'id', '')
     if rid and getattr(self, '_begun', None) == rid: return self.current_turn_id   # once per run
     self._begun = rid
@@ -1607,8 +1590,7 @@ def session_added_roots(self:Agent, session_id):
     "Returns folders opened with `add_root` in order, read from the log for accurate session reconstruction. Does not reopen; see `resume_session`."
     out = []
     for turn in self.session_turns(session_id):
-        # a turn that is not replayed does not widen the boundary either: honouring a root from a
-        # turn whose context is left out would open a folder this session never agreed to
+        # a turn not replayed does not widen the boundary: a root from a left-out turn would open a folder this session never agreed to
         if turn.get('state', 'complete') not in REPLAYED: continue
         for row in (turn.get('activity') or []):
             if row.get('tool') != 'add_root' or not row.get('ok', True): continue
@@ -1817,10 +1799,7 @@ def conversation_parts(self:Agent, sid=None):
 # %% ../nbs/03_agent.ipynb #ecc036e0
 @patch
 def compile_conversation(self:Agent, sid=None, manifest=None, rewrites=None):
-    """Provider messages for a reshaped conversation: the stored turns, minus what a person
-    discarded, with their own words in place of any prose they rewrote. A call and its result
-    move together, and neither can be rewritten -- editing them would claim work that never ran.
-    """
+    "Provider messages for a reshaped conversation: stored turns minus what a person discarded, with their rewrites in place."
     parts, manifest = self.conversation_parts(sid), dict(manifest or {})
     rewrites = {str(k): str(v) for k, v in (rewrites or {}).items()}
     bad = [p for p in manifest.values() if p not in BRANCH_POLICIES]
@@ -1906,8 +1885,7 @@ def fork(self:Agent, turn_id, stage='after', branch_id='', part_id='', manifest=
 # %% ../nbs/03_agent.ipynb #e18699fc
 @patch
 def switch_branch(self:Agent, branch_id):
-    """Make another branch active by rebuilding its context, never by copying it. A branch is
-    its parent point plus its manifest, so recompiling is what switching means."""
+    "Make another branch active by rebuilding its context, never by copying it."
     branch_id = str(branch_id)
     if branch_id == self.current_branch_id: return self.branch_meta(branch_id)
     held = self._branch_hist.get(branch_id)
@@ -1925,8 +1903,7 @@ def switch_branch(self:Agent, branch_id):
 # %% ../nbs/03_agent.ipynb #82085355
 @patch
 def undo_turn(self:Agent, turn_id, branch_id=''):
-    """A turn undone is a branch that stops before it. The turn stays in canonical history --
-    undo is not deletion, and redo is switching back rather than replaying."""
+    "A turn undone is a branch that stops before it; the turn stays in canonical history."
     return self.fork(turn_id, 'before', branch_id)
 
 # %% ../nbs/03_agent.ipynb #c2701282
@@ -2120,8 +2097,7 @@ def command(self:Agent, line):
 # %% ../nbs/03_agent.ipynb #1c649440
 _agent_status, _agent_command = Agent.status, Agent.command
 
-#: Seconds a cancelled run is given to stop before terminating. A class attribute, so it is set
-#: on any `Agent` before a run exists and survives a caller raising it.
+#: seconds a cancelled run is given to stop before terminating; a class attribute, so it is set before any run exists.
 Agent.cancel_grace = .25
 
 def _stream_chunk(out, chunk):
@@ -2535,8 +2511,7 @@ def branches(self:Agent):
 
 @patch
 def save_branch(self:Agent, branch_id, revision=None, **changes):
-    """Record one branch. `revision` is the caller's optimistic base: a mismatch means someone
-    else moved the branch while a person was deciding, and nothing is written."""
+    "Record one branch. `revision` is an optimistic base: a mismatch means the branch moved, and nothing is written."
     branch_id = str(branch_id)
     bad = [k for k in changes.get('manifest', {}).values() if k not in BRANCH_POLICIES]
     if bad: raise ValueError(f'unknown context policy {bad[0]!r}')

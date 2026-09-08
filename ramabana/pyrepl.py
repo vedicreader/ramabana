@@ -254,7 +254,7 @@ class Dhrishti:
 
 
 def use_kernel(host, base):
-    "Sets `host`'s Python to a Dhrishti overlay in-place, replacing its attributes. The update preserves existing groups, avoiding loss of tools."
+    "Point `host`'s Python at a Dhrishti overlay in place, keeping every other tool group."
     host.kernel = Dhrishti(base)
     return host
 
@@ -371,7 +371,7 @@ def promote(base, name):
 
 # %% ../nbs/11_pyrepl.ipynb #11a10f63
 class AgentBridge:
-    "A kernel-based control surface for an agent, allowing reading the token from the namespace. Joining the kernel equates to joining the agent; no second security check exists."
+    "An in-kernel control surface for an agent: joining the kernel is joining the agent, so there is no second check."
     FIELDS = ('model', 'input', 'output', 'total', 'cached', 'cache_write', 'reasoning', 'cost', 'turns')
 
     def __init__(self, agent, dispatch=None):
@@ -401,7 +401,7 @@ class AgentBridge:
             raise ValueError(f'unknown agent operation {op!r}')
 
     def _as_owner(self, work):
-        "Executes a mutation in the agent's environment and returns its output. Reading counters is safe; attaching callbacks can build backends and access ongoing chats. `dispatch` runs on its own thread; otherwise, on the owner's thread."
+        "Run a mutation in the agent's environment: on `dispatch`'s thread if given, else the owner's."
         return work() if self.dispatch is None else self.dispatch(work)
 
     async def start(self):
@@ -439,8 +439,7 @@ class AgentBridge:
         self.server.server_close()
         self.server = self.thread = None
 
-#: The proxy's own source, with nothing substituted into it. Defined once and rebound per agent,
-#: so binding a second session's agent in the same namespace does not redefine the class.
+#: Defined once and rebound per agent, so a second session in the same namespace does not redefine the class.
 PROXY_CLASS = """import json as _json, urllib.parse as _parse, urllib.request as _req
 
 class AgentProxy:
@@ -466,13 +465,13 @@ class AgentProxy:
 """
 
 def agent_proxy_code(url, token, label='local'):
-    "The source binding an agent's proxy for its namespace. `ramabana_agent` is the last bound session; `ramabana_agents` stores all by label for shared kernels."
+    "Source that binds an agent proxy: `ramabana_agent` is the last session, `ramabana_agents` holds all by label."
     return PROXY_CLASS + (
         '\ntry: ramabana_agents\nexcept NameError: ramabana_agents = {}\n'
         f'ramabana_agent = AgentProxy({url!r}, {token!r}, {label!r})\n'
         f'ramabana_agents[{label!r}] = ramabana_agent\n')
 
 def inject_agent_proxy(host, url, token, label='local'):
-    "Binds the agent proxy in Dhrishti's overlay for each session's namespace, including the prompt namespace via `agent_proxy_code`."
+    "Bind the agent proxy in Dhrishti's overlay, reaching the prompt namespace too."
     return host.run_python(agent_proxy_code(url, token, label))
 

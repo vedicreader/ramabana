@@ -488,12 +488,7 @@ def img_cells(path, cols, rows=MAX_IMG_ROWS):
 APC_CHUNK = 4096
 
 class Picture:
-    """One picture on screen: bytes sent once, then re-placed at the end of every frame.
-
-    Image ids belong to the terminal window, not the process, so the counter starts at a random
-    value. Two sessions in one window that both began at 1 would each replace the other's pictures,
-    and kitty frees an image's placements with it, including the ones in scrollback.
-    """
+    "One picture on screen: bytes sent once, then re-placed at the end of every frame."
     _n = randrange(1 << 20, 1 << 28)
     def __init__(self, path, cols=MAX_IMG_COLS, rows=MAX_IMG_ROWS):
         Picture._n += 1
@@ -523,11 +518,7 @@ class Picture:
         return f'\x1b_Ga=d,d=i,i={self.id},p=1,q=2\x1b\\'
 
     def gap(self):
-        """The rows the block reserves for it, the first naming the file.
-
-        The name shows only where the picture is not, since a kitty placement draws above the cells
-        it covers: the browsing view, a fold's summary row, and a terminal that drew nothing.
-        """
+        "The rows the block reserves for it, the first naming the file."
         return Text(self.path.name + '\n' * (self.rows - 1), style=GRUVBOX['gray'])
 
 def picture(path, cols=MAX_IMG_COLS, rows=MAX_IMG_ROWS):
@@ -631,15 +622,7 @@ class ChoiceMenu:
 
 
 async def run_turn(ui, prompt):
-    """One turn, streamed into the transcript.
-
-    The agent's `stream` is a blocking generator on the model's own thread. The chunks
-    come back over a queue rather than being awaited: the loop has to stay free the whole
-    time, or an approval could never be answered and a tool call could never repaint.
-
-    The attachments are taken here, at the start, rather than released at the end: the prompt
-    that named them is then the only one that carries them, however the turn goes.
-    """
+    "One turn, streamed into the transcript."
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
     ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
     ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
@@ -682,13 +665,7 @@ async def run_turn(ui, prompt):
 
 # %% ../nbs/05_cli.ipynb #2874a64d
 class Ui:
-    """The terminal surface: a transcript of blocks, a status bar, and one line to type in.
-
-    Every method is synchronous and free of tty work, so the whole surface runs in a test against
-    an emulated terminal. Callbacks arrive from the model's worker thread (`Activity.on_change`,
-    `Approvals`), and a compositor is touched only from the loop thread, so they go through `_post`.
-    Without a loop registered `_post` calls straight through, which is what makes the tests work.
-    """
+    "The terminal surface: a transcript of blocks, a status bar, and one line to type in."
 
     def __init__(self, comp, agent, loop=None):
         self.comp, self.agent, self.loop = comp, agent, loop
@@ -751,11 +728,7 @@ class Ui:
         self.loop.call_soon_threadsafe(fn, *a)
 
     def _as_owner(self, work, timeout=10):
-        """Run `work` on the loop that owns the agent and return what it returned.
-
-        Everything that touches the agent runs here, since a callback can reach into a chat a turn
-        is walking. A loop stuck inside a turn raises rather than waits forever.
-        """
+        "Run `work` on the loop that owns the agent and return what it returned."
         if self.loop is None: return work()
         held = concurrent.futures.Future()
         def run():
@@ -833,11 +806,7 @@ class Ui:
         return out
 
     def turn_blocks(self):
-        """The blocks of the turn on screen: everything printed since its prompt went up.
-
-        Teleprint commits a block only when a borrow ends its epoch, which an ordinary session never
-        does, so this filters by the block id the turn started at rather than by `not committed`.
-        """
+        "The blocks of the turn on screen: everything printed since its prompt went up."
         return [b for b in self.comp.blocks.values() if b.id >= self._turn_from and not b.committed]
 
     def drillable(self):
@@ -1228,12 +1197,7 @@ class Ui:
         return GUIDE
 
     def submit(self):
-        """Handle the typed line. Returns a coroutine for a turn, `'quit'`, or None when handled here.
-
-        The agent answers most slash commands. The ones kept here are about this surface: its keys,
-        clipboard, attachments, and mode. They are recognised before the options row, or a `/model`
-        with the word "refactor" in it would open a menu instead of running.
-        """
+        "Handle the typed line. Returns a coroutine for a turn, `'quit'`, or None when handled here."
         src, line = self.buf.text, self.buf.text.strip()
         self.complete, self.desc = None, []
         self._echoed = []   # this keystroke's echo, retractable until its turn starts
@@ -1388,11 +1352,7 @@ class Ui:
         return Text(text)
 
     def flush_stream(self):
-        """Render the open segment now, whatever `STREAM_EVERY` would have said. Every boundary calls it.
-
-        A no-op when the drawing already matches the model, so `animate` can call it every frame.
-        The `_rendered` check stops a re-render of the whole reply ten times a second for nothing.
-        """
+        "Render the open segment now, whatever `STREAM_EVERY` would have said. Every boundary calls it."
         if self._seg_blk is None or not self._seg or self._seg == self._rendered: return
         self.comp.set_body(self._seg_blk, self.reply(self._seg), source=self._seg)
         self.comp.refresh_block(self._seg_blk)
@@ -1447,13 +1407,7 @@ def _show_pics(self:Ui, paths):
 
 @patch
 def place_pics(self:Ui):
-    """Put every picture back where its block now sits. Runs at the end of every frame.
-
-    A placement is anchored to the screen, not the model, so a moved block loses it. Re-placing is
-    cheap and idempotent. Draw all of a picture's rows or none: a partial placement lands over the
-    blocks below, or over a transient the reader is using, so it comes off until every row is the
-    block's again.
-    """
+    "Put every picture back where its block now sits. Runs at the end of every frame."
     if not self.pics or self.comp.paused: return
     comp, out = self.comp, []
     for bid, pic in list(self.pics.items()):
@@ -1622,12 +1576,7 @@ def paste(self:Ui, text):
     return self.paint()
 
 class ThemedCode(CodeBlock):
-    """A fenced block in the palette's pygments style, on the palette's own background.
-
-    Read per render, not stored, so `/theme` restyles code already on screen. `padding` loses its
-    vertical cell: Rich's default puts a blank row inside the block on top of the blank row it puts
-    around it, and three rows of nothing around four lines of code is what this is here to stop.
-    """
+    "A fenced block in the palette's pygments style, on the palette's own background."
     def __rich_console__(self, console, options):
         yield Syntax(str(self.text).rstrip(), self.lexer_name, theme=code_theme(),
                      background_color=code_bg(), word_wrap=True, padding=(0, 1))
@@ -1776,10 +1725,7 @@ def on_output(self:Ui, output):
 
 @patch
 async def _complete(self:Ui, insert):
-    """List what the kernel would complete. `insert` is tab: typing must not rewrite the buffer.
-    `CompletionMenu` owns the span. Tab cycles and shift+tab goes back. `desc` is a separate
-    line because cycling writes the highlighted match into the buffer and a type would go in too.
-    """
+    "List what the kernel would complete; `insert` is tab so typing must not rewrite the buffer."
     from ramabana.pyrepl import annotate
     identity = (self.buf.text, self.buf.cursor)   # typing is not gated during the awaits
     def stale(): return (self.buf.text, self.buf.cursor) != identity
@@ -2130,9 +2076,7 @@ def apply_theme(self:Ui, name=''):
 
 @patch
 def open_root(self:Ui, path=''):
-    """`/root` lists the open folders; `/root add PATH` opens another.
-    Typed by the person whose machine it is, so it is not gated. The agent goes through `add_root`, in `WRITE_TOOLS`.
-    """
+    "`/root` lists the open folders; `/root add PATH` opens another."
     host = self.agent.host
     if not path:
         added = set(getattr(host, 'added_roots', []))

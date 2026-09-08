@@ -44,7 +44,7 @@ def _sect(s):
 
 
 def _fed_hit(h):
-    "A federated row as a `Hit`, with a handle for reopening. The handle's `symbol` identifies relevant info: `mod_name` for symbols, `node_id` for `memory_read`. It varies by hit type."
+    "A federated row as a `Hit`; its `symbol` is `mod_name` for repo hits, `node_id` for prose."
     where = str(h.get('where') or h.get('ref') or '')
     path, _, num = where.rpartition(':')
     if h.get('source') == 'prose': return Hit(where, 1, str(h.get('ref') or ''), str(h.get('text') or '')[:200])
@@ -102,9 +102,7 @@ class VaultHost(LocalHost):
         return self._open()
 
     def _policy(self):
-        """`(pii, pii_ner)` for this call. The host asks a function now rather than at construction,
-        because the policy changes while a session runs. `off` is the default, and a function that
-        raises falls back to it."""
+        "`(pii, pii_ner)` for this call, read now not at construction; a raising callable falls back to `off`."
         def val(x):
             try: return x() if callable(x) else x
             except Exception: return None
@@ -187,7 +185,7 @@ class VaultHost(LocalHost):
 
 
     def read_url(self, url, remember=True):
-        "Fetches a page and returns it without storing, unless `remember=False` is set, in which case it still fetches and returns the text."
+        "Fetch a page; unless `remember=False`, also file it in the vault for the next session."
         d = super().read_url(url, remember=remember)
         if d is not None and remember and self.remember_reads:
             try:
@@ -198,7 +196,7 @@ class VaultHost(LocalHost):
         return d
 
     def research(self, query):
-        "Searches and reads sources into the vault, then answers from it. This consolidates web research into the vault, making recall accurate and consistent."
+        "Search the web, file the sources in the vault, then answer from it."
         v, q = self.vault, str(query)
         pii, ner = self._policy()
         r = v.web(q, n=5)
@@ -208,7 +206,7 @@ class VaultHost(LocalHost):
         return '\n\n'.join([head] + [f"## {s['breadcrumb']}\n\n{s['text']}" for s in c.results])
 
     def ask(self, question, ref=None, instruction='', **kw):
-        "Asks the vault to answer `question` with citations using the session's model, avoiding duplicate engine loads and stripping PII; `instruction` follows the turn directly."
+        "Ask the vault to answer `question` with citations, on the session's model."
         kw.pop('pii', None)
         if self.mk_chat is not None: kw.setdefault('mk_chat', self.mk_chat)
         return self.vault.ask(question, ref=ref, instruction=str(instruction or ''), **kw)
