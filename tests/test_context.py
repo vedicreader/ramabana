@@ -264,6 +264,17 @@ def test_the_engines_own_words_are_captured_and_classified():
     assert 'exceed the maximum number of tokens' in getattr(e.value, 'native_output', '')
 
 
+def test_a_capture_longer_than_one_pipe_read_keeps_its_tail():
+    """`stop` closed the pipe's read end before joining the thread that drains it, so whatever was
+    still in the pipe went with it: a 60k write came back as its first 4096-byte chunk, and under
+    load a short one came back empty. Restoring the descriptor is what ends the pump, so the join
+    belongs between that and the close.
+    """
+    with captured() as cap: native_write('a' * 59_990 + 'THE-TAIL\n')
+    assert cap.text.endswith('THE-TAIL\n')
+    assert len(cap.text) == runtime.MAX_KEEP, 'the tail is kept, not the first read'
+
+
 def test_capture_can_be_switched_off_and_never_breaks_the_descriptor(monkeypatch):
     """Anything that moves a file descriptor needs a way out, and `use_env_prefix` exists so one
     hard-coded variable name is not wrong in every other application. A broken stderr would be a

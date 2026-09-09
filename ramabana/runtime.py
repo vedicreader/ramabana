@@ -65,12 +65,12 @@ class _Tee:
             except OSError: pass
     def stop(self):
         if self.saved is not None:
-            try: os.dup2(self.saved, self.fd)
+            try: os.dup2(self.saved, self.fd)                 # drops the last write end, so the pump reads EOF
             except OSError: pass
+        if self.thread is not None: self.thread.join(timeout=1.0)   # before the close, or the bytes still in the pipe go
         if self.r is not None:
             try: os.close(self.r)
             except OSError: pass
-        if self.thread is not None: self.thread.join(timeout=1.0)
         if self.saved is not None:
             try: os.close(self.saved)
             except OSError: pass
