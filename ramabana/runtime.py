@@ -796,7 +796,6 @@ class RishiBackend(Backend):
         "Where this backend's tool schemas actually travel. The chat answers once there is one."
         return tool_channel(self.spec,self.chat)
     def _runtime_kw(self):
-        import os
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
@@ -933,7 +932,6 @@ class Run:
     backend: object = None
 
     def __post_init__(self):
-        import threading
         self.children, self._lock, self._done = [], threading.RLock(), threading.Event()
         if self.parent is not None: self.parent.children.append(self)
 
@@ -947,7 +945,6 @@ class Run:
         return Run(f'run_{uuid.uuid4().hex[:12]}', 'child', question, model, self, self.grace)
 
     def start(self, backend=None):
-        import time
         with self._lock:
             if self.state != 'pending': return False
             self.state, self.backend, self.started = 'running', backend, time.time()
@@ -962,7 +959,6 @@ class Run:
         return not cancelled
 
     def finish(self, state='completed'):
-        import time
         with self._lock:
             if self.terminal: return self
             self.state = 'cancelled' if self.cancelled else state
@@ -1001,7 +997,6 @@ class Run:
         return self
 
     def wait(self, grace=None):
-        import time
         end = time.monotonic() + (self.grace if grace is None else max(0, grace))
         for child in list(self.children):
             left = max(0, end - time.monotonic())
@@ -1013,7 +1008,6 @@ class Run:
         return self
 
     def detach(self):
-        import time
         with self._lock:
             if self.terminal: return self
             self.state, self.ended = 'detached', time.time(); self._done.set()

@@ -1443,7 +1443,6 @@ def _spec_for(self:Agent, model=None):
 @patch
 def poll_watches(self:Agent, force=False):
     "Fire whatever the host has due, in a daemon thread, at most every `poll_every` seconds."
-    import time
     if not self.poll_every and not force: return None
     if self._poll_thread is not None and self._poll_thread.is_alive(): return self._poll_thread
     now = time.monotonic()

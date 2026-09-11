@@ -183,7 +183,6 @@ class FullHost(LocalHost):
         except Exception as e: return f'{agent_err(e)}'
         finally:
             for k, v in before.items(): self.ns[k] = v
-            for k in [k for k in self.ns if k not in before]: pass   # the agent's own names persist
 
     @property
     def kernel_kind(self): return 'ipymini'

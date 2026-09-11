@@ -68,7 +68,6 @@ class VaultHost(LocalHost):
                  **kwargs):             # forwarded to `LocalHost`
         super().__init__(roots, **kwargs)
         self.mk_chat, self.pii, self.pii_ner = mk_chat, pii, pii_ner
-        import threading
         self.shelf = safe_shelf(shelf) if shelf else None
         self._vault, self._vlock, self._vthread = vault, threading.Lock(), None
         self.federate, self.remember_reads = federate, remember_reads
