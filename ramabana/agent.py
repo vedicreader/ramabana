@@ -23,8 +23,8 @@ from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
-from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, clip, discover,
-                            summarise, summary, one_line as _1,
+from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
+                            summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background)
 from .monitor import (Monitors, POB_READER, beat_notes, beat_notice, monitor_tools,
@@ -895,9 +895,8 @@ class Agent:
         self._usage_seen = {}    # backend cumulative counters already folded into `use`
         self.note = 'not started'
         self._backends, self._skills, self._reg, self._tools = {}, None, None, None
-        self._subtools = None    # built only when sub-agents run on a smaller model than the turn
-        self._subrec = None      # those tools recorded, for when sub-agents may write
-        self._plain = []         # the unwrapped tools, which is what the briefing is written from
+        self._catalogs, self._views = {}, {}
+        self._catalog_view = ToolCatalog()
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self._monitor_thread = None
         # the folders something *else* is changing. Reviews run on the sub-agent model, read-only
@@ -984,7 +983,7 @@ def _record(self:Agent, f):
         meta = self._action_meta(name, args)
         act = self.activity.start(name, args, summary=summarise(f, args), **meta)
         self.registry.fire('before_tool', self, name, args)
-        if name in WRITE_TOOLS:   # first touch only: later edits are part of one change
+        if is_write(f):   # first touch only: later edits are part of one change
             if (p := args.get('path')):
                 if p not in self.before: self.before[p] = self.host.text_at(p) or ''
             elif name == 'run_shell': self.snapshot_tree()
@@ -1036,19 +1035,45 @@ def subagent_budget(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #6318c147
 @patch
+def _catalog_for(self:Agent, budget, full=True):
+    "Build one catalog per schema budget; foreground and sub-agents take policy views of it."
+    key = (budget.tool_max, tuple(budget.drop), bool(full))
+    if key not in self._catalogs:
+        extra = list(self.registry.tools)
+        if full:
+            if self.subagents:
+                extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
+                                        lambda: self.skills, self._cloud_backend_or_none,
+                                        lambda: self.subagent_writes,
+                                        lambda: self.approvals.gate if self.approvals is not None else None,
+                                        background=self.background)
+            extra += plan_tools(lambda: self.plan, save=self._save_plan)
+            extra += monitor_tools(lambda: self.monitors, mx=budget.tool_max)
+        built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
+                          drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew)
+        self._catalogs[key] = ToolCatalog(built)
+    return self._catalogs[key]
+
+@patch(as_prop=True)
+def catalog(self:Agent):
+    "The foreground policy view used by the model, approvals, activity and frontends."
+    if self._tools is None: self.tools
+    return self._catalog_view
+
+@patch(as_prop=True)
+def _plain(self:Agent): return self.catalog.tools
+
+@patch
 def _sub_plain(self:Agent):
-    "The tool list a sub-agent gets, sized to the model sub-agents run on."
-    b = self.subagent_budget
-    if b == self.budget:
-        built = self.tools
-        return built if self.subagent_writes else self._plain
-    if self._subtools is None:
-        self._subtools = tools_for(self.host, lambda: self.skills, list(self.registry.tools),
-                                   mx=b.tool_max, drop=b.drop, get_spec=self.spec_or_none,
-                                   on_media=self._drew)
-    if not self.subagent_writes: return self._subtools
-    if self._subrec is None: self._subrec = [self._record(t) for t in self._subtools]
-    return self._subrec
+    "The sub-agent policy view of the same catalog-building path."
+    budget = self.subagent_budget
+    same = budget == self.budget
+    source = self._catalog_for(budget, full=same)
+    if not self.subagent_writes: return source.tools
+    key = ('subagent', budget.tool_max, tuple(budget.drop))
+    if key not in self._views: self._views[key] = source.map(self._record)
+    return self._views[key].tools
+
 
 # %% ../nbs/03_agent.ipynb #76e57894
 @patch(as_prop=True)
@@ -1062,22 +1087,14 @@ def background(self:Agent):
 def tools(self:Agent):
     "Every tool the turn model can afford, built once and recorded. Rebuilt by `reload`."
     if self._tools is None:
-        extra = list(self.registry.tools)
-        if self.subagents:
-            extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
-                                    lambda: self.skills, self._cloud_backend_or_none,
-                                    lambda: self.subagent_writes,
-                                    lambda: self.approvals.gate if self.approvals is not None else None,
-                                    background=self.background)
-        extra += plan_tools(lambda: self.plan, save=self._save_plan)
-        b = self.budget
-        extra += monitor_tools(lambda: self.monitors, mx=b.tool_max)
-        plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop,
-                          get_spec=self.spec_or_none, on_media=self._drew)
-        if self.readonly: plain = read_only(plain, self.readonly_calls, effects=False, block=NO_SUB)
-        self._plain = plain
-        self._tools = [self._record(t) for t in plain]
+        view = self._catalog_for(self.budget)
+        if self.readonly:
+            view = view.read_only(self.readonly_calls, effects=False, block=NO_SUB)
+        self._catalog_view = view
+        if self.approvals is not None: self.approvals.tools = view.writes
+        self._tools = view.map(self._record).tools
     return self._tools
+
 
 # %% ../nbs/03_agent.ipynb #f37435ce
 @patch
@@ -1238,7 +1255,8 @@ def chat_or_none(self:Agent, job='turn'):
 @patch
 def _forget(self:Agent):
     "Drop what is rebuilt from disk. The registry keeps whatever this process registered on it."
-    self._skills = self._tools = self._subtools = self._subrec = None
+    self._skills = self._tools = None
+    self._catalogs.clear(); self._views.clear()
     if self._reg is not None: self._reg.drop_loaded()
 
 @patch
@@ -1380,7 +1398,7 @@ def set_model(self:Agent, name, job='turn'):
     new = (spec.backend, spec.model_id)
     # tools and briefing are built from the turn model, not from its budget alone
     if job == 'turn' and (self.budget != before or new != old): self._tools = None
-    if job == 'subagent': self._subtools = self._subrec = None
+    if job == 'subagent': self._catalogs.clear(); self._views.clear()
     if job == 'turn' and new != old:
         self._be('turn').resume_hist(history)
     still_used = {(self.routing.spec(j).backend, self.routing.spec(j).model_id) for j in JOBS}

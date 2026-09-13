@@ -15,8 +15,8 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEM
            'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
            'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size',
            'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
-           'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'ThemedCode', 'Reply', 'compact_md',
-           'VaultSpecHost', 'mk_host', 'mk_agent', 'amain', 'ask_once', 'main']
+           'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'ThemedCode', 'Reply', 'compact_md', 'mk_host',
+           'mk_agent', 'amain', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -1808,12 +1808,7 @@ def _act(self:Ui, act):
 
 
 # %% ../nbs/05_cli.ipynb #79b1ca2e
-from .spec import SpecHost
-from .vault import VaultHost
-
-
-class VaultSpecHost(VaultHost, SpecHost):
-    "Both optional groups on one host. A declared class, rather than one built by `type()` per session."
+from .vault import WorkspaceHost
 
 
 def mk_host(roots=('.',),
@@ -1825,14 +1820,9 @@ def mk_host(roots=('.',),
             pii=PII_OFF,             # off | redact | refuse for what vault retrieval returns
             pii_ner=False,           # gate on titled names too, not only on patterns
             **kwargs):               # forwarded to the host: `index`, `warm`, `vault=<path>`
-    "The host both frontends run on: `LocalHost`, plus a vault and an API spec when asked."
-    kw = dict(approvals=approvals, web=web, read_outside=read_outside, **kwargs)
-    #: only a vault retrieves anything to gate, so the two settings go no further than one
-    vkw = dict(kw, pii=pii, pii_ner=pii_ner)
-    if vault and spec: return VaultSpecHost(roots, **vkw)
-    if vault: return VaultHost(roots, **vkw)
-    if spec: return SpecHost(roots, **kw)
-    return LocalHost(roots, **kw)
+    "The provider-configured workspace host shared by the terminal, MCP and ACP."
+    return WorkspaceHost(roots, approvals=approvals, web=web, vault=vault, spec=spec,
+                         read_outside=read_outside, pii=pii, pii_ner=pii_ner, **kwargs)
 
 
 def mk_agent(roots=('.',),
@@ -1847,7 +1837,7 @@ def mk_agent(roots=('.',),
              host_kw=None,            # forwarded to `mk_host`: `index`, `warm`, `vault=<path>`
              **kw):                   # forwarded to `Agent`
     "A host over the named folders and an `Agent` over that, gated the way `approve` says."
-    approvals = None if approve == 'none' else Approvals(tools=WRITE_TOOLS, mode=approve)
+    approvals = None if approve == 'none' else Approvals(mode=approve)
     host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec,
                    read_outside=read_outside, pii=pii, pii_ner=pii_ner, **(host_kw or {}))
     if approvals is not None: approvals.host = host   # the gate previews `create_file` via the host

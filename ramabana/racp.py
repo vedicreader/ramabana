@@ -25,7 +25,7 @@ from fastcore.script import call_parse
 from . import __version__
 from .agent import DFLT_TIMEOUT, Agent, Approvals, REPLAYED
 from .core import PII_OFF, accepts
-from .tools import WRITE_TOOLS, LocalHost
+from .vault import WorkspaceHost
 
 # %% ../nbs/16_acp.ipynb #8e6cca6b
 #: `Act.kind` and a bare tool name, both onto the ten kinds ACP knows
@@ -67,8 +67,8 @@ class Bridge:
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
 
 # %% ../nbs/16_acp.ipynb #e217ed96
-class EditorHost(LocalHost):
-    "`LocalHost` whose file text and shell come from the editor, where the editor offers them."
+class EditorHost(WorkspaceHost):
+    "A provider-configured workspace whose file text and shell may come from the editor."
 
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
@@ -140,16 +140,10 @@ class EditorHost(LocalHost):
 def mk_agent(roots, model=None, approve='ask', web=True, vault=False, pii=PII_OFF, pii_ner=False,
              timeout=DFLT_TIMEOUT, **kw):
     "An `EditorHost` over `roots` and a gated `Agent` on it, without the terminal frontend's imports."
-    approvals = Approvals(tools=WRITE_TOOLS, mode=approve, timeout=timeout)
-    bases = [EditorHost]
-    if vault:
-        from ramabana.vault import VaultHost
-        bases.append(VaultHost)
-    Host = bases[0] if len(bases) == 1 else type('EditorVaultHost', tuple(bases), {})
+    approvals = Approvals(mode=approve, timeout=timeout)
     # read_outside stays off: an editor never names a path outside the folders it opened
-    #: only a vault has retrieval to gate, and `EditorHost` alone would refuse the arguments
-    gate = dict(pii=pii, pii_ner=pii_ner) if vault else {}
-    host = Host(list(roots), approvals=approvals, web=web, read_outside=False, **gate)
+    host = EditorHost(list(roots), approvals=approvals, web=web, vault=vault,
+                      pii=pii, pii_ner=pii_ner, read_outside=False)
     approvals.host = host
     a = Agent(host, model=model, approvals=approvals, project_extensions=False, **kw)
     a.lend_model()
