@@ -391,14 +391,14 @@ class Compactor:
         return min(self.keep_recent, max(256, max(256, ctx - overhead) // 2))
 
     def overhead(self, backend, msgs, count=None):
-        "What the window holds that is not this conversation, by subtraction from `used_tokens`."
-        used = getattr(backend, 'used_tokens', 0) or 0
-        if not used: return 0
-        return max(0, used - sum(estimate_tokens(resp_text(m), count) + 8 for m in msgs))
-
-    def _keep(self, msgs, count=None, ctx=0, overhead=0):
-        "The tail to keep uncompacted, newest-first until the budget runs out. Whole messages only."
+        "The window's non-conversation load, and the per-message sizes measured to find it."
         sizes = [estimate_tokens(resp_text(m), count) + 8 for m in msgs]
+        used = getattr(backend, 'used_tokens', 0) or 0
+        return (max(0, used - sum(sizes)) if used else 0), sizes
+
+    def _keep(self, msgs, count=None, ctx=0, overhead=0, sizes=None):
+        "The tail to keep uncompacted, newest-first until the budget runs out. Whole messages only."
+        if sizes is None: sizes = [estimate_tokens(resp_text(m), count) + 8 for m in msgs]
         budget = self.budget(ctx, overhead)
         if sizes: budget = min(budget, max(256, sum(sizes)//2))
         kept, used = [], 0
@@ -415,8 +415,10 @@ class Compactor:
         if not msgs:
             self.note = 'nothing to compact'
             return ''
-        keep = self._keep(msgs, backend.count_tokens, getattr(backend.spec, 'ctx', 0),
-                          self.overhead(backend, msgs, backend.count_tokens))
+        count = backend.count_tokens
+        oh = self.overhead(backend, msgs, count)
+        oh, sizes = oh if isinstance(oh, tuple) else (oh, None)
+        keep = self._keep(msgs, count, getattr(backend.spec, 'ctx', 0), oh, sizes)
         older = msgs[:len(msgs) - len(keep)] if len(keep) < len(msgs) else msgs
         if not older:
             self.note = 'everything is recent; nothing to compact'

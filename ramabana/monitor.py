@@ -9,7 +9,7 @@ Docs: https://vedicreader.github.io/ramabana/monitor.html.md"""
 from __future__ import annotations
 
 import fnmatch, sys, threading, time, uuid
-from collections import deque
+from collections import Counter, deque
 from pathlib import Path
 
 from fastcore.basics import patch
@@ -102,8 +102,7 @@ def _rel(path, root=None):
 
 def summarise(changes):
     "One line: how many files were added, edited and removed."
-    n = {}
-    for was, now in changes.values(): n[_verb(was, now)] = n.get(_verb(was, now), 0) + 1
+    n = Counter(_verb(was, now) for was, now in changes.values())
     return ', '.join(f'{v} {k}' for k, v in sorted(n.items())) or 'nothing'
 
 
@@ -111,7 +110,7 @@ def report(changes, folder='', mx=REVIEW_MAX_CHARS):
     "Summarize changed files and clip their unified diffs."
     root = Path(folder) if folder else None
     rows = [(_verb(*changes[p]), _rel(p, root), _diff(*changes[p], _rel(p, root))) for p in sorted(changes)]
-    head = '\n'.join(f'{verb:8} {rel}  +{_counts(d)[0]}/-{_counts(d)[1]}' for verb, rel, d in rows)
+    head = '\n'.join(f'{verb:8} {rel}  +{add}/-{rem}' for verb, rel, d in rows for add, rem in [_counts(d)])
     diffs = [d for _, _, d in rows if d]
     if not diffs: return head
     room = max(0, mx - len(head) - 2)

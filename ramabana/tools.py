@@ -23,6 +23,7 @@ __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WR
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, functools, json, re, threading, time, uuid
+from collections import Counter
 from fastcore.basics import AttrDict, ifnone
 from fastcore.foundation import L
 from fastcore.parallel import parallel
@@ -114,7 +115,7 @@ def _delegate_result(text):
     text = str(text or '').strip()
     words = re.findall(r"[A-Za-z0-9_+.-]+", text.lower())
     if not text: return 'Delegated inspection failed: the sub-agent returned no answer.'
-    if len(words) >= 12 and max(words.count(w) for w in set(words)) > max(8, len(words) // 4):
+    if len(words) >= 12 and max(Counter(words).values()) > max(8, len(words) // 4):
         return 'Delegated inspection failed: repetitive output was discarded as unreliable.'
     return text
 
