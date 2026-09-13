@@ -11,7 +11,7 @@ __all__ = ['MAX_PRODUCTS', 'SHOP_PORT', 'SHOP_TOUT', 'CATALOGUE', 'CartError', '
 import json
 from fastcore.basics import store_attr
 from .core import AgentError, agent_err
-from .tools import clip, err, summary, writes
+from shalya import clip, err, summary, writes
 from shalya.core import one_line as _1
 
 # %% ../nbs/08_shop.ipynb #aa16daf7

@@ -16,7 +16,7 @@ from pathlib import Path
 from rich.text import Text
 from fastcore.meta import delegates
 from .core import agent_err
-from .tools import LocalHost
+from shalya.host import LocalHost
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0006
 @dataclass

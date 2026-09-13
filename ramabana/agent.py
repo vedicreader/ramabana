@@ -23,7 +23,7 @@ from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
-from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
+from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background)
@@ -1069,6 +1069,7 @@ def _sub_plain(self:Agent):
     budget = self.subagent_budget
     same = budget == self.budget
     source = self._catalog_for(budget, full=same)
+    if same and self.subagent_writes: return self.tools
     if not self.subagent_writes: return source.tools
     key = ('subagent', budget.tool_max, tuple(budget.drop))
     if key not in self._views: self._views[key] = source.map(self._record)
@@ -1091,7 +1092,7 @@ def tools(self:Agent):
         if self.readonly:
             view = view.read_only(self.readonly_calls, effects=False, block=NO_SUB)
         self._catalog_view = view
-        if self.approvals is not None: self.approvals.tools = view.writes
+        if self.approvals is not None: self.approvals.tools = self.approvals.tools | view.writes
         self._tools = view.map(self._record).tools
     return self._tools
 

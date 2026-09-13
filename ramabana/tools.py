@@ -28,7 +28,10 @@ from dataclasses import dataclass
 from fastcore.basics import AttrDict, ifnone
 from fastcore.foundation import L
 from fastcore.parallel import parallel
-from shalya import *
+import shalya as _shalya
+from shalya import (MAX_TOOL_CHARS, Host, HostError, NO_ROOTS, implemented, image_available,
+                    group_of, is_write, has_effect, summarise, read_only, clip, err, find,
+                    acts, summary, cmds, edits, apply_edits, diff_text)
 from shalya.core import one_line as _1
 from shalya.host import _fuse
 from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for
@@ -45,6 +48,12 @@ WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove'}
 # %% ../nbs/02_tools.ipynb #694f6d5d
 #: shalya's names, re-exported so `from ramabana.tools import *` still finds them.
 _all_ = ['frontmatter', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', '_apply_edits', '_cmds', '_diff', '_edits', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', '_fuse', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes']
+
+def __getattr__(name):
+    "Resolve the deprecated Shalya compatibility surface without mirroring it into this module."
+    if name in _all_: return getattr(_shalya, name)
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
 
 # %% ../nbs/02_tools.ipynb #1ec6c57a
 @implemented
@@ -110,11 +119,12 @@ class ToolCatalog:
         self.entries = tuple(ToolEntry(t, group_of(getattr(t, '__name__', ''), 'extension'))
                              for t in tools)
         self._by_name = {e.name: e for e in self.entries}
+        self._tools = [e.tool for e in self.entries]
     def __iter__(self): return iter(self.entries)
     def __len__(self): return len(self.entries)
     def __getitem__(self, name): return self._by_name[name]
     @property
-    def tools(self): return [e.tool for e in self.entries]
+    def tools(self): return self._tools
     @property
     def names(self): return frozenset(self._by_name)
     @property

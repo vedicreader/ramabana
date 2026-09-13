@@ -39,7 +39,7 @@ from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
 from .core import PII_MODES, PII_OFF, accepts, agent_err, env, model_note
-from .tools import WRITE_TOOLS, LocalHost, media_dir, save_media
+from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, answer_md
 from datetime import datetime
 from . import __version__

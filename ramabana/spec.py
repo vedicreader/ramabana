@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from fastcore.meta import delegates
 from .core import AgentError, agent_err
-from .tools import LocalHost
+from shalya.host import LocalHost
 
 # %% ../nbs/10_spec.ipynb #spec06
 MAX_OPS = 400          # larger than this is a catalogue, not a working surface

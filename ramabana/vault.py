@@ -15,7 +15,7 @@ from fastcore.basics import AttrDict
 from fastcore.meta import delegates
 from fastcore.parallel import startthread
 from .core import AgentError, agent_err
-from .tools import Hit, LocalHost, clip
+from shalya import Hit, LocalHost, clip
 from .spec import SpecHost
 
 # %% ../nbs/07_vault.ipynb #8d87918f
@@ -249,6 +249,8 @@ class WorkspaceHost(VaultHost, SpecHost):
         super().__init__(roots, vault=source, pii=pii, pii_ner=pii_ner,
                          warm=bool(vault) and warm, federate=bool(vault),
                          remember_reads=bool(vault), **kwargs)
-        if not vault: self.without = self.without | {'memory', 'ask', 'watch'}
+        if not vault:
+            self.without = self.without | {'memory', 'ask', 'watch'}
+            del self.mk_chat, self.pii, self.pii_ner
         if not spec: self.without = self.without | {'api'}
 

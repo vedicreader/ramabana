@@ -14,7 +14,8 @@ import anyio
 from fastcore.script import call_parse
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
-from .tools import LocalHost, ToolCatalog, ToolEntry, discover, find, skill_index, tools_for
+from shalya import LocalHost, discover, find, skill_index
+from .tools import ToolCatalog, ToolEntry, tools_for
 from .cli import mk_agent, mk_host
 from .core import PII_OFF
 
