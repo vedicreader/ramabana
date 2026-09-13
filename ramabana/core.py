@@ -19,7 +19,7 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
-from fastcore.all import Path
+from fastcore.all import Path, atomic_save
 from shalya.host import HostError
 from dataclasses import dataclass, field
 
@@ -101,10 +101,7 @@ def _read_probe(key, dir):
 def _write_probe(key, value, dir):
     p = probe_path(key, dir)
     try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_name(f'.{p.name}.{os.getpid()}.tmp')
-        tmp.write_text(json.dumps({'at': time.time(), 'value': value}))
-        tmp.replace(p)
+        with atomic_save(p, 'w') as f: f.write(json.dumps({'at': time.time(), 'value': value}))
     except Exception: pass          # a probe that cannot be kept is still an answer
 
 def _keep(key, value, gen, dir, disk):
@@ -350,7 +347,7 @@ def local_ctx(name, dflt=DFLT_LOCAL_CTX):
 class ModelSpec:
     'One model, resolved: which backend runs it, what to call it, and how big it is.'
     name: str                 # what the user types
-    backend: str              # 'rishi' | 'fastllm'
+    backend: str              # a RUNTIMES name: 'litert' | 'mlx' | 'claude' | 'remote' | 'copilot'
     model_id: str             # what the backend is given
     ctx: int = 128_000        # context window in tokens
     note: str = ''            # anything worth showing about how this was resolved
@@ -506,8 +503,7 @@ def saved_models(path=None):
 
 def _write_aliases(rows, path=None):
     p = alias_path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(rows, indent=2)+'\n')
+    with atomic_save(p, 'w') as f: f.write(json.dumps(rows, indent=2)+'\n')
 
 def load_models(path=None):
     "Register every saved alias and return the rows that took. A row that no longer resolves is skipped."

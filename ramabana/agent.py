@@ -19,6 +19,7 @@ import datetime, functools, json, re, threading, time, uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from fastcore.basics import patch
+from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
@@ -2449,13 +2450,8 @@ def _session_rows(agent):
 def _write_session_rows(agent, rows):
     path = agent.sessions_path
     if path is None:return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f'.{path.name}.{uuid.uuid4().hex}.tmp')
-    try:
-        tmp.write_text(json.dumps({'version': _SESSION_META_VERSION, 'sessions': rows}, ensure_ascii=False, indent=2) + '\n')
-        tmp.replace(path)
-    finally:
-        if tmp.exists(): tmp.unlink()
+    with atomic_save(path, 'w') as f:
+        f.write(json.dumps({'version': _SESSION_META_VERSION, 'sessions': rows}, ensure_ascii=False, indent=2) + '\n')
 
 _BRANCH_META_VERSION = 1
 BRANCH_POLICIES = ('keep', 'discard', 'auto')
@@ -2481,13 +2477,8 @@ def _branch_rows(agent):
 def _write_branch_rows(agent, rows):
     path = agent.branches_path
     if path is None:return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f'.{path.name}.{uuid.uuid4().hex}.tmp')
-    try:
-        tmp.write_text(json.dumps({'version': _BRANCH_META_VERSION, 'branches': rows}, ensure_ascii=False, indent=2) + '\n')
-        tmp.replace(path)
-    finally:
-        if tmp.exists(): tmp.unlink()
+    with atomic_save(path, 'w') as f:
+        f.write(json.dumps({'version': _BRANCH_META_VERSION, 'branches': rows}, ensure_ascii=False, indent=2) + '\n')
 
 @patch
 def branch_meta(self:Agent, branch_id=''):
