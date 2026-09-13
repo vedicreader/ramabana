@@ -43,3 +43,15 @@ def test_every_frontend_uses_one_provider_capable_host(tmp_path):
     assert {'memory', 'api'} <= both.provides
     assert not ({'memory', 'api'} & plain.provides)
     assert issubclass(EditorHost, WorkspaceHost)
+
+    class Memory:
+        def search(self, query, limit=8): return [query, limit]
+    class APIs:
+        def api_ops(self, **kwargs): return kwargs
+
+    supplied = mk_host([tmp_path], web=False, memory=Memory(), apis=APIs(), index=False)
+    assert supplied.memory_search('needle', 3) == ['needle', 3]
+    assert supplied.watch_actions == ('remind',)
+    assert plain.research_note == 'web access is switched off'
+    assert supplied.api_ops(match='users') == {
+        'group': '', 'name': '', 'match': 'users', 'limit': None, 'offset': 0}

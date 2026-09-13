@@ -48,7 +48,7 @@ def server(host=None, agent=None, name='ramabana', readonly=True, delegate=True,
     # the agent's own recorded tools when there is one. A client's call reaches its feed
     every = agent.tools if agent is not None else tools_for(host, get_skills=lambda: skills)
     catalog = ToolCatalog(every)
-    if readonly: catalog = catalog.read_only(effects=False)
+    if readonly: catalog = catalog.read_only()
     mounted = []
     for entry in catalog:
         mcp.add_tool(entry.tool, annotations=_annotate(entry))

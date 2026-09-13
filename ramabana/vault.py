@@ -197,7 +197,7 @@ class VaultHost(LocalHost):
 
     def research(self, query):
         "Search the web, filing sources only when this host has a vault provider."
-        if not self.can('memory'): return super().research(query)
+        if not getattr(self, '_vault_enabled', True): return super().research(query)
         v, q = self.vault, str(query)
         pii, ner = self._policy()
         r = v.web(q, n=5)
@@ -240,17 +240,54 @@ class WorkspaceHost(VaultHost, SpecHost):
     def __init__(self,
                  roots=('.',),
                  vault=False,             # False, True for the default vault, a path, or a Vault
-                 spec=False,              # whether the API provider is available
+                 spec=False,              # whether Ramabana's API provider is available
                  pii=None,
                  pii_ner=None,
                  warm=True,
                  **kwargs):
+        self._vault_enabled, self._spec_enabled = bool(vault), bool(spec)
+        inherited_memory, inherited_apis = kwargs.get('memory'), kwargs.get('apis')
         source = DFLT_VAULT if vault is True else vault
         super().__init__(roots, vault=source, pii=pii, pii_ner=pii_ner,
-                         warm=bool(vault) and warm, federate=bool(vault),
-                         remember_reads=bool(vault), **kwargs)
-        if not vault:
+                         warm=self._vault_enabled and warm, federate=self._vault_enabled,
+                         remember_reads=self._vault_enabled, **kwargs)
+        if not (self._vault_enabled or inherited_memory is not None):
             self.without = self.without | {'memory', 'ask', 'watch'}
-            del self.mk_chat, self.pii, self.pii_ner
-        if not spec: self.without = self.without | {'api'}
+        if not (self._spec_enabled or inherited_apis is not None):
+            self.without = self.without | {'api'}
+        if not self._vault_enabled: del self.mk_chat, self.pii, self.pii_ner
+
+    def _memory_call(self, name, *args, **kwargs):
+        owner = VaultHost if self._vault_enabled else LocalHost
+        return getattr(owner, name)(self, *args, **kwargs)
+    def memory_search(self, query, limit=MEM_SECTIONS): return self._memory_call('memory_search', query, limit)
+    def memory_tree(self, document=''): return self._memory_call('memory_tree', document)
+    def memory_read(self, node_id): return self._memory_call('memory_read', node_id)
+    def memory_topics(self, limit=12): return self._memory_call('memory_topics', limit)
+    def memory_forget(self, doc_id): return self._memory_call('memory_forget', doc_id)
+    def remember(self, text, title=None, tags=()): return self._memory_call('remember', text, title, tags)
+    def ask(self, question, ref=None, instruction='', **kwargs):
+        return self._memory_call('ask', question, ref, instruction, **kwargs)
+    def watch(self, target, action='remind', every='1d', note=None, **params):
+        return self._memory_call('watch', target, action, every, note, **params)
+    def watches(self, due_only=False): return self._memory_call('watches', due_only)
+    def unwatch(self, watch_id): return self._memory_call('unwatch', watch_id)
+    def poll(self): return self._memory_call('poll')
+    @property
+    def watch_actions(self):
+        if self._vault_enabled: return VaultHost.watch_actions.fget(self)
+        return LocalHost.watch_actions.fget(self)
+    @property
+    def research_note(self):
+        if self._vault_enabled: return VaultHost.research_note.fget(self)
+        return LocalHost.research_note.fget(self)
+
+    def _api_call(self, method, *args, **kwargs):
+        owner = SpecHost if self._spec_enabled else LocalHost
+        return getattr(owner, method)(self, *args, **kwargs)
+    def api_load(self, src, name=''): return self._api_call('api_load', src, name)
+    def api_ops(self, group='', name='', match='', limit=None, offset=0):
+        return self._api_call('api_ops', group, name, match, limit, offset)
+    def api_count(self, group='', name='', match=''): return self._api_call('api_count', group, name, match)
+    def api_call(self, operation, name='', **params): return self._api_call('api_call', operation, name, **params)
 
