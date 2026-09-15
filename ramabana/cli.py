@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 # %% auto #0
 __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEMES', 'CODE_THEMES', 'KAKU', 'GRUVBOX',
            'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'NOTIFY_EVERY', 'FOLD_RUNNING',
-           'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'MAX_GROUP_ROWS', 'MOUSE_ON', 'MOUSE_OFF',
+           'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'FLASH_FOR', 'MAX_GROUP_ROWS', 'MOUSE_ON', 'MOUSE_OFF',
            'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE',
            'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS',
            'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
@@ -230,6 +230,7 @@ ACT_EVERY = 0.05
 FOLD_STEP = 1
 STREAM_EVERY = 0.05
 ACT_TAIL = 3
+FLASH_FOR = 2.0   # seconds a flash above the prompt stays up before it clears itself
 MAX_GROUP_ROWS = 8
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
@@ -676,6 +677,7 @@ class Ui:
         self._queued = None        # a line typed during a turn, waiting for it to end
         self._queued_prompt = None # its text, when it is a prompt: further lines join it
         self._prompt = None        # the text the coroutine `submit` just built was made from
+        self._flash = None         # (text, when it expires): what happened, not what is pending
         self._queued_echo = []     # what a queued line printed, held for when it runs
         self._echoed = []          # (block, body, kind, kw) for the line just typed
         self.acts = {}             # act id -> its block, for calls that have one of their own
@@ -1001,7 +1003,7 @@ class Ui:
                 self._queued_prompt += '\n\n' + prompt
                 self._queued = run_turn(self, self._queued_prompt)
                 self._queued_echo += self._retract()
-                self.note('added · it runs with the waiting message when this turn ends')
+                self.flash('absorbed into the queued message')
                 return False
             self._queued, self._queued_prompt, self._queued_echo = coro, prompt, self._retract()
             self.note('queued · it runs when this turn ends · ctrl+c stops and clears it')
@@ -1024,7 +1026,8 @@ class Ui:
         held, hp, echo = self._queued, self._queued_prompt, self._queued_echo
         self._queued, self._queued_prompt, self._queued_echo = None, None, []
         self._replay(echo)   # the entry belongs where the turn starts, not where it was typed
-        try: self.start_turn(held, prompt=hp)
+        try:
+            if self.start_turn(held, prompt=hp): self.flash('queued message sent')
         except Exception as e:
             self._queued, self._queued_prompt, self._queued_echo = held, hp, self._retract()
             self.note(f'the waiting message did not start: {agent_err(e)}', 'error')
@@ -1162,6 +1165,27 @@ class Ui:
             if i: row.append('  ')
             row.append(f"{'◧' if a.kind == 'image' else '♪'}{i + 1} {a.label()}", style=GRUVBOX['aqua'])
         row.append('   /detach to drop', style=GRUVBOX['gray'])
+        return row
+
+    def flash(self, text, secs=FLASH_FOR):
+        "Say one thing above the prompt and let it clear itself. For what just happened."
+        self._flash = (text, time.monotonic() + secs)
+
+    def flash_row(self):
+        "The self-clearing line, while it is still up."
+        if self._flash is None: return None
+        if time.monotonic() >= self._flash[1]:
+            self._flash = None
+            return None
+        return Text(' \u2713 ' + self._flash[0], style=GRUVBOX['green'])
+
+    def queued_row(self):
+        "The message waiting for this turn to end. Seeing it beats being told about it."
+        if self._queued is None: return None
+        what = ' '.join((self._queued_prompt or '').split()) or 'a command'
+        row = Text(' \u23f3 queued  ', style=GRUVBOX['yellow'])
+        row.append(what[:79] + '\u2026' if len(what) > 80 else what, style=GRUVBOX['fg0'])
+        row.append('   ctrl+c clears it', style=GRUVBOX['gray'])
         return row
 
     def copy_last(self, tag='reply'):
@@ -1488,7 +1512,9 @@ def tail(self:Ui):
     if self.hint: rows.append(Text(' ' + self.hint, style=GRUVBOX['gray']))
     chips = self.attach_row()
     if chips is not None: rows.append(chips)
-    rows += self.working()     # last, so "where is it now" is always the row above what you type
+    rows += self.working()     # then what is waiting, so both sit right above what you type
+    for r in (self.queued_row(), self.flash_row()):
+        if r is not None: rows.append(r)
     rows.append(self.prompt())
     before = Text(self._prefixed(self.buf.text[:self.buf.cursor]))
     rendered = self.comp.console.render_lines(before, pad=False)

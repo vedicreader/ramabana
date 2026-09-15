@@ -2,6 +2,7 @@
 
 import asyncio
 import pytest
+from fastcore.basics import first
 from teleprint.compositor import Compositor
 from teleprint.testing import EmuTty
 
@@ -156,7 +157,7 @@ def test_a_second_prompt_joins_the_one_already_waiting(ui):
         assert ui.start_turn(ui._turn('look at the tests')) is False
         assert ui.start_turn(ui._turn('and the lockfile')) is False
         assert ui._queued_prompt == 'look at the tests\n\nand the lockfile'
-        assert 'added' in _said(ui)
+        assert first(r for r in _rows(ui) if 'absorbed' in r), 'the merge flashes above the prompt'
         ui.drop_queued()   # the merged turn would reach a model; the merge is what is under test
         await asyncio.sleep(.1)
     asyncio.run(go())
@@ -198,3 +199,41 @@ def test_both_lines_reach_the_model_as_one_message():
         assert len(be.sent) == 1, f'one turn, not {len(be.sent)}'
         assert 'look at the tests' in str(be.sent[0]) and 'and the lockfile' in str(be.sent[0])
     finally: tty.close()
+
+
+def _rows(u):
+    rs, _ = u.tail()
+    return [r.plain if hasattr(r, 'plain') else str(r) for r in rs]
+
+
+def test_the_waiting_message_is_shown_above_the_prompt(ui):
+    "It used to be announced once and then be invisible, so there was nothing to look at."
+    async def slow(): await asyncio.sleep(.05)
+    async def go():
+        ui.start_turn(slow())
+        assert not [r for r in _rows(ui) if 'queued' in r], 'nothing waits yet'
+        ui.start_turn(ui._turn('look at the tests'))
+        row = first(r for r in _rows(ui) if '⏳' in r)
+        assert row and 'look at the tests' in row, _rows(ui)
+        assert 'ctrl+c clears it' in row
+        ui.drop_queued()
+        assert not [r for r in _rows(ui) if '⏳' in r], 'and it goes when the message does'
+        await asyncio.sleep(.1)
+    asyncio.run(go())
+
+
+def test_absorbing_and_sending_each_flash_and_then_clear(ui):
+    "A flash says what happened. It lives above the prompt and never reaches the transcript."
+    async def slow(): await asyncio.sleep(.05)
+    async def go():
+        ui.start_turn(slow())
+        ui.start_turn(ui._turn('look at the tests'))
+        ui.start_turn(ui._turn('and the lockfile'))
+        assert first(r for r in _rows(ui) if 'absorbed' in r), _rows(ui)
+        assert 'absorbed' not in _said(ui), 'a flash is not a transcript block'
+        await asyncio.sleep(.3)              # the turn ends and the waiting message goes
+        assert first(r for r in _rows(ui) if 'queued message sent' in r), _rows(ui)
+        ui._flash = (ui._flash[0], 0)        # expire it rather than waiting FLASH_FOR out
+        assert not [r for r in _rows(ui) if '✓' in r], 'a flash clears itself'
+        assert ui._flash is None
+    asyncio.run(go())
