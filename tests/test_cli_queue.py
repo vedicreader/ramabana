@@ -145,3 +145,56 @@ def test_this_surfaces_own_work_cannot_evict_a_waiting_message(ui):
         await asyncio.sleep(.2)
     asyncio.run(go())
     assert ran == ['my message']
+
+
+def test_a_second_prompt_joins_the_one_already_waiting(ui):
+    """Both lines are the user's. The newer one used to be closed and lost, so steering twice
+    during a long turn reached the model once."""
+    async def slow(): await asyncio.sleep(.05)
+    async def go():
+        assert ui.start_turn(slow()) is True
+        assert ui.start_turn(ui._turn('look at the tests')) is False
+        assert ui.start_turn(ui._turn('and the lockfile')) is False
+        assert ui._queued_prompt == 'look at the tests\n\nand the lockfile'
+        assert 'added' in _said(ui)
+        ui.drop_queued()   # the merged turn would reach a model; the merge is what is under test
+        await asyncio.sleep(.1)
+    asyncio.run(go())
+    assert ui._queued is None and ui._queued_prompt is None
+
+
+def test_a_prompt_does_not_evict_a_command_that_got_there_first(ui):
+    "Merging is for two prompts. Anything else keeps the slot it took, and the newcomer is told."
+    ran = []
+    async def slow(): await asyncio.sleep(.05)
+    async def cmd(): ran.append('cmd')
+    async def go():
+        assert ui.start_turn(slow()) is True
+        assert ui.start_turn(cmd()) is False
+        assert ui.start_turn(ui._turn('a steer')) is False
+        assert ui._queued_prompt is None, 'the command is not a prompt, so nothing merged into it'
+        assert 'already waiting' in _said(ui)
+        await asyncio.sleep(.2)
+    asyncio.run(go())
+    assert ran == ['cmd']
+
+
+def test_both_lines_reach_the_model_as_one_message():
+    "The merge is only real if the ask carries both. One turn, one message, both lines in it."
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty)
+    comp._register_signals = lambda: None
+    asyncio.run(comp.start())
+    agent, be = fake_agent()
+    u = Ui(comp, agent)
+    async def slow(): await asyncio.sleep(.05)
+    async def go():
+        u.start_turn(slow())
+        u.start_turn(u._turn('look at the tests'))
+        u.start_turn(u._turn('and the lockfile'))
+        await asyncio.sleep(.6)      # the turn ends, the drain runs the merged one
+    try:
+        asyncio.run(go())
+        assert len(be.sent) == 1, f'one turn, not {len(be.sent)}'
+        assert 'look at the tests' in str(be.sent[0]) and 'and the lockfile' in str(be.sent[0])
+    finally: tty.close()

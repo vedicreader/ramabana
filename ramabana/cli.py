@@ -674,6 +674,8 @@ class Ui:
         self.ask = None            # the `Ask` waiting on an answer, or None
         self.turn = None           # the running turn's task, or None
         self._queued = None        # a line typed during a turn, waiting for it to end
+        self._queued_prompt = None # its text, when it is a prompt: further lines join it
+        self._prompt = None        # the text the coroutine `submit` just built was made from
         self._queued_echo = []     # what a queued line printed, held for when it runs
         self._echoed = []          # (block, body, kind, kw) for the line just typed
         self.acts = {}             # act id -> its block, for calls that have one of their own
@@ -978,16 +980,30 @@ class Ui:
         "Print a retracted entry again, where the turn it belongs to actually starts."
         for _, body, kind, kw in held: self._echo(body, kind, **kw)
 
-    def start_turn(self, coro):
+    def _turn(self, prompt):
+        "A turn over `prompt`, remembering the text so a line queued behind it can join it."
+        self._prompt = prompt
+        return run_turn(self, prompt)
+
+    def start_turn(self, coro, prompt=None):
         "Spawn a turn, or hold it until the running one ends. Says whether it started now."
+        prompt, self._prompt = (self._prompt if prompt is None else prompt), None
         if self._turn_over(): self.turn = None
         if self.turn is not None:
             if self._queued is not None:
-                coro.close()
-                self._retract()   # it will never run, so the transcript must not claim it did
-                self.note('something is already waiting · ctrl+c clears it and stops this turn')
+                # two prompts waiting are one turn: dropping the second loses what was typed
+                if prompt is None or self._queued_prompt is None:
+                    coro.close()
+                    self._retract()   # it will never run, so the transcript must not claim it did
+                    self.note('something is already waiting · ctrl+c clears it and stops this turn')
+                    return False
+                coro.close(); self._queued.close()   # neither ran; one turn carries both lines
+                self._queued_prompt += '\n\n' + prompt
+                self._queued = run_turn(self, self._queued_prompt)
+                self._queued_echo += self._retract()
+                self.note('added · it runs with the waiting message when this turn ends')
                 return False
-            self._queued, self._queued_echo = coro, self._retract()
+            self._queued, self._queued_prompt, self._queued_echo = coro, prompt, self._retract()
             self.note('queued · it runs when this turn ends · ctrl+c stops and clears it')
             return False
         self.turn = self.comp.spawn(coro, name='turn')
@@ -1005,11 +1021,12 @@ class Ui:
         if self._turn_over(): self.turn = None
         # another turn already has the surface; its own ending drains this
         if self.turn is not None: return
-        held, echo, self._queued, self._queued_echo = self._queued, self._queued_echo, None, []
+        held, hp, echo = self._queued, self._queued_prompt, self._queued_echo
+        self._queued, self._queued_prompt, self._queued_echo = None, None, []
         self._replay(echo)   # the entry belongs where the turn starts, not where it was typed
-        try: self.start_turn(held)
+        try: self.start_turn(held, prompt=hp)
         except Exception as e:
-            self._queued, self._queued_echo = held, self._retract()
+            self._queued, self._queued_prompt, self._queued_echo = held, hp, self._retract()
             self.note(f'the waiting message did not start: {agent_err(e)}', 'error')
         self.paint()
 
@@ -1017,7 +1034,8 @@ class Ui:
         "Forget a waiting line. Ctrl-C means stop what is happening, and it was part of that."
         if self._queued is None: return False
         # its entry left the screen when it was queued: nothing to un-draw, only to forget
-        self._queued.close(); self._queued, self._queued_echo = None, []
+        self._queued.close()
+        self._queued, self._queued_prompt, self._queued_echo = None, None, []
         self.note('the waiting message was cleared')
         return True
 
@@ -1258,7 +1276,7 @@ class Ui:
             return None
         got = [self.attach(p) for p in attach_refs(line)]   # `@path` in a prompt attaches it
         if got: self.note('\n'.join(got))
-        return run_turn(self, line)
+        return self._turn(line)
 
     def on_key(self, k):
         "One keystroke. Returns a coroutine to spawn, `'quit'`, or None."
@@ -1291,7 +1309,7 @@ class Ui:
             self._echo(Text(prompt), 'user')
             self._echo(Text(f'{choice.label} -- {choice.note}'), 'note')
             self.paint()
-            return run_turn(self, prompt + choice.suffix)
+            return self._turn(prompt + choice.suffix)
         if self.complete is not None and k.name in ('tab', 'shift+tab', 'up', 'down'):
             if k.name in ('tab', 'down'): self.complete.cycle(1)
             else: self.complete.cycle(-1)

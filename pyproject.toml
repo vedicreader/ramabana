@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.0.7",   # `Host.writes`, which `tools_for` reads
+    "shalya>=0.0.8",   # `Host.writes`, and summarise() building the table for a bare name
     "uraiyadal>=0.0.6",
     "gheasy>=0.0.10",
     "exhash>=0.4.9",
