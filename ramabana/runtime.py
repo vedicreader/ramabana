@@ -470,10 +470,7 @@ class Compactor:
 def answer_only(text):
     "A one-shot reply with the model's thinking removed, however the runtime left it."
     from urai import split_think
-    out, _ = split_think(text or '')
-    if '</think>' in out: out = out.partition('</think>')[2]
-    if '<think>' in out: out = out.partition('<think>')[0]
-    return out.strip()
+    return split_think(text or '')[0].strip()
 
 # %% ../nbs/01_runtime.ipynb #b3f10a21
 def prefills_think(chat):
@@ -903,7 +900,8 @@ class RishiBackend(Backend):
         # a chat with no counter at all, rather than one that spent nothing
         if (u:=getattr(self.chat,'use',None)) is None: return Usage(model=self.spec.model_id)
         return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
-                     total=u.total_tokens,cached=u.cached_tokens,cost=u.cost,turns=u.n)
+                     total=u.total_tokens,cached=u.cached_tokens,cache_write=u.cache_creation_tokens,
+                     reasoning=u.reasoning_tokens,cost=u.cost,turns=u.n)
     def _refresh(self): self.chat.reconfigure(sp=self.sp,tools=self.tools)
 
 # Dead names from when llama.cpp and FastLLM were separate backends.

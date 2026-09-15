@@ -23,6 +23,7 @@ from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
+from shalya.tools import group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
@@ -40,27 +41,22 @@ SHELL_SNAPSHOT = 32_000_000
 
 ICONS = {'search': '🔍', 'view': '📄', 'edit': '✏️', 'web': '🌐', 'run': '▶️','skill': '📚', 'delegate': '🤝', 'memory': '🧠', 'watch': '⏰', 'cart': '🛒','tool': '🔧'}
 
+_GROUP_KIND = {'code': 'search', 'file': 'view', 'notebook': 'view', 'session': 'run',
+               'shell': 'run', 'web': 'web', 'memory': 'memory', 'ask': 'memory',
+               'watch': 'watch', 'skill': 'skill', 'git': 'git', 'api': 'api', 'image': 'media'}
 _KIND = {
-    'search_code': 'search', 'similar_code': 'search', 'outline': 'search', 'list_files': 'search',
-    'grep': 'search', 'ls': 'search',
-    'view_file': 'view', 'notebook_cells': 'view', 'view_cell': 'view', 'read_terminal': 'view',
     'edit_file': 'edit', 'replace_text': 'edit', 'create_file': 'edit', 'edit_cell': 'edit',
-    'add_cell': 'edit',
-    'web_search': 'web', 'read_url': 'web', 'research': 'web',
-    'run_python': 'run', 'list_vars': 'run', 'run_shell': 'run',
-    'read_skill': 'skill', 'create_skill': 'skill',
-    'delegate_search': 'delegate', 'delegate_parallel': 'delegate',
-    'inspect_python': 'run',
-    'memory_search': 'memory', 'memory_tree': 'memory', 'memory_read': 'memory',
-    'memory_topics': 'memory', 'memory_forget': 'memory', 'remember': 'memory',
-    'set_reminder': 'watch', 'watch_url': 'watch', 'list_watches': 'watch',
-    'cancel_watch': 'watch', 'poll_watches': 'watch',
+    'add_cell': 'edit', 'read_terminal': 'view', 'remember': 'memory',
+    'delegate_search': 'delegate', 'delegate_parallel': 'delegate', 'delegate_async': 'delegate',
+    'delegate_status': 'delegate', 'delegate_result': 'delegate', 'delegate_cancel': 'delegate',
     'watch_folder': 'watch', 'list_folder_watches': 'watch',
     'cancel_folder_watch': 'watch', 'check_folders': 'watch',
     'cart_stores': 'cart', 'cart_open': 'cart', 'cart_find': 'cart',
     'cart_add': 'cart', 'cart_show': 'cart', 'cart_remove': 'cart',
 }
-DELEGATE_TOOLS = {t for t, k in _KIND.items() if k == 'delegate'}
+
+def _kind_of(name): return _KIND.get(name) or _GROUP_KIND.get(group_of(name), 'tool')
+DELEGATE_TOOLS = {t for t in NO_SUB if t.startswith('delegate_')}
 
 # %% ../nbs/03_agent.ipynb #9ab2cd3c
 @dataclass
@@ -82,7 +78,7 @@ class Act:
     state: str = 'running'
 
     @property
-    def kind(self): return _KIND.get(self.tool, 'tool')
+    def kind(self): return _kind_of(self.tool)
 
     @property
     def icon(self): return ICONS.get(self.kind, ICONS['tool'])
@@ -244,10 +240,7 @@ def preview_for(name, args, host=None):
     return json.dumps(args, indent=2, default=str)[:MAX_PREVIEW]
 
 
-def _summary(name, args):
-    "The one-line version, for a status bar or a footer."
-    if p := args.get('path'): return f'{name} → {p}'
-    return f'{name}({", ".join(sorted(args))})'
+_summary = summarise
 
 # %% ../nbs/03_agent.ipynb #cad351c6
 @dataclass
