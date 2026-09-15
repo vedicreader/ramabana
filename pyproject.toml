@@ -73,7 +73,11 @@ include = ["/ramabana", "/README.md", "/pyproject.toml"]
 path = "ramabana/__init__.py"
 
 [dependency-groups]
-dev = ["ramabana[cli]", "rishi[all]>=0.1.32", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0"]
+dev = ["ramabana[cli]", "rishi[all]>=0.1.32", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0", "pytest-xdist>=3.5.0"]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not slow' -n auto"
+markers = ["slow: spawns the agent as a subprocess or drives a real runtime"]
 
 [tool.uv]
 override-dependencies = ["python-fastllm>=0.0.45"]

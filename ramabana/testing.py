@@ -74,18 +74,14 @@ class MemHost(NullHost, CodeHost, ShellHost):
 
 # %% ../nbs/04_testing.ipynb #d107b5da
 class FullHost(LocalHost):
-    """Provide every host capability in process over a temporary folder.
-
-    The host uses supplied pages and local state. It never accesses the network.
-    """
+    "Every host capability in process over a temporary folder, using local state, never the network."
 
     def __init__(self, files=None, pages=None, root=None, terminal='', **kw):
         import tempfile
         root = Path(root) if root else Path(tempfile.mkdtemp())/'proj'
         root.mkdir(parents=True, exist_ok=True)
         super().__init__([root], web=False, index=False, **kw)
-        # the web, code, notebook, session, shell and memory groups are answered in this class
-        # body. `ask` needs a model, `api` needs a specification, `watch` needs a real vault
+        # ask needs a model, api needs a spec, watch needs a real vault; every other group is answered below
         self.without = frozenset({'ask', 'api', 'watch'})
         self.root = self.check('.')
         for path, text in (files or {}).items(): self.write(path, text)
@@ -180,17 +176,13 @@ class FullHost(LocalHost):
         return ('isolated', 'overlay')
 
     def inspect_python(self, code, scope='isolated'):
-        """Isolated runs on a copy. Overlay runs against the real namespace but refuses to move
-        anything already in it. The same guarantee an IDE's AST policy gives, enforced by
-        restoring every pre-existing binding afterwards.
-        """
+        "Isolated runs on a copy; overlay runs against the real namespace but restores every pre-existing binding."
         if scope != 'overlay': return super().inspect_python(code, scope)
         before = dict(self.ns)
         try: return self._exec(code, self.ns)
         except Exception as e: return f'{agent_err(e)}'
         finally:
             for k, v in before.items(): self.ns[k] = v
-            for k in [k for k in self.ns if k not in before]: pass   # the agent's own names persist
 
     @property
     def kernel_kind(self): return 'ipymini'
@@ -258,23 +250,14 @@ def fake_agent(host=None, replies=(), **kw):
     a._be_or_none = lambda job='turn': be
     return a, be
 
-#: What a local Gemma says when it refuses a turn. Real output, kept verbatim, because the
-#: whole point of `native` is recognising the shape of this rather than a tidied version.
-
 # %% ../nbs/04_testing.ipynb #recorded01
-#: Where the recorded answers live: one diskcache beside the installed package, so a notebook
-#: finds the same recordings whichever folder it happens to be run from. Located through the
-#: package rather than `__file__`, which a notebook cell does not have.
+#: recorded answers live in a diskcache beside the package, found from any run folder (a cell has no __file__).
 CHATS = Path(ramabana.__file__).parent.parent/'chatcache'
 
 
 @contextmanager
 def recorded(path=None, record=None):
-    """Replay recorded model answers for the duration, instead of calling a model.
-
-    `record=True`. Or `$URAI_RECORD_CHAT`. Lets a miss reach a real model. Without it a miss
-    raises. A streamed turn is a generator. Nothing records it and `stream` reaches the model.
-    """
+    "Replay recorded model answers for the duration, instead of calling a model."
     from urai.record import CachedChat
     from ramabana.runtime import use_chat
     p = Path(path or CHATS)
@@ -328,8 +311,7 @@ class ScriptedBackend(Backend):
 
     kind = 'scripted'
 
-    #: What a spawned sub-agent answers, keyed by a substring of the question. A fan-out
-    #: whose three sub-agents all say the same thing would look like one call in a wig.
+    #: what a spawned sub-agent answers, keyed by a question substring, so a fan-out is not one call in a wig
     SUB_ANSWERS = {'import': 'three files: backend.py, models.py, fastllm_hitl.py',
                    'compaction': 'chat.py:compact(), fired from _prepare() at the threshold',
                    'shape': 'df is (200, 2); `keep` is an int'}

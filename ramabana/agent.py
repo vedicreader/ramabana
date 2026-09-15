@@ -19,11 +19,12 @@ import datetime, functools, json, re, threading, time, uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from fastcore.basics import patch
+from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
-from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, clip, discover,
-                            summarise, summary, one_line as _1,
+from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, Registry, ToolCatalog, clip, discover,
+                            summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background)
 from .monitor import (Monitors, POB_READER, beat_notes, beat_notice, monitor_tools,
@@ -369,8 +370,7 @@ class Approvals:
         with self._lock:
             if self.closed: return []
             self.closed = True
-            # `history` holds them all. `current` is only the newest, and a background run can
-            # raise one while another is already waiting
+            # `history` holds them all; `current` is only the newest, and a background run can raise one while another waits
             waiting = [a for a in self.history if a.pending]
         for a in waiting:
             a.resolve(False, 'the session closed before this was answered')
@@ -402,9 +402,7 @@ class Approvals:
         if not force and name not in self.tools: return a.resolve(True)   # `force` asks anyway
         if self.mode == 'auto': return a.resolve(True)
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
-        # closing first: it is the more useful reason, and it holds whether or not anyone listens.
-        # `current` is taken under the same lock a close competes for, because checking and then
-        # storing separately left an ask that landed in the gap waiting out its whole timeout
+        # closing first: the more useful reason; `current` taken under the close lock, so an ask landing in the gap does not wait out its timeout
         with self._lock:
             closing = self.closed
             if not closing: self.current = a
@@ -572,9 +570,7 @@ RULES = (
 )
 
 
-#: Re-asserted after the tag block on the tags channel. Rishi appends the tool protocol *after*
-#: the briefing there, so the last thing those models read is tool punctuation rather than the
-#: rules. Riding out with the turn is the only way the rules get to be last instead.
+#: re-asserted after the tag block, so on the tags channel the rules are the last thing the model reads, not tool punctuation.
 OUTPUT_CONTRACT = ('\n\n<output-contract>Reply in plain sentences: no headings, no bullet list, no '
                    'bold, no code fence around prose. Lead with the answer and stop. This outranks any '
                    'formatting habit carried in from another harness.</output-contract>')
@@ -593,8 +589,7 @@ def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=()):
     if getattr(host, 'read_outside', False):   # only when the host says so
         roots += ('\n  Reads may name any path on this machine. Writing, running commands and\n'
                   '  listing files stay inside the folders above.')
-    # Claimed only where it is true: a host says so, and "keep it short, the kernel is busy"
-    # is advice for a problem it may not have.
+    # claimed only where it is true: advice like "keep it short, the kernel is busy" suits a problem the host may not have
     conc = ('\n  Your kernel runs each inspection in its own subshell. This works while one '
             "of the user's cells is still running." if getattr(host, 'concurrent', False) else '')
     live = ('' if 'inspect_python' not in names and names else
@@ -628,12 +623,14 @@ These apply on top of the rules above, and outrank them where they disagree.
 - A question outranks the work in flight. Answer it in prose and end the turn. A question is never approval to continue and never an occasion to change code.
 - Never end a response by asking what to do next. Stating a recommendation or naming what remains undone is right; soliciting the next instruction takes agency from the user. Asking for their read on a direction is welcome; asking permission to proceed is not.
 - Do not work around a problem. Fix it at its source, or say what is blocking and stop. A broken tool comes before the work in flight, because every later task pays for it.
+- Before a command that changes state -- a restart, a delete, a config edit -- check the evidence supports that exact action. A signal that matches a known failure may have another cause.
 - Correct the record. When an earlier claim of yours turns out to be wrong, say so plainly rather than moving quietly past it.
 - Before finalizing a turn, reflect on mistakes made during it. For each concrete mistake with a reusable correction, record the mistake and its fix in Vishalakshi with `remember`, so later work can avoid it.
 
 - Everything the user needs is in the final text of the turn, with no tool call after it. Text between tool calls may never reach them, so restate anything important that appeared only mid-run.
 - Lead with the outcome when the turn concludes: the first sentence says what happened or what you found. Keep the plan-first opener for a turn that will carry on working.
 - No metadiscourse. Do not advertise the content ("the key point is", "what's interesting is"), and never end on a caveat or a note. A risk that could change the decision belongs in the body, beside the reasoning it affects.
+- Readable outranks concise. Shorten by cutting what the reader does not need, never by dropping into fragments, abbreviations, arrow chains or jargon. Write full sentences and spell the terms out.
 - Never hard-wrap prose: one paragraph is one line, and the display wraps it. To show markdown the user can copy, use a four-space indented block rather than a fence.
 """
 
@@ -816,11 +813,7 @@ def plan_tools(get_plan, save=None):
 
     @summary(lambda a: f'Todo {a.get("id","?")} → {a.get("status") or "update"}')
     def update_todo(id: str, status: str = '', note: str = '', text: str = '') -> str:
-        """Update a todo by id or unique prefix. Status: pending, active, done, cancelled.
-
-        Mark the step you are working on `active`, and `done` when it is finished. After a
-        stop, resume from the active step rather than rewriting the plan.
-        """
+        "Update a todo by id or unique prefix. Status: pending, active, done, cancelled."
         kw = {}
         if status: kw['status'] = status
         if note != '': kw['note'] = note
@@ -902,9 +895,8 @@ class Agent:
         self._usage_seen = {}    # backend cumulative counters already folded into `use`
         self.note = 'not started'
         self._backends, self._skills, self._reg, self._tools = {}, None, None, None
-        self._subtools = None    # built only when sub-agents run on a smaller model than the turn
-        self._subrec = None      # those tools recorded, for when sub-agents may write
-        self._plain = []         # the unwrapped tools, which is what the briefing is written from
+        self._catalogs, self._views = {}, {}
+        self._catalog_view = ToolCatalog()
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self._monitor_thread = None
         # the folders something *else* is changing. Reviews run on the sub-agent model, read-only
@@ -991,7 +983,7 @@ def _record(self:Agent, f):
         meta = self._action_meta(name, args)
         act = self.activity.start(name, args, summary=summarise(f, args), **meta)
         self.registry.fire('before_tool', self, name, args)
-        if name in WRITE_TOOLS:   # first touch only: later edits are part of one change
+        if is_write(f):   # first touch only: later edits are part of one change
             if (p := args.get('path')):
                 if p not in self.before: self.before[p] = self.host.text_at(p) or ''
             elif name == 'run_shell': self.snapshot_tree()
@@ -1043,19 +1035,46 @@ def subagent_budget(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #6318c147
 @patch
+def _catalog_for(self:Agent, budget, full=True):
+    "Build one catalog per schema budget; foreground and sub-agents take policy views of it."
+    key = (budget.tool_max, tuple(budget.drop), bool(full))
+    if key not in self._catalogs:
+        extra = list(self.registry.tools)
+        if full:
+            if self.subagents:
+                extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
+                                        lambda: self.skills, self._cloud_backend_or_none,
+                                        lambda: self.subagent_writes,
+                                        lambda: self.approvals.gate if self.approvals is not None else None,
+                                        background=self.background)
+            extra += plan_tools(lambda: self.plan, save=self._save_plan)
+            extra += monitor_tools(lambda: self.monitors, mx=budget.tool_max)
+        built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
+                          drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew)
+        self._catalogs[key] = ToolCatalog(built)
+    return self._catalogs[key]
+
+@patch(as_prop=True)
+def catalog(self:Agent):
+    "The foreground policy view used by the model, approvals, activity and frontends."
+    if self._tools is None: self.tools
+    return self._catalog_view
+
+@patch(as_prop=True)
+def _plain(self:Agent): return self.catalog.tools
+
+@patch
 def _sub_plain(self:Agent):
-    "The tool list a sub-agent gets, sized to the model sub-agents run on."
-    b = self.subagent_budget
-    if b == self.budget:
-        built = self.tools
-        return built if self.subagent_writes else self._plain
-    if self._subtools is None:
-        self._subtools = tools_for(self.host, lambda: self.skills, list(self.registry.tools),
-                                   mx=b.tool_max, drop=b.drop, get_spec=self.spec_or_none,
-                                   on_media=self._drew)
-    if not self.subagent_writes: return self._subtools
-    if self._subrec is None: self._subrec = [self._record(t) for t in self._subtools]
-    return self._subrec
+    "The sub-agent policy view of the same catalog-building path."
+    budget = self.subagent_budget
+    same = budget == self.budget
+    source = self._catalog_for(budget, full=same)
+    if same and self.subagent_writes: return self.tools
+    if not self.subagent_writes: return source.tools
+    key = ('subagent', budget.tool_max, tuple(budget.drop))
+    if key not in self._views: self._views[key] = source.map(self._record)
+    return self._views[key].tools
+
 
 # %% ../nbs/03_agent.ipynb #76e57894
 @patch(as_prop=True)
@@ -1069,22 +1088,14 @@ def background(self:Agent):
 def tools(self:Agent):
     "Every tool the turn model can afford, built once and recorded. Rebuilt by `reload`."
     if self._tools is None:
-        extra = list(self.registry.tools)
-        if self.subagents:
-            extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
-                                    lambda: self.skills, self._cloud_backend_or_none,
-                                    lambda: self.subagent_writes,
-                                    lambda: self.approvals.gate if self.approvals is not None else None,
-                                    background=self.background)
-        extra += plan_tools(lambda: self.plan, save=self._save_plan)
-        b = self.budget
-        extra += monitor_tools(lambda: self.monitors, mx=b.tool_max)
-        plain = tools_for(self.host, lambda: self.skills, extra, mx=b.tool_max, drop=b.drop,
-                          get_spec=self.spec_or_none, on_media=self._drew)
-        if self.readonly: plain = read_only(plain, self.readonly_calls, effects=False, block=NO_SUB)
-        self._plain = plain
-        self._tools = [self._record(t) for t in plain]
+        view = self._catalog_for(self.budget)
+        if self.readonly:
+            view = view.read_only(self.readonly_calls, effects=False, block=NO_SUB)
+        self._catalog_view = view
+        if self.approvals is not None: self.approvals.tools = self.approvals.tools | view.writes
+        self._tools = view.map(self._record).tools
     return self._tools
+
 
 # %% ../nbs/03_agent.ipynb #f37435ce
 @patch
@@ -1122,8 +1133,7 @@ def _be(self:Agent, job='turn'):
     return self._backends[key]
 
 # %% ../nbs/03_agent.ipynb #1b4fa81d
-#: bytes of the log read back for the live context. Whichever of the two bounds bites first wins,
-#: so a log under the window behaves exactly as it did before there was one
+#: bytes of the log read back for live context; whichever bound bites first wins, so a small log behaves as before.
 HISTORY_TAIL = 8_000_000
 HISTORY_TURNS = 2000
 
@@ -1246,7 +1256,8 @@ def chat_or_none(self:Agent, job='turn'):
 @patch
 def _forget(self:Agent):
     "Drop what is rebuilt from disk. The registry keeps whatever this process registered on it."
-    self._skills = self._tools = self._subtools = self._subrec = None
+    self._skills = self._tools = None
+    self._catalogs.clear(); self._views.clear()
     if self._reg is not None: self._reg.drop_loaded()
 
 @patch
@@ -1278,8 +1289,7 @@ def add_tool(self:Agent, f):
 @patch(as_prop=True)
 def _delegating(self:Agent):
     "The delegate calls whose sub-agents are running on this thread, innermost last."
-    # Per thread because `delegate_many` fans out over a threadpool. It only fans out for *reading*
-    # sub-agents, which are not recorded, but a stack wrong under concurrency is not worth the saving.
+    # per thread because `delegate_many` fans out over a threadpool; a stack wrong under concurrency is not worth the saving
     if not hasattr(self._nested, 'stack'): self._nested.stack = []
     return self._nested.stack
 
@@ -1389,7 +1399,7 @@ def set_model(self:Agent, name, job='turn'):
     new = (spec.backend, spec.model_id)
     # tools and briefing are built from the turn model, not from its budget alone
     if job == 'turn' and (self.budget != before or new != old): self._tools = None
-    if job == 'subagent': self._subtools = self._subrec = None
+    if job == 'subagent': self._catalogs.clear(); self._views.clear()
     if job == 'turn' and new != old:
         self._be('turn').resume_hist(history)
     still_used = {(self.routing.spec(j).backend, self.routing.spec(j).model_id) for j in JOBS}
@@ -1453,7 +1463,6 @@ def _spec_for(self:Agent, model=None):
 @patch
 def poll_watches(self:Agent, force=False):
     "Fire whatever the host has due, in a daemon thread, at most every `poll_every` seconds."
-    import time
     if not self.poll_every and not force: return None
     if self._poll_thread is not None and self._poll_thread.is_alive(): return self._poll_thread
     now = time.monotonic()
@@ -1495,8 +1504,7 @@ def beat(self:Agent):
         # `pob_path` is the one source of truth, so the beat and a session cannot open different files
         p = pob_path()
         self._beat = pob(p) if p.exists() else None
-        # the reader is fixed when the beat is opened: `resume_session` renames the session, and a
-        # reader that moved with it would replay notes this session already carried
+        # the reader is fixed when the beat opens: else `resume_session` renaming the session would replay notes already carried
         self._beat_reader = f'{POB_READER}:{self.session_id}'
     return self._beat
 
@@ -1509,11 +1517,7 @@ def beat_drain(self:Agent):
 # %% ../nbs/03_agent.ipynb #0ccb8d65
 @patch
 def _begin_turn(self:Agent, run=None):
-    """This turn's own identity, before anything can go wrong with it.
-
-    A turn stopped before `_prepare` still gets a row, and a row carrying the *previous* turn's id
-    would collide with it in `conversation_parts`, where two rows sharing an id share group names.
-    """
+    "This turn's own identity, before anything can go wrong with it."
     rid = getattr(run, 'id', '')
     if rid and getattr(self, '_begun', None) == rid: return self.current_turn_id   # once per run
     self._begun = rid
@@ -1605,8 +1609,7 @@ def session_added_roots(self:Agent, session_id):
     "Returns folders opened with `add_root` in order, read from the log for accurate session reconstruction. Does not reopen; see `resume_session`."
     out = []
     for turn in self.session_turns(session_id):
-        # a turn that is not replayed does not widen the boundary either: honouring a root from a
-        # turn whose context is left out would open a folder this session never agreed to
+        # a turn not replayed does not widen the boundary: a root from a left-out turn would open a folder this session never agreed to
         if turn.get('state', 'complete') not in REPLAYED: continue
         for row in (turn.get('activity') or []):
             if row.get('tool') != 'add_root' or not row.get('ok', True): continue
@@ -1815,10 +1818,7 @@ def conversation_parts(self:Agent, sid=None):
 # %% ../nbs/03_agent.ipynb #ecc036e0
 @patch
 def compile_conversation(self:Agent, sid=None, manifest=None, rewrites=None):
-    """Provider messages for a reshaped conversation: the stored turns, minus what a person
-    discarded, with their own words in place of any prose they rewrote. A call and its result
-    move together, and neither can be rewritten -- editing them would claim work that never ran.
-    """
+    "Provider messages for a reshaped conversation: stored turns minus what a person discarded, with their rewrites in place."
     parts, manifest = self.conversation_parts(sid), dict(manifest or {})
     rewrites = {str(k): str(v) for k, v in (rewrites or {}).items()}
     bad = [p for p in manifest.values() if p not in BRANCH_POLICIES]
@@ -1904,8 +1904,7 @@ def fork(self:Agent, turn_id, stage='after', branch_id='', part_id='', manifest=
 # %% ../nbs/03_agent.ipynb #e18699fc
 @patch
 def switch_branch(self:Agent, branch_id):
-    """Make another branch active by rebuilding its context, never by copying it. A branch is
-    its parent point plus its manifest, so recompiling is what switching means."""
+    "Make another branch active by rebuilding its context, never by copying it."
     branch_id = str(branch_id)
     if branch_id == self.current_branch_id: return self.branch_meta(branch_id)
     held = self._branch_hist.get(branch_id)
@@ -1923,8 +1922,7 @@ def switch_branch(self:Agent, branch_id):
 # %% ../nbs/03_agent.ipynb #82085355
 @patch
 def undo_turn(self:Agent, turn_id, branch_id=''):
-    """A turn undone is a branch that stops before it. The turn stays in canonical history --
-    undo is not deletion, and redo is switching back rather than replaying."""
+    "A turn undone is a branch that stops before it; the turn stays in canonical history."
     return self.fork(turn_id, 'before', branch_id)
 
 # %% ../nbs/03_agent.ipynb #c2701282
@@ -2118,8 +2116,7 @@ def command(self:Agent, line):
 # %% ../nbs/03_agent.ipynb #1c649440
 _agent_status, _agent_command = Agent.status, Agent.command
 
-#: Seconds a cancelled run is given to stop before terminating. A class attribute, so it is set
-#: on any `Agent` before a run exists and survives a caller raising it.
+#: seconds a cancelled run is given to stop before terminating; a class attribute, so it is set before any run exists.
 Agent.cancel_grace = .25
 
 def _stream_chunk(out, chunk):
@@ -2472,13 +2469,8 @@ def _session_rows(agent):
 def _write_session_rows(agent, rows):
     path = agent.sessions_path
     if path is None:return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f'.{path.name}.{uuid.uuid4().hex}.tmp')
-    try:
-        tmp.write_text(json.dumps({'version': _SESSION_META_VERSION, 'sessions': rows}, ensure_ascii=False, indent=2) + '\n')
-        tmp.replace(path)
-    finally:
-        if tmp.exists(): tmp.unlink()
+    with atomic_save(path, 'w') as f:
+        f.write(json.dumps({'version': _SESSION_META_VERSION, 'sessions': rows}, ensure_ascii=False, indent=2) + '\n')
 
 _BRANCH_META_VERSION = 1
 BRANCH_POLICIES = ('keep', 'discard', 'auto')
@@ -2504,13 +2496,8 @@ def _branch_rows(agent):
 def _write_branch_rows(agent, rows):
     path = agent.branches_path
     if path is None:return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f'.{path.name}.{uuid.uuid4().hex}.tmp')
-    try:
-        tmp.write_text(json.dumps({'version': _BRANCH_META_VERSION, 'branches': rows}, ensure_ascii=False, indent=2) + '\n')
-        tmp.replace(path)
-    finally:
-        if tmp.exists(): tmp.unlink()
+    with atomic_save(path, 'w') as f:
+        f.write(json.dumps({'version': _BRANCH_META_VERSION, 'branches': rows}, ensure_ascii=False, indent=2) + '\n')
 
 @patch
 def branch_meta(self:Agent, branch_id=''):
@@ -2533,8 +2520,7 @@ def branches(self:Agent):
 
 @patch
 def save_branch(self:Agent, branch_id, revision=None, **changes):
-    """Record one branch. `revision` is the caller's optimistic base: a mismatch means someone
-    else moved the branch while a person was deciding, and nothing is written."""
+    "Record one branch. `revision` is an optimistic base: a mismatch means the branch moved, and nothing is written."
     branch_id = str(branch_id)
     bad = [k for k in changes.get('manifest', {}).values() if k not in BRANCH_POLICIES]
     if bad: raise ValueError(f'unknown context policy {bad[0]!r}')

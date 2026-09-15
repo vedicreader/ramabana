@@ -9,7 +9,7 @@ Docs: https://vedicreader.github.io/ramabana/monitor.html.md"""
 from __future__ import annotations
 
 import fnmatch, sys, threading, time, uuid
-from collections import deque
+from collections import Counter, deque
 from pathlib import Path
 
 from fastcore.basics import patch
@@ -102,16 +102,15 @@ def _rel(path, root=None):
 
 def summarise(changes):
     "One line: how many files were added, edited and removed."
-    n = {}
-    for was, now in changes.values(): n[_verb(was, now)] = n.get(_verb(was, now), 0) + 1
+    n = Counter(_verb(was, now) for was, now in changes.values())
     return ', '.join(f'{v} {k}' for k, v in sorted(n.items())) or 'nothing'
 
 
 def report(changes, folder='', mx=REVIEW_MAX_CHARS):
-    """Summarizes changed files and clips their unified diffs."""
+    "Summarize changed files and clip their unified diffs."
     root = Path(folder) if folder else None
     rows = [(_verb(*changes[p]), _rel(p, root), _diff(*changes[p], _rel(p, root))) for p in sorted(changes)]
-    head = '\n'.join(f'{verb:8} {rel}  +{_counts(d)[0]}/-{_counts(d)[1]}' for verb, rel, d in rows)
+    head = '\n'.join(f'{verb:8} {rel}  +{add}/-{rem}' for verb, rel, d in rows for add, rem in [_counts(d)])
     diffs = [d for _, _, d in rows if d]
     if not diffs: return head
     room = max(0, mx - len(head) - 2)
@@ -164,7 +163,7 @@ class FolderWatch:
 
 # %% ../nbs/17_monitor.ipynb #fb13c644
 class Monitors:
-    "Lists this session's watched folders and their reviews. `check` runs safely in the background; `drain` returns reviews for the next turn."
+    "This session's watched folders and reviews; `check` runs in the background, `drain` hands them to the next turn."
 
     def __init__(self,
                  host,
@@ -207,7 +206,7 @@ def check(self: Monitors,
           force=False,   # look even inside a watch's settle window
           block=True     # wait for a check already running, rather than answering `None`
 ):
-    "Reviews each changed watched folder, returning one record per review. Returns `None` when another check owns the pass and `block` is disabled; returns `[]` when nothing changed."
+    "One record per changed folder; `None` if another pass owns the check and `block` is off, `[]` if nothing changed."
     if not self.checking.acquire(blocking=block): return None
     try:
         out = []
@@ -279,14 +278,7 @@ def monitor_tools(get_monitors, mx=MAX_TOOL_CHARS):
 
     @summary(lambda a: f'Watch folder {_1(a.get("folder"), 80)}')
     def watch_folder(folder: str, instructions: str, pattern: str = '', settle: str = DFLT_SETTLE) -> str:
-        """Watches `folder` and reviews later matching changes against `instructions`.
-
-        The initial snapshot is taken immediately; existing files are ignored. `instructions` is
-        the reviewer's complete brief, so make it self-contained. `pattern` filters files; empty
-        matches all readable files. `settle` groups nearby edits into one review.
-
-        Reviews appear in the next turn after completion. Use `check_folders` to run reviews now.
-        """
+        "Watch `folder`; review later changes matching `pattern` against `instructions`, grouped by `settle`."
         try: w = get_monitors().add(folder, instructions, pattern=pattern, settle=settle)
         except Exception as e: return err('could not watch that folder', e)
         which = f' matching {w.pattern}' if w.pattern else ''
@@ -309,7 +301,7 @@ def monitor_tools(get_monitors, mx=MAX_TOOL_CHARS):
 
     @summary(lambda a: 'Check watched folders')
     def check_folders() -> str:
-        "Reports waiting reviews for all watched folders, ignoring `settle`. Each review is returned once; running reviews finish for the next turn."
+        "Run and report every waiting review now, ignoring `settle`; each review is returned once."
         m = get_monitors()
         if not m.all(): return 'no folder is being watched'
         try: busy = m.check(force=True, block=False) is None

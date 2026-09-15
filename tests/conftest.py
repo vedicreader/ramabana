@@ -1,12 +1,15 @@
-"""Pytest fixtures for the plain-python suite.
-
-One file per feature block (routing, context, tools, turn, vault, …).
-Notebooks carry the readable `test_eq` examples; these tests assert contracts in bulk.
-Nothing here loads a model.
-"""
+"Pytest fixtures for the plain-python suite; one file per feature block, and nothing loads a model."
 
 import pytest
 from ramabana.testing import SPEC
+
+@pytest.fixture(scope='session', autouse=True)
+def _prime_tool_summaries():
+    "Build every tool group once so `summarise` has its labels, whatever the worker or test order."
+    from ramabana.testing import FullHost
+    from ramabana.tools import tools_for
+    from shalya.tools import watch_tools, memory_tools
+    h = FullHost(); tools_for(h); watch_tools(h); memory_tools(h)
 
 @pytest.fixture
 def spec(): return SPEC

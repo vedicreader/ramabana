@@ -1,27 +1,4 @@
-"""A trolley the agent can fill: `fossick.shop` behind a small interface, and the weekly
-grocery run it was written for.
-
-## A cart, as an interface
-
-`Host` is the harness's one dependency on the world, and a shopping session does not belong in it: an agent editing a repo has no business holding a trolley, and most hosts have no browser to hold one with. A cart is an *extension*. Registered through `Registry.tool`, dropped into a config directory, absent unless someone asked for it.
-
-`Cart` is the interface, for the same reason `Host` is one. `FossickCart` drives a real logged-in Chrome. `FakeCart` is an in-memory double, which is what the tests and the worked example below run against. Filling a real trolley is not something a doc build should do.
-
-## The real one
-
-`FossickCart` drives a logged-in Chrome tab through `fossick.shop`.
-
-## The double
-
-`FakeCart` records adds for tests without opening a browser.
-
-## The tools
-
-Cart tools expose search, add, remove and list operations to the model.
-
-## The weekly shop
-
-A scripted multi-store run used as an end-to-end example.
+"""A trolley the agent can fill: `fossick.shop` behind a small interface, and the weekly grocery run it was written for.
 
 Docs: https://vedicreader.github.io/ramabana/shop.html.md"""
 
@@ -34,7 +11,7 @@ __all__ = ['MAX_PRODUCTS', 'SHOP_PORT', 'SHOP_TOUT', 'CATALOGUE', 'CartError', '
 import json
 from fastcore.basics import store_attr
 from .core import AgentError, agent_err
-from .tools import clip, err, summary, writes
+from shalya import clip, err, summary, writes
 from shalya.core import one_line as _1
 
 # %% ../nbs/08_shop.ipynb #aa16daf7
@@ -49,13 +26,7 @@ class CartError(AgentError):
 
 
 class Cart:
-    """One shopping session: find things, put them in, read the trolley back.
-
-    Every method may raise, and the tools in `cart_tools` catch and report rather than let an
-    exception end a turn. The same contract `Host` has. The trolley is the source of truth:
-    `add` is expected to *verify* that the cart moved rather than trust that a click worked,
-    because an agent that believes it bought milk is worse than one that says it is not sure.
-    """
+    "One shopping session: find things, put them in, read the trolley back."
 
     def open(self, url):
         "Point the session at a store. Returns the url actually landed on."
@@ -119,8 +90,6 @@ class FossickCart(Cart):
         return {k: v.get('note', '') for k, v in SITES.items()}
 
 # %% ../nbs/08_shop.ipynb #a51e4f0f
-#: Two stores, because the interesting case is a run that spans both: a supermarket for the
-#: staples and a co-op box scheme for the fruit.
 CATALOGUE = {
     'coles.com.au': [('Full Cream Milk 2L', 3.60), ('Sourdough Loaf 680g', 6.00),
                      ('Free Range Eggs 12pk', 8.50), ('Baby Spinach 120g', 4.00),
@@ -157,13 +126,7 @@ class FakeCart(Cart):
         return self._found
 
     def _match(self, want):
-        """Index against the last search. A title against the whole store.
-
-        The real one re-reads the products on the page for every add. A title that is not in
-        the last search still resolves as long as the store stocks it. Which is what lets an
-        agent add by the exact title it just read back. An index cannot work that way: it only
-        means anything relative to the search that produced it.
-        """
+        "Resolve an index against the last search, or a title against the whole store."
         page = self._found or self._rows()
         if isinstance(want, int) or str(want).isdigit():
             hit = next((p for p in page if p['i'] == int(want)), None)
@@ -218,11 +181,7 @@ def cart_tools(cart):
 
     @summary(lambda a: f'Shop search: {_1(a.get("query"))}')
     def cart_find(query: str, limit: int = 10) -> str:
-        """Search the store you are on. Returns numbered products. The number is what `cart_add` takes.
-
-        Search one item at a time and read the titles back before adding. Supermarket search
-        is fuzzy, and 'milk' matches oat milk, condensed milk and a milk frother.
-        """
+        "Search the store you are on. Returns numbered products; the number is what `cart_add` takes."
         try:
             rows = cart.find(query, int(limit))
             if not rows: return f'no products matching {query!r} at {cart.where}'
@@ -232,11 +191,7 @@ def cart_tools(cart):
     @writes
     @summary(lambda a: f'Add to trolley: {a.get("qty", 1)} x {_1(a.get("item"))}')
     def cart_add(item: str, qty: int = 1, variant: str = '') -> str:
-        """Put a product in the trolley. `item` is a number from `cart_find`, or an exact title.
-
-        The result says whether the trolley actually moved. `ok=false` means it did not and the
-        item is NOT in the cart. `ok=null` means the site gave no signal to check against. Confirm with `cart_show` before telling the user it is done.
-        """
+        "Put a product in the trolley. `item` is a number from `cart_find`, or an exact title."
         try:
             r = cart.add(item, qty=int(qty), variant=variant or None)
             ok = r.get('ok')

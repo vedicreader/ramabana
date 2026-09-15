@@ -65,12 +65,12 @@ class _Tee:
             except OSError: pass
     def stop(self):
         if self.saved is not None:
-            try: os.dup2(self.saved, self.fd)
+            try: os.dup2(self.saved, self.fd)                 # drops the last write end, so the pump reads EOF
             except OSError: pass
+        if self.thread is not None: self.thread.join(timeout=1.0)   # before the close, or the bytes still in the pipe go
         if self.r is not None:
             try: os.close(self.r)
             except OSError: pass
-        if self.thread is not None: self.thread.join(timeout=1.0)
         if self.saved is not None:
             try: os.close(self.saved)
             except OSError: pass
@@ -391,14 +391,14 @@ class Compactor:
         return min(self.keep_recent, max(256, max(256, ctx - overhead) // 2))
 
     def overhead(self, backend, msgs, count=None):
-        "What the window holds that is not this conversation, by subtraction from `used_tokens`."
-        used = getattr(backend, 'used_tokens', 0) or 0
-        if not used: return 0
-        return max(0, used - sum(estimate_tokens(resp_text(m), count) + 8 for m in msgs))
-
-    def _keep(self, msgs, count=None, ctx=0, overhead=0):
-        "The tail to keep uncompacted, newest-first until the budget runs out. Whole messages only."
+        "The window's non-conversation load, and the per-message sizes measured to find it."
         sizes = [estimate_tokens(resp_text(m), count) + 8 for m in msgs]
+        used = getattr(backend, 'used_tokens', 0) or 0
+        return (max(0, used - sum(sizes)) if used else 0), sizes
+
+    def _keep(self, msgs, count=None, ctx=0, overhead=0, sizes=None):
+        "The tail to keep uncompacted, newest-first until the budget runs out. Whole messages only."
+        if sizes is None: sizes = [estimate_tokens(resp_text(m), count) + 8 for m in msgs]
         budget = self.budget(ctx, overhead)
         if sizes: budget = min(budget, max(256, sum(sizes)//2))
         kept, used = [], 0
@@ -415,8 +415,10 @@ class Compactor:
         if not msgs:
             self.note = 'nothing to compact'
             return ''
-        keep = self._keep(msgs, backend.count_tokens, getattr(backend.spec, 'ctx', 0),
-                          self.overhead(backend, msgs, backend.count_tokens))
+        count = backend.count_tokens
+        oh = self.overhead(backend, msgs, count)
+        oh, sizes = oh if isinstance(oh, tuple) else (oh, None)
+        keep = self._keep(msgs, count, getattr(backend.spec, 'ctx', 0), oh, sizes)
         older = msgs[:len(msgs) - len(keep)] if len(keep) < len(msgs) else msgs
         if not older:
             self.note = 'everything is recent; nothing to compact'
@@ -532,8 +534,7 @@ class Usage:
 # %% ../nbs/01_runtime.ipynb #af66f277
 IMG_TOKENS = 1024
 
-#: What a built OpenAI content part calls a picture and a sound, so one that has already been
-#: through `mk_oai_content` is charged as media rather than stringified base64.
+#: what a built OpenAI content part calls a picture or sound, so it is charged as media not stringified base64.
 _MEDIA_PARTS = ('image_url', 'input_audio')
 
 def _parts(msg):
@@ -631,8 +632,7 @@ class Backend:
                         out=self._send(msg,**kw)
                         if run is not None and run.cancelled:return ''
                         self.use=self._usage(); self._check_reply(out)
-                        # one corrective turn, appended rather than a re-run: the narrated call is
-                        # already said, and asking again is the only way to still get the call
+                        # one corrective turn, appended not re-run: the narrated call is already said
                         if not self._tag_reminded and self._needs_tag_retry(out):
                             self._tag_reminded=True
                             out=self._send(TAG_REMINDER,**kw); self.use=self._usage()
@@ -798,7 +798,6 @@ class RishiBackend(Backend):
         "Where this backend's tool schemas actually travel. The chat answers once there is one."
         return tool_channel(self.spec,self.chat)
     def _runtime_kw(self):
-        import os
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
@@ -870,11 +869,7 @@ class RishiBackend(Backend):
                          'punctuating the tags channel reliably')
         return text
     def _needs_tag_retry(self,text):
-        """A reply on the tags channel that shows a call it never made.
-
-        The shape is rishi's to know, beside the parser that reads it. Only the tool names are
-        ours: a reply naming something this backend does not carry is prose about JSON.
-        """
+        "A reply on the tags channel that shows a call it never made."
         from urai import tag_call_shape
         if tool_channel(self.spec,self.chat)!='tags': return False
         return tag_call_shape(text,[getattr(t,'__name__','') for t in self.tools])
@@ -939,7 +934,6 @@ class Run:
     backend: object = None
 
     def __post_init__(self):
-        import threading
         self.children, self._lock, self._done = [], threading.RLock(), threading.Event()
         if self.parent is not None: self.parent.children.append(self)
 
@@ -953,7 +947,6 @@ class Run:
         return Run(f'run_{uuid.uuid4().hex[:12]}', 'child', question, model, self, self.grace)
 
     def start(self, backend=None):
-        import time
         with self._lock:
             if self.state != 'pending': return False
             self.state, self.backend, self.started = 'running', backend, time.time()
@@ -968,7 +961,6 @@ class Run:
         return not cancelled
 
     def finish(self, state='completed'):
-        import time
         with self._lock:
             if self.terminal: return self
             self.state = 'cancelled' if self.cancelled else state
@@ -977,9 +969,7 @@ class Run:
 
     def _mark_cancel(self):
         "Mark this run and every descendant cancelled, and return the backends left to stop."
-        # Marking is the whole pass and stopping is the pass after: stopping a backend releases the worker
-        # blocked on it, which takes the next queued child at once -- so marking and stopping together let a
-        # released worker start a sibling, and a cancelled run went on spawning what it was cancelled to stop.
+        # mark all first, then stop: stopping a backend frees its worker to take the next queued child, so interleaving would let a cancelled run spawn a sibling
         with self._lock:
             if self.terminal: return []
             # a pending run has nothing of its own to stop, but what it started still does
@@ -1009,7 +999,6 @@ class Run:
         return self
 
     def wait(self, grace=None):
-        import time
         end = time.monotonic() + (self.grace if grace is None else max(0, grace))
         for child in list(self.children):
             left = max(0, end - time.monotonic())
@@ -1021,7 +1010,6 @@ class Run:
         return self
 
     def detach(self):
-        import time
         with self._lock:
             if self.terminal: return self
             self.state, self.ended = 'detached', time.time(); self._done.set()
@@ -1053,12 +1041,7 @@ def run_context(run):
 # %% ../nbs/01_runtime.ipynb #42b75c72
 @patch
 def add_cb(self:Backend, cb):
-    """Register one Rishi callback class, for this chat and for any that replaces it.
-
-    A turn holds `lock` for its whole length and Rishi walks `chat.cbs` while it runs, so a caller
-    on another thread records the callback and the running turn takes it up at its own boundary.
-    Splicing into that list from outside can drop or repeat a callback in the turn already going.
-    """
+    "Register one Rishi callback class, for this chat and for any that replaces it."
     callbacks = getattr(self, '_callbacks', [])
     if cb not in callbacks: callbacks.append(cb)
     self._callbacks = callbacks

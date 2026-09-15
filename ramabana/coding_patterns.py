@@ -63,7 +63,7 @@ For a behaviour change, work red-green: write the test first, run it to see it f
 - Prefer as few tests as possible. One test that walks through many checks is more readable and faster than many small ones.
 - A check worth keeping goes in a test file or a notebook cell, never left as an ad-hoc command. In a notebook the checks made while exploring often are the narrative. They stay as example cells.
 - Assert the logic, not incidentals. Check what the behaviour guarantees, never byte-exact renderings, exact reprs or field order. A test comparing a whole output string locks in formatting decisions that were never the point. Never use a test to lock in behaviour unless that exact behaviour is part of the contract.
-- Do not run slow or network-touching suites until finishing a session, or after a change likely to affect them.
+- Do not run slow or network-touching suites until finishing a session, or after a change likely to affect them. Run the fast checks while you work; a final verification still runs every slow check the change could affect.
 
 In nbdev projects the notebook is source, documentation, examples and tests at once. Edit the source notebook rather than the generated Python, preserve docments and explanatory structure, export with the project's nbdev command, and run the documented tests.
 
@@ -73,6 +73,13 @@ Read from standard locations rather than duplicating configuration: project sett
 
 Version bumps belong to a release, never to a change. Bump immediately after releasing. The tree then always carries the next release's version. A downstream pin is different. It belongs to the change that creates the dependency. When a change makes one package consume another's new behaviour, stamp the consumer's pin in the same session. A pin deferred to release time is a forgotten pin.
 
+## Handoffs, events, and honest state
+
+- Treat acceptance of background work as a lifecycle boundary. Register ownership atomically, under the same lock as competing starts and shutdown. Wake both sides on timeout, rejection and shutdown. A worker that registers after a rejection stops and emits no accepted-work event.
+- Make replay or terminal completion an explicit state, not a guess from the latest event. A later bookkeeping event must not erase a terminal sequence. Reset it only when the next unit of work is accepted. Keep application errors separate from transport errors, so an application failure does not trigger connection recovery.
+- When you move work or response ownership between layers, audit the old producer, every consumer, and both the success and failure paths. Keep every response field callers read. Find and update all callers and tests that expect the old contract.
+- Keep the plan truthful. Mark done steps done, keep one step active, and leave the rest pending. A `[done]` note inside a pending step does not complete it.
+
 ## Ramabana workflow
 
 Use Ramabana's native tools rather than instructions written for another harness:
@@ -80,11 +87,12 @@ Use Ramabana's native tools rather than instructions written for another harness
 - `search_code` finds repository and installed-package behaviour.
 - `view_file` or the notebook cell tools read the exact source before editing.
 - `replace_text`, `edit_file` or `edit_cell` make narrow, auditable changes.
+- For an edit tool whose `edits` or `commands` field is a JSON string, build and check that inner JSON on its own first. A parse error means nothing changed: fix the payload rather than resending it.
 - `inspect_python` reads live state without mutation. `run_python` performs requested transformations in new bindings.
 - `run_shell` verifies edits with the repository's own commands.
 - `read_skill` loads specialized workflows before using them. Read `write_docs` for the prose that ships with code, `write_prose` for narrative writing, and `theory` for the design a codebase is derived from.
 
-Writing the code does not complete the task. Run the relevant tests or checks, read the result, fix failures, and report exactly what you verified. Never claim a file changed or a check passed without tool evidence from the current session.
+Writing the code does not complete the task. Run the relevant tests or checks, read the result, fix failures, and report exactly what you verified. Never claim a file changed or a check passed without tool evidence from the current session. Before reporting a behaviour change, have an independent subagent review the exact changed files and tests, and check its findings against the real diff and test output.
 
 Docs: https://vedicreader.github.io/ramabana/coding_patterns.html.md"""
 

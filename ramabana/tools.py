@@ -6,27 +6,32 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 
 # %% auto #0
 __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP', 'SUB_SP', 'NO_SUB', 'ASYNC_MAX',
-           'ASYNC_KEEP', 'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'sub_briefing', 'sub_sp', 'bad_json',
-           'delegate', 'delegate_many', 'Background', 'named_skills', 'subagent_tools', 'frontmatter', 'API_VENDORS',
-           'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS',
-           'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS',
-           'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS',
-           'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS',
-           'SKIP_SUFFIXES', 'Skill', '_apply_edits', '_cmds', '_diff', '_edits', 'api_model', 'api_tools', 'ask_tools',
-           'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err',
-           'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write',
-           'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', '_fuse',
-           'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost',
-           'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media',
-           'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools',
-           'writes']
+           'ASYNC_KEEP', 'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'ToolEntry', 'ToolCatalog',
+           'sub_briefing', 'sub_sp', 'bad_json', 'delegate', 'delegate_many', 'Background', 'named_skills',
+           'subagent_tools', 'frontmatter', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES',
+           'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API',
+           'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
+           'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX',
+           'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', '_apply_edits', '_cmds', '_diff',
+           '_edits', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools',
+           'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools',
+           'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise',
+           'one_line', 'read_only', 'ld_json', '_fuse', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost',
+           'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools',
+           'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs',
+           'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, functools, json, re, threading, time, uuid
+from collections import Counter
+from dataclasses import dataclass
 from fastcore.basics import AttrDict, ifnone
 from fastcore.foundation import L
 from fastcore.parallel import parallel
-from shalya import *
+import shalya as _shalya
+from shalya import (MAX_TOOL_CHARS, Host, HostError, NO_ROOTS, implemented, image_available,
+                    group_of, is_write, has_effect, summarise, read_only, clip, err, find,
+                    acts, summary, cmds, edits, apply_edits, diff_text)
 from shalya.core import one_line as _1
 from shalya.host import _fuse
 from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for
@@ -43,6 +48,12 @@ WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove'}
 # %% ../nbs/02_tools.ipynb #694f6d5d
 #: shalya's names, re-exported so `from ramabana.tools import *` still finds them.
 _all_ = ['frontmatter', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', '_apply_edits', '_cmds', '_diff', '_edits', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', '_fuse', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes']
+
+def __getattr__(name):
+    "Resolve the deprecated Shalya compatibility surface without mirroring it into this module."
+    if name in _all_: return getattr(_shalya, name)
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
 
 # %% ../nbs/02_tools.ipynb #1ec6c57a
 @implemented
@@ -79,11 +90,50 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
 
 # %% ../nbs/02_tools.ipynb #de2cd1e8
 def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None):
-    "Lists all tools supported by the host and registered extensions. Groups are from `Host.provides`. Use `drop` to exclude groups, based on `core.budget_for` and `Agent.budget`."
+    "Every tool the host and its extensions support; groups from `Host.provides`, `drop` to exclude some."
     # `generate_image` saves what it draws, so a host that cannot write does not get it either.
     image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
              if image_available() and host.writes and 'image' not in set(drop or ()) else None)
     return _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image)
+
+@dataclass(frozen=True)
+class ToolEntry:
+    "One callable and the Shalya metadata every consumer needs."
+    tool: object
+    group: str = ''
+
+    @property
+    def name(self): return getattr(self.tool, '__name__', '')
+    @property
+    def writes(self): return is_write(self.tool)
+    @property
+    def effects(self): return has_effect(self.tool)
+    @property
+    def available(self): return callable(self.tool)
+    def describe(self, args=None): return summarise(self.tool, args)
+
+
+class ToolCatalog:
+    "One immutable view of tools and their Shalya metadata."
+    def __init__(self, tools=()):
+        self.entries = tuple(ToolEntry(t, group_of(getattr(t, '__name__', ''), 'extension'))
+                             for t in tools)
+        self._by_name = {e.name: e for e in self.entries}
+        self._tools = [e.tool for e in self.entries]
+    def __iter__(self): return iter(self.entries)
+    def __len__(self): return len(self.entries)
+    def __getitem__(self, name): return self._by_name[name]
+    @property
+    def tools(self): return self._tools
+    @property
+    def names(self): return frozenset(self._by_name)
+    @property
+    def writes(self): return frozenset(e.name for e in self.entries if e.writes)
+    def summarise(self, name, args=None): return self[name].describe(args)
+    def read_only(self, max_calls=None, writes=False, effects=True, block=()):
+        return type(self)(read_only(self.tools, max_calls, writes, effects, block))
+    def map(self, fn): return type(self)(fn(e.tool) for e in self.entries)
+
 
 # %% ../nbs/02_tools.ipynb #e3b29ea1
 SUB_MAX_STEPS = 12
@@ -114,7 +164,7 @@ def _delegate_result(text):
     text = str(text or '').strip()
     words = re.findall(r"[A-Za-z0-9_+.-]+", text.lower())
     if not text: return 'Delegated inspection failed: the sub-agent returned no answer.'
-    if len(words) >= 12 and max(words.count(w) for w in set(words)) > max(8, len(words) // 4):
+    if len(words) >= 12 and max(Counter(words).values()) > max(8, len(words) // 4):
         return 'Delegated inspection failed: repetitive output was discarded as unreliable.'
     return text
 
@@ -300,31 +350,25 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
                    get_writes=None,     # the session's sub-agent write toggle, read per call
                    get_approve=None,    # the gate those writes answer to
                    background=None):    # the register async delegations live in; one is made if None
-    "The `delegate` tool routed to the configured sub-agent backend. Arguments are callables; model changes apply mid-session. `get_tools` returns the sub-agent model's tools."
+    "The delegation tools, routed to the configured sub-agent backend. Arguments are callables, read per call."
     bg = ifnone(background, Background())
     def _writes(): return bool(get_writes()) if get_writes is not None else False
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
 
+    @acts
     @summary(lambda a: f'Delegate: {_1(a.get("question"), 120)}')
     def delegate_search(question: str, skills: str = '') -> str:
-        """Delegates broad questions to a sub-agent and returns only its conclusion.
-        Use for searches whose intermediate results are unnecessary. The sub-agent cannot see this
-        conversation and receives the configured read tools, plus write tools when enabled.
-        `skills` is a comma-separated list of skills to provide. Ask one self-contained question.
-        """
+        "Delegate a broad question to a sub-agent and return only its conclusion. Ask one self-contained question."
         b = get_backend()
         if b is None: return 'no model is available to delegate to'
         sk, note = named_skills(get_skills, skills)
         return clip(delegate(b, question, get_tools(), skills=sk, writes=_writes(),
                              approve=_approve()), MAX_TOOL_CHARS) + note
 
+    @acts
     @summary(lambda a: f'Delegate in parallel: {_1(a.get("questions"), 110)}')
     def delegate_parallel(questions: str, skills: str = '', cloud_model: str = '') -> str:
-        """Delegates independent questions concurrently and returns their answers.
-        `questions` is a JSON array of self-contained strings. Use for independent questions;
-        write-enabled sub-agents run sequentially to share approvals. `skills` is a comma-separated
-        list supplied to every sub-agent. `cloud_model` optionally selects a remote model without
-        changing the session or default sub-agent model."""
+        "Delegate independent questions concurrently and return their answers. `questions` is a JSON array of strings."
         b = get_cloud_backend(cloud_model) if cloud_model and get_cloud_backend is not None else get_backend()
         if b is None: return f"no model is available to delegate to{f' ({cloud_model})' if cloud_model else ''}"
         try:
@@ -338,14 +382,10 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         answers = delegate_many(b, qs, get_tools(), skills=sk, writes=_writes(), approve=_approve())
         return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2) + note
 
+    @acts
     @summary(lambda a: f'Delegate in the background: {_1(a.get("question"), 110)}')
     def delegate_async(question: str, skills: str = '', writes: bool = False) -> str:
-        """Starts an asynchronous sub-agent task and returns its run ID.
-        Use for long-running searches or changes. Retrieve results with `delegate_result`, check
-        progress with `delegate_status`, and stop it with `delegate_cancel`. Results persist until
-        the session ends.
-        `writes` enables write tools for this call and defaults to `False`. `skills` is a
-        comma-separated list from the skill index. Ask one self-contained question."""
+        "Start a background sub-agent task and return its run id; collect it with `delegate_result`."
         b = get_backend()
         if b is None: return 'no model is available to delegate to'
         sk, note = named_skills(get_skills, skills)
@@ -357,20 +397,22 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         asked = 'with write tools' if w else 'read-only'
         return f'started {rid} ({asked}). Collect it with delegate_result({rid!r}).' + note
 
+    @acts
     @summary(lambda a: f'Check delegation {a["run_id"]}' if a.get('run_id') else 'Check the background delegations')
     def delegate_status(run_id: str = '') -> str:
-        """Returns a background delegation's status. Without `run_id`, lists all delegations started this session.
-        Statuses are `pending`, `running`, `completed`, `cancelled`, and `failed`."""
+        "A background delegation's status, or every delegation started this session when `run_id` is empty."
         rows = bg.status(run_id)
         if isinstance(rows, str): return rows
         if not rows: return 'nothing has been delegated in the background'
         return clip('\n'.join(f"{r['id']}  {r['state']:10} {r['question'][:80]}" for r in rows), MAX_TOOL_CHARS)
 
+    @acts
     @summary(lambda a: f'Collect delegation {a.get("run_id","?")}')
     def delegate_result(run_id: str) -> str:
         "The answer a background delegation left, or what it is still doing."
         return clip(bg.result(run_id), MAX_TOOL_CHARS)
 
+    @acts
     @summary(lambda a: f'Cancel delegation {a.get("run_id","?")}')
     def delegate_cancel(run_id: str) -> str:
         "Stop a background delegation. What it had already done is not undone."
