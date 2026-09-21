@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "shalya>=0.0.8",   # `Host.writes`, and summarise() building the table for a bare name
-    "uraiyadal>=0.0.6",
+    "uraiyadal>=0.0.7",   # split_think takes the stray close answer_only used to strip itself
     "gheasy>=0.0.10",
     "exhash>=0.4.9",
     "fastcore>=2.1.16",
