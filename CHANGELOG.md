@@ -2,6 +2,23 @@
 
 <!-- do not remove -->
 
+## 0.1.34
+
+Built against shalya 0.0.8 and uraiyadal 0.0.7.
+
+### New
+
+- A second line typed during a turn joins the one already waiting instead of being dropped, and both run as one turn. The waiting message sits above the prompt while it waits; joining it and sending it each flash there and clear themselves.
+- `ToolCatalog`, `ToolEntry`, `WorkspaceHost`; provider dispatch completed and the shalya compatibility boundary narrowed. Tools and hosts are shalya's by name; `ramabana.tools` re-exports them for one release.
+- The briefing carries the AGENTS.md rules.
+
+### Fixed
+
+- A tool's display kind comes from shalya's `group_of`, with `_KIND` holding only what differs. The git group had no kind at all, and `DELEGATE_TOOLS` named two of the six delegate tools, so four kinds of delegation did not nest.
+- Approval prompts show shalya's `summarise` (`Edit a.py`), as the activity log already did.
+- `Usage` reports reasoning and cache-write tokens; both read zero.
+- The pump thread is joined before the pipe it reads is closed. `atomic_save` for probe, alias and session writes.
+
 ## 0.1.33
 
 Built against the local shalya checkout so both can be tested together before release.
