@@ -6,8 +6,8 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
-           'CLAUDE_MODELS', 'CLAUDE', 'CLAUDE_ALIASES', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIMES', 'AGENTS', 'HOSTED',
-           'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'PROBE_TTL',
+           'CLAUDE_MODELS', 'CLAUDE', 'CLAUDE_ALIASES', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
+           'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'PROBE_TTL',
            'PROBE_DIR', 'HARNESS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES',
            'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'API_KEYS', 'MODEL_ALIASES',
            'TOOL_CHANNELS', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'probe_path', 'probed',
@@ -21,6 +21,7 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
 from fastcore.all import Path, atomic_save
 from shalya.host import HostError
+import urai, rishi.core   # rishi registers its backends with urai on import
 from dataclasses import dataclass, field
 
 # %% ../nbs/00_core.ipynb #2049138c
@@ -59,7 +60,7 @@ CLAUDE = {f'claude/{mid}': mid for mid in CLAUDE_MODELS}
 CLAUDE_ALIASES = {**{mid: mid for mid in CLAUDE_MODELS},'sonnet': 'claude-sonnet-5', 'opus': 'claude-opus-5', 'fable': 'claude-fable-5'}
 DFLT_AGENT_CTX = 128_000
 CLAUDE_CTX = {'claude-opus': 200_000, 'claude-sonnet': 200_000}
-RUNTIMES = ('litert', 'mlx', 'llama', 'ollama', 'claude', 'copilot', 'remote')
+RUNTIME_NAMES = tuple(urai.RUNTIMES)   #: what rishi registered, in inference order; `urai.RUNTIMES` holds the records
 AGENTS = ('claude',)
 HOSTED = ('remote', 'copilot', *AGENTS)
 COPILOT_UNAVAILABLE = ('copilot runtime is unavailable; sign in to Copilot in an editor or run `python -c "from rishi.copilot import copilot_login; copilot_login()"`')
@@ -343,21 +344,14 @@ def local_ctx(name, dflt=DFLT_LOCAL_CTX):
     return _LOCAL_CTX.get(name, dflt)
 
 # %% ../nbs/00_core.ipynb #64093121
-@dataclass(frozen=True)
-class ModelSpec:
-    'One model, resolved: which backend runs it, what to call it, and how big it is.'
-    name: str                 # what the user types
-    backend: str              # a RUNTIMES name: 'litert' | 'mlx' | 'claude' | 'remote' | 'copilot'
-    model_id: str             # what the backend is given
-    ctx: int = 128_000        # context window in tokens
-    note: str = ''            # anything worth showing about how this was resolved
-    config: dict = field(default_factory=dict, compare=False) # runtime options. Never persisted secrets
-
+class ModelSpec(urai.ModelSpec):
+    "urai's `ModelSpec`, keeping ramabana's `backend` and `config` names as views of `runtime` and `opts`."
     @property
-    def runtime(self): return self.backend
+    def backend(self): return self.runtime
     @property
-    def local(self): return self.backend not in HOSTED
-    def __str__(self): return f'{self.name} ({self.model_id})'
+    def config(self): return self.opts
+    @property
+    def local(self): return self.rt.local if self.runtime in urai.RUNTIMES else self.runtime not in HOSTED
 
 def _copilot_ctx(model_id):
     "Context window and a note for a Copilot model."
@@ -382,7 +376,7 @@ def unknown_model(name):
     hint = f'; did you mean {" or ".join(repr(n) for n in near)}?' if near else '.'
     return (f'unknown model {name!r}{hint} `/models` lists what is configured, and any vendor/model spec works too.')
 
-PREFIXES = RUNTIMES
+PREFIXES = RUNTIME_NAMES
 RETIRED = {'claude_code': 'use `claude/` instead: the same models, through Claude Code itself', 'cursor': 'the Cursor backend was removed'}
 
 def resolve(name, default_local=DFLT_LOCAL):
@@ -394,7 +388,7 @@ def resolve(name, default_local=DFLT_LOCAL):
         if backend not in ('remote', 'copilot'):
             if not runtime_available(backend): raise RuntimeError(f'{backend} runtime is unavailable; {runtime_remedy(backend)}')
             ctx = claude_ctx(mid) if backend == 'claude' else DFLT_AGENT_CTX if backend in AGENTS else local_ctx(name)
-            return ModelSpec(name, backend, mid, ctx, config=config)
+            return ModelSpec(name, backend, mid, ctx, opts=config)
         if backend == 'copilot':
             ctx, note = _copilot_ctx(mid)
             return ModelSpec(name, backend, mid, ctx, note, config)
@@ -476,7 +470,7 @@ def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model
     if runtime is None:
         from urai import resolve_runtime
         runtime, model_id = resolve_runtime(model_id)
-    if runtime not in RUNTIMES: raise ValueError(f'unknown runtime {runtime!r}')
+    if runtime not in RUNTIME_NAMES: raise ValueError(f'unknown runtime {runtime!r}')
     if runtime != 'remote' and not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
     MODELS[name] = (runtime, model_id); _LOCAL_CTX[name] = int(ctx or 128_000)
     CUSTOM[name] = {'name': name, 'model_id': model_id, 'runtime': runtime, 'ctx': int(ctx or 128_000), 'note': note, 'config': config}
@@ -523,7 +517,7 @@ def save_model(row, path=None):
     model_id = str(row.get('model_id') or '').strip()
     runtime = str(row.get('runtime') or '').strip()
     if not re.match(r'^[A-Za-z0-9][\w.-]{0,63}$', name): raise ValueError('name must use letters, numbers, _, . or -')
-    if runtime not in RUNTIMES: raise ValueError(f'runtime must be one of {", ".join(RUNTIMES)}')
+    if runtime not in RUNTIME_NAMES: raise ValueError(f'runtime must be one of {", ".join(RUNTIME_NAMES)}')
     if name in MODELS and name not in CUSTOM: raise ValueError(f'{name!r} is a built-in model name')
     ctx = int(row.get('ctx') or 128_000)
     if not 1024 <= ctx <= 10_000_000: raise ValueError('context must be between 1,024 and 10,000,000 tokens')

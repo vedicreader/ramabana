@@ -42,6 +42,12 @@ def test_every_name_the_re_export_module_promises_actually_resolves():
     assert [n for n in ramabana.tools.__all__ if not hasattr(ramabana.tools, n)] == []
 
 
+def test_every_name_the_seam_claims_to_re_export_is_really_shalyas():
+    "A local binding satisfies `hasattr(ramabana.tools, n)`, so the seam is asserted against `shalya` itself."
+    import shalya
+    assert [n for n in ramabana.tools._all_ if not hasattr(shalya, n)] == []
+
+
 def test_agent_error_is_the_host_refusal_shalya_raises():
     "`except AgentError` is the spelling the harness and Leela both use for what a host refuses."
     from shalya.core import HostError

@@ -240,10 +240,10 @@ def test_a_remedy_names_an_extra_only_where_rishi_still_declares_one():
     `rishi[claude]`, `[copilot]` and `[remote]` went when rishi took those dependencies on itself,
     and `[litert]` went the same way in 0.1.32."""
     import importlib.metadata as md, re
-    from ramabana.core import RUNTIMES, runtime_remedy
+    from ramabana.core import RUNTIME_NAMES, runtime_remedy
     declared = set(md.metadata('rishi').get_all('Provides-Extra') or [])
     assert 'litert' not in declared, 'litert-lm-api is a base dependency now'
-    for r in RUNTIMES:
+    for r in RUNTIME_NAMES:
         remedy = runtime_remedy(r)
         assert remedy, f'{r} has no answer'
         named = re.search(r'pip install rishi\[([\w-]+)\]', remedy)
@@ -431,7 +431,7 @@ def test_an_ollama_model_resolves_to_the_ollama_runtime(monkeypatch):
     assert s.local, 'it runs on this machine, so it is not a hosted spend'
 
 def test_ollama_is_a_runtime_ramabana_knows_about():
-    assert 'ollama' in core.RUNTIMES and 'ollama' not in core.HOSTED
+    assert 'ollama' in core.RUNTIME_NAMES and 'ollama' not in core.HOSTED
 
 def test_an_ollama_runtime_that_cannot_be_reached_says_so(monkeypatch):
     monkeypatch.setattr(core, 'runtime_available', lambda r: r != 'ollama')
