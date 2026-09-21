@@ -4,20 +4,20 @@
 
 ## 0.1.34
 
-Built against shalya 0.0.8 and uraiyadal 0.0.7.
+Needs shalya 0.0.8, uraiyadal 0.0.7.
 
-### New
-
-- A second line typed during a turn joins the one already waiting instead of being dropped, and both run as one turn. The waiting message sits above the prompt while it waits; joining it and sending it each flash there and clear themselves.
-- `ToolCatalog`, `ToolEntry`, `WorkspaceHost`; provider dispatch completed and the shalya compatibility boundary narrowed. Tools and hosts are shalya's by name; `ramabana.tools` re-exports them for one release.
-- The briefing carries the AGENTS.md rules.
-
-### Fixed
-
-- A tool's display kind comes from shalya's `group_of`, with `_KIND` holding only what differs. The git group had no kind at all, and `DELEGATE_TOOLS` named two of the six delegate tools, so four kinds of delegation did not nest.
-- Approval prompts show shalya's `summarise` (`Edit a.py`), as the activity log already did.
-- `Usage` reports reasoning and cache-write tokens; both read zero.
-- The pump thread is joined before the pipe it reads is closed. `atomic_save` for probe, alias and session writes.
+- A line typed while a turn runs joins the one already queued; both run as one turn. The pending row sits above the prompt; join and send each flash there and clear.
+- `ToolCatalog`, `ToolEntry`, `WorkspaceHost`; provider dispatch completed; shalya compatibility boundary narrowed.
+- Tools and hosts are shalya's by name; `ramabana.tools` re-exports them for one release.
+- Briefing carries the AGENTS.md rules.
+- `ModelSpec` subclasses urai's (`backend`->`runtime`, `config`->`opts`, `local` from urai's registry).
+- `RUNTIME_NAMES = tuple(urai.RUNTIMES)` replaces the hardcoded `RUNTIMES`.
+- `ramabana.tools` no longer claims six names it never had from shalya: `frontmatter`, `_apply_edits`, `_cmds`, `_diff`, `_edits`, `_fuse`.
+- Tool kind comes from shalya `group_of`; `_KIND` holds only differences. Git group gains a kind; `DELEGATE_TOOLS` names all six delegates, so every delegation kind nests.
+- Approval prompts use shalya `summarise` (`Edit a.py`), matching the activity log.
+- `Usage` reports reasoning and cache-write tokens; both read zero before.
+- Pump thread joined before its pipe is closed.
+- `atomic_save` for probe, alias and session writes.
 
 ## 0.1.33
 
