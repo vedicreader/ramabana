@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.1.37
+- A `before_tool` hook that rewrites a write tool's arguments no longer raises: the re-approval read a field `Ask` does not have.
+
 ## 0.1.36
 
 Needs rishi 0.1.38: Claude transcripts are refiled as tags text, so a resumed session keeps using tools.
