@@ -1,6 +1,7 @@
 """Background answers reach the next turn, hooks can deny or rewrite, and `/commit` drafts then commits."""
 import subprocess
 
+from ramabana.agent import Approvals
 from ramabana.runtime import Run
 from ramabana.tools import ERR
 from ramabana.testing import fake_agent
@@ -27,6 +28,15 @@ def test_hooks_can_deny_a_call_rewrite_its_arguments_and_replace_its_result():
     assert tools['view_file']('/proj/secret').startswith(ERR) and 'denied by hook' in tools['view_file']('/proj/secret')
     assert 'def a' in tools['view_file']('/proj/b.py')
     assert 'A.PY' in tools['list_files']()
+
+
+def test_a_rewritten_write_goes_back_through_approvals():
+    hook = lambda ag, name, args: {'path': '/proj/c.py', 'text': args['text']} if name == 'create_file' else None
+    for mode, ok in (('auto', True), ('off', False)):
+        a, _ = fake_agent(approvals=Approvals(tools={'create_file'}, mode=mode))
+        a.registry.on('before_tool', hook)
+        out = {t.__name__: t for t in a.tools}['create_file']('/proj/b.py', 'x = 1\n')
+        assert (a.host.read('/proj/c.py') == 'x = 1\n') is ok and out.startswith(ERR) is not ok, (mode, out)
 
 
 def _git(cwd, *args): return subprocess.run(['git', *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()

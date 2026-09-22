@@ -1018,7 +1018,7 @@ def _record(self:Agent, f):
         for r in self.registry.fire('before_tool', self, name, args):
             if isinstance(r, str): denied = denied or r
             elif isinstance(r, dict): a, kw, args, rewritten = (), dict(r), _named(f, (), dict(r)), True
-        if rewritten and is_write(f) and self.approvals is not None and not (ask := self.approvals.request(name, args)).approved:
+        if rewritten and is_write(f) and self.approvals is not None and not (ask := self.approvals.request(name, args)).answer:
             denied = denied or ask.reply()
         self.calls.append((name, args))
         meta = self._action_meta(name, args)
