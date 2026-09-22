@@ -6,16 +6,18 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
-           'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE',
-           'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'HISTORY_TAIL',
-           'HISTORY_TURNS', 'REPLAYED', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE',
-           'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
-           'Approvals', 'always', 'never', 'policy', 'applied', 'apply', 'note', 'tool_plan', 'request_text',
-           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items',
-           'plan_tools', 'Agent', 'Completer']
+           'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'INLINE_SKILLS',
+           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES',
+           'TODO_MARK', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP',
+           'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
+           'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'Approvals',
+           'always', 'never', 'applied', 'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives',
+           'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent',
+           'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
-import datetime, functools, json, re, threading, time, uuid
+import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
+from glob import escape as glob_escape
 from dataclasses import dataclass, field
 from pathlib import Path
 from fastcore.basics import patch
@@ -23,8 +25,9 @@ from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
+from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import group_of
-from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, Registry, ToolCatalog, clip, discover,
+from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background)
@@ -237,6 +240,10 @@ def preview_for(name, args, host=None):
     if name == 'add_cell':
         return f'{p}  (new {args.get("cell_type","code")} cell at {args.get("index",-1)})\n\n{args.get("source","")}'[:MAX_PREVIEW]
     if name == 'run_python':  return str(args.get('code', ''))[:MAX_PREVIEW]
+    if name == 'run_shell':   return (f"$ {args.get('command', '')}" + (f'\n  in {c}' if (c := args.get('cwd')) else ''))[:MAX_PREVIEW]
+    if name == 'replace_text' and host is not None:
+        try: return diff_text(before := host.read(p) or '', apply_edits(before, edits(args.get('spec', ''))), p)[:MAX_PREVIEW]
+        except Exception as e: return f'{p}\n\n{agent_err(e)}'
     return json.dumps(args, indent=2, default=str)[:MAX_PREVIEW]
 
 
@@ -297,17 +304,32 @@ def answer_md(ask):
     return f'{head} -- `{ask.tool}`' + (f'\n\n{ask.note}' if ask.note else '')
 
 # %% ../nbs/03_agent.ipynb #ca1437e3
+EDIT_GROUPS = ('file', 'notebook')
+
+def subject(name, args):
+    "What a saved rule is matched against: the command, else the path, else the summary."
+    return str(args.get('command') or args.get('path') or _summary(name, args))
+
+
+def _load_rules(path):
+    "Saved rules as `(tool, pattern, verdict)` triples, and why they could not be read."
+    try: return [tuple(r) for r in json.loads(path.read_text())] if path and path.exists() else [], ''
+    except Exception as e: return [], f'{path.name}: {agent_err(e)}'
+
 class Approvals:
     "The queue of one, and the thread handshake behind it. One request at a time."
 
     def __init__(self,
                  tools=(),                  # tool names that need approval. Everything else runs
-                 mode='ask',                # 'ask' | 'auto' (approve everything) | 'off' (refuse everything)
+                 mode='ask',                # 'ask' | 'edits' (file and notebook edits run, the rest ask) | 'auto' | 'off'
                  timeout=DFLT_TIMEOUT,
                  host=None,                 # for previews that need to look at disk
                  on_ask=None,               # called with the `Ask` when one is raised
-                 on_answer=None):           # called with the `Ask` when it is answered
+                 on_answer=None,            # called with the `Ask` when it is answered
+                 rules_path=None):          # saved allow/deny rules, `<cfg>/approvals.json`
         self.tools, self.mode, self.timeout, self.host = frozenset(tools), mode, timeout, host
+        self.rules_path = Path(rules_path) if rules_path else None
+        self.rules, self.problem = _load_rules(self.rules_path)
         # the application's recorder. Frontends register through `listen` instead. Neither unhooks the other
         self.on_ask, self.on_answer = on_ask, on_answer
         self.current = None                 # the `Ask` in flight, or None
@@ -319,6 +341,20 @@ class Approvals:
 
     @property
     def listeners(self): return len(self._watchers)
+
+    def rule_for(self, name, args):
+        "'allow' or 'deny' from the first saved rule matching this call, else None."
+        s = subject(name, args)
+        return next((v for t, pat, v in self.rules if t == name and fnmatch.fnmatch(s, pat)), None)
+
+    def always(self, name, pattern, verdict='allow', glob=False):
+        "Save a rule: `name` calls whose subject is `pattern` (a glob with `glob=True`) are allowed, or denied, without asking."
+        pattern = pattern if glob else glob_escape(pattern)
+        self.rules.append((name, pattern, verdict))
+        if self.rules_path is not None:
+            self.rules_path.parent.mkdir(parents=True, exist_ok=True)
+            with atomic_save(self.rules_path, 'w') as f: json.dump(self.rules, f, indent=1)
+        return f'always {verdict}: {name} {pattern}'
 
     def listen(self, on_ask=None, on_answer=None):
         "Register a frontend, and how to reach it. Returns a callable that unregisters it."
@@ -393,8 +429,10 @@ class Approvals:
                 run_id=getattr(current_run(), 'id', '') or '')
         self.history.append(a)
         if not force and name not in self.tools: return a.resolve(True)   # `force` asks anyway
-        if self.mode == 'auto': return a.resolve(True)
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
+        if (v := self.rule_for(name, args)) is not None:
+            return a.resolve(True, 'allowed by a saved rule') if v == 'allow' else self._decided(a, False, 'denied by a saved rule')
+        if self.mode == 'auto' or (self.mode == 'edits' and group_of(name) in EDIT_GROUPS): return a.resolve(True)
         # closing first: the more useful reason; `current` taken under the close lock, so an ask landing in the gap does not wait out its timeout
         with self._lock:
             closing = self.closed
@@ -413,13 +451,6 @@ class Approvals:
 def always(tool_call): return True
 def never(tool_call): return False
 
-def policy(modes, ask):
-    "`approve(tool_call)` from per-tool modes: 'approved' | 'check' | 'dont_run'."
-    def approve(tc):
-        name, _ = _tc(tc)
-        mode = (modes or {}).get(name, 'check')
-        return True if mode == 'approved' else False if mode == 'dont_run' else ask(tc)
-    return approve
 
 # %% ../nbs/03_agent.ipynb #3287bcb5
 def applied(): return True
@@ -475,24 +506,24 @@ def prompt_directives(prompt, tools=(), skills=()):
 
 # %% ../nbs/03_agent.ipynb #4d102b68
 MAX_CONTEXT_FILE = 8000     # chars of one AGENTS.md. Past this it is documentation, not instructions
-CONTEXT_FILES = ('AGENTS.md', '.agents/AGENTS.md', '.leela/AGENTS.md')
+CONTEXT_FILES = ('AGENTS.md', '.agents/AGENTS.md', '.leela/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md')
 
-def project_context(host, mx=MAX_CONTEXT_FILE):
-    "The project's own instructions to an agent, from `AGENTS.md` in each open folder."
-    from pathlib import Path
+def project_context(host, mx=MAX_CONTEXT_FILE, cfg=None):
+    "Instructions to an agent: the user's `<cfg>/AGENTS.md` first, then `AGENTS.md` or `CLAUDE.md` in each open folder."
     out, seen = [], set()
+    def add(p, text):
+        body = (text or '').strip()
+        if len(body) > mx: body = body[:mx] + f'\n…[truncated; read {p} in full if you need the rest]'
+        if body: out.append(f'<project_instructions path="{p}">\n{body}\n</project_instructions>')
+    if cfg is not None and (u := Path(cfg)/'AGENTS.md').exists(): add(u, u.read_text())
     for r in host.roots or ():
         for rel in CONTEXT_FILES:
             try: p = host.check(Path(r)/rel)
             except Exception: continue
             if str(p) in seen: continue
             seen.add(str(p))
-            try: text = host.read(str(p))
-            except Exception: text = None
-            if not text or not text.strip(): continue
-            body = text.strip()
-            if len(body) > mx: body = body[:mx] + f'\n…[truncated; read {p} in full if you need the rest]'
-            out.append(f'<project_instructions path="{p}">\n{body}\n</project_instructions>')
+            try: add(p, host.read(str(p)))
+            except Exception: pass
     if not out: return ''
     return ('\n\n<project_context>\nInstructions this project gives to any agent working in it. They\n'
             'override the general guidance above where they disagree.\n\n' + '\n\n'.join(out) +
@@ -530,8 +561,8 @@ RULES = (
            '  already visible; use that path with the notebook tools and never reconstruct it.'),
     ('run_shell', 'Check your work with `run_shell`: after an edit run the project’s tests, after a\n'
                   '  signature change run its linter or type checker. Use the commands the project itself\n'
-                  '  documents (README, pyproject, Makefile). Never start a server, watcher or REPL --\n'
-                  '  only commands that exit on their own.'),
+                  '  documents (README, pyproject, Makefile). Only commands that exit on their own: a server,\n'
+                  '  watcher or slow suite goes to `run_shell_bg`, read with `shell_output`.'),
     ('run_python', 'Code cells inside `<notebook>` have already executed. Their printed `<output>` is not\n'
                    '  Python and must never be copied into `run_python`. For a request about `df`, call\n'
                    '  `list_vars` first, then run only the transformation the user asked for.'),
@@ -545,6 +576,12 @@ RULES = (
                    '  commit message, a PR description, a message to a colleague -- read the `write_docs`\n'
                    '  skill. For narrative writing read `write_prose`, and for the design a codebase is\n'
                    '  derived from, `theory`.'),
+    (None, 'Before bulk work on an uncertain task, state the question, the smallest experiment that answers\n'
+           '  it, and what counts as success; run one pilot first, and report “it ran” apart from “the output is right”.'),
+    ('environment', 'This kernel, the project venv and bare `python` can be three interpreters; `environment`\n'
+                    '  lists them, and `run_shell` needs the one you mean.'),
+    ('delegate_search', 'A sub-agent’s report is a hypothesis until a tool result of your own confirms the facts your\n'
+                        '  next step rests on. Verify those and only those.'),
     ('delegate_parallel', 'When two or more questions are independent and each would take several tool calls,\n'
                           '  send them together with `delegate_parallel` rather than working through them yourself.'),
     ('watch_folder', '`watch_folder` is for work happening beside this conversation: another agent editing\n'
@@ -575,7 +612,7 @@ def work_rules(names=()):
     return '\n'.join(f'- {text}' for tool, text in RULES if not names or tool is None or tool in names)
 
 
-def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=()):
+def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=(), cfg=None):
     "The agent's briefing: what it is, where it is, how to work, and what it knows."
     names = {getattr(t, '__name__', '') for t in tools or ()}
     roots = '\n'.join(f'  {r}' for r in host.roots) or '  (no folder open)'
@@ -589,8 +626,10 @@ def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=()):
             '\n- To *look at* live state, prefer `inspect_python`: neither of its scopes can change\n'
             '  what the user made, so it needs no approval. Start with the default sandbox and pass\n'
             f"  `scope='overlay'` when it refuses a library call you need.{conc}")
+    env = getattr(host, 'environment', lambda: '')() if 'environment' in names or not names else ''
+    machine = f'\n\nOn this machine:\n{env}' if env else ''
     sp = f"""You are Ramabana, a coding agent. Follow the user's latest explicit request and the project instructions below. You are working in these folders:
-{roots}
+{roots}{machine}
 
 You can search the code index (this repo *and* every installed package), read and edit
 files, run commands in the project, run Python in the user's live kernel namespace, read
@@ -602,7 +641,7 @@ How to work:
     if idx: sp += idx
     for name in inline or ():
         if (s := find(skills, name)): sp += f'\n\n## {s.name}\n\n{s.text()}'
-    sp += project_context(host)
+    sp += project_context(host, cfg=cfg)
     return sp + (f'\n\n{extra}' if extra else '')
 
 # %% ../nbs/03_agent.ipynb #8eff0a57
@@ -852,6 +891,7 @@ class Agent:
                  on_activity=None,
                  history_name='agent',      # separate durable conversations can share one config dir
                  poll_every=POLL_EVERY,     # seconds between automatic watch polls; 0 never polls
+                 verify='',                 # the project's check; empty reads `[tool.ramabana] verify`
                  instruction_style='ramabana'): # 'ramabana' | 'aai' compatibility profile
         self.host, self.cfg, self.inline_skills = host, cfg, inline_skills
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
@@ -862,7 +902,8 @@ class Agent:
         self.current_branch_id, self.checkpoints, self._branch_hist = 'main', {}, {}
         self.routing = routing or Routing(turn=model)
         if model: self.routing.set(model)
-        self.approvals, self.tool_max_len, self.subagents = approvals, tool_max_len, subagents
+        self.approvals, self.tool_max_len, self.subagents, self.verify = approvals, tool_max_len, subagents, verify
+        self._bg_done, self._session_started = [], False
         self.subagent_writes = bool(subagent_writes)
         self.readonly, self.readonly_calls = bool(readonly), readonly_calls
         self.local_multimodal = bool(local_multimodal)
@@ -893,7 +934,8 @@ class Agent:
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self._monitor_thread = None
         # the folders something *else* is changing. Reviews run on the sub-agent model, read-only
-        self.monitors = Monitors(host, get_backend=lambda: self._be_or_none('subagent'), get_tools=self._sub_plain)
+        self.monitors = Monitors(host, get_backend=lambda: self._be_or_none('subagent'), get_tools=self._sub_plain, log_dir=lambda: self.runs_dir)
+        self._panes = {}
         self.lock = threading.Lock()
 
 # %% ../nbs/03_agent.ipynb #8f4741e8
@@ -972,10 +1014,20 @@ def _record(self:Agent, f):
         if self.max_tool_calls is not None and self._tool_calls_turn > self.max_tool_calls:
             return ('Tool-call budget exhausted for this turn. Stop calling tools and '
                     'summarise the evidence and unfinished work now.')
+        denied, rewritten = None, False
+        for r in self.registry.fire('before_tool', self, name, args):
+            if isinstance(r, str): denied = denied or r
+            elif isinstance(r, dict): a, kw, args, rewritten = (), dict(r), _named(f, (), dict(r)), True
+        if rewritten and is_write(f) and self.approvals is not None and not (ask := self.approvals.request(name, args)).approved:
+            denied = denied or ask.reply()
         self.calls.append((name, args))
         meta = self._action_meta(name, args)
         act = self.activity.start(name, args, summary=summarise(f, args), **meta)
-        self.registry.fire('before_tool', self, name, args)
+        run = current_run()
+        if run is not None: run.write(f'> {act.summary}')
+        if denied:
+            self.activity.finish(act, denied, ok=False)
+            return err(denied)
         if is_write(f):   # first touch only: later edits are part of one change
             if (p := args.get('path')):
                 if p not in self.before: self.before[p] = self.host.text_at(p) or ''
@@ -993,8 +1045,10 @@ def _record(self:Agent, f):
         finally:
             if nested: self._delegating.pop()
             if shelled: self.settle_tree()
+        for r in self.registry.fire('after_tool', self, name, out):
+            if isinstance(r, str): out = r
         self.activity.finish(act, out, ok=not failed(out))   # one spelling of failure, in one place
-        self.registry.fire('after_tool', self, name, out)
+        if run is not None: run.write(f"< {name} {'ok' if not failed(out) else 'ERR'} {_1(out, 200)}")
         return out
     return wrapper
 
@@ -1033,13 +1087,14 @@ def _catalog_for(self:Agent, budget, full=True):
     key = (budget.tool_max, tuple(budget.drop), bool(full))
     if key not in self._catalogs:
         extra = list(self.registry.tools)
+        if 'memory' not in self.host.provides: extra += note_tools(self.note_memory)
         if full:
             if self.subagents:
                 extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
                                         lambda: self.skills, self._cloud_backend_or_none,
                                         lambda: self.subagent_writes,
                                         lambda: self.approvals.gate if self.approvals is not None else None,
-                                        background=self.background)
+                                        background=self.background, get_log_dir=lambda: self.runs_dir)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
             extra += monitor_tools(lambda: self.monitors, mx=budget.tool_max)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
@@ -1072,9 +1127,20 @@ def _sub_plain(self:Agent):
 # %% ../nbs/03_agent.ipynb #76e57894
 @patch(as_prop=True)
 def background(self:Agent):
-    "The register async delegations run in, built on first use."
-    if getattr(self, '_background', None) is None: self._background = Background()
+    "The register async delegations run in, built on first use; finished answers wait in `_bg_done` for the next turn."
+    if getattr(self, '_background', None) is None:
+        def done(run, ans):
+            with self._background.lock: self._bg_done.append((run, ans))
+        self._background = Background(on_done=done)
     return self._background
+
+@patch
+def background_notice(self:Agent):
+    "What background delegations answered since the last turn, as one notice, or ''."
+    with self.background.lock: done, self._bg_done = self._bg_done, []
+    if not done: return ''
+    return '\n\n<background-results>\n' + '\n\n'.join(f'## {r.id} ({r.state}): {r.question}\n{a}' for r, a in done) + '\n</background-results>'
+
 
 # %% ../nbs/03_agent.ipynb #d598e329
 @patch(as_prop=True)
@@ -1097,18 +1163,51 @@ def system_prompt(self:Agent):
     if self._tools is None: self.tools
     # a skill body is 3k tokens of a 12k budget, and `read_skill` still reaches it
     inline = self.inline_skills if self.budget.inline else ()
-    extra = ''
+    parts = []
+    if self.subagents and 'delegate_async' in {getattr(t, '__name__', '') for t in self._plain}:
+        parts.append('Sub-agents may write, run commands and run Python, behind this session’s approvals.'
+                     if self.subagent_writes else
+                     'Sub-agents are read-only this session: `delegate_async(writes=True)` is refused until the user runs `/subagents on`.')
+    if (m := self.memory_context('briefing', MEMORY_CHARS)): parts.append(f'## Remembered\n\n{m}')
+    if (s := self.spec_or_none('turn')) is not None and (s.runtime == 'claude' or 'claude' in s.model_id): parts.append(CLAUDE_NOTES)
     if self.plan:
-        extra = ('## Current plan\n\n' + self.plan.md() +
-                 '\n\nWork the active todo; mark it done when finished; after a stop, '
-                 'resume from the active item rather than rewriting the plan.')
-    return system_prompt(self.host, self.skills, inline, tools=self._plain, extra=extra)
+        parts.append('## Current plan\n\n' + self.plan.md() +
+                     '\n\nWork the active todo; mark it done when finished; after a stop, '
+                     'resume from the active item rather than rewriting the plan.')
+    return system_prompt(self.host, self.skills, inline, tools=self._plain, extra='\n\n'.join(parts), cfg=self.cfg)
 
 # %% ../nbs/03_agent.ipynb #bf85c66d
+MEMORY_CHARS = 4000
+
+@patch(as_prop=True)
+def memory_path(self:Agent):
+    "`<cfg>/memory/<root hash>/MEMORY.md`: this project's notes, kept without a vault."
+    if self.cfg is None or not self.host.roots: return None
+    return self.cfg/'memory'/hashlib.sha1(str(self.host.roots[0]).encode()).hexdigest()[:12]/'MEMORY.md'
+
 @patch
-def memory_context(self:Agent, surface, max_chars=6000):
-    "Durable user notes for one model surface. Nothing here; an embedder with a vault overrides it."
-    return ''
+def note_memory(self:Agent, text):
+    "Append one line to the project's memory file."
+    p = self.memory_path
+    if p is None: return 'no config directory to remember into'
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open('a') as f: f.write(f'- {text.strip()}\n')
+    return f'remembered in {p}'
+
+@patch
+def memory_context(self:Agent, surface, max_chars=MEMORY_CHARS):
+    "The project's memory file, its tail when long. An embedder with a vault overrides it."
+    p = getattr(self, 'memory_path', None)
+    return p.read_text()[-max_chars:] if p is not None and p.exists() else ''
+
+def note_tools(note):
+    "The memory tool a host without a vault still gets."
+    @writes
+    @summary(lambda a: f'Remember: {_1(a.get("text"), 80)}')
+    def remember_note(text: str) -> str:
+        "Save one line to this project's memory file, read into every later briefing here."
+        return note(text)
+    return [remember_note]
 
 # %% ../nbs/03_agent.ipynb #00efc09f
 @patch
@@ -1339,6 +1438,37 @@ def changes(self:Agent):
         if now is not None and now != was: out[p] = (was, now)
     return out
 
+# %% ../nbs/03_agent.ipynb #d6948ac4
+@patch
+def changed_line(self:Agent):
+    "One line for the turn's writes: `changed: a.py (+3 -1), b.py`."
+    def pm(b, a):
+        d = [l[0] for l in list(difflib.unified_diff(b.splitlines(), a.splitlines(), lineterm='', n=0))[2:] if l[0] in '+-']
+        return f"+{d.count('+')} -{d.count('-')}"
+    ch = self.changes()
+    return 'changed: ' + ', '.join(f'{Path(p).name} ({pm(b, a)})' for p, (b, a) in ch.items()) if ch else ''
+
+@patch
+def verify_command(self:Agent):
+    "The project's check: `self.verify`, else `[tool.ramabana] verify` in the first root's pyproject."
+    if self.verify: return self.verify
+    try: return tomllib.loads(self.host.read(str(Path(self.host.roots[0])/'pyproject.toml')) or '').get('tool', {}).get('ramabana', {}).get('verify', '')
+    except Exception: return ''
+
+@patch
+def _verified(self:Agent):
+    "Whether a `run_shell` ran after this turn's last file write."
+    names = [a.tool for a in self.activity.acts if a.turn_id == self.current_turn_id]
+    last = max((i for i, n in enumerate(names) if n in WRITE_TOOLS and n != 'run_shell'), default=-1)
+    return 'run_shell' in names[last + 1:]
+
+@patch
+def _verify(self:Agent, cmd):
+    "Run the project's check through the gate and the shell tool, and report its tail."
+    if self.approvals is not None and not self.approvals.request('run_shell', {'command': cmd}).answer: return f'verify ({cmd}): not run, approval refused'
+    if (tool := self._tool('run_shell')) is None: return f'verify ({cmd}): no shell tool here'
+    return f'verify ({cmd}): ' + '\n'.join(tool(cmd).splitlines()[-6:])
+
 # %% ../nbs/03_agent.ipynb #bcfee858
 @patch(as_prop=True)
 def backend(self:Agent): return self._be('turn')
@@ -1531,6 +1661,9 @@ def _prepare(self:Agent, prompt):
     self.checkpoints[self.current_turn_id] = {'before': self._be('turn').snapshot_hist(),
                                               'branch_id': self.current_branch_id}
     for old in list(self.checkpoints)[:-MAX_CHECKPOINTS]: self.checkpoints.pop(old, None)
+    if not self._session_started:
+        self._session_started = True
+        self.registry.fire('session_start', self)
     self.registry.fire('before_turn', self, prompt)
     self.poll_watches()
     reviews = self.monitors.drain()   # what a watched folder produced since the last turn
@@ -1562,6 +1695,7 @@ def _prepare(self:Agent, prompt):
         except Exception as e: evidence = f'{name} failed: {agent_err(e)}'
         outgoing = _append(outgoing, f'\n\n<preflight-tool name="{name}">\n{evidence}\n</preflight-tool>')
     if reviews: outgoing = _append(outgoing, review_notice(reviews))
+    if (done := self.background_notice()): outgoing = _append(outgoing, done)
     # what the beat found while no session was running. Read once, under this session's id
     if (left := self.beat_drain()): outgoing = _append(outgoing, beat_notice(left))
     for skill in loaded:
@@ -1678,10 +1812,51 @@ def _finish(self:Agent, text, prompt=''):
     turn_use.model = b.use.model or b.spec.model_id   # the foreground model is the label
     self.turn_use = turn_use
     self.use = self.use + turn_use
+    if self.changes() and (cmd := self.verify_command()) and not self._verified(): text += '\n\n' + self._verify(cmd)
+    self._checkpoint()
+    if (run := self.run()) is not None: run.write(f'reply: {_1(text, 2000)}')
+    self.registry.fire('stop', self, text)
     self.registry.fire('after_turn', self, text)
     if self.current_turn_id in self.checkpoints: self.checkpoints[self.current_turn_id]['after'] = b.snapshot_hist()
     self._remember(prompt, text)
     return text
+
+# %% ../nbs/03_agent.ipynb #10069f98
+CHECKPOINT_BYTES = 2_000_000
+
+@patch(as_prop=True)
+def checkpoint_dir(self:Agent):
+    "`<cfg>/checkpoints/<session>`, or None without a config dir."
+    return None if self.cfg is None else self.cfg/'checkpoints'/self.session_id
+
+@patch
+def _checkpoint(self:Agent):
+    "Keep this turn's pre-write texts on disk, dropping the oldest turns past `CHECKPOINT_BYTES`."
+    d = self.checkpoint_dir
+    if d is None or not self.before: return
+    d.mkdir(parents=True, exist_ok=True)
+    (d/f'{self.current_turn_id}.json').write_text(json.dumps(self.before))
+    files = sorted(d.glob('*.json'), key=lambda p: p.stat().st_mtime)
+    while len(files) > 1 and sum(p.stat().st_size for p in files) > CHECKPOINT_BYTES: files.pop(0).unlink()
+
+@patch
+def rewind(self:Agent, turn_id='', what='both'):
+    "Put files, chat or both back to before `turn_id`, the last turn when empty. One approval covers the batch of files."
+    turn_id = str(turn_id or (self.history[-1]['turn_id'] if self.history else self.current_turn_id))
+    out, d = [], self.checkpoint_dir
+    if what in ('files', 'both'):
+        f = d/f'{turn_id}.json' if d is not None else None
+        snap = json.loads(f.read_text()) if f is not None and f.exists() else {}
+        if not snap: out.append(f'no file checkpoint for {turn_id}')
+        elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap)}, force=True).answer: out.append('rewind refused')
+        else:
+            for p, text in snap.items(): self.host.write(p, text)
+            made = [p for p, t in snap.items() if not t]
+            out.append(f'restored {len(snap)} file(s) to before {turn_id}' + (f'; {len(made)} created that turn are empty, not removed' if made else ''))
+    if what in ('chat', 'both'):
+        try: out.append(f"chat on branch {self.undo_turn(turn_id)['branch_id']}, before {turn_id}")
+        except Exception as e: out.append(agent_err(e))
+    return '; '.join(out)
 
 # %% ../nbs/03_agent.ipynb #32a8d985
 @patch
@@ -1764,6 +1939,7 @@ def close(self:Agent):
         try: b.close()
         except Exception: pass
     self._backends.clear()
+    self.host.close()
 
 # %% ../nbs/03_agent.ipynb #4c0be3cb
 @patch
@@ -2002,6 +2178,7 @@ def problems(self:Agent):
         for p in b.problems:
             if p not in out: out.append(p)
     if (n := self.compactor.note).startswith('compaction') and n not in out: out.append(n)
+    if self.approvals is not None and self.approvals.problem: out.append(self.approvals.problem)
     return out[-10:]
 
 # %% ../nbs/03_agent.ipynb #e4a37efe
@@ -2029,6 +2206,54 @@ def status(self:Agent):
             'approval': (self.approvals.pending.dict() if self.approvals is not None
                          and self.approvals.pending is not None else None),
             'calls': [{'tool': t, 'args': str(a)[:300]} for t, a in self.calls[-40:]]}
+
+# %% ../nbs/03_agent.ipynb #0795cbf0
+COMMIT_SP = r'Write the git commit message for this diff: a subject line under 60 characters, a blank line, then one or two plain sentences. Output only the message.'
+PR_SP = r'Write a pull request title and body for these commits: the title on the first line, a blank line, then the body in plain sentences. Output only that.'
+
+@patch
+def _tool(self:Agent, name):
+    "One of this session's tools by name, or None."
+    return next((t for t in self.tools if getattr(t, '__name__', '') == name), None)
+
+@patch
+def commit(self:Agent, message=''):
+    "Commit the index, or every changed tracked file when it is empty, drafting the message on the one-shot model when none is given."
+    from gheasy.repo import GitRepo
+    diff, log, commit = self._tool('git_diff'), self._tool('git_log'), self._tool('git_commit')
+    if commit is None: return 'no git tools here'
+    staged, d = True, diff(staged=True)
+    if d.strip() == '(no changes)': staged, d = False, diff()
+    if failed(d): return d
+    if d.strip() == '(no changes)': return 'nothing to commit'
+    msg = message.strip() or self.oneshot(f'{clip(d, 12000)}\n\nRecent commits:\n{log(5)}', COMMIT_SP).strip()
+    if not msg: return 'no message was drafted; say /commit MESSAGE'
+    paths = '' if staged else ' '.join(ch['path'] for ch in GitRepo.at(self.host.roots[0]).info()['changes'] if ch['worktree'] not in ' ?')
+    if self.approvals is not None and not self.approvals.request('git_commit', {'message': msg, 'paths': paths}, force=True).answer: return 'commit refused'
+    return commit(msg, paths)
+
+@patch
+def pull_request(self:Agent, title=''):
+    "Open a pull request for the commits ahead of the default branch, drafting title and body when `title` is empty; prints the `gh` command when GitHub is out of reach."
+    import shlex
+    from gheasy.repo import GitRepo
+    from gheasy.core import gh_api, gh_token
+    r = GitRepo.at(self.host.roots[0])
+    info = r.info()
+    base, branch = next((b['name'].split('/')[-1] for b in info['branches'] if b['default']), 'main'), info['branch']
+    try: rows = r.history(limit=50, ref=f'origin/{base}..HEAD')
+    except Exception: rows = r.history(limit=50, ref=f'{base}..HEAD')
+    if not rows: return f'nothing ahead of {base}'
+    subjects = '\n'.join(f"- {c['subject']}" for c in rows)
+    t, _, body = (title.strip() or self.oneshot(subjects, PR_SP).strip()).partition('\n')
+    body = body.strip() or subjects
+    if self.approvals is not None and not self.approvals.request('pull_request', {'title': t, 'base': base, 'head': branch}, force=True).answer: return 'pull request refused'
+    try:
+        if not r.info()['upstream']: r.push(publish=True)
+        return gh_api(token=gh_token(), path=str(r.root))[2].pulls.create(title=t, head=branch, base=base, body=body)['html_url']
+    except Exception as e:
+        return (f'GitHub is out of reach ({agent_err(e)}); run:\n'
+                f'gh pr create --base {base} --head {branch} --title {shlex.quote(t)} --body {shlex.quote(body)}')
 
 # %% ../nbs/03_agent.ipynb #946ac7cd
 @patch
@@ -2100,6 +2325,18 @@ def command(self:Agent, line):
         try: self.plan.add(arg)
         except Exception as e: return agent_err(e)
         self._save_plan(); return self.plan.md()
+    if name == 'rewind':
+        t, _, w = arg.partition(' ')
+        if t in ('files', 'chat', 'both'): t, w = '', t
+        return self.rewind(t, w.strip() or 'both')
+    if name == 'branches':
+        return '\n'.join(f"{'*' if b['branch_id'] == self.current_branch_id else ' '} {b['branch_id']:<16} from {b['parent_branch_id'] or '-'}@{b['parent_turn_id'] or '-'}" for b in self.branches())
+    if name == 'branch':
+        if not arg: return self.current_branch_id
+        try: return f"on {self.switch_branch(arg)['branch_id']}"
+        except Exception as e: return agent_err(e)
+    if name == 'commit': return self.commit(arg)
+    if name == 'pr': return self.pull_request(arg)
     if name in self.registry.commands:
         fn, _ = self.registry.commands[name]
         try: return fn(self, arg)
@@ -2120,7 +2357,7 @@ def _stream_chunk(out, chunk):
 @patch
 def run(self:Agent, run_id=''):
     "Find a registered run, or the foreground root when `run_id` is empty."
-    roots = list(_run_store(self).values())
+    roots = list(_run_store(self).values()) + self._side_runs()
     if not run_id: run_id = self._foreground
     def walk(r):
         if r.id == run_id:return r
@@ -2133,7 +2370,9 @@ def _new_run(self:Agent, prompt):
     with self._runs_lock:
         current = self.run()
         if current is not None and not current.terminal: raise RuntimeError('the assistant is already running')
-        r = Run(f'run_{uuid.uuid4().hex[:12]}', question=str(prompt), model=self.model.name, grace=self.cancel_grace)
+        rid, d = f'run_{uuid.uuid4().hex[:12]}', self.runs_dir
+        r = Run(rid, question=str(prompt), model=self.model.name, grace=self.cancel_grace, log=None if d is None else d/f'{rid}.log')
+        r.write(f'question: {prompt}')
         self._runs[r.id], self._foreground = r, r.id
         for old in list(self._runs)[:-100]: self._runs.pop(old, None)
         return r
@@ -2250,7 +2489,62 @@ def command(self:Agent, line):
     name, _, arg = raw.partition(' ')
     if name == 'stop': return json.dumps(self.cancel(arg.strip()), ensure_ascii=False)
     if name == 'runs': return json.dumps(self.runs(active=arg.strip() != 'all'), ensure_ascii=False)
+    if name == 'tell': return self.tell(*arg.partition(' ')[::2])
+    if name == 'watch': return self.watch(arg.strip())
+    if name == 'unwatch': return self.unwatch(arg.strip() or 'all')
     return _agent_command(self, line)
+
+
+# %% ../nbs/03_agent.ipynb #587e3b99
+@patch(as_prop=True)
+def runs_dir(self:Agent):
+    "`<cfg>/runs/<session>`: one transcript per run plus `monitors.log`, or None without a config dir."
+    return None if self.cfg is None else self.cfg/'runs'/self.session_id
+
+@patch
+def _side_runs(self:Agent):
+    "Runs that are not foreground roots: background delegations and monitor reviews."
+    bg, out = getattr(self, '_background', None), []
+    if bg is not None:
+        with bg.lock: out += list(bg.runs.values())
+    with self.monitors.lock: return out + list(self.monitors.runs.values())
+
+@patch
+def tell(self:Agent, run_id, text=''):
+    "Queue `text` for the sub-agent working `run_id`; it reads it after its next tool call or reply."
+    if (r := self.run(run_id)) is None: return f'no run named {run_id!r}'
+    if r.terminal: return f'{run_id} finished ({r.state}); nothing is listening'
+    if not text.strip(): return 'nothing to say'
+    r.tell(text)
+    return f'told {run_id}'
+
+def _tail(log): return f'tail -n 200 -f {shlex.quote(str(log))}'
+
+@patch
+def watch(self:Agent, target=''):
+    "Open a pane tailing a run's transcript or `monitors`; with no target, list what can be watched."
+    if not target:
+        rows = [f"{r['id']}  {r['state']:10} {r['question'][:50]}  {r.get('log') or ''}"
+                for r in self.runs(active=True) + [r.dict() for r in self._side_runs() if not r.terminal]]
+        rows += [f'{w.id}  watching   {w.folder}  {w.reviews} review(s)' for w in self.monitors.all()]
+        return '\n'.join(rows) or 'nothing is running or watched'
+    log = self.monitors.log if target == 'monitors' else getattr(self.run(target), 'log', None)
+    if log is None: return f'nothing to watch for {target!r}'
+    log.parent.mkdir(parents=True, exist_ok=True); log.touch()
+    if target in self._panes: return f'already watching {target} in pane {self._panes[target]}'
+    try: self._panes[target] = self.host.open_pane(_tail(log), title=target)
+    except Exception: return f'no tmux here; in another terminal run: {_tail(log)}'
+    return f'watching {target} in pane {self._panes[target]}'
+
+@patch
+def unwatch(self:Agent, target='all'):
+    "Close the pane on `target`, or every pane."
+    closed = []
+    for k in (list(self._panes) if target == 'all' else [target]):
+        if k not in self._panes: continue
+        try: self.host.close_pane(self._panes.pop(k)); closed.append(k)
+        except Exception: pass
+    return f"closed {', '.join(closed)}" if closed else 'nothing was being watched'
 
 
 # %% ../nbs/03_agent.ipynb #6eac79b9
@@ -2258,7 +2552,7 @@ def command(self:Agent, line):
 def commands(self:Agent):
     "Every command name, built-in and registered, for a help line or an autocomplete."
     return sorted({'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
-                   'subagents', 'plan', 'todos', 'todo', *self.registry.commands})
+                   'subagents', 'plan', 'todos', 'todo', 'rewind', 'branches', 'branch', 'commit', 'pr', *self.registry.commands})
 
 # %% ../nbs/03_agent.ipynb #8fd374fe
 COMPLETE_SP = """You are a code completion engine inside an editor. You are given the code before \
@@ -2412,12 +2706,13 @@ def _record(self:Agent, f):
 _agent_commands_runs, _agent_close_runs = Agent.commands, Agent.close
 
 @patch
-def commands(self:Agent): return sorted(set(_agent_commands_runs(self)) | {'stop', 'runs'})
+def commands(self:Agent): return sorted(set(_agent_commands_runs(self)) | {'stop', 'runs', 'tell', 'watch', 'unwatch'})
 
 @patch
 def close(self:Agent):
     "Cancel active runs before closing their backends."
     backends = list(self._backends.values())
+    self.unwatch('all')
     if getattr(self, '_background', None) is not None: self._background.close()
     if self.approvals is not None: self.approvals.close()
     for row in self.runs(active=True): self.cancel(row['id'])

@@ -8,6 +8,7 @@ exercises by hand.
 The PII tests stay granular where merging them would make a failure ambiguous. Everything else in
 this file is one scenario per contract; a security gate is the wrong place to save a line.
 """
+import sys
 import time
 from pathlib import Path
 
@@ -287,14 +288,11 @@ def test_titled_names_gate_only_when_asked_for(tmp_path):
 
 @pytest.fixture
 def own_vault(tmp_path, monkeypatch):
-    """`mk_host` names no vault file, so a `--vault` session opens the shared `~/.vishalakshi` one.
-
-    That is right for a session and wrong for a test, which would write its invoice into whatever
-    the person running it keeps there. Moving `HOME` is what keeps the two apart.
-    """
+    "A private `HOME` keeps the test out of `~/.vishalakshi`; `VIRTUAL_ENV` points litesearch at this venv's usearch."
     home = tmp_path/'home'
     home.mkdir()
     monkeypatch.setenv('HOME', str(home))
+    monkeypatch.setenv('VIRTUAL_ENV', sys.prefix)
     monkeypatch.setattr(Path, 'home', staticmethod(lambda: home))
     return tmp_path
 

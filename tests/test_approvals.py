@@ -36,8 +36,8 @@ def test_the_gate_draws_its_line_around_the_write_tools_and_answers_as_a_bool():
     """
     from ramabana.tools import GIT_READ_TOOLS, GIT_WRITE_TOOLS
     assert {'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell', 'run_python',
-            'run_shell', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add',
-            'cart_remove', 'add_root'} | GIT_WRITE_TOOLS == set(WRITE_TOOLS)
+            'run_shell', 'run_shell_bg', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add',
+            'cart_remove', 'add_root', 'remember_note'} | GIT_WRITE_TOOLS == set(WRITE_TOOLS)
     assert not (set(GIT_READ_TOOLS) & set(WRITE_TOOLS)), 'rehearsing a merge is not approving one'
 
     ap = agent.Approvals(tools={'edit_file'}, mode='auto')

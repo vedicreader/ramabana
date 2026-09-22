@@ -11,15 +11,16 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEM
            'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE',
            'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS',
            'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'APPROVE_MODES', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS', 'code_theme', 'code_bg', 'set_theme',
-           'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
-           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size',
-           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
-           'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'ThemedCode', 'Reply', 'compact_md', 'mk_host',
-           'mk_agent', 'amain', 'ask_once', 'main']
+           'BELL_IDLE', 'APPROVE_MODES', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'code_theme',
+           'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths',
+           'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics',
+           'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment',
+           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'ask_pattern', 'ThemedCode', 'Reply',
+           'compact_md', 'mk_host', 'mk_agent', 'amain', 'headless_prompt', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
+import json as _json
 from base64 import b64encode
 from dataclasses import dataclass
 from importlib.util import find_spec
@@ -40,9 +41,11 @@ from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
 from .core import PII_MODES, PII_OFF, accepts, agent_err, env, model_note
 from shalya.tools import media_dir, save_media
-from .agent import Agent, Approvals, answer_md
+from .agent import Agent, Approvals, answer_md, EDIT_GROUPS, subject
 from datetime import datetime
 from . import __version__
+from shalya.tools import group_of
+
 
 # %% ../nbs/05_cli.ipynb #05b4d036
 def _patch_teleprint_frame():
@@ -241,9 +244,10 @@ timeline  a turn reads top to bottom · ┆ narration · │ a call · the answe
 transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
 edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
 media   drop or paste a path to attach · @path in a prompt · /attach PATH · /detach [N] · ctrl+v or /paste clipboard image
+memory  #note TEXT keeps a line for later sessions · /SKILL ARGS runs a skill or a <cfg>/commands file as a prompt
 copy    select with the mouse as in any scrollback · /copy the last reply · /copy turn for all of it · ctrl+r then y for any block
-approve y approve · n refuse · a approve all · ctrl+y approve with a note · or type a reason and press enter to refuse
-          ctrl+g asks for more · /approve off|ask|auto asks for less
+approve y approve · n refuse · a approve all · ctrl+y approve with a note · A always allow this · or type a reason and press enter to refuse
+          ctrl+g asks for more · /approve off|ask|edits|auto asks for less
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
@@ -659,6 +663,8 @@ async def run_turn(ui, prompt):
         ui.show_media(ui.agent.resp_media)   # the tools' own pictures were drawn as they landed
         for p in ui.agent.problems: ui.say(Text(p), 'error')
         ui.agent.clear_problems()
+        if (ch := ui.agent.changed_line()): ui.say(Text(ch), 'note', fold=None)
+        ui.ring()
         ui.touch(now=True)
         ui.paint()
     if blk is not None and ui._reply: ui.log_cell('**assistant**\n\n' + ui._reply, cell_type='markdown')
@@ -715,6 +721,7 @@ class Ui:
         self.complete = None        # slash-command `CompletionMenu`, or None
         self.show_plan = bool(agent.plan)  # plan tooltip above the tail
         self.mouse = False         # whether the main screen takes the mouse. `/mouse` toggles it
+        self.bell, self._key_at = True, time.monotonic()
         self._stop_at, self._stop_count, self._stop_run = 0., 0, ''
         self.transcript = TranscriptView(comp, self.tail)
         self._compact_until = 0.0
@@ -1100,6 +1107,7 @@ class Ui:
         self.buf.clear()
         title = Text(ask.summary, style=f"bold {GRUVBOX['yellow']}")
         self.say(title + Text('\n\n') + Text(ask.preview, style=GRUVBOX['fg1']), 'ask', fold=None)
+        self.ring()
         self.paint()
 
     def on_answer(self, ask):
@@ -1290,8 +1298,10 @@ class Ui:
         if name == '/copy': return self.note(self.copy_last(arg))
         if name == '/mouse': return self.note(self.set_mouse(arg))
         if name == '/approve': return self.note(self.approve_mode(arg))
+        if name == '#note': return self.note(self.note_memory(arg))
         if line.startswith('/'):
             out = self.agent.command(line)
+            if out is None and (body := self.skill_command(name[1:], arg)) is not None: return self._turn(body)
             kind = 'plan' if name in ('/plan', '/todo', '/todos') and out is not None else (
                 'note' if out is not None else 'error')
             self.say(Text(out) if out is not None else Text(f'unknown command: {line}'),
@@ -1304,6 +1314,7 @@ class Ui:
 
     def on_key(self, k):
         "One keystroke. Returns a coroutine to spawn, `'quit'`, or None."
+        self._key_at = time.monotonic()
         if self.mode == 'python' and self.ask is None and not self.buf.text.lstrip().startswith('/'):
             if (k.name == 'tab' and self.complete is None and self.turn is None
                     and self.buf.text): return self.complete_python()
@@ -1348,6 +1359,7 @@ class Ui:
             bare = not self.buf.text.strip()
             if bare and k.name in ('y', 'Y'):     self.answer(True)
             elif bare and k.name in ('n', 'N'):   self.answer(False)
+            elif bare and k.name == 'A' and self.always_allow(): pass
             elif bare and k.name in ('a', 'A'):   self.answer(True, session=True)
             elif k.name == 'enter':               self.answer(False)   # a typed reason is a refusal
             elif k.name == 'ctrl+y':              self.answer(True)    # ...unless approved with it as guidance
@@ -1415,6 +1427,38 @@ class Ui:
             if time.monotonic() - self._painted_at >= STREAM_EVERY: self.flush_stream()
         return self._seg_blk
 
+# %% ../nbs/05_cli.ipynb #7f8df93c
+BELL_IDLE = 5   # seconds without a keystroke before a turn's end or an approval rings
+
+def ask_pattern(ask):
+    "What an approval rule would match for this request."
+    return subject(ask.tool, ask.args)
+
+@patch
+def ring(self:Ui):
+    "Ring the terminal bell, when it is on and nobody has typed for `BELL_IDLE` seconds."
+    if self.bell and time.monotonic() - self._key_at > BELL_IDLE: self.comp.tty.write('\a')
+
+@patch
+def always_allow(self:Ui):
+    "Keep the pending request's pattern as always allowed and approve it. False when nothing is pending."
+    if self.agent.approvals is None or self.ask is None: return False
+    self.note(self.agent.approvals.always(self.ask.tool, ask_pattern(self.ask)))
+    self.answer(True)
+    return True
+
+@patch
+def note_memory(self:Ui, text):
+    "`#note TEXT`: keep a line for later sessions."
+    return self.agent.note_memory(text) if text else 'usage: #note TEXT'
+
+@patch
+def skill_command(self:Ui, name, arg=''):
+    "The prompt a `/name ARGS` line stands for: the line itself for a skill, a `<cfg>/commands/name.md` body with `$ARGUMENTS` filled in, or None."
+    if name.lower() in {s.name.lower() for s in self.agent.skills}: return f'/{name} {arg}'.strip()
+    f = self.agent.cfg/'commands'/f'{name}.md' if self.agent.cfg else None
+    return f.read_text().replace('$ARGUMENTS', arg).strip() if f and f.is_file() else None
+
 # %% ../nbs/05_cli.ipynb #64a54061
 @patch
 def show_pic(self:Ui, path):
@@ -1466,18 +1510,19 @@ def place_pics(self:Ui):
     comp.tty.write(''.join(out) + f'\x1b[{r + 1};{c + 1}H')
 
 # %% ../nbs/05_cli.ipynb #3c9fb61c
-APPROVE_MODES = ('off', 'ask', 'auto')   #: strictest first, which is the order `ctrl+g` walks
+APPROVE_MODES = ('off', 'ask', 'edits', 'auto')   #: strictest first, which is the order `ctrl+g` walks
 
 def _settle(approvals, mode):
     "Answer whatever was already waiting. A new policy that left it hanging would not be the policy."
     a = approvals.pending
-    if a is None or mode == 'ask': return ''
-    approvals.answer(a.id, mode == 'auto', f'answered by /approve {mode}')
-    return f' · {"approved" if mode == "auto" else "refused"} what was waiting'
+    if a is None or mode == 'ask' or (mode == 'edits' and group_of(a.tool) not in EDIT_GROUPS): return ''
+    ok = mode != 'off'
+    approvals.answer(a.id, ok, f'answered by /approve {mode}')
+    return f' · {"approved" if ok else "refused"} what was waiting'
 
 @patch
 def approve_mode(self:Ui, want=''):
-    "`/approve [off|ask|auto]`, or the current mode when `want` is empty."
+    "`/approve [off|ask|edits|auto]`, or the current mode when `want` is empty."
     a = self.agent.approvals
     if a is None: return 'this session runs without approvals'
     want = str(want or '').strip().lower()
@@ -1871,7 +1916,7 @@ def mk_host(roots=('.',),
 
 def mk_agent(roots=('.',),
              model=None,
-             approve='ask',           # ask | auto | off | none (gate nothing at all)
+             approve='ask',           # ask | edits | auto | off | none (gate nothing at all)
              web=True,                # wire the web tools to fossick
              vault=False,             # keep what is read in a vishalakshi vault, for the next session
              spec=False,              # let the agent load OpenAPI/Azure/GCP specifications
@@ -1881,7 +1926,7 @@ def mk_agent(roots=('.',),
              host_kw=None,            # forwarded to `mk_host`: `index`, `warm`, `vault=<path>`
              **kw):                   # forwarded to `Agent`
     "A host over the named folders and an `Agent` over that, gated the way `approve` says."
-    approvals = None if approve == 'none' else Approvals(mode=approve)
+    approvals = None if approve == 'none' else Approvals(mode=approve, rules_path=cfg/'approvals.json' if (cfg := kw.get('cfg')) else None)
     host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec,
                    read_outside=read_outside, pii=pii, pii_ner=pii_ner, **(host_kw or {}))
     if approvals is not None: approvals.host = host   # the gate previews `create_file` via the host
@@ -1890,7 +1935,7 @@ def mk_agent(roots=('.',),
     return agent, host
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
-async def amain(agent, hint='', python=False, attach='', agent_proxy=False):
+async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True):
     "The tty loop: one terminal, one event loop, one place that owns the keyboard."
     tty = RealTty()
     tty.write('\x1b[?2004h')
@@ -1899,6 +1944,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False):
     try:
         comp = await Compositor(tty).start()
         ui = Ui(comp, agent, loop=asyncio.get_running_loop())
+        ui.bell = bell
         ui.hint = hint
         comp.on_task_error = lambda e, t: ui.say(Text(f'{t.get_name()} failed: {e!r}'), 'error')
         comp.spawn(ui.animate(), name='spinner')
@@ -1938,21 +1984,34 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False):
         if ui is not None and ui.kernel is not None: await ui.kernel.shutdown()
 
 # %% ../nbs/05_cli.ipynb #b6d74293
-def ask_once(agent, prompt):
+def headless_prompt(prompt):
+    "The one-shot prompt: the argument, or stdin when the argument is `-` or nothing was typed into a pipe."
+    if prompt == '-' or (not prompt and not sys.stdin.isatty()): return sys.stdin.read().strip()
+    return prompt
+
+def ask_once(agent, prompt, as_json=False):
     "One turn with no terminal at all, for a pipe or a script. Returns the exit code."
-    print(agent.ask(prompt))
+    from dataclasses import asdict
+    reply = agent.ask(prompt)
     ok, problems = agent.ready, list(agent.problems)
-    for p in problems: print(f'! {p}', file=sys.stderr)
+    if as_json:
+        print(_json.dumps(dict(reply=reply, usage=asdict(agent.use), changes=sorted(agent.changes()),
+                              activity=agent.activity.rows(), problems=problems, session=agent.session_id), default=str))
+    else:
+        print(reply)
+        for p in problems: print(f'! {p}', file=sys.stderr)
     agent.close()
     return 0 if ok else 1
 
 # %% ../nbs/05_cli.ipynb #ce629efa
+TMUX_MODES = {'auto': None, 'on': True, 'off': False}
+
 @call_parse(pos=['prompt'])
 def main(
     prompt: str = '',                    # one turn and exit. Omit for the interactive session
     root: str = '.',                     # folders it may read and write, comma separated: .,~/notes,/srv/app
     model: str = None,                   # the turn model. The routing default when omitted
-    approve: str = 'ask',                # ask | auto | off | none (gate nothing at all)
+    approve: str = 'ask',                # ask | edits | auto | off | none (gate nothing at all)
     web: bool = True,                    # --no-web takes the network away from the web tools (fossick)
     read_outside: bool = False,          # widen reads to any path. Writing still needs the folder in --root
     subagent_writes: bool = False,       # let delegated sub-agents write, run commands and run Python too
@@ -1969,12 +2028,18 @@ def main(
     attach: str = '',                    # join a live session; --kernels lists them
     agent_proxy: bool = False,           # expose a restricted usage/callback proxy in this session's PyREPL
     kernels: bool = False,               # list live sessions and exit
+    json: bool = False,                  # with a prompt: print reply, usage, changes, activity, problems and session as JSON
+    bell: bool = True,                   # --no-bell keeps the terminal quiet when a turn ends or an approval waits
+    tmux: str = 'auto',                  # auto | on | off: read sibling panes and run background commands in panes
 ):
     "Run Ramabana as a terminal agent or Python prompt. Name every folder it may work on: --root .,~/notes"
     if kernels:
         from ramabana.pyrepl import sessions
         print(sessions())
         return 0
+    prompt = headless_prompt(prompt)
+    if prompt and approve == 'ask':
+        print('one-shot runs have nobody to ask, so every write will be refused · pass --approve auto', file=sys.stderr)
     if vault and (python or attach or agent_proxy):
         print('there is no vault-backed host for a dhrishti session; drop --vault', file=sys.stderr)
         return 2
@@ -1987,6 +2052,9 @@ def main(
         except RuntimeError as e:
             print(e, file=sys.stderr)
             return 2
+    if tmux not in TMUX_MODES:
+        print(f"unknown --tmux {tmux!r}; choose one of {', '.join(TMUX_MODES)}", file=sys.stderr)
+        return 2
     if pii not in PII_MODES:
         print(f"unknown --pii {pii!r}; choose one of {', '.join(PII_MODES)}", file=sys.stderr)
         return 2
@@ -2000,7 +2068,7 @@ def main(
         return 2
     try: agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault, spec=spec,
                                read_outside=read_outside, subagent_writes=subagent_writes,
-                               pii=pii, pii_ner=pii_ner,
+                               pii=pii, pii_ner=pii_ner, host_kw=dict(tmux=TMUX_MODES[tmux]),
                                max_tool_calls=max_tool_calls, max_steps=max_steps,
                                cfg=Path(cfg).expanduser() if cfg else None)
     except KeyError as e:
@@ -2018,9 +2086,9 @@ def main(
             print(f'that session had also opened {", ".join(was)} · /root add PATH to open again', file=sys.stderr)
     if agent.start() is None and not prompt:
         print(f'no model available: {agent.note}', file=sys.stderr)
-    if prompt: return sys.exit(ask_once(agent, prompt))
+    if prompt: return sys.exit(ask_once(agent, prompt, as_json=json))
     hint = f"{', '.join(host.roots)} · /python · /help"
-    try: asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy))
+    try: asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell))
     except KeyboardInterrupt: pass
 
 # %% ../nbs/05_cli.ipynb #240c918c

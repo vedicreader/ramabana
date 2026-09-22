@@ -146,8 +146,10 @@ def test_a_background_delegation_is_read_only_even_where_the_session_grants_writ
 
 
 def test_writes_are_granted_only_when_the_call_asks_and_the_session_allows():
-    off = _subs(FakeBackend(), writes=False)
-    assert 'read-only' in off['delegate_async']('q', writes=True), 'the session setting is the ceiling'
+    off_bg = Background()
+    off = _subs(FakeBackend(), writes=False, bg=off_bg)
+    assert off['delegate_async']('q', writes=True).startswith(ERR), 'the session setting is the ceiling'
+    assert off_bg.status() == [], 'a refused delegation registered a run'
     be = FakeBackend()
     on = _subs(be, writes=True, approve=lambda tc: True)
     assert 'with write tools' in on['delegate_async']('q', writes=True)

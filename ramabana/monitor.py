@@ -8,7 +8,7 @@ Docs: https://vedicreader.github.io/ramabana/monitor.html.md"""
 # %% ../nbs/17_monitor.ipynb #a361b376
 from __future__ import annotations
 
-import fnmatch, sys, threading, time, uuid
+import fnmatch, json, sys, threading, time, uuid
 from collections import Counter, deque
 from pathlib import Path
 
@@ -16,6 +16,7 @@ from fastcore.basics import patch
 from fastcore.script import call_parse
 
 from .core import AgentError, agent_err
+from .runtime import Run
 from .tools import MAX_TOOL_CHARS, _diff, clip, delegate, err, summary
 from shalya.core import one_line as _1
 
@@ -169,9 +170,10 @@ class Monitors:
                  host,
                  get_backend=None,   # callable -> the backend a review runs on, or None for no review
                  get_tools=None,     # callable -> the tools a reviewer may read the repo with
-                 on_review=None):    # callable(record), for a frontend, per completed review
+                 on_review=None,     # callable(record), for a frontend, per completed review
+                 log_dir=None):      # callable -> where review transcripts and `monitors.log` go, or None
         self.host, self.get_backend, self.get_tools = host, get_backend, get_tools
-        self.on_review = on_review
+        self.on_review, self.log_dir, self.runs = on_review, log_dir, {}
         self.watches = {}
         self.pending = deque(maxlen=PENDING_MAX)   # reviews no turn has carried yet
         self.lock = threading.Lock()               # guards `watches` and `pending`
@@ -199,6 +201,12 @@ class Monitors:
             out = list(self.pending)
             self.pending.clear()
         return out
+    @property
+    def log(self):
+        "`monitors.log`, one JSON record per completed review, or None without a log folder."
+        d = self.log_dir() if self.log_dir is not None else None
+        return None if d is None else Path(d)/'monitors.log'
+
 
 # %% ../nbs/17_monitor.ipynb #36ba898a
 @patch
@@ -241,9 +249,14 @@ def _review(self: Monitors, w, chg):
     if b is None: rec = self._record(w, 'unreviewed', **kw)
     else:
         tools = list(self.get_tools() or ()) if self.get_tools is not None else []
+        rid, log = f'run_{uuid.uuid4().hex[:12]}', self.log
+        run = Run(rid, 'monitor', f'review {w.folder}', b.spec.name, log=None if log is None else log.parent/f'{rid}.log')
+        with self.lock:
+            self.runs[rid] = run
+            for old in list(self.runs)[:-50]: self.runs.pop(old)
         answer = delegate(b, review_prompt(w.instructions, text, w.folder), tools,
-                          sp=REVIEW_SP, max_steps=REVIEW_MAX_STEPS)
-        rec = self._record(w, 'ok', review=answer, **kw)
+                          sp=REVIEW_SP, max_steps=REVIEW_MAX_STEPS, run=run)
+        rec = self._record(w, 'ok', review=answer, run_id=rid, **kw)
     w.reviews += 1
     w.last_status = rec['status']
     return rec
@@ -253,8 +266,11 @@ def _review(self: Monitors, w, chg):
 def _record(self: Monitors, w, status, **kw):
     "One completed check: queued for the next turn, filed in memory, and returned."
     rec = dict(watch_id=w.id, folder=w.folder, status=status, when=time.time(), files=0,
-               summary='', review='', changes='', error='') | dict(kw)
+               summary='', review='', changes='', error='', run_id='') | dict(kw)
     with self.lock: self.pending.append(rec)
+    if (log := self.log) is not None:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, 'a') as f: f.write(json.dumps(rec, ensure_ascii=False) + '\n')
     self._file(rec)
     if self.on_review is not None:
         try: self.on_review(rec)

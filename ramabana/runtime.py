@@ -15,7 +15,7 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
            'make_backend', 'Run', 'current_run', 'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
-import contextvars, copy, math, os, re, sys, threading, time
+import contextvars, copy, math, os, re, sys, threading, time, uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fastcore.basics import patch
@@ -930,10 +930,29 @@ class Run:
     started: float = 0.
     ended: float = 0.
     backend: object = None
+    log: object = None
 
     def __post_init__(self):
-        self.children, self._lock, self._done = [], threading.RLock(), threading.Event()
+        self.children, self._lock, self._done, self.inbox = [], threading.RLock(), threading.Event(), []
+        self.key = uuid.uuid4().hex[:8]
         if self.parent is not None: self.parent.children.append(self)
+        if self.log is None and getattr(self.parent, 'log', None) is not None: self.log = self.parent.log.parent/f'{self.id}.log'
+
+    def write(self, line):
+        "Append one transcript line, when this run keeps a transcript."
+        if self.log is None: return
+        self.log.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock, open(self.log, 'a') as f: f.write(f'{time.strftime("%H:%M:%S")} {line}\n')
+
+    def tell(self, text):
+        "Queue a user message for whoever is working this run; `drain_inbox` hands it over."
+        with self._lock: self.inbox.append(str(text))
+        self.write(f'user: {text}')
+
+    def drain_inbox(self):
+        "Every queued user message, taken once."
+        with self._lock: out, self.inbox = self.inbox, []
+        return out
 
     @property
     def terminal(self): return self.state in ('completed', 'cancelled', 'detached', 'terminated', 'failed')
@@ -941,7 +960,6 @@ class Run:
     def cancelled(self): return self.state in ('cancelling', 'cancelled', 'detached', 'terminated')
 
     def child(self, question='', model=''):
-        import uuid
         return Run(f'run_{uuid.uuid4().hex[:12]}', 'child', question, model, self, self.grace)
 
     def start(self, backend=None):
@@ -1020,7 +1038,7 @@ class Run:
     def dict(self):
         return {'id': self.id, 'parent_id': getattr(self.parent, 'id', None), 'kind': self.kind,
                 'question': self.question, 'model': self.model, 'state': self.state,
-                'started': self.started, 'ended': self.ended,
+                'started': self.started, 'ended': self.ended, 'log': None if self.log is None else str(self.log),
                 'children': [child.dict() for child in self.children]}
 
 

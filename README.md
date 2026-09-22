@@ -87,7 +87,7 @@ The one-turn form prints each problem on stderr, and exits 1 when the turn model
 |----|----|----|
 | `--root A,B` | `.` | the folders it may read and write, comma separated |
 | `--model NAME` | routing default | the model this session’s turns run on |
-| `--approve MODE` | `ask` | `ask`, `auto`, `off` or `none` |
+| `--approve MODE` | `ask` | `ask`, `edits`, `auto`, `off` or `none`; `edits` lets file and notebook edits through and asks for the rest |
 | `--no-web` | web on | takes the network away from the web tools |
 | `--read-outside` | off | reads may name any path. Writes stay inside `--root` |
 | `--subagent-writes` | off | delegated sub-agents may write, run commands and run Python |
@@ -104,6 +104,9 @@ The one-turn form prints each problem on stderr, and exits 1 when the turn model
 | `--attach NAME` | none | join a live Python session |
 | `--agent-proxy` | off | expose this session’s agent inside its Python prompt |
 | `--kernels` | off | list live Python sessions and exit |
+| `--json` | off | with a prompt: reply, usage, changes, activity, problems and session as JSON |
+| `--no-bell` | bell on | no terminal bell when a turn ends or an approval waits |
+| `--tmux MODE` | `auto` | `on` or `off`: read the sibling panes and run background commands in panes |
 
 `--theme` takes `auto`, `github-dark`, `dark`, `light`, `gruvbox`, `gruvbox-light`, `nord`, `tokyonight`, `catppuccin`, `latte`, `everforest`, `dracula`, `kanagawa`, `solarized` or `solarized-light`. `auto` is `github-dark`. Set your terminal to the scheme of the same name and the two agree. `/theme NAME` switches mid-session and repaints what is already on screen.
 
@@ -119,7 +122,11 @@ Type `/` and press tab to complete a command. The list is what this session has,
 | `/plan`, `/todo ID done\|active\|pending\|cancelled` | the checklist the agent works through |
 | `/cost`, `/compact [NOTE]` | what the session has spent, and shortening the history |
 | `/tool-budget [auto\|20..400]`, `/steps [auto\|8..80]` | the per-turn budgets, and what the last turn used |
-| `/approve [off\|ask\|auto]`, `/subagents [on\|off]` | who may write, and whether delegates may |
+| `/approve [off\|ask\|edits\|auto]`, `/subagents [on\|off]` | who may write, and whether delegates may |
+| `/commit [MESSAGE]`, `/pr [TITLE]` | a commit or pull request drafted from the diff, behind approval |
+| `/rewind [TURN] [files\|chat\|both]`, `/branches`, `/branch NAME` | undo a turn’s files or chat, and the conversation branches |
+| `/watch [RUN\|monitors]`, `/unwatch`, `/tell RUN TEXT` | a tmux pane on a run’s transcript, and a message to a running sub-agent |
+| `/NAME ARGS`, `#note TEXT` | a skill or `<cfg>/commands/NAME.md` as a turn, and a line for the next session’s memory |
 | `/root [add PATH]`, `/theme [NAME]`, `/mouse` | the open folders, the palette, and clicking blocks |
 | `/attach PATH`, `/detach [N]`, `/paste`, `/copy [turn]` | files and images in, text out |
 | `/skills`, `/skill NAME`, `/tools`, `/extensions`, `/reload` | what this session loaded, and re-reading it |
@@ -170,7 +177,9 @@ ramabana --root .,~/notes,/srv/app
 
 Writes reach those folders and nowhere else. Reads start out in the same folders. `--read-outside` widens reads to any path on the machine and leaves writes where they were. `/root` prints what is open, and `/root add PATH` opens another folder mid-session for reading and writing.
 
-Delegated sub-agents are read-only: they report what they found and change nothing. `--subagent-writes`, or `/subagents on`, lets them write, run commands and run Python behind this session’s approvals.
+Delegated sub-agents are read-only: they report what they found and change nothing. `--subagent-writes`, or `/subagents on`, lets them write, run commands and run Python behind this session’s approvals. `delegate_async(writes=True)` is refused until then, and the briefing says so.
+
+Every run keeps a transcript under `<cfg>/runs/<session>/`. Inside tmux, `/watch RUN` opens a pane tailing it, `/watch monitors` tails the folder reviews, and `/tell RUN TEXT` hands a running sub-agent a message it reads with its next tool result. `read_terminal` reads the sibling panes, and `run_shell_bg` runs in a pane of its own.
 
 ## Budgets, cost and history
 

@@ -18,18 +18,18 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.0.8",   # `Host.writes`, and summarise() building the table for a bare name
+    "shalya>=0.0.10",   # tmux panes, git_diff/log/commit/stash, run_cmd_bg, hooks that return
     "uraiyadal>=0.0.7",   # split_think takes the stray close answer_only used to strip itself
     "gheasy>=0.0.10",
     "exhash>=0.4.9",
     "fastcore>=2.1.16",
     "rishi>=0.1.32",
     "fossick>=0.1.17",
-    "koshas>=0.1.7",
-    "litesearch>=0.1.1",
+    "koshas>=0.1.9",   # `rows` hands `code_row` the hit, so the federated repo leg works
+    "litesearch>=0.1.35",
     "liteparse>=2.12,<2.13",
     "rgapi>=0.1.19",
-    "vishalakshi>=0.1.14",
+    "vishalakshi>=0.1.16",   # federate names a failed leg
     "fastspec>=0.2.1",
     "pyyaml>=6.0",
     "mcp>=1.2",
@@ -40,7 +40,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0"]
+cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.0.10"]
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
 Documentation = "https://vedicreader.github.io/ramabana/"

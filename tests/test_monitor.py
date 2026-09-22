@@ -147,7 +147,7 @@ def test_the_reviewer_gets_the_standing_brief_and_the_diff_and_cannot_see_the_co
     asked = str(sub.sent[0])
     assert asked.startswith('Report anything that breaks a contract in tests/.')
     assert '-one' in asked and '+two' in asked and 'a.py' in asked
-    assert sub.sp == REVIEW_SP, 'the reviewer got the research briefing, not the review one'
+    assert sub.sp.startswith(REVIEW_SP), 'the reviewer got the research briefing, not the review one'
     assert rec['review'] == 'sub answer'
 
 

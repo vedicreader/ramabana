@@ -29,12 +29,13 @@ def ui():
 
 
 def test_the_modes_run_strictest_first_so_tightening_is_one_step_back():
-    assert APPROVE_MODES == ('off', 'ask', 'auto')
+    assert APPROVE_MODES == ('off', 'ask', 'edits', 'auto')
 
 
 def test_the_key_tightens_from_every_mode_and_never_loosens(ui):
     ui.agent.approvals.mode = 'auto'
-    assert ui.tighten_approve() == 'approvals: auto -> ask'
+    assert ui.tighten_approve() == 'approvals: auto -> edits'
+    assert ui.tighten_approve() == 'approvals: edits -> ask'
     assert ui.agent.approvals.mode == 'ask'
     assert ui.tighten_approve() == 'approvals: ask -> off'
     assert ui.agent.approvals.mode == 'off'
@@ -63,7 +64,7 @@ def test_the_command_with_no_argument_reports_rather_than_changing(ui):
 
 
 def test_a_mode_nobody_defined_is_refused_with_the_usage_line(ui):
-    assert ui.approve_mode('yolo') == 'usage: /approve [off|ask|auto]'
+    assert ui.approve_mode('yolo') == 'usage: /approve [off|ask|edits|auto]'
     assert ui.agent.approvals.mode == 'ask', 'a rejected mode changed the policy anyway'
 
 
@@ -78,7 +79,7 @@ def test_the_key_is_bound_and_reaches_the_control(ui):
         name = 'ctrl+g'
     ui.agent.approvals.mode = 'auto'
     ui.on_key(_Key())
-    assert ui.agent.approvals.mode == 'ask', 'ctrl+g did not reach tighten_approve'
+    assert ui.agent.approvals.mode == 'edits', 'ctrl+g did not reach tighten_approve'
 
 
 def test_the_command_is_registered_so_tab_completion_offers_it():
