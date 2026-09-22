@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.1.36
+
+Needs rishi 0.1.38: Claude transcripts are refiled as tags text, so a resumed session keeps using tools.
+
 ## 0.1.35
 
 Needs shalya 0.0.10, koshas 0.1.9, vishalakshi 0.1.16, litesearch 0.1.35.
