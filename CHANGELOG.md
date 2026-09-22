@@ -2,6 +2,25 @@
 
 <!-- do not remove -->
 
+## 0.1.35
+
+Needs shalya 0.0.10, koshas 0.1.9, vishalakshi 0.1.16, litesearch 0.1.35.
+
+- `delegate_async(writes=True)` is refused while sub-agents are read-only, naming `/subagents on`; the briefing states the ceiling.
+- Sub-agents cite the tool call behind a claim and end with `state: completed|blocked|failed`.
+- Briefing carries the host's `environment` and rules for pilots before bulk work and verifying a sub-agent's facts.
+- `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md` and `<cfg>/AGENTS.md` reach the briefing; `CLAUDE_NOTES` applies on Claude models.
+- Approval prompts show a diff for `replace_text` and the command for `run_shell`; saved rules in `<cfg>/approvals.json`; `--approve edits`; `A` saves an always-allow rule.
+- `/commit` and `/pr` draft from the diff and log and go through approvals.
+- Background delegations report into the next turn; `run_shell` rule points long runs at `run_shell_bg`; `Agent.close` closes the host.
+- A `verify` command from `[tool.ramabana]` runs when files changed without a check; `changed:` line after each turn.
+- Checkpoints per turn; `/rewind`, `/branches`, `/branch`.
+- Hooks can deny, rewrite args and replace results; `session_start` and `stop` fire.
+- `/skill args` and `<cfg>/commands/*.md` run as turns; `--json`, stdin prompts, a warning when one-shot writes would be refused; `--bell`.
+- `<cfg>/memory/<root>/MEMORY.md` in the briefing, `#note`, `remember_note`.
+- Per-run transcripts under `<cfg>/runs/<session>/`; `/watch`, `/unwatch`, `/tell RUN TEXT`; `--tmux auto|on|off`.
+- `own_vault` fixture pins `VIRTUAL_ENV` so usearch loads the patched extension.
+
 ## 0.1.34
 
 Needs shalya 0.0.8, uraiyadal 0.0.7.
