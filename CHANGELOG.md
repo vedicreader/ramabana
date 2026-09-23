@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.1.38
+
+Needs shalya 0.0.11.
+
+- Seams for a frontend that is not the terminal: `Approvals.decide` answers what needs no person and `Approvals.set_mode` switches and settles; `Agent.expand_command` turns `/name ARGS` into its prompt; `Agent.on_watch` and the `watch` event replace the tmux pane; `Agent.on_background_done` and the `background_done` event fire when a delegation finishes; `Agent.last_verify` keeps the verify text, which `stream` now yields as its last chunk.
+- `APPROVE_MODES` lives in `ramabana.agent`; the CLI calls the agent for `/approve`, the tightening key and slash-command expansion.
+
 ## 0.1.37
 - A `before_tool` hook that rewrites a write tool's arguments no longer raises: the re-approval read a field `Ask` does not have.
 
