@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.0.10",   # tmux panes, git_diff/log/commit/stash, run_cmd_bg, hooks that return
+    "shalya>=0.0.11",   # EVENTS carries background_done and watch
     "uraiyadal>=0.0.7",   # split_think takes the stray close answer_only used to strip itself
     "gheasy>=0.0.10",
     "exhash>=0.4.9",
@@ -40,7 +40,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.0.10"]
+cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.0.11"]
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
 Documentation = "https://vedicreader.github.io/ramabana/"

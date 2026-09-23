@@ -11,12 +11,12 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEM
            'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE',
            'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS',
            'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'BELL_IDLE', 'APPROVE_MODES', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'code_theme',
-           'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths',
-           'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics',
-           'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment',
-           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'ask_pattern', 'ThemedCode', 'Reply',
-           'compact_md', 'mk_host', 'mk_agent', 'amain', 'headless_prompt', 'ask_once', 'main']
+           'BELL_IDLE', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'code_theme', 'code_bg',
+           'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
+           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size',
+           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
+           'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'ask_pattern', 'ThemedCode', 'Reply', 'compact_md',
+           'mk_host', 'mk_agent', 'amain', 'headless_prompt', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -41,10 +41,9 @@ from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
 from .core import PII_MODES, PII_OFF, accepts, agent_err, env, model_note
 from shalya.tools import media_dir, save_media
-from .agent import Agent, Approvals, answer_md, EDIT_GROUPS, subject
+from .agent import Agent, Approvals, APPROVE_MODES, answer_md, subject
 from datetime import datetime
 from . import __version__
-from shalya.tools import group_of
 
 
 # %% ../nbs/05_cli.ipynb #05b4d036
@@ -1301,7 +1300,7 @@ class Ui:
         if name == '#note': return self.note(self.note_memory(arg))
         if line.startswith('/'):
             out = self.agent.command(line)
-            if out is None and (body := self.skill_command(name[1:], arg)) is not None: return self._turn(body)
+            if out is None and (body := self.agent.expand_command(line)) is not None: return self._turn(body)
             kind = 'plan' if name in ('/plan', '/todo', '/todos') and out is not None else (
                 'note' if out is not None else 'error')
             self.say(Text(out) if out is not None else Text(f'unknown command: {line}'),
@@ -1452,12 +1451,6 @@ def note_memory(self:Ui, text):
     "`#note TEXT`: keep a line for later sessions."
     return self.agent.note_memory(text) if text else 'usage: #note TEXT'
 
-@patch
-def skill_command(self:Ui, name, arg=''):
-    "The prompt a `/name ARGS` line stands for: the line itself for a skill, a `<cfg>/commands/name.md` body with `$ARGUMENTS` filled in, or None."
-    if name.lower() in {s.name.lower() for s in self.agent.skills}: return f'/{name} {arg}'.strip()
-    f = self.agent.cfg/'commands'/f'{name}.md' if self.agent.cfg else None
-    return f.read_text().replace('$ARGUMENTS', arg).strip() if f and f.is_file() else None
 
 # %% ../nbs/05_cli.ipynb #64a54061
 @patch
@@ -1510,27 +1503,13 @@ def place_pics(self:Ui):
     comp.tty.write(''.join(out) + f'\x1b[{r + 1};{c + 1}H')
 
 # %% ../nbs/05_cli.ipynb #3c9fb61c
-APPROVE_MODES = ('off', 'ask', 'edits', 'auto')   #: strictest first, which is the order `ctrl+g` walks
-
-def _settle(approvals, mode):
-    "Answer whatever was already waiting. A new policy that left it hanging would not be the policy."
-    a = approvals.pending
-    if a is None or mode == 'ask' or (mode == 'edits' and group_of(a.tool) not in EDIT_GROUPS): return ''
-    ok = mode != 'off'
-    approvals.answer(a.id, ok, f'answered by /approve {mode}')
-    return f' · {"approved" if ok else "refused"} what was waiting'
-
 @patch
 def approve_mode(self:Ui, want=''):
     "`/approve [off|ask|edits|auto]`, or the current mode when `want` is empty."
     a = self.agent.approvals
     if a is None: return 'this session runs without approvals'
     want = str(want or '').strip().lower()
-    if not want: return f'approvals: {a.mode}'
-    if want not in APPROVE_MODES: return f"usage: /approve [{'|'.join(APPROVE_MODES)}]"
-    was, a.mode = a.mode, want
-    if was == want: return f'approvals: {want}'
-    return f'approvals: {was} -> {want}{_settle(a, want)}'
+    return a.set_mode(want) if want else f'approvals: {a.mode}'
 
 @patch
 def tighten_approve(self:Ui):
@@ -1539,8 +1518,7 @@ def tighten_approve(self:Ui):
     if a is None: return 'this session runs without approvals'
     i = APPROVE_MODES.index(a.mode) if a.mode in APPROVE_MODES else 1
     if not i: return 'approvals: off · /approve ask to be asked again'
-    was, a.mode = a.mode, APPROVE_MODES[i - 1]
-    return f'approvals: {was} -> {a.mode}{_settle(a, a.mode)}'
+    return a.set_mode(APPROVE_MODES[i - 1])
 
 # %% ../nbs/05_cli.ipynb #280bb985
 @patch

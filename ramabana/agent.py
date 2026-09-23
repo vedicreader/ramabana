@@ -6,7 +6,7 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
-           'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'INLINE_SKILLS',
+           'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'APPROVE_MODES', 'INLINE_SKILLS',
            'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES',
            'TODO_MARK', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP',
            'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
@@ -316,6 +316,8 @@ def _load_rules(path):
     try: return [tuple(r) for r in json.loads(path.read_text())] if path and path.exists() else [], ''
     except Exception as e: return [], f'{path.name}: {agent_err(e)}'
 
+APPROVE_MODES = ('off', 'ask', 'edits', 'auto')   #: strictest first, the order a tightening key walks
+
 class Approvals:
     "The queue of one, and the thread handshake behind it. One request at a time."
 
@@ -422,17 +424,40 @@ class Approvals:
         "The `approve(tool_call)` both backends call. Blocks the model's thread."
         return self.request(*_tc(tool_call))
 
-    def request(self, name, args, force=False, timeout=None):
-        "Raise one request and wait for it. Returns the resolved `Ask`, whose `reply()` carries the reason."
-        a = Ask(tool=name, args=args, summary=_summary(name, args),
-                preview=preview_for(name, args, self.host),
+    def ask(self, name, args):
+        "A new `Ask` on the history, undecided."
+        a = Ask(tool=name, args=args, summary=_summary(name, args), preview=preview_for(name, args, self.host),
                 run_id=getattr(current_run(), 'id', '') or '')
         self.history.append(a)
-        if not force and name not in self.tools: return a.resolve(True)   # `force` asks anyway
+        return a
+
+    def decide(self, name, args, force=False, ask=None):
+        "The resolved `Ask` when nobody needs asking: not gated, `off`, a saved rule, `auto` or `edits`. None when a person must answer."
+        a = self.ask(name, args) if ask is None else ask
+        if not force and name not in self.tools: return a.resolve(True)
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
         if (v := self.rule_for(name, args)) is not None:
             return a.resolve(True, 'allowed by a saved rule') if v == 'allow' else self._decided(a, False, 'denied by a saved rule')
         if self.mode == 'auto' or (self.mode == 'edits' and group_of(name) in EDIT_GROUPS): return a.resolve(True)
+        return None
+
+    def set_mode(self, mode):
+        "Switch modes, answering a pending ask the new policy would have answered; returns the note."
+        if mode not in APPROVE_MODES: return f"usage: /approve [{'|'.join(APPROVE_MODES)}]"
+        was, self.mode = self.mode, mode
+        return f'approvals: {mode}' if was == mode else f'approvals: {was} -> {mode}{self._settle()}'
+
+    def _settle(self):
+        a = self.pending
+        if a is None or self.mode == 'ask' or (self.mode == 'edits' and group_of(a.tool) not in EDIT_GROUPS): return ''
+        ok = self.mode != 'off'
+        self.answer(a.id, ok, f'answered by /approve {self.mode}')
+        return f' · {"approved" if ok else "refused"} what was waiting'
+
+    def request(self, name, args, force=False, timeout=None):
+        "Raise one request and wait for it. Returns the resolved `Ask`, whose `reply()` carries the reason."
+        a = self.ask(name, args)
+        if (d := self.decide(name, args, force, ask=a)) is not None: return d
         # closing first: the more useful reason; `current` taken under the close lock, so an ask landing in the gap does not wait out its timeout
         with self._lock:
             closing = self.closed
@@ -903,7 +928,9 @@ class Agent:
         self.routing = routing or Routing(turn=model)
         if model: self.routing.set(model)
         self.approvals, self.tool_max_len, self.subagents, self.verify = approvals, tool_max_len, subagents, verify
-        self._bg_done, self._session_started = [], False
+        self._bg_done, self._session_started, self.last_verify = [], False, ''
+        self.on_watch = None             # frontend hook: callable(target, log_path) instead of a tmux pane
+        self.on_background_done = None   # frontend hook: callable(run, answer) when a background delegation finishes
         self.subagent_writes = bool(subagent_writes)
         self.readonly, self.readonly_calls = bool(readonly), readonly_calls
         self.local_multimodal = bool(local_multimodal)
@@ -1131,6 +1158,8 @@ def background(self:Agent):
     if getattr(self, '_background', None) is None:
         def done(run, ans):
             with self._background.lock: self._bg_done.append((run, ans))
+            self.registry.fire('background_done', self, run, ans)
+            if self.on_background_done is not None: self.on_background_done(run, ans)
         self._background = Background(on_done=done)
     return self._background
 
@@ -1812,7 +1841,8 @@ def _finish(self:Agent, text, prompt=''):
     turn_use.model = b.use.model or b.spec.model_id   # the foreground model is the label
     self.turn_use = turn_use
     self.use = self.use + turn_use
-    if self.changes() and (cmd := self.verify_command()) and not self._verified(): text += '\n\n' + self._verify(cmd)
+    self.last_verify = self._verify(cmd) if self.changes() and (cmd := self.verify_command()) and not self._verified() else ''
+    if self.last_verify: text += '\n\n' + self.last_verify
     self._checkpoint()
     if (run := self.run()) is not None: run.write(f'reply: {_1(text, 2000)}')
     self.registry.fire('stop', self, text)
@@ -1886,7 +1916,7 @@ def stream(self:Agent, prompt, **kw):
             for chunk in self._be('turn').stream(outgoing, **kw):
                 out.append(chunk)
                 yield chunk
-            self._finish(''.join(out), prompt)
+            if (tail := self._finish(''.join(out), prompt)[len(''.join(out)):]): yield tail
         except Exception as e:
             self.note = f'the assistant failed ({agent_err(e)})'
             self._remember(prompt, self.note, agent_err(e))
@@ -2446,8 +2476,9 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
         run.finish()
         if run.cancelled: keep('cancelled', ''.join(out))
         else:
-            self._finish(''.join(out), prompt)   
+            tail = self._finish(''.join(out), prompt)[len(''.join(out)):]
             kept[0] = True
+            if tail: yield tail
     except Exception as e:
         if run.cancelled: run.finish(); keep('cancelled', ''.join(out)); return
         run.finish('failed')
@@ -2531,10 +2562,22 @@ def watch(self:Agent, target=''):
     log = self.monitors.log if target == 'monitors' else getattr(self.run(target), 'log', None)
     if log is None: return f'nothing to watch for {target!r}'
     log.parent.mkdir(parents=True, exist_ok=True); log.touch()
+    self.registry.fire('watch', self, target, log)
+    if self.on_watch is not None:
+        self.on_watch(target, log)
+        return f'watching {target}'
     if target in self._panes: return f'already watching {target} in pane {self._panes[target]}'
     try: self._panes[target] = self.host.open_pane(_tail(log), title=target)
     except Exception: return f'no tmux here; in another terminal run: {_tail(log)}'
     return f'watching {target} in pane {self._panes[target]}'
+
+@patch
+def expand_command(self:Agent, line):
+    "The prompt a `/name ARGS` line stands for: the line for a skill, a `<cfg>/commands/name.md` body with `$ARGUMENTS` filled, else None."
+    name, _, arg = line.strip()[1:].partition(' ')
+    if name.lower() in {s.name.lower() for s in self.skills}: return line.strip()
+    f = self.cfg/'commands'/f'{name}.md' if self.cfg else None
+    return f.read_text().replace('$ARGUMENTS', arg.strip()).strip() if f and f.is_file() else None
 
 @patch
 def unwatch(self:Agent, target='all'):

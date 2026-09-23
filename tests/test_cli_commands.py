@@ -46,7 +46,7 @@ def test_a_commands_file_is_a_prompt_with_its_arguments_filled_in(ui, tmp_path):
     (tmp_path/'commands'/'hello.md').write_text('Greet $ARGUMENTS warmly.\n')
     assert asyncio.iscoroutine(_submit(ui, '/hello the world'))
     assert ui._prompt == 'Greet the world warmly.'
-    assert ui.skill_command('nosuch', 'x') is None
+    assert ui.agent.expand_command('/nosuch x') is None
 
 
 def test_a_note_goes_to_the_agent_when_it_can_keep_one(ui):
