@@ -157,6 +157,51 @@ def test_rewind_refuses_the_git_undo_when_the_branch_changed_after_the_turn(tmp_
     assert _git(repo, 'branch', '--show-current') == 'feature' and _git(repo, 'log', '--oneline').count('\n') == 1
 
 
+def _turn_that_commits(tmp_path, **kw):
+    "A repo with one commit, and an agent that spent a turn editing and committing `a.txt` in it."
+    from shalya.host import LocalHost
+    repo = _repo_with_a_commit(tmp_path)
+    (repo/'b.txt').write_text('theirs\n'); _git(repo, 'add', 'b.txt'); _git(repo, 'commit', '-q', '-m', 'b')
+    a, _ = fake_agent(host=LocalHost([str(repo)], index=False), cfg=tmp_path/'cfg', approvals=Approvals(tools=set(), mode='auto'), **kw)
+    tools = {t.__name__: t for t in a.tools}
+    a._prepare('commit the change'); tools['replace_text']('a.txt', [{'oldText': 'hi', 'newText': 'hello'}]); tools['git_commit']('turn commit', 'a.txt'); a._finish('done')
+    return repo, a
+
+
+def test_rewind_refuses_the_git_undo_over_uncommitted_edits_to_other_files(tmp_path):
+    """HEAD still where the turn left it, but the person has edited `b.txt` since and not committed: gheasy's
+    `reset --hard` would take that edit with it, so the rewind refuses and touches neither git nor files."""
+    repo, a = _turn_that_commits(tmp_path)
+    (repo/'b.txt').write_text('mine, uncommitted\n')
+    said = a.command('/rewind files')
+    assert 'uncommitted changes to b.txt after the turn' in said and 'git undo refused' in said and 'undid' not in said and 'restored' not in said, said
+    assert (repo/'b.txt').read_text() == 'mine, uncommitted\n', 'the edit is intact'
+    assert (repo/'a.txt').read_text() == 'hello\n' and _git(repo, 'log', '--oneline').count('\n') == 2, 'nothing was touched'
+    assert not any(x.tool == 'rewind' for x in a.approvals.history), 'refused before anybody was asked'
+    _git(repo, 'stash', '-q')                                       # the person sets the edit aside
+    said = a.command('/rewind files')
+    assert 'undid 1 git write' in said and 'restored 1 file' in said, said
+    assert (repo/'a.txt').read_text() == 'hi\n' and _git(repo, 'log', '--oneline').count('\n') == 1
+
+
+def test_rewind_proceeds_when_the_only_dirty_file_is_one_the_turn_wrote(tmp_path):
+    "A later edit to a file the turn checkpointed is what the rewind puts back anyway, so it is no reason to refuse."
+    repo, a = _turn_that_commits(tmp_path)
+    (repo/'a.txt').write_text('hello again\n')
+    said = a.command('/rewind files')
+    assert 'undid 1 git write' in said and 'restored 1 file' in said and 'refused' not in said, said
+    assert (repo/'a.txt').read_text() == 'hi\n' and (repo/'b.txt').read_text() == 'theirs\n' and _git(repo, 'log', '--oneline').count('\n') == 1
+
+
+def test_rewind_refuses_the_git_undo_when_head_cannot_be_read(tmp_path):
+    "A guard that cannot see HEAD fails closed: no reset against an unknown tree."
+    repo, a = _turn_that_commits(tmp_path)
+    (repo/'.git'/'HEAD').write_text('garbage\n')
+    said = a.command('/rewind files')
+    assert 'cannot read HEAD' in said and 'git undo refused' in said and 'undid' not in said and 'restored' not in said, said
+    assert (repo/'a.txt').read_text() == 'hello\n'
+
+
 def test_rewind_undoes_git_writes_from_memory_when_no_checkpoint_was_written():
     "No config dir means no `<turn>.git.json`; the turn's tokens are still held on the agent."
     a, _ = fake_agent()

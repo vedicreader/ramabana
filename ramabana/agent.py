@@ -2143,7 +2143,7 @@ def rewind(self:Agent, turn_id='', what='both'):
         kept = [p for p in made if p not in delete]
         undo = [t for t in git if t.get('undo')]
         if not snap and not git: out.append(f'no file checkpoint for {turn_id}')
-        elif (moved := self._git_moved(undo)): out.append(moved)   # nothing is touched: files put back without the git undo would not match the tree
+        elif (blocked := self._git_blocked(undo, snap)): out.append(blocked)   # nothing is touched: files put back without the git undo would not match the tree
         elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap), 'delete': delete, 'kept': kept,
                                                                                   'git': [f"{t['tool']}: {t['summary']} (undoes {t['undoes']})" for t in undo]}, force=True).answer: out.append('rewind refused')
         else:   # git first: a checkout undone puts the tree where the file texts were taken from
@@ -2156,18 +2156,25 @@ def rewind(self:Agent, turn_id='', what='both'):
 
 
 @patch
-def _git_moved(self:Agent, writes):
-    "Why the turn's git writes cannot be undone now: HEAD or the branch moved after the turn's last write. Empty when the repo is where the turn left it. gheasy's undo is a `reset --hard` to the pre-write head, which would drop any later commit."
+def _git_blocked(self:Agent, writes, snap=()):
+    "Why the turn's git writes cannot be undone now, empty when they can: HEAD unreadable, HEAD or the branch moved after the turn's last write, or uncommitted changes to files the turn did not checkpoint (`snap`). gheasy's undo is a `reset --hard` to the pre-write head, which would drop any later commit or edit."
     last = next((w for w in reversed(writes) if w.get('head')), None)
     if last is None: return ''
+    left = 'git undo refused and files left as they are'
     from gheasy.repo import GitRepo
-    r = GitRepo.at(self.host.roots[0])
+    try: r = GitRepo.at(self.host.roots[0]); head = r.run('rev-parse', 'HEAD').strip()
+    except Exception as e: return f'cannot read HEAD ({agent_err(e)}); {left} -- check the repository first, or /rewind chat'
     def ask(*a):
-        try: return r.run(*a).strip()
+        try: return r.run(*a).rstrip()   # porcelain lines keep their leading status column
         except Exception: return ''
-    head, branch = ask('rev-parse', 'HEAD'), ask('branch', '--show-current')
-    if head and not head.startswith(last['head']): return f"HEAD moved after the turn ({last['head']}..{head[:9]}); git undo refused and files left as they are -- undo the later commits first, or /rewind chat"
-    if last.get('branch') and branch != last['branch']: return f"branch changed after the turn ({last['branch']} -> {branch or 'detached'}); git undo refused and files left as they are -- go back to {last['branch']} first, or /rewind chat"
+    if not head.startswith(last['head']): return f"HEAD moved after the turn ({last['head']}..{head[:9]}); {left} -- undo the later commits first, or /rewind chat"
+    branch = ask('branch', '--show-current')
+    if last.get('branch') and branch != last['branch']: return f"branch changed after the turn ({last['branch']} -> {branch or 'detached'}); {left} -- go back to {last['branch']} first, or /rewind chat"
+    root = Path(self.host.roots[0]).resolve()
+    own = {(root/p.lstrip('/')).resolve() for p in snap}   # the turn's own files: the rewind puts those back anyway
+    dirty = {(r.root/l[3:].split(' -> ')[-1]).resolve() for l in ask('status', '--porcelain', '--untracked-files=no').splitlines() if len(l) > 3}
+    if (others := sorted(str(p.relative_to(root)) if p.is_relative_to(root) else str(p) for p in dirty - own)):
+        return f"uncommitted changes to {', '.join(others)} after the turn; {left} -- commit or stash them first, or /rewind chat"
     return ''
 
 @patch

@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.2
+
+- **Rewind.** `/rewind` also refuses the git undo while the worktree holds uncommitted changes to files the turn did not write (`uncommitted changes to <paths> after the turn; git undo refused`), since gheasy's `reset --hard` would discard them; a later edit to one of the turn's own files is fine, the rewind puts it back anyway. The guard fails closed when HEAD cannot be read. `Agent._git_moved` is now `Agent._git_blocked(writes, snap)`, one guard returning the reason.
+
 ## 0.2.1
 
 
