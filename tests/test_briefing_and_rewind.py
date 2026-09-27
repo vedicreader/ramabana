@@ -23,6 +23,8 @@ def test_a_replace_text_preview_is_a_diff_and_a_shell_preview_is_the_command():
     edits = [{'oldText': 'pass', 'newText': 'return 1'}]
     diff = preview_for('replace_text', {'path': '/proj/a.py', 'edits': edits}, host)
     assert '-def a(): pass' in diff and '+def a(): return 1' in diff
+    assert 'no edits given' in preview_for('replace_text', {'path': '/proj/a.py', 'edits': []}, host)
+    assert 'no edits given' in preview_for('edit_cell', {'path': '/proj/n.ipynb', 'cell_id': 'c1', 'edits': []})
     shell = preview_for('run_shell', {'command': 'pytest -q', 'cwd': '/proj'}, host)
     assert 'pytest -q' in shell and '/proj' in shell and '{' not in shell
 

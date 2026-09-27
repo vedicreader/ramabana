@@ -8,18 +8,19 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP', 'SUB_SP', 'NO_SUB', 'ASYNC_MAX',
            'ASYNC_KEEP', 'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'ToolEntry', 'ToolCatalog',
            'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'delegate', 'delegate_many', 'Background',
-           'named_skills', 'subagent_tools', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES',
-           'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API',
-           'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
-           'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX',
-           'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools',
-           'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err',
-           'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write',
-           'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost',
-           'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost',
-           'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools',
-           'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt',
-           'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
+           'named_skills', 'subagent_tools', 'parse_plan_items', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS',
+           'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host',
+           'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE',
+           'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API',
+           'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model',
+           'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text',
+           'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available',
+           'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line',
+           'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost',
+           'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools',
+           'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools',
+           'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools', 'research_tools', 'author_tools',
+           'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, functools, json, re, threading, time, uuid
@@ -381,8 +382,8 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
 
     def _questions(qs):
-        "The non-empty question texts, from a list or one bare string."
-        return [str(q).strip() for q in (qs if isinstance(qs, (list, tuple)) else [qs]) if str(q).strip()]
+        "The non-empty question texts: a list, the JSON of one, newline text, or one bare question."
+        return parse_plan_items(qs)
 
     @acts
     @summary(lambda a: (lambda qs: f'Delegate: {_1(qs[0], 120)}' if len(qs) == 1 else f'Delegate {len(qs)} questions: {_1("; ".join(qs), 100)}')(_questions(a.get('questions', []))))
@@ -432,3 +433,17 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         return bg.cancel(run_id)
 
     return [delegate_search, delegate_async, delegate_result, delegate_cancel]
+
+# %% ../nbs/02_tools.ipynb #ec2dc8d6
+def parse_plan_items(items):
+    "Newline text, a JSON list, or a Python list -> todo texts."
+    if items is None or items == '': return []
+    if isinstance(items, (list, tuple)): return [str(x).strip() for x in items if str(x).strip()]
+    s = str(items).strip()
+    if s.startswith('['):
+        try:
+            data = json.loads(s)
+            if isinstance(data, list): return [str(x).strip() for x in data if str(x).strip()]
+        except Exception: pass
+    return [ln.strip().lstrip('-* ').strip() for ln in s.splitlines() if ln.strip()]
+

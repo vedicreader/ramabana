@@ -56,6 +56,7 @@ def test_the_summary_reads_what_the_call_was_given():
     assert summarise(by['cart_add'], {'item': 'tea', 'qty': 2}) == 'Add to trolley: 2 x tea'
     assert summarise(by['update_todo'], {'id': '3', 'status': 'done'}) == 'Todo 3 → done'
     assert summarise(by['update_todo'], {'text': 'four'}) == 'Todo new → add'
+    assert summarise(by['update_todo'], {'id': '3', 'text': 'renamed'}) == 'Todo 3 → update'
     assert summarise(by['set_plan'], {'items': ['a', 'b']}) == 'Set plan: 2 steps'
 
 

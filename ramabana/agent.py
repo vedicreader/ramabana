@@ -12,8 +12,8 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
            'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'Approvals',
            'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text',
-           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items',
-           'plan_tools', 'Agent', 'note_tools', 'Completer']
+           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'plan_tools', 'Agent',
+           'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -30,7 +30,7 @@ from shalya.tools import group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background)
+                            tools_for, Background, parse_plan_items)
 from .monitor import (Monitors, POB_READER, beat_notes, beat_notice, monitor_tools,
                               pob, pob_path, review_notice)
 
@@ -109,7 +109,14 @@ class Act:
                 'tool': self.tool, 'kind': self.kind, 'icon': self.icon,
                 'summary': self.summary, 'line': self.line(), 'detail': self.detail,
                 'ok': self.ok, 'done': self.done, 'secs': self.secs,
-                'args': {k: _1(v, 300) for k, v in (self.args or {}).items()}}
+                'args': {k: _arg(v) for k, v in (self.args or {}).items()}}
+
+
+def _arg(v, n=300):
+    "One argument as it is persisted: long text clipped, every other shape (lists, dicts, numbers) kept as JSON."
+    if isinstance(v, str): return _1(v, n)
+    if v is None or isinstance(v, (bool, int, float)): return v
+    return json.loads(json.dumps(v, default=str))
 
 
 def _clip(out, n=MAX_DETAIL):
@@ -231,6 +238,7 @@ def preview_for(name, args, host=None):
         cid = args.get('cell_id', '?')
         try:
             es = edits(args.get('edits', []))
+            if not es: return f'{p} cell {cid}\n\nno edits given'
             if host is not None and hasattr(host, 'nb_cell'):
                 before = host.nb_cell(p, cid)[2]
                 return f'{p} cell {cid}\n\n{diff_text(before, apply_edits(before, es), f"{p}#{cid}")}'[:MAX_PREVIEW]
@@ -247,7 +255,9 @@ def preview_for(name, args, host=None):
     if name == 'run_python':  return str(args.get('code', ''))[:MAX_PREVIEW]
     if name == 'run_shell':   return (f"$ {args.get('command', '')}" + (f'\n  in {c}' if (c := args.get('cwd')) else ''))[:MAX_PREVIEW]
     if name == 'replace_text' and host is not None:
-        try: return diff_text(before := host.read(p) or '', apply_edits(before, edits(args.get('edits', []))), p)[:MAX_PREVIEW]
+        try:
+            if not (es := edits(args.get('edits', []))): return f'{p}\n\nno edits given'
+            return diff_text(before := host.read(p) or '', apply_edits(before, es), p)[:MAX_PREVIEW]
         except Exception as e: return f'{p}\n\n{agent_err(e)}'
     return json.dumps(args, indent=2, default=str)[:MAX_PREVIEW]
 
@@ -841,19 +851,6 @@ class Plan:
         return bit
 
 
-def parse_plan_items(items):
-    "Newline text, a JSON list, or a Python list -> todo texts."
-    if items is None or items == '': return []
-    if isinstance(items, (list, tuple)): return [str(x).strip() for x in items if str(x).strip()]
-    s = str(items).strip()
-    if s.startswith('['):
-        try:
-            data = json.loads(s)
-            if isinstance(data, list): return [str(x).strip() for x in data if str(x).strip()]
-        except Exception: pass
-    return [ln.strip().lstrip('-* ').strip() for ln in s.splitlines() if ln.strip()]
-
-
 def plan_tools(get_plan, save=None):
     "Model-facing plan tools: `set_plan(items)` and `update_todo(id='', …)`. Closures over the agent's `Plan` so Host stays free of them; the slash `/plan` sets a title."
     def _save():
@@ -869,7 +866,7 @@ def plan_tools(get_plan, save=None):
         get_plan().set(get_plan().title, todos); _save()
         return get_plan().md()
 
-    @summary(lambda a: f'Todo {a.get("id") or "new"} → {a.get("status") or (a.get("text") and "add") or "update"}')
+    @summary(lambda a: f'Todo {a.get("id") or "new"} → {a.get("status") or ("update" if a.get("id") else "add")}')
     def update_todo(id: str = '', status: str = '', text: str = '') -> str:
         "Change a todo by id or unique prefix (status: pending, active, done, cancelled), or append `text` as a new step when `id` is empty."
         p = get_plan()

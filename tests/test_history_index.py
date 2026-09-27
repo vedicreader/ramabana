@@ -170,3 +170,26 @@ def test_malformed_session_metadata_is_never_written_over_by_a_rebuild(tmp_path)
     before = a.sessions_path.read_text()
     assert a.rebuild_index() == {}
     assert a.sessions_path.read_text() == before and 'malformed' in a.history_problem
+
+
+def test_a_calls_list_arguments_reach_the_activity_and_the_history_faithfully(tmp_path):
+    """dhrona captures rounds from `activity[].args`; a `replace_text(edits=[...])` that persisted
+    as `edits: ''` could never bind again. Only long strings are clipped; shapes are kept."""
+    import json
+    from ramabana.testing import MemHost, fake_agent
+    h = MemHost({'/proj/a.py': 'x = 1\n'})
+    a, _ = fake_agent(h, cfg=tmp_path)
+    edits = [{'oldText': 'x = 1', 'newText': 'x = 2'}]
+    a._prepare('change a')
+    tools = {t.__name__: t for t in a.tools}
+    tools['replace_text']('/proj/a.py', edits=edits)
+    tools['set_plan'](['one', 'two'])
+    tools['view_file']('/proj/a.py', start=1, end=1)
+    a._finish('done')
+    rows = a.activity.rows()
+    assert rows[0]['args'] == {'path': '/proj/a.py', 'edits': edits}
+    assert rows[1]['args'] == {'items': ['one', 'two']} and rows[2]['args'] == {'path': '/proj/a.py', 'start': 1, 'end': 1}
+    saved = [json.loads(l) for l in a.history_path.read_text().splitlines()][-1]
+    assert saved['activity'][0]['args']['edits'] == edits and saved['activity'][1]['args']['items'] == ['one', 'two']
+    long = a.activity.start('create_file', {'path': 'b.py', 'text': 'x' * 1000}).dict()['args']['text']
+    assert len(long) < 400 and long.startswith('xxx')
