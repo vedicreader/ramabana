@@ -58,6 +58,8 @@ class MemHost(NullHost, CodeHost, ShellHost):
         self.files[str(path)] = text
         return str(path)
 
+    def delete(self, path): self.files.pop(str(path), None)
+
     def search(self, query, limit=20):
         return [Hit(p, 1, '', t.splitlines()[0]) for p, t in self.files.items() if query in t][:limit]
 

@@ -27,7 +27,7 @@ import concurrent.futures, functools, json, re, threading, time, uuid
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from fastcore.basics import AttrDict, ifnone
+from fastcore.basics import AttrDict, ifnone, patch
 from fastcore.foundation import L
 from fastcore.parallel import parallel
 import shalya as _shalya
@@ -35,7 +35,7 @@ from shalya import (MAX_TOOL_CHARS, Host, HostError, NO_ROOTS, implemented, imag
                     group_of, is_write, has_effect, summarise, read_only, clip, err, find,
                     acts, summary, cmds, edits, apply_edits, diff_text)
 from shalya.core import one_line as _1
-from shalya.host import _fuse
+from shalya.host import LocalHost, _fuse
 from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for
 from .core import AgentError, agent_err, spec_caps
 from .runtime import Run, current_run, run_context
@@ -70,7 +70,14 @@ class NullHost(Host):
     def walk(self): return []
     def read(self, path): return None
     def write(self, path, text): raise HostError('this host cannot write')
+    def delete(self, path): raise HostError('this host cannot delete')
     def text_at(self, path): return None
+
+
+@patch
+def delete(self:LocalHost, path):
+    "Remove one file inside the roots (what `/rewind` does to a file the turn created); one already gone is not an error."
+    self.check(path).unlink(missing_ok=True)
 
 # %% ../nbs/02_tools.ipynb #55c1bbd5
 def draws_itself(spec):

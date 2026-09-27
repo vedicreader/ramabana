@@ -83,3 +83,41 @@ def test_notes_survive_without_a_vault_and_reach_the_briefing(tmp_path):
     sp = b.system_prompt()
     assert '- [pkg] use uv (uv add for deps)' in sp and 'never pip' not in sp and '- **Tests**: tests run with nbdev-test' in sp
     assert fake_agent()[0].note_memory('x').startswith('no config')
+
+
+def test_rewind_removes_the_files_a_turn_created_and_restores_the_ones_it_changed(tmp_path):
+    "A file that did not exist before the turn is deleted, not left as an empty file; a second write to it is the same change."
+    host = MemHost({'/proj/a.py': 'def a(): pass\n'})
+    a, _ = fake_agent(host, cfg=tmp_path)
+    tools = {t.__name__: t for t in a.tools}
+    a._prepare('add b')
+    tools['create_file']('/proj/b.py', 'x = 1\n')
+    tools['create_file']('/proj/a.py', 'def a(): return 1\n')
+    tools['create_file']('/proj/b.py', 'x = 2\n')
+    assert a.new == {'/proj/b.py'}
+    a._finish('done')
+    said = a.command('/rewind files')
+    assert f'restored 1 file(s) to before {a.current_turn_id}' in said and 'removed 1 file(s) created that turn' in said, said
+    assert host.files == {'/proj/a.py': 'def a(): pass\n'}
+
+
+def test_a_checkpoint_of_bare_texts_from_before_still_restores(tmp_path):
+    import json
+    host = MemHost({'/proj/a.py': 'changed\n'})
+    a, _ = fake_agent(host, cfg=tmp_path)
+    a._prepare('x'); a._finish('done')
+    d = a.checkpoint_dir; d.mkdir(parents=True, exist_ok=True)
+    (d/f'{a.current_turn_id}.json').write_text(json.dumps({'/proj/a.py': 'orig\n'}))
+    assert 'restored 1 file(s)' in a.command('/rewind files') and host.files['/proj/a.py'] == 'orig\n'
+
+
+def test_a_host_deletes_only_inside_its_roots():
+    import pytest
+    from shalya.core import HostError
+    from ramabana.testing import FullHost
+    from ramabana.tools import NullHost
+    h = FullHost(files={'a.py': 'x'})
+    h.delete('a.py'); h.delete('a.py')                       # gone, and gone again is not an error
+    assert not (h.root/'a.py').exists()
+    with pytest.raises(HostError): h.delete('/etc/hosts')
+    with pytest.raises(HostError): NullHost().delete('a.py')

@@ -1000,6 +1000,7 @@ class Agent:
         self._load_history()
         self._load_plan()
         self.before = {}         # path -> its text just before a write tool touched it, this turn
+        self.new = set()         # the paths in `before` that did not exist before this turn: a rewind removes them
         self._walked = False     # whether a tree baseline is held for the running command
         self._tree = {}          # that baseline: path -> its text when the command started
         self._tool_calls_turn = 0 # backend-independent guard for local/native tool loops
@@ -1191,7 +1192,9 @@ def _record(self:Agent, f):
             return err(denied)
         if is_write(f):   # first touch only: later edits are part of one change
             if (p := args.get('path')):
-                if p not in self.before: self.before[p] = self.host.text_at(p) or ''
+                if p not in self.before:
+                    self.before[p] = self.host.text_at(p) or ''
+                    if self.host.read(p) is None: self.new.add(p)
             elif name == 'run_shell' or name in GIT_WRITE_TOOLS: self.snapshot_tree()
         nested = name in DELEGATE_TOOLS   # every call its sub-agent makes hangs off this one
         if nested: self._delegating.append(act.id)
@@ -1640,7 +1643,7 @@ def settle_tree(self:Agent):
     except Exception: paths = []                        # no earlier snapshot can hold
     for p in paths:
         if p in tree or p in self.before: continue
-        if self.host.text_at(p): self.before.setdefault(p, '')
+        if self.host.text_at(p): self.before.setdefault(p, ''); self.new.add(p)
 
 # %% ../nbs/03_agent.ipynb #f47f136e
 @patch
@@ -1911,7 +1914,7 @@ def _begin_turn(self:Agent, run=None):
 @patch
 def _prepare(self:Agent, prompt):
     "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
-    self.before.clear()                    # `changes()` reports this turn, not the session
+    self.before.clear(); self.new.clear()  # `changes()` reports this turn, not the session
     self._drawn = []                       # pictures this turn's tools wrote, for the frontend
     self._walked, self._tree = False, {}
     self._begin_turn(current_run())
@@ -2093,13 +2096,18 @@ def checkpoint_dir(self:Agent):
 
 @patch
 def _checkpoint(self:Agent):
-    "Keep this turn's pre-write texts on disk, dropping the oldest turns past `CHECKPOINT_BYTES`."
+    "Keep this turn's pre-write texts on disk, and which paths it created, dropping the oldest turns past `CHECKPOINT_BYTES`."
     d = self.checkpoint_dir
     if d is None or not self.before: return
     d.mkdir(parents=True, exist_ok=True)
-    (d/f'{self.current_turn_id}.json').write_text(json.dumps(self.before))
+    (d/f'{self.current_turn_id}.json').write_text(json.dumps({'before': self.before, 'new': sorted(self.new)}))
     files = sorted(d.glob('*.json'), key=lambda p: p.stat().st_mtime)
     while len(files) > 1 and sum(p.stat().st_size for p in files) > CHECKPOINT_BYTES: files.pop(0).unlink()
+
+def _snapshot(raw):
+    "A turn's file checkpoint as `({path: text}, {created paths})`, whichever shape wrote it: bare texts (before 0.2.0) or `{'before', 'new'}`."
+    if isinstance(raw.get('before'), dict) and isinstance(raw.get('new'), list): return raw['before'], set(raw['new'])
+    return raw, set()
 
 @patch
 def rewind(self:Agent, turn_id='', what='both'):
@@ -2108,16 +2116,20 @@ def rewind(self:Agent, turn_id='', what='both'):
     out, d = [], self.checkpoint_dir
     if what in ('files', 'both'):
         f, g = (d/f'{turn_id}.json', d/f'{turn_id}.git.json') if d is not None else (None, None)
-        snap = json.loads(f.read_text()) if f is not None and f.exists() else {}
+        snap, new = _snapshot(json.loads(f.read_text())) if f is not None and f.exists() else ({}, set())
         git = json.loads(g.read_text()) if g is not None and g.exists() else self.git_undo.get(turn_id, [])
         if not snap and not git: out.append(f'no file checkpoint for {turn_id}')
         elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap), 'git': [t['undoes'] for t in git if t.get('undo')]}, force=True).answer: out.append('rewind refused')
         else:   # git first: a checkout undone puts the tree where the file texts were taken from
             if git: out.append(self._undo_git(git))
             if snap:
-                for p, text in snap.items(): self.host.write(p, text)
-                made = [p for p, t in snap.items() if not t]
-                out.append(f'restored {len(snap)} file(s) to before {turn_id}' + (f'; {len(made)} created that turn are empty, not removed' if made else ''))
+                gone = [p for p in snap if p in new and hasattr(self.host, 'delete')]
+                for p, text in snap.items():
+                    if p in gone: self.host.delete(p)
+                    else: self.host.write(p, text)
+                left = [p for p in new if p in snap and p not in gone]
+                out.append(f'restored {len(snap) - len(gone)} file(s) to before {turn_id}' + (f'; removed {len(gone)} file(s) created that turn' if gone else '')
+                           + (f'; {len(left)} created that turn left empty (this host cannot delete)' if left else ''))
     if what in ('chat', 'both'):
         try: out.append(f"chat on branch {self.undo_turn(turn_id)['branch_id']}, before {turn_id}")
         except Exception as e: out.append(agent_err(e))
