@@ -42,7 +42,7 @@ MAX_CHECKPOINTS = 20  # turn boundaries kept for `fork`. Each one is a whole con
 POLL_EVERY = 900      # seconds between automatic `Host.poll` ticks. A turn is what triggers one
 SHELL_SNAPSHOT = 32_000_000
 
-ICONS = {'search': '🔍', 'view': '📄', 'edit': '✏️', 'web': '🌐', 'run': '▶️','skill': '📚', 'delegate': '🤝', 'memory': '🧠', 'watch': '⏰', 'cart': '🛒','tool': '🔧'}
+ICONS = {'search': '🔍', 'view': '📄', 'edit': '✏️', 'web': '🌐', 'run': '▶️','skill': '📚', 'delegate': '🤝', 'memory': '🧠', 'watch': '⏰', 'cart': '🛒', 'ask': '🔐', 'tool': '🔧'}
 
 _GROUP_KIND = {'code': 'search', 'file': 'view', 'notebook': 'view', 'session': 'run',
                'shell': 'run', 'web': 'web', 'memory': 'memory', 'ask': 'memory',
@@ -79,9 +79,9 @@ class Act:
     branch_id: str = 'main'
     parent_action_id: str = ''
     state: str = 'running'
+    kind: str = ''            # 'ask' for a refused approval; otherwise what the tool name says
 
-    @property
-    def kind(self): return _kind_of(self.tool)
+    def __post_init__(self): self.kind = self.kind or _kind_of(self.tool)
 
     @property
     def icon(self): return ICONS.get(self.kind, ICONS['tool'])
@@ -148,8 +148,8 @@ class Activity:
     def __len__(self): return len(self.acts)
 
     def start(self, tool, args, action_id='', turn_id='', revision=0, branch_id='main',
-              parent_action_id='', summary=None):
-        a = Act(tool=tool, args=dict(args or {}),
+              parent_action_id='', summary=None, kind=''):
+        a = Act(tool=tool, args=dict(args or {}), kind=kind,
                 summary=summary if summary is not None else summarise(tool, args),
                 id=action_id or uuid.uuid4().hex[:12], turn_id=turn_id or self.turn_id,
                 revision=int(revision or 0), branch_id=branch_id or 'main',
@@ -201,7 +201,7 @@ class Activity:
 # %% ../nbs/03_agent.ipynb #fb06a049
 DENIED = 'Denied by human operator'
 
-DFLT_TIMEOUT = 300      # seconds to wait for a person before giving up on one request
+DFLT_TIMEOUT = 300      # seconds to wait for a person before giving up on one request. None waits for as long as it takes
 MAX_PREVIEW = 2000      # chars of "what would change". A person will not read more
 
 def _tc(tool_call):
@@ -262,6 +262,7 @@ class Ask:
     note: str = ''
     asked: float = field(default_factory=time.time)
     run_id: str = ''          # the run that raised it; '' when the foreground turn did
+    run: object = field(default=None, repr=False, compare=False)   # that run, for its log
     _done: threading.Event = field(default_factory=threading.Event, repr=False, compare=False)
 
     @property
@@ -324,7 +325,7 @@ class Approvals:
     def __init__(self,
                  tools=(),                  # tool names that need approval. Everything else runs
                  mode='ask',                # 'ask' | 'edits' (file and notebook edits run, the rest ask) | 'auto' | 'off'
-                 timeout=DFLT_TIMEOUT,
+                 timeout=DFLT_TIMEOUT,      # seconds to wait on a person. None waits for as long as it takes
                  host=None,                 # for previews that need to look at disk
                  on_ask=None,               # called with the `Ask` when one is raised
                  on_answer=None,            # called with the `Ask` when it is answered
@@ -426,8 +427,9 @@ class Approvals:
 
     def ask(self, name, args):
         "A new `Ask` on the history, undecided."
+        run = current_run()
         a = Ask(tool=name, args=args, summary=_summary(name, args), preview=preview_for(name, args, self.host),
-                run_id=getattr(current_run(), 'id', '') or '')
+                run_id=getattr(run, 'id', '') or '', run=run)
         self.history.append(a)
         return a
 
@@ -467,7 +469,7 @@ class Approvals:
             return self._decided(a, False, 'nothing is listening for approvals, so this could not be asked')
         self._notify('ask', a)
         wait_for = self.timeout if timeout is None else timeout
-        if not a.wait(wait_for):
+        if not a.wait(wait_for):   # `None` waits for as long as it takes: only `answer`, `cancel_all` or `close` end it
             a.resolve(False, f'no answer after {wait_for}s')
             self._notify('answer', a)
         return a
@@ -965,6 +967,26 @@ class Agent:
         self._panes = {}
         self.lock = threading.Lock()
 
+    @property
+    def approvals(self): return self._approvals
+
+    @approvals.setter
+    def approvals(self, ap):
+        "Every gate this agent is given records its refusals on the activity, once."
+        self._approvals = ap
+        if ap is None or getattr(ap, '_recorder', None) is self: return
+        ap._recorder, prev = self, ap.on_answer
+        ap.on_answer = self._refused if prev is None else (lambda a: (prev(a), self._refused(a)))
+
+    def _refused(self, ask):
+        "A refused approval is one row on the activity and one line in the run log: the reason is what the model was told."
+        if ask.answer: return
+        act = self.activity.start(ask.tool, ask.args, summary=ask.summary, kind='ask', **self._action_meta(ask.tool, ask.args))
+        self.activity.finish(act, ask.reply(), ok=False)
+        run = ask.run or current_run()
+        if run is not None: run.write(f'< {ask.tool} REFUSED {_1(ask.reply(), 200)}')
+
+
 # %% ../nbs/03_agent.ipynb #8f4741e8
 @patch(as_prop=True)
 def history_path(self:Agent):
@@ -1046,7 +1068,7 @@ def _record(self:Agent, f):
             if isinstance(r, str): denied = denied or r
             elif isinstance(r, dict): a, kw, args, rewritten = (), dict(r), _named(f, (), dict(r)), True
         if rewritten and is_write(f) and self.approvals is not None and not (ask := self.approvals.request(name, args)).answer:
-            denied = denied or ask.reply()
+            return err(ask.reply())   # already on the activity: the gate's recorder put it there
         self.calls.append((name, args))
         meta = self._action_meta(name, args)
         act = self.activity.start(name, args, summary=summarise(f, args), **meta)

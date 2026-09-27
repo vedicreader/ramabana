@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "shalya>=0.0.11",   # EVENTS carries background_done and watch
-    "uraiyadal>=0.0.7",   # split_think takes the stray close answer_only used to strip itself
+    "uraiyadal>=0.0.8",   # a refused approval's reason (`Ask.reply`) reaches the model
     "gheasy>=0.0.10",
     "exhash>=0.4.9",
     "fastcore>=2.1.16",

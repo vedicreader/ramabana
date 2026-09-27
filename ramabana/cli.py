@@ -11,12 +11,13 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEM
            'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE',
            'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS',
            'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'BELL_IDLE', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'code_theme', 'code_bg',
-           'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
-           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size',
-           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
-           'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'ask_pattern', 'ThemedCode', 'Reply', 'compact_md',
-           'mk_host', 'mk_agent', 'amain', 'headless_prompt', 'ask_once', 'main']
+           'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS',
+           'TMUX_MODES', 'code_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path',
+           'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
+           'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line',
+           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui',
+           'parse_answer', 'ask_pattern', 'ThemedCode', 'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain',
+           'headless_prompt', 'ask_once', 'main']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -33,7 +34,7 @@ from rich.syntax import Syntax
 from rich.cells import cell_len
 from rich.theme import Theme
 from fastcore.script import call_parse
-from fastcore.basics import patch
+from fastcore.basics import patch, ifnone
 from teleprint.buffer import Buffer
 from teleprint.compositor import Compositor
 from teleprint.transcript import TranscriptView
@@ -245,7 +246,7 @@ edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
 media   drop or paste a path to attach · @path in a prompt · /attach PATH · /detach [N] · ctrl+v or /paste clipboard image
 memory  #note TEXT keeps a line for later sessions · /SKILL ARGS runs a skill or a <cfg>/commands file as a prompt
 copy    select with the mouse as in any scrollback · /copy the last reply · /copy turn for all of it · ctrl+r then y for any block
-approve y approve · n refuse · a approve all · ctrl+y approve with a note · A always allow this · or type a reason and press enter to refuse
+approve y approve · n ⏎ refuse · n: REASON ⏎ refuse with a reason · a approve all · ctrl+y approve with a note · A always allow this · anything else shows the question again
           ctrl+g asks for more · /approve off|ask|edits|auto asks for less
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
@@ -678,6 +679,7 @@ class Ui:
         comp.console.push_theme(MARKDOWN_THEME)
         self.buf = Buffer()
         self.ask = None            # the `Ask` waiting on an answer, or None
+        self._asked_at = 0.0       # when it was last shown, for `nudge`
         self.turn = None           # the running turn's task, or None
         self._queued = None        # a line typed during a turn, waiting for it to end
         self._queued_prompt = None # its text, when it is a prompt: further lines join it
@@ -862,12 +864,13 @@ class Ui:
         "Repaint the live tail while a turn is running. The transcript remains untouched."
         while True:
             await asyncio.sleep(0.1)
+            if self.ask is not None: self.nudge()
             if self.turn is not None:
                 self.frame += 1
                 self.flush_stream()   # a model that stalls mid-prose must not leave its last words unseen
                 self.paint()
 
-    ASKING, PY_LABEL, CONT = 'approve? [y/n/a, or a reason + enter] ', 'python › ', '...      '
+    ASKING, PY_LABEL, CONT = 'approve? [y/n/a · n: reason] ', 'python › ', '...      '
 
     def prompt(self):
         "The input line: an approval question when one is pending, otherwise the prompt."
@@ -1104,10 +1107,7 @@ class Ui:
     def _ask(self, ask):
         self.ask = ask
         self.buf.clear()
-        title = Text(ask.summary, style=f"bold {GRUVBOX['yellow']}")
-        self.say(title + Text('\n\n') + Text(ask.preview, style=GRUVBOX['fg1']), 'ask', fold=None)
-        self.ring()
-        self.paint()
+        self.reask(ask.preview)
 
     def on_answer(self, ask):
         self._post(self._answered, ask)
@@ -1117,10 +1117,10 @@ class Ui:
         self.say(Text(answer_md(ask).replace('**', '')), 'note')
         self.paint()
 
-    def answer(self, ok, session=False):
-        "Answer the pending request, using whatever has been typed as the reason. A refusal with a reason reaches the model, which can change approach."
+    def answer(self, ok, session=False, note=None):
+        "Answer the pending request; the note is `note`, else whatever has been typed. A refusal's reason reaches the model, which can change approach."
         if self.ask is None: return None
-        note, self.buf.text = self.buf.text.strip(), ''
+        note, self.buf.text = ifnone(note, self.buf.text.strip()), ''
         return self.agent.approvals.answer(self.ask.id, ok, note, session=session)
 
 
@@ -1356,11 +1356,12 @@ class Ui:
             return self.paint()
         if self.ask is not None:
             bare = not self.buf.text.strip()
-            if bare and k.name in ('y', 'Y'):     self.answer(True)
-            elif bare and k.name in ('n', 'N'):   self.answer(False)
+            if bare and k.name in ('y', 'Y'):     self.answer(True)   # `n` is a line, so `n: reason` can be typed
             elif bare and k.name == 'A' and self.always_allow(): pass
             elif bare and k.name in ('a', 'A'):   self.answer(True, session=True)
-            elif k.name == 'enter':               self.answer(False)   # a typed reason is a refusal
+            elif k.name == 'enter':                                 # a typed line answers only when it is one
+                if (ans := parse_answer(self.buf.text)) is None: self.reask(NOT_ANSWER)
+                else: self.answer(ans[0], note=ans[1])
             elif k.name == 'ctrl+y':              self.answer(True)    # ...unless approved with it as guidance
             elif k.name == 'ctrl+c':              self.answer(False)     # stopping the turn refuses what it was waiting on
             else: self.buf.handle(k)
@@ -1428,6 +1429,33 @@ class Ui:
 
 # %% ../nbs/05_cli.ipynb #7f8df93c
 BELL_IDLE = 5   # seconds without a keystroke before a turn's end or an approval rings
+REASK_EVERY = 120   # seconds a question may wait before it rings and is shown again
+YES, NO = ('y', 'yes', 'ok', 'approve'), ('n', 'no', 'refuse', 'deny')
+NOT_ANSWER = 'not an answer · y approves · n refuses · n: REASON refuses with a reason · a approves all this session'
+
+def parse_answer(text):
+    "`(ok, note)` for a typed answer to an approval -- `y`, `n`, `n: reason` -- or None when the line is not one."
+    word, _, note = text.strip().partition(':')
+    if (w := word.strip().lower()) in YES: return True, note.strip()
+    if w in NO: return False, note.strip()
+    return None
+
+@patch
+def reask(self:Ui, body=''):
+    "Show the pending question, with `body` under it, ring, and start the wait for `nudge` again."
+    self._asked_at = time.monotonic()
+    title = Text(self.ask.summary, style=f"bold {GRUVBOX['yellow']}")
+    self.say(title + (Text('\n\n') + Text(body, style=GRUVBOX['fg1']) if body else Text('')), 'ask', fold=None)
+    self.buf.clear()
+    self.ring()
+    self.paint()
+
+@patch
+def nudge(self:Ui):
+    "Ring and repeat a question that has waited `REASK_EVERY` seconds since it was last shown. True when it did."
+    if self.ask is None or time.monotonic() - self._asked_at < REASK_EVERY: return False
+    self.reask(f'still waiting · {int(time.monotonic() - self.ask.asked)}s')
+    return True
 
 def ask_pattern(ask):
     "What an approval rule would match for this request."
@@ -1904,7 +1932,8 @@ def mk_agent(roots=('.',),
              host_kw=None,            # forwarded to `mk_host`: `index`, `warm`, `vault=<path>`
              **kw):                   # forwarded to `Agent`
     "A host over the named folders and an `Agent` over that, gated the way `approve` says."
-    approvals = None if approve == 'none' else Approvals(mode=approve, rules_path=cfg/'approvals.json' if (cfg := kw.get('cfg')) else None)
+    approvals = None if approve == 'none' else Approvals(mode=approve, timeout=None,   # a person is at this one: wait for as long as it takes
+                                                         rules_path=cfg/'approvals.json' if (cfg := kw.get('cfg')) else None)
     host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec,
                    read_outside=read_outside, pii=pii, pii_ner=pii_ner, **(host_kw or {}))
     if approvals is not None: approvals.host = host   # the gate previews `create_file` via the host
