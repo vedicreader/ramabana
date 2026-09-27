@@ -15,11 +15,9 @@ from ramabana.agent import Activity, summarise
 from ramabana.testing import FullHost, fake_agent
 from ramabana.tools import Background, subagent_tools, tools_for
 
-RAMABANA_OWN = ['delegate_search', 'delegate_parallel', 'delegate_async', 'delegate_status',
-                'delegate_result', 'delegate_cancel', 'watch_folder', 'list_folder_watches',
-                'cancel_folder_watch', 'check_folders', 'set_plan', 'add_todo', 'update_todo',
-                'list_plan', 'cart_stores', 'cart_open', 'cart_find', 'cart_add', 'cart_show',
-                'cart_remove']
+RAMABANA_OWN = ['delegate_search', 'delegate_async', 'delegate_result', 'delegate_cancel',
+                'set_plan', 'update_todo', 'cart_stores', 'cart_open', 'cart_find', 'cart_add',
+                'cart_show', 'cart_remove']
 
 
 def every_tool():
@@ -56,7 +54,8 @@ def test_the_summary_reads_what_the_call_was_given():
     assert summarise(by['delegate_search'], {'question': 'where is X'}) == 'Delegate: where is X'
     assert summarise(by['cart_add'], {'item': 'tea', 'qty': 2}) == 'Add to trolley: 2 x tea'
     assert summarise(by['update_todo'], {'id': '3', 'status': 'done'}) == 'Todo 3 → done'
-    assert summarise(by['check_folders'], {}) == 'Check watched folders'
+    assert summarise(by['update_todo'], {'text': 'four'}) == 'Todo new → add'
+    assert summarise(by['set_plan'], {'items': ['a', 'b']}) == 'Set plan: 2 steps'
 
 
 def test_the_git_group_says_what_it_did_now_that_the_plumbing_moved():

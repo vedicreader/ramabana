@@ -855,48 +855,38 @@ def parse_plan_items(items):
 
 
 def plan_tools(get_plan, save=None):
-    """Model-facing plan tools. Closures over the agent's `Plan` so Host stays free of them."""
+    "Model-facing plan tools: `set_plan(items)` and `update_todo(id='', …)`. Closures over the agent's `Plan` so Host stays free of them; the slash `/plan` sets a title."
     def _save():
         if save:
             try: save()
             except Exception: pass
 
-    @summary(lambda a: f'Set plan: {_1(a.get("title"))}')
-    def set_plan(title: str, items: str = '') -> str:
-        "Replace the session plan. `items` is a newline list or a JSON list of step texts."
-        todos = parse_plan_items(items)
-        if not str(title or '').strip() and not todos:
-            get_plan().clear(); _save(); return 'plan cleared'
-        get_plan().set(title, todos); _save()
+    @summary(lambda a: f'Set plan: {len(a.get("items") or [])} steps')
+    def set_plan(items: list[str]) -> str:
+        "Replace the session plan with these step texts; an empty list clears it. Returns the checklist."
+        todos = [str(x).strip() for x in (items if isinstance(items, (list, tuple)) else parse_plan_items(items)) if str(x).strip()]
+        if not todos: get_plan().clear(); _save(); return 'plan cleared'
+        get_plan().set(get_plan().title, todos); _save()
         return get_plan().md()
 
-    @summary(lambda a: f'Add todo: {_1(a.get("text"))}')
-    def add_todo(text: str, status: str = 'pending') -> str:
-        "Append one step to the session plan."
-        try: t = get_plan().add(text, status=status or 'pending')
-        except Exception as e: return err('could not add todo', e)
-        _save()
-        return f'added `{t.id}` ({t.status}): {t.text}\n\n{get_plan().md()}'
-
-    @summary(lambda a: f'Todo {a.get("id","?")} → {a.get("status") or "update"}')
-    def update_todo(id: str, status: str = '', note: str = '', text: str = '') -> str:
-        "Update a todo by id or unique prefix. Status: pending, active, done, cancelled."
-        kw = {}
-        if status: kw['status'] = status
-        if note != '': kw['note'] = note
-        if text: kw['text'] = text
-        if not kw: return err('nothing to update; pass status, note or text')
-        try: t = get_plan().update(id, **kw)
+    @summary(lambda a: f'Todo {a.get("id") or "new"} → {a.get("status") or (a.get("text") and "add") or "update"}')
+    def update_todo(id: str = '', status: str = '', text: str = '') -> str:
+        "Change a todo by id or unique prefix (status: pending, active, done, cancelled), or append `text` as a new step when `id` is empty."
+        p = get_plan()
+        if not id:
+            if not text: return err('give `text` to add a step, or `id` to change one')
+            try: t = p.add(text, status=status or 'pending')
+            except Exception as e: return err('could not add todo', e)
+            _save()
+            return f'added `{t.id}` ({t.status}): {t.text}\n\n{p.md()}'
+        kw = {k: v for k, v in (('status', status), ('text', text)) if v}
+        if not kw: return err('nothing to update; pass status or text')
+        try: t = p.update(id, **kw)
         except Exception as e: return err('could not update todo', e)
         _save()
-        return f'`{t.id}` → {t.status}: {t.text}' + (f' -- {t.note}' if t.note else '') + f'\n\n{get_plan().md()}'
+        return f'`{t.id}` → {t.status}: {t.text}' + (f' -- {t.note}' if t.note else '') + f'\n\n{p.md()}'
 
-    @summary(lambda a: 'List plan')
-    def list_plan() -> str:
-        "The current session plan as a checklist."
-        return get_plan().md()
-
-    return [set_plan, add_todo, update_todo, list_plan]
+    return [set_plan, update_todo]
 
 # %% ../nbs/03_agent.ipynb #baaf2f5e
 class Agent:

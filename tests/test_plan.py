@@ -4,7 +4,7 @@ from pathlib import Path
 from ramabana.agent import Agent, Plan, Todo, TODO_STATUSES, parse_plan_items, plan_tools
 from ramabana.core import ModelSpec, Routing
 from ramabana.testing import FakeBackend, MemHost, fake_agent
-from ramabana.tools import NullHost
+from ramabana.tools import NullHost, failed
 
 
 def test_a_plan_tracks_progress_and_keeps_one_active_step():
@@ -25,13 +25,17 @@ def test_plan_tools_and_slash_commands_share_one_object(tmp_path):
     a, _ = fake_agent()
     a.cfg = tmp_path
     names = {t.__name__: t for t in a.tools}
-    assert names['set_plan']('Resume work', 'one\ntwo\nthree').startswith('**Resume work**')
-    assert a.plan.progress() == (0, 3)
-    out = names['update_todo'](a.plan.todos[0].id, status='active')
-    assert a.plan.active().text == 'one' and 'active' in out
-    assert 'one' in names['list_plan']()
+    assert not ({'add_todo', 'list_plan'} & set(names))
+    out = names['set_plan'](['one', 'two', 'three'])
+    assert out.startswith('**Plan**') and a.plan.progress() == (0, 3)
+    assert 'active' in names['update_todo'](a.plan.todos[0].id, status='active') and a.plan.active().text == 'one'
+    assert 'added' in names['update_todo'](text='four') and len(a.plan) == 4
+    assert failed(names['update_todo']())                                    # nothing to do
+    assert names['set_plan']([]) == 'plan cleared' and not a.plan
 
     assert '**From slash**' in a.command('/plan From slash | a | b')
+    assert names['set_plan'](['c']).startswith('**From slash**')             # a title the user set survives a model rewrite
+    assert a.command('/plan From slash | a | b')
     assert a.command('/todo a done').count('[x]') == 1
     assert a.plan_path.exists()
     # survive a new Agent on the same session id (stop/start)
@@ -82,7 +86,7 @@ def test_clearing_and_replacing_a_plan_is_what_stop_start_needs(tmp_path):
 def test_plan_tools_refuse_bad_status_without_corrupting_the_list():
     a, _ = fake_agent()
     tools = {t.__name__: t for t in plan_tools(lambda: a.plan, save=a._save_plan)}
-    tools['set_plan']('T', '["only"]')
+    tools['set_plan'](['only'])
     tid = a.plan.todos[0].id
     assert 'ERROR' in tools['update_todo'](tid, status='finished')
     assert a.plan.todos[0].status == 'pending'
