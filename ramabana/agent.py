@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
-           'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES',
+           'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES',
            'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL',
            'HISTORY_TURNS', 'WARM_ROUNDS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK',
            'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
@@ -331,6 +331,9 @@ def answer_md(ask):
 # %% ../nbs/03_agent.ipynb #ca1437e3
 EDIT_GROUPS = ('file', 'notebook')
 ALWAYS_ASK = ('add_root',)         #: gated calls no bulk mode short of `auto` answers: opening a folder widens what every later write may touch
+#: tool names 0.2.0 removed outright (ramabana's own folds, shalya 0.1.0's cuts without a legacy shim): a saved rule for one is inert, so it is pruned
+REMOVED_TOOLS = frozenset({'add_todo', 'list_plan', 'delegate_parallel', 'delegate_status', 'remember_note',
+                           'watch_folder', 'list_folder_watches', 'cancel_folder_watch', 'check_folders', 'memory_topics', 'poll_watches'})
 DOOM_LOOP = 3                      #: repeats of one gated call, args and all, that put it to the person whatever the mode
 
 def subject(name, args):
@@ -386,12 +389,11 @@ class Approvals:
         s = subject(name, args)
         return next((v for t, pat, v in self.rules if t == name and fnmatch.fnmatch(s, pat)), None)
 
-    def prune(self, known):
-        "Drop saved rules for tools that no longer exist (`known` plus the harness's own gates), noting each on `problem`."
-        known = set(known) | {'rewind', 'pull_request'}
-        gone = [r for r in self.rules if r[0] not in known]
+    def prune(self):
+        "Drop saved rules for the names this release removed (`REMOVED_TOOLS`), noting each on `problem`. Never for a tool this session merely lacks: the file is shared with other sessions, extensions and frontends."
+        gone = [r for r in self.rules if r[0] in REMOVED_TOOLS]
         if not gone: return gone
-        self.rules = [r for r in self.rules if r[0] in known]
+        self.rules = [r for r in self.rules if r[0] not in REMOVED_TOOLS]
         notes = [f'dropped saved rule for {t} (no such tool)' for t in dict.fromkeys(r[0] for r in gone)]
         self.problem = '\n'.join(x for x in [self.problem, *notes] if x)
         self._save()
@@ -1151,8 +1153,8 @@ def _git_sub(args):
     return rest[0] if rest else ''
 
 
-def git_shell_denial(command):
-    "Why `run_shell` refuses this command: a git write or remote operation a git tool performs. '' when it may run."
+def git_shell_denial(command, tools=None):
+    "Why `run_shell` refuses this command: a git write or remote operation a git tool performs. '' when it may run, or when `tools` (this agent's names) lacks the tool it would name."
     from gheasy.repo import classify
     for words in _segments(command):
         args = _git_args(words)
@@ -1161,7 +1163,7 @@ def git_shell_denial(command):
             continue
         if args is None: continue
         sub = _git_sub(args)
-        if sub in GIT_SHELL and classify(args) != 'read':
+        if sub in GIT_SHELL and classify(args) != 'read' and (tools is None or GIT_SHELL[sub] in tools):
             return f'`git {sub}` goes through `{GIT_SHELL[sub]}` here; it returns an `undo` token and keeps the tree snapshot for /rewind'
     return ''
 
@@ -1227,7 +1229,7 @@ def _record(self:Agent, f):
 @patch
 def _deny_git_shell(self:Agent, name, args):
     "The `before_tool` rule every agent carries: `run_shell` does not do what a git tool does."
-    return git_shell_denial(args.get('command', '')) if name == 'run_shell' else None
+    return git_shell_denial(args.get('command', ''), {t.__name__ for t in self.tools}) if name == 'run_shell' else None
 
 
 @patch
@@ -1343,16 +1345,11 @@ def tools(self:Agent):
         self._catalog_view = view
         if self.approvals is not None:
             self.approvals.tools = self.approvals.tools | view.writes
-            self.approvals.prune(self.known_tools())
+            self.approvals.prune()
         self._tools = view.map(self._record).tools
     return self._tools
 
 
-@patch
-def known_tools(self:Agent):
-    "Every tool name some session could offer: shalya's whole table (opt-ins and one-release shims included) plus this agent's own, before any budget or read-only trim."
-    from shalya.tools import tool_groups
-    return set(tool_groups()) | self._catalog_for(budget_for(None, self.tool_max_len)).names
 
 
 # %% ../nbs/03_agent.ipynb #f37435ce
@@ -2118,7 +2115,7 @@ def _snapshot(raw):
     return raw, set(), {}, set()
 
 @patch
-def _restore(self:Agent, turn_id, snap, delete, kept, binary, left=0):
+def _restore(self:Agent, turn_id, snap, delete, kept, binary):
     "Put each checkpointed path back, exactly as the approval said: `delete` removed, `kept` and `binary` untouched and named, the rest written; one path failing does not stop the rest."
     restored, gone, bad = 0, 0, []
     for p, text in snap.items():
@@ -2130,7 +2127,6 @@ def _restore(self:Agent, turn_id, snap, delete, kept, binary, left=0):
     return (f'restored {restored} file(s) to before {turn_id}' + (f'; removed {gone} file(s) created that turn' if gone else '')
             + ''.join(f'; kept {p}: changed after the turn' for p in kept)
             + ''.join(f'; cannot restore {p} (binary)' for p in sorted(binary) if p in snap)
-            + (f'; {left} created that turn left empty (this host cannot delete)' if left else '')
             + ''.join(f'; {b}' for b in bad))
 
 @patch
@@ -2142,7 +2138,7 @@ def rewind(self:Agent, turn_id='', what='both'):
         f, g = (d/f'{turn_id}.json', d/f'{turn_id}.git.json') if d is not None else (None, None)
         snap, new, written, binary = _snapshot(json.loads(f.read_text())) if f is not None and f.exists() else ({}, set(), {}, set())
         git = json.loads(g.read_text()) if g is not None and g.exists() else self.git_undo.get(turn_id, [])
-        made = sorted(p for p in snap if p in new and hasattr(self.host, 'delete'))
+        made = sorted(p for p in snap if p in new)
         delete = [p for p in made if (self.host.text_at(p) or '') == written.get(p)]   # still exactly what the turn wrote
         kept = [p for p in made if p not in delete]
         if not snap and not git: out.append(f'no file checkpoint for {turn_id}')
@@ -2150,7 +2146,7 @@ def rewind(self:Agent, turn_id='', what='both'):
                                                                                   'git': [t['undoes'] for t in git if t.get('undo')]}, force=True).answer: out.append('rewind refused')
         else:   # git first: a checkout undone puts the tree where the file texts were taken from
             if git: out.append(self._undo_git(git))
-            if snap: out.append(self._restore(turn_id, snap, set(delete), kept, binary, len(new - set(made))))
+            if snap: out.append(self._restore(turn_id, snap, set(delete), kept, binary))
     if what in ('chat', 'both'):
         try: out.append(f"chat on branch {self.undo_turn(turn_id)['branch_id']}, before {turn_id}")
         except Exception as e: out.append(agent_err(e))

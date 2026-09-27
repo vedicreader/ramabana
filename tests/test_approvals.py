@@ -255,20 +255,26 @@ def test_a_saved_rule_for_a_removed_tool_is_dropped_with_a_note(tmp_path):
     assert a.approvals.rules == [('run_shell', 'ls*', 'allow'), ('rewind', '*', 'allow')]
     assert 'remember_note' in a.approvals.problem and 'no such tool' in a.approvals.problem
     assert json.loads(p.read_text()) == [['run_shell', 'ls*', 'allow'], ['rewind', '*', 'allow']]
-    assert agent.Approvals().prune({'run_shell'}) == []                      # nothing saved, nothing to say
+    assert agent.Approvals().prune() == []                                  # nothing saved, nothing to say
 
 
-def test_pruning_spares_rules_for_tools_this_session_merely_withholds(tmp_path):
-    """A read-only session (or a frugal budget) offers fewer tools than exist; its saved rules for
-    `run_shell` or `git_commit` must survive it. Only a name no session can ever offer goes."""
+def test_pruning_spares_every_rule_but_those_for_names_this_release_removed(tmp_path):
+    """A config folder is shared across sessions and frontends: a read-only session offers fewer tools,
+    an extension (`cart_*`) may be off today, and leela's own tools (`canvas_open`, `generate_video`) are
+    never in this catalog at all. Dropping their rules and rewriting the file would be data loss, so only
+    the fixed list of names this release removed goes."""
     p = tmp_path/'approvals.json'
-    keep = [['run_shell', 'ls*', 'allow'], ['replace_text', '*', 'allow'], ['git_commit', '*', 'allow'], ['create_file', '*.md', 'allow']]
-    p.write_text(json.dumps(keep + [['delegate_parallel', '*', 'allow']]))
+    keep = [['run_shell', 'ls*', 'allow'], ['replace_text', '*', 'allow'], ['git_commit', '*', 'allow'], ['create_file', '*.md', 'allow'],
+            ['cart_add', '*', 'allow'], ['canvas_open', '*', 'allow'], ['generate_video', '*', 'deny'], ['my_ext_tool', '*', 'allow'], ['list_files', '*', 'allow']]
+    p.write_text(json.dumps(keep + [['delegate_parallel', '*', 'allow'], ['remember_note', '*', 'allow'], ['memory_topics', '*', 'allow']]))
     a, _ = fake_agent(approvals=agent.Approvals(rules_path=p), readonly=True)
     a.tools
     assert 'run_shell' not in {t.__name__ for t in a.tools} and 'git_commit' not in {t.__name__ for t in a.tools}
-    assert a.approvals.rules == [tuple(r) for r in keep] and 'delegate_parallel' in a.approvals.problem
+    assert a.approvals.rules == [tuple(r) for r in keep]
+    assert 'delegate_parallel' in a.approvals.problem and 'remember_note' in a.approvals.problem and 'memory_topics' in a.approvals.problem
     assert json.loads(p.read_text()) == keep
+    assert {'add_todo', 'list_plan', 'delegate_status', 'watch_folder', 'check_folders', 'list_folder_watches', 'cancel_folder_watch'} <= agent.REMOVED_TOOLS
+    assert not ({'edit_file', 'research', 'create_skill', 'list_files', 'list_vars', 'environment', 'memory_tree'} & agent.REMOVED_TOOLS), 'opt-ins and one-release shims still exist somewhere'
 
 
 def test_the_same_gated_call_three_times_running_is_put_to_the_person_whatever_the_mode():

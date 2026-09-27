@@ -120,3 +120,14 @@ def test_rewind_undoes_git_writes_from_memory_when_no_checkpoint_was_written():
     a._finish('done')
     said = a.command('/rewind files')
     assert '1 git write(s) this turn cannot be undone here: git_remote' in said and 'no file checkpoint' not in said
+
+
+def test_run_shell_is_only_steered_to_a_git_tool_this_agent_has():
+    "The guard names a tool; on a host without the git group there is none to name, so the command goes to approvals like any other."
+    from ramabana.tools import failed
+    a, _ = fake_agent()                                       # MemHost: no git group
+    tools = {t.__name__: t for t in a.tools}
+    assert 'git_commit' not in tools
+    assert not a._deny_git_shell('run_shell', {'command': 'git commit -m x'})
+    out = tools['run_shell']('git commit -m x')
+    assert not (failed(out) and '`git_commit`' in out), out
