@@ -307,3 +307,15 @@ def test_a_refused_doom_loop_is_one_ask_row_on_the_activity(tmp_path):
     assert not d and 'three times' in d.reply()
     asks = [x for x in a.activity.acts if x.kind == 'ask']
     assert len(asks) == 1 and asks[0].tool == 'create_file' and asks[0].ok is False and 'three times' in asks[0].detail
+
+
+def test_reads_between_the_repeats_neither_count_nor_break_the_streak():
+    "A model that edits, looks, edits, looks, edits is still making the same gated call three times; the reads are not calls anybody gates."
+    asked = []
+    ap = agent.Approvals(tools={'edit_file'}, mode='auto', timeout=5)
+    stop = ap.listen(on_ask=lambda a: (asked.append(a), ap.answer(a.id, False, 'stop')))
+    read = {'function': {'name': 'view_file', 'arguments': {'path': 'a.py'}}}
+    for _ in range(2): assert ap.gate(edit_call('a.py')) and ap.gate(read) and ap.gate(read)
+    assert ap.gate(edit_call('a.py')).answer is False and len(asked) == 1
+    assert ap.gate(read) and ap.gate(read) and ap.gate(edit_call('a.py')).answer is False   # still the same loop
+    stop()

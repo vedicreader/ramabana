@@ -71,6 +71,7 @@ class NullHost(Host):
     def read(self, path): return None
     def write(self, path, text): raise HostError('this host cannot write')
     def delete(self, path): raise HostError('this host cannot delete')
+    def exists(self, path): return False
     def text_at(self, path): return None
 
 
@@ -78,6 +79,12 @@ class NullHost(Host):
 def delete(self:LocalHost, path):
     "Remove one file inside the roots (what `/rewind` does to a file the turn created); one already gone is not an error."
     self.check(path).unlink(missing_ok=True)
+
+@patch
+def exists(self:LocalHost, path):
+    "Whether `path` is a file inside the roots; one outside them, or missing, is not (an undecodable file is)."
+    try: return self.check(path).exists()
+    except Exception: return False
 
 # %% ../nbs/02_tools.ipynb #55c1bbd5
 def draws_itself(spec):

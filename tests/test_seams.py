@@ -94,3 +94,15 @@ def test_the_verify_text_is_kept_and_streamed():
     assert 'done' in out and 'verify (pytest -q)' in out
     a._finish('quiet')
     assert a.last_verify == ''
+
+
+def test_argument_substitution_is_one_pass_and_command_names_stay_in_their_folder(tmp_path):
+    (tmp_path/'commands').mkdir()
+    (tmp_path/'commands'/'many.md').write_text('tenth=$10 first=$1 all=$ARGUMENTS\n')
+    (tmp_path/'commands'/'evil.md').write_text('never\n')
+    a, _ = fake_agent(cfg=tmp_path)
+    out = a.expand_command('/many a b c d e f g h i j')
+    assert out == 'tenth=j first=a all=a b c d e f g h i j'
+    assert a.expand_command('/many "$1 costs $ARGUMENTS" x') == 'tenth=$10 first=$1 costs $ARGUMENTS all="$1 costs $ARGUMENTS" x'
+    for bad in ('/../commands/evil x', '/commands/evil x', '/..%2Fevil', '/ x'):
+        assert a.expand_command(bad) is None, bad

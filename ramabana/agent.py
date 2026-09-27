@@ -501,10 +501,11 @@ class Approvals:
         return None
 
     def _looping(self, name, args):
-        "Whether this call is the `DOOM_LOOP`th repeat running: the same tool, the same arguments, nothing else between."
+        "Whether this gated call is the `DOOM_LOOP`th repeat running: the same tool, the same arguments, no other gated call between (reads neither count nor reset)."
         key = call_key(name, args)
-        self._streak, self._repeat = (self._streak + 1 if key == self._repeat else 1), key
-        return self._streak >= DOOM_LOOP
+        with self._lock:
+            self._streak, self._repeat = (self._streak + 1 if key == self._repeat else 1), key
+            return self._streak >= DOOM_LOOP
 
     def set_mode(self, mode):
         "Switch modes, answering a pending ask the new policy would have answered; returns the note."
@@ -522,7 +523,7 @@ class Approvals:
     def request(self, name, args, force=False, timeout=None):
         "Raise one request and wait for it. Returns the resolved `Ask`, whose `reply()` carries the reason."
         a = self.ask(name, args)
-        loop = self._looping(name, args) and (force or name in self.tools)
+        loop = (force or name in self.tools) and self._looping(name, args)
         if loop: a.preview = f'the same call {_times(self._streak)} running -- allow it?\n\n{a.preview}'.strip()
         if (d := self.decide(name, args, force, ask=a, loop=loop)) is not None: return d
         # closing first: the more useful reason; `current` taken under the close lock, so an ask landing in the gap does not wait out its timeout
@@ -1190,11 +1191,12 @@ def _record(self:Agent, f):
         if denied:
             self.activity.finish(act, denied, ok=False)
             return err(denied)
+        fresh = None      # a path this call is the first to touch: dropped again if the call never ran
         if is_write(f):   # first touch only: later edits are part of one change
             if (p := args.get('path')):
                 if p not in self.before:
-                    self.before[p] = self.host.text_at(p) or ''
-                    if self.host.read(p) is None: self.new.add(p)
+                    fresh, self.before[p] = p, self.host.text_at(p) or ''
+                    if not self.host.exists(p): self.new.add(p)
             elif name == 'run_shell' or name in GIT_WRITE_TOOLS: self.snapshot_tree()
         nested = name in DELEGATE_TOOLS   # every call its sub-agent makes hangs off this one
         if nested: self._delegating.append(act.id)
@@ -1211,6 +1213,7 @@ def _record(self:Agent, f):
             if shelled: self.settle_tree()
         for r in self.registry.fire('after_tool', self, name, out):
             if isinstance(r, str): out = r
+        if fresh is not None and failed(out): self.before.pop(fresh, None); self.new.discard(fresh)   # refused or failed: not a change
         if name in GIT_WRITE_TOOLS and not failed(out): self._keep_undo(name, out)
         self.activity.finish(act, out, ok=not failed(out))   # one spelling of failure, in one place
         if run is not None: run.write(f"< {name} {'ok' if not failed(out) else 'ERR'} {_1(out, 200)}")
@@ -2100,14 +2103,34 @@ def _checkpoint(self:Agent):
     d = self.checkpoint_dir
     if d is None or not self.before: return
     d.mkdir(parents=True, exist_ok=True)
-    (d/f'{self.current_turn_id}.json').write_text(json.dumps({'before': self.before, 'new': sorted(self.new)}))
+    written = {p: self.host.text_at(p) or '' for p in self.new if p in self.before}   # what the turn left in each file it created
+    (d/f'{self.current_turn_id}.json').write_text(json.dumps({'before': self.before, 'new': sorted(self.new), 'written': written}))
     files = sorted(d.glob('*.json'), key=lambda p: p.stat().st_mtime)
     while len(files) > 1 and sum(p.stat().st_size for p in files) > CHECKPOINT_BYTES: files.pop(0).unlink()
 
 def _snapshot(raw):
-    "A turn's file checkpoint as `({path: text}, {created paths})`, whichever shape wrote it: bare texts (before 0.2.0) or `{'before', 'new'}`."
-    if isinstance(raw.get('before'), dict) and isinstance(raw.get('new'), list): return raw['before'], set(raw['new'])
-    return raw, set()
+    "A turn's file checkpoint as `({path: text}, {created paths}, {created path: text the turn left})`, whichever shape wrote it: bare texts (before 0.2.0) or `{'before', 'new', 'written'}`."
+    if isinstance(raw.get('before'), dict) and isinstance(raw.get('new'), list): return raw['before'], set(raw['new']), dict(raw.get('written') or {})
+    return raw, set(), {}
+
+@patch
+def _restore(self:Agent, turn_id, snap, new, written, can):
+    "Put each checkpointed path back: created files are removed only while they still hold what the turn wrote; one path failing does not stop the rest, and each is named."
+    restored, gone, kept, left, bad = 0, 0, [], [], []
+    for p, text in snap.items():
+        remove = p in new and can
+        try:
+            if remove:
+                if (self.host.text_at(p) or '') != written.get(p): kept.append(p); continue
+                self.host.delete(p); gone += 1
+            else:
+                self.host.write(p, text); restored += 1
+                if p in new: left.append(p)
+        except Exception as e: bad.append(f"could not {'remove' if remove else 'restore'} {p} ({agent_err(e)})")
+    return (f'restored {restored} file(s) to before {turn_id}' + (f'; removed {gone} file(s) created that turn' if gone else '')
+            + ''.join(f'; kept {p}: changed after the turn' for p in kept)
+            + (f'; {len(left)} created that turn left empty (this host cannot delete)' if left else '')
+            + ''.join(f'; {b}' for b in bad))
 
 @patch
 def rewind(self:Agent, turn_id='', what='both'):
@@ -2116,20 +2139,15 @@ def rewind(self:Agent, turn_id='', what='both'):
     out, d = [], self.checkpoint_dir
     if what in ('files', 'both'):
         f, g = (d/f'{turn_id}.json', d/f'{turn_id}.git.json') if d is not None else (None, None)
-        snap, new = _snapshot(json.loads(f.read_text())) if f is not None and f.exists() else ({}, set())
+        snap, new, written = _snapshot(json.loads(f.read_text())) if f is not None and f.exists() else ({}, set(), {})
         git = json.loads(g.read_text()) if g is not None and g.exists() else self.git_undo.get(turn_id, [])
+        can = hasattr(self.host, 'delete')
         if not snap and not git: out.append(f'no file checkpoint for {turn_id}')
-        elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap), 'git': [t['undoes'] for t in git if t.get('undo')]}, force=True).answer: out.append('rewind refused')
+        elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap), 'delete': sorted(p for p in snap if p in new and can),
+                                                                                  'git': [t['undoes'] for t in git if t.get('undo')]}, force=True).answer: out.append('rewind refused')
         else:   # git first: a checkout undone puts the tree where the file texts were taken from
             if git: out.append(self._undo_git(git))
-            if snap:
-                gone = [p for p in snap if p in new and hasattr(self.host, 'delete')]
-                for p, text in snap.items():
-                    if p in gone: self.host.delete(p)
-                    else: self.host.write(p, text)
-                left = [p for p in new if p in snap and p not in gone]
-                out.append(f'restored {len(snap) - len(gone)} file(s) to before {turn_id}' + (f'; removed {len(gone)} file(s) created that turn' if gone else '')
-                           + (f'; {len(left)} created that turn left empty (this host cannot delete)' if left else ''))
+            if snap: out.append(self._restore(turn_id, snap, new, written, can))
     if what in ('chat', 'both'):
         try: out.append(f"chat on branch {self.undo_turn(turn_id)['branch_id']}, before {turn_id}")
         except Exception as e: out.append(agent_err(e))
@@ -2816,22 +2834,26 @@ def watch(self:Agent, target=''):
     return f'watching {target} in pane {self._panes[target]}'
 
 _AT_FILE = re.compile(r'(?<!\S)@(\S+)')
+_SUBST = re.compile(r'\$(\d+)|\$ARGUMENTS')
 SUBTASK = 'Delegate this to a sub-agent with `delegate_async` rather than doing it yourself:'
 
 @patch
 def _command_file(self:Agent, name):
     "The command's markdown file: a root's `.agents/commands/` when project extensions are opted in (the repo's code, like its hooks), then `<cfg>/commands/`."
+    if not name or name in ('.', '..') or Path(name).name != name: return None   # a name, not a path
     dirs = [Path(r)/'.agents'/'commands' for r in (self.host.roots if self.project_extensions else ())]
     if self.cfg: dirs.append(self.cfg/'commands')
     return first(f for d in dirs if (f := d/f'{name}.md').is_file())
 
 @patch
 def _fill_command(self:Agent, body, arg):
-    "`$ARGUMENTS` is the line, `$1..$n` its words; then each `@path` the host can read becomes a file block, one it cannot (outside the roots, absent) stays as written."
-    body = body.replace('$ARGUMENTS', arg)
+    "`$ARGUMENTS` is the line, `$1..$n` its words, filled in one pass so what they bring in is not substituted again; then each `@path` the host can read becomes a file block, one it cannot (outside the roots, absent) stays as written."
     try: words = shlex.split(arg)
     except ValueError: words = arg.split()
-    for i, w in reversed(list(enumerate(words, 1))): body = body.replace(f'${i}', w)   # `$12` before `$1`
+    def word(m):
+        if m.group(1) is None: return arg
+        return words[int(m.group(1)) - 1] if 0 < int(m.group(1)) <= len(words) else m.group(0)
+    body = _SUBST.sub(word, body)
     def inline(m):
         path = m.group(1).rstrip('?!,;:.)]}\'"')
         try: text = self.host.read(str(self.host.check(path)))

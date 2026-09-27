@@ -121,3 +121,80 @@ def test_a_host_deletes_only_inside_its_roots():
     assert not (h.root/'a.py').exists()
     with pytest.raises(HostError): h.delete('/etc/hosts')
     with pytest.raises(HostError): NullHost().delete('a.py')
+
+
+def _full_agent(tmp_path, files):
+    from ramabana.testing import FullHost
+    host = FullHost(files=files)
+    a, _ = fake_agent(host, cfg=tmp_path)
+    return a, host, {t.__name__: t for t in a.tools}
+
+
+def test_a_refused_write_leaves_nothing_for_rewind_to_undo(tmp_path):
+    "A `create_file` the sandbox refuses never ran, so it is neither a change nor a created file; the turn's real edit still rewinds cleanly."
+    a, host, tools = _full_agent(tmp_path, {'a.py': 'x = 1\n'})
+    a._prepare('write')
+    assert 'cannot use' in tools['create_file']('/etc/nope.txt', 'boo')
+    tools['create_file']('a.py', 'x = 2\n')
+    assert a.new == set() and list(a.before) == ['a.py'], (a.new, a.before)
+    a._finish('done')
+    said = a.command('/rewind files')
+    assert 'restored 1 file(s)' in said and 'could not' not in said and (host.root/'a.py').read_text() == 'x = 1\n'
+
+
+def test_a_binary_file_overwritten_in_the_turn_is_not_taken_for_a_new_one(tmp_path):
+    "`text_at` reads an undecodable file as nothing; whether a file existed is a question for the host, not its text."
+    a, host, tools = _full_agent(tmp_path, {})
+    (host.root/'img.bin').write_bytes(b'\x89PNG\xff\xfe\x00')
+    a._prepare('overwrite')
+    tools['create_file']('img.bin', 'text now\n')
+    assert a.new == set()
+    assert host.exists('img.bin') and not host.exists('/etc/hosts') and not host.exists('nope.bin')
+    from ramabana.tools import NullHost
+    assert NullHost().exists('img.bin') is False
+    m = MemHost({'/proj/a.py': 'x'})
+    assert m.exists('/proj/a.py') and not m.exists('/proj/b.py')
+
+
+def test_a_created_file_the_person_changed_since_is_kept_and_said_so(tmp_path):
+    a, host, tools = _full_agent(tmp_path, {})
+    a._prepare('make b')
+    tools['create_file']('b.py', 'x = 1\n'); tools['create_file']('c.py', 'y = 1\n')
+    a._finish('done')
+    (host.root/'b.py').write_text('x = 1\nmine = True\n')
+    said = a.command('/rewind files')
+    assert 'removed 1 file(s) created that turn' in said and 'kept b.py: changed after the turn' in said, said
+    assert (host.root/'b.py').read_text() == 'x = 1\nmine = True\n' and not (host.root/'c.py').exists()
+
+
+def test_the_rewind_approval_names_what_it_will_delete(tmp_path):
+    from ramabana.agent import Approvals
+    host = MemHost({'/proj/a.py': 'x\n'})
+    a, _ = fake_agent(host, cfg=tmp_path, approvals=Approvals(mode='ask', timeout=5))
+    tools = {t.__name__: t for t in a.tools}
+    a._prepare('t'); tools['create_file']('/proj/b.py', 'new\n'); tools['create_file']('/proj/a.py', 'y\n'); a._finish('done')
+    seen = []
+    a.approvals.listen(on_ask=lambda ask: (seen.append(ask), a.approvals.answer(ask.id, True)))
+    said = a.command('/rewind files')
+    assert '/proj/a.py' in seen[0].args['paths']
+    assert seen[0].args['delete'] == ['/proj/b.py'] and 'delete' in seen[0].preview and '/proj/b.py' in seen[0].preview
+    assert 'removed 1 file(s)' in said and '/proj/b.py' not in host.files
+
+
+def test_one_path_failing_does_not_stop_the_rest_of_the_rewind(tmp_path):
+    from shalya.core import HostError
+    host = MemHost({'/proj/a.py': 'x\n', '/proj/c.py': 'z\n'})
+    a, _ = fake_agent(host, cfg=tmp_path)
+    tools = {t.__name__: t for t in a.tools}
+    a._prepare('t')
+    tools['create_file']('/proj/b.py', 'new\n'); tools['create_file']('/proj/a.py', 'y\n'); tools['create_file']('/proj/c.py', 'w\n')
+    a._finish('done')
+    real = host.write
+    def write(p, text):
+        if p == '/proj/a.py': raise HostError('disk is read-only here')
+        return real(p, text)
+    host.write = write
+    host.delete = lambda p: (_ for _ in ()).throw(OSError('busy'))
+    said = a.command('/rewind files')
+    assert host.files['/proj/c.py'] == 'z\n' and host.files['/proj/a.py'] == 'y\n' and '/proj/b.py' in host.files
+    assert 'could not restore /proj/a.py' in said and 'could not remove /proj/b.py' in said and 'restored 1 file(s)' in said, said
