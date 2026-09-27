@@ -66,8 +66,14 @@ def test_the_watch_and_memory_groups_arrive_with_a_vault_and_never_raise_without
     bare = NullHost()
     assert not (names(tools_for(bare)) & names(watch_tools(bare)))
     assert 'memory_search' not in names(tools_for(bare))
-    assert {'memory_search', 'memory_read', 'remember', 'watch', 'list_watches', 'cancel_watch'} <= names(tools_for(host))
-    assert not ({'memory_tree', 'poll_watches', 'set_reminder', 'watch_url'} & names(tools_for(host)))
+    assert {'memory_search', 'memory_read', 'remember', 'memory_forget', 'watch', 'list_watches', 'cancel_watch'} <= names(tools_for(host))
+    assert not ({'memory_tree', 'memory_topics', 'poll_watches', 'set_reminder', 'watch_url'} & names(tools_for(host)))
+    # `remember(key=)` upserts through the host, and a retrieved section says how old it is
+    from ramabana.core import AgentError
+    d = host.remember('kettles boil', title='Kettles', key='kettle'); d2 = host.remember('kettles boil at 100C', key='kettle')
+    assert d2['replaced'] and not d['replaced']
+    row = host.memory_search('kettle')['results'][0]; assert {'age', 'stale'} <= set(row)
+    with pytest.raises(AgentError): host.memory_topics()
 
     ts = {t.__name__: t for t in watch_tools(bare)}
     for call, why in [(lambda: ts['watch']('renew', kind='remind'), 'could not watch'),

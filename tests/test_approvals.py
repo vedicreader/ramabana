@@ -5,6 +5,7 @@ gets retried; "that file is generated, edit the notebook instead" changes its ap
 test here is really about whether the reason survives the trip back.
 """
 import inspect
+import json
 import threading
 import time
 
@@ -242,3 +243,16 @@ def test_every_tool_named_a_write_is_also_marked_one():
     marked_not_named = sorted(n for n, t in by.items() if is_write(t) and n not in WRITE_TOOLS)
     assert named_not_marked == [], f'in WRITE_TOOLS and not marked: {named_not_marked}'
     assert marked_not_named == [], f'marked and not in WRITE_TOOLS: {marked_not_named}'
+
+
+def test_a_saved_rule_for_a_removed_tool_is_dropped_with_a_note(tmp_path):
+    """`<cfg>/approvals.json` outlives a release: a rule for `remember_note` is inert (rules match by exact
+    name) but misleading in `/approvals`, so building the tool list prunes it and says so."""
+    p = tmp_path/'approvals.json'
+    p.write_text(json.dumps([['remember_note', '*', 'allow'], ['run_shell', 'ls*', 'allow'], ['rewind', '*', 'allow']]))
+    a, _ = fake_agent(approvals=agent.Approvals(rules_path=p))
+    a.tools
+    assert a.approvals.rules == [('run_shell', 'ls*', 'allow'), ('rewind', '*', 'allow')]
+    assert 'remember_note' in a.approvals.problem and 'no such tool' in a.approvals.problem
+    assert json.loads(p.read_text()) == [['run_shell', 'ls*', 'allow'], ['rewind', '*', 'allow']]
+    assert agent.Approvals().prune({'run_shell'}) == []                      # nothing saved, nothing to say

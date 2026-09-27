@@ -41,7 +41,7 @@ def _trim(node, depth=TOC_DEPTH):
 
 def _sect(s):
     "One retrieved section, cut to what a model needs: what it says, where it is, how to read it."
-    return {k: s[k] for k in ('node_id', 'doc_id', 'title', 'breadcrumb', 'text', 'pii') if k in s}
+    return {k: s[k] for k in ('node_id', 'doc_id', 'title', 'breadcrumb', 'text', 'pii', 'age', 'stale') if k in s}
 
 
 def _fed_hit(h):
@@ -155,11 +155,6 @@ class VaultHost(LocalHost):
         pii, ner = self._policy()
         return self.vault.read(str(node_id), pii=pii, pii_ner=ner)
 
-    def memory_topics(self, limit=12):
-        m = self.vault.map()
-        return dict(method=m.get('method'), note=m.get('note'),
-                    clusters=list(m.get('clusters') or [])[:int(limit)])
-
     def memory_forget(self, doc_id):
         self.vault.forget(str(doc_id))
         return True
@@ -214,7 +209,7 @@ class VaultHost(LocalHost):
 
     @property
     def research_note(self): return f'fossick, filed in {Path(self.vault.path).name}'
-    def remember(self, text, title=None, tags=()): return self.vault.note(str(text), title=title, tags=list(tags or []))
+    def remember(self, text, title=None, tags=(), key=''): return self.vault.note(str(text), title=title, tags=list(tags or []), key=key)
     def watch(self, target, action='remind', every='1d', note=None, **params): return self.vault.watch(str(target), action=action, every=every, note=note, **params)
 
     def watches(self, due_only=False): return [dict(w) for w in self.vault.watches(due_only=bool(due_only))]
@@ -263,9 +258,8 @@ class WorkspaceHost(VaultHost, SpecHost):
     def memory_search(self, query, limit=MEM_SECTIONS): return self._memory_call('memory_search', query, limit)
     def memory_tree(self, document=''): return self._memory_call('memory_tree', document)
     def memory_read(self, node_id): return self._memory_call('memory_read', node_id)
-    def memory_topics(self, limit=12): return self._memory_call('memory_topics', limit)
     def memory_forget(self, doc_id): return self._memory_call('memory_forget', doc_id)
-    def remember(self, text, title=None, tags=()): return self._memory_call('remember', text, title, tags)
+    def remember(self, text, title=None, tags=(), key=''): return self._memory_call('remember', text, title, tags, key)
     def ask(self, question, ref=None, instruction='', **kwargs):
         return self._memory_call('ask', question, ref, instruction, **kwargs)
     def watch(self, target, action='remind', every='1d', note=None, **params):

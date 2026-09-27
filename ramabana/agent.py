@@ -365,13 +365,27 @@ class Approvals:
         s = subject(name, args)
         return next((v for t, pat, v in self.rules if t == name and fnmatch.fnmatch(s, pat)), None)
 
+    def prune(self, known):
+        "Drop saved rules for tools that no longer exist (`known` plus the harness's own gates), noting each on `problem`."
+        known = set(known) | {'rewind', 'pull_request'}
+        gone = [r for r in self.rules if r[0] not in known]
+        if not gone: return gone
+        self.rules = [r for r in self.rules if r[0] in known]
+        notes = [f'dropped saved rule for {t} (no such tool)' for t in dict.fromkeys(r[0] for r in gone)]
+        self.problem = '\n'.join(x for x in [self.problem, *notes] if x)
+        self._save()
+        return gone
+
+    def _save(self):
+        if self.rules_path is None: return
+        self.rules_path.parent.mkdir(parents=True, exist_ok=True)
+        with atomic_save(self.rules_path, 'w') as f: json.dump(self.rules, f, indent=1)
+
     def always(self, name, pattern, verdict='allow', glob=False):
         "Save a rule: `name` calls whose subject is `pattern` (a glob with `glob=True`) are allowed, or denied, without asking."
         pattern = pattern if glob else glob_escape(pattern)
         self.rules.append((name, pattern, verdict))
-        if self.rules_path is not None:
-            self.rules_path.parent.mkdir(parents=True, exist_ok=True)
-            with atomic_save(self.rules_path, 'w') as f: json.dump(self.rules, f, indent=1)
+        self._save()
         return f'always {verdict}: {name} {pattern}'
 
     def listen(self, on_ask=None, on_answer=None):
@@ -1198,7 +1212,9 @@ def tools(self:Agent):
         if self.readonly:
             view = view.read_only(self.readonly_calls, effects=False, block=NO_SUB)
         self._catalog_view = view
-        if self.approvals is not None: self.approvals.tools = self.approvals.tools | view.writes
+        if self.approvals is not None:
+            self.approvals.tools = self.approvals.tools | view.writes
+            self.approvals.prune(view.names)
         self._tools = view.map(self._record).tools
     return self._tools
 
@@ -1233,13 +1249,18 @@ def memory_path(self:Agent):
     return self.cfg/'memory'/hashlib.sha1(str(self.host.roots[0]).encode()).hexdigest()[:12]/'MEMORY.md'
 
 @patch
-def note_memory(self:Agent, text):
-    "Append one line to the project's memory file."
+def note_memory(self:Agent, text, title='', tags='', key=''):
+    "One line in the project's memory file: `- [key] **title**: text`; a `key` replaces its earlier line, otherwise the line is appended."
     p = self.memory_path
     if p is None: return 'no config directory to remember into'
     p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open('a') as f: f.write(f'- {text.strip()}\n')
-    return f'remembered in {p}'
+    line = '- ' + (f'[{key}] ' if key else '') + (f'**{title}**: ' if title else '') + ' '.join(str(text).split())
+    lines = p.read_text().splitlines() if p.exists() else []
+    had = [i for i, l in enumerate(lines) if key and l.startswith(f'- [{key}] ')]
+    if had: lines[had[0]] = line
+    else: lines.append(line)
+    p.write_text('\n'.join(lines) + '\n')
+    return f'{"replaced" if had else "remembered"} in {p}'
 
 @patch
 def memory_context(self:Agent, surface, max_chars=MEMORY_CHARS):
@@ -1248,12 +1269,12 @@ def memory_context(self:Agent, surface, max_chars=MEMORY_CHARS):
     return p.read_text()[-max_chars:] if p is not None and p.exists() else ''
 
 def note_tools(note):
-    "The memory tool a host without a vault still gets."
-    @summary(lambda a: f'Remember: {_1(a.get("text"), 80)}')
-    def remember_note(text: str) -> str:
-        "Save one line to this project's memory file, read into every later briefing here."
-        return note(text)
-    return [remember_note]
+    "The memory tool a host without a vault still gets: shalya's `remember`, on the project's memory file."
+    @summary(lambda a: f'Remember {_1(a.get("title") or a.get("text"), 80)}')
+    def remember(text: str, title: str = '', tags: str = '', key: str = '') -> str:
+        "Store a conclusion in this project's memory file (no vault here); the same `key` later replaces the line."
+        return note(text, title=title, tags=tags, key=key)
+    return [remember]
 
 # %% ../nbs/03_agent.ipynb #00efc09f
 @patch

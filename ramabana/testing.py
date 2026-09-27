@@ -161,11 +161,6 @@ class FullHost(LocalHost):
         head, body = self._sections(text)[int(idx or 0)]
         return {'node_id': node_id, 'document': title, 'url': url, 'heading': head, 'text': body}
 
-    def memory_topics(self, limit=12):
-        "One cluster per remembered document, which is the honest clustering of a handful of pages."
-        return [{'topic': title, 'members': [url], 'n': len(self._sections(text))}
-                for title, url, text in list(self.remembered.values())[:int(limit)]]
-
     def memory_forget(self, doc_id):
         return self.remembered.pop(str(doc_id), None) is not None
 

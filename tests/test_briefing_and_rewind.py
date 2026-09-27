@@ -72,9 +72,14 @@ def test_rewind_restores_the_files_a_turn_changed(tmp_path):
 
 
 def test_notes_survive_without_a_vault_and_reach_the_briefing(tmp_path):
+    from ramabana.tools import is_write
     a, _ = fake_agent(cfg=tmp_path)
-    assert 'remember_note' in {t.__name__ for t in a.tools}
-    a.note_memory('use uv, never pip')
+    names = {t.__name__: t for t in a.tools}
+    assert 'remember' in names and 'remember_note' not in names and not is_write(names['remember'])
+    assert 'remembered' in names['remember']('use uv, never pip', key='pkg')
+    assert 'replaced' in names['remember']('use uv (uv add for deps)', key='pkg')
+    names['remember']('tests run with nbdev-test', title='Tests', tags='ci')
     b, _ = fake_agent(cfg=tmp_path)
-    assert '- use uv, never pip' in b.system_prompt()
+    sp = b.system_prompt()
+    assert '- [pkg] use uv (uv add for deps)' in sp and 'never pip' not in sp and '- **Tests**: tests run with nbdev-test' in sp
     assert fake_agent()[0].note_memory('x').startswith('no config')
