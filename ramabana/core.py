@@ -359,6 +359,10 @@ def resolve(name, default_local=DFLT_LOCAL):
             return ModelSpec(name, backend, mid, ctx, note, config)
         ctx, note = _cloud_ctx(mid)
         return ModelSpec(name, backend, mid, ctx, note, config)
+    if re.match(r'^(?:claude-|(?:opus|sonnet|haiku|fable)-\d)', name):    # an id the tables have moved past; Claude Code decides
+        if not runtime_available('claude'): raise RuntimeError(f'claude runtime is unavailable; {runtime_remedy("claude")}')
+        mid = name if name.startswith('claude-') else f'claude-{name}'
+        return ModelSpec(name, 'claude', mid, claude_ctx(mid))
     if '/' in name:
         runtime, model_id = name.split('/', 1)
         if runtime in RETIRED: raise KeyError(f'{name!r}: the {runtime!r} prefix was removed -- {RETIRED[runtime]}')
