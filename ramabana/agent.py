@@ -1002,6 +1002,7 @@ class Agent:
         self._load_plan()
         self.before = {}         # path -> its text just before a write tool touched it, this turn
         self.new = set()         # the paths in `before` that did not exist before this turn: a rewind removes them
+        self.binary = set()      # the paths in `before` whose pre-image would not decode: a rewind cannot restore them
         self._walked = False     # whether a tree baseline is held for the running command
         self._tree = {}          # that baseline: path -> its text when the command started
         self._tool_calls_turn = 0 # backend-independent guard for local/native tool loops
@@ -1195,8 +1196,10 @@ def _record(self:Agent, f):
         if is_write(f):   # first touch only: later edits are part of one change
             if (p := args.get('path')):
                 if p not in self.before:
-                    fresh, self.before[p] = p, self.host.text_at(p) or ''
+                    fresh, was = p, self.host.text_at(p)
+                    self.before[p] = was or ''
                     if not self.host.exists(p): self.new.add(p)
+                    elif was is None: self.binary.add(p)
             elif name == 'run_shell' or name in GIT_WRITE_TOOLS: self.snapshot_tree()
         nested = name in DELEGATE_TOOLS   # every call its sub-agent makes hangs off this one
         if nested: self._delegating.append(act.id)
@@ -1213,7 +1216,7 @@ def _record(self:Agent, f):
             if shelled: self.settle_tree()
         for r in self.registry.fire('after_tool', self, name, out):
             if isinstance(r, str): out = r
-        if fresh is not None and failed(out): self.before.pop(fresh, None); self.new.discard(fresh)   # refused or failed: not a change
+        if fresh is not None and failed(out): self.before.pop(fresh, None); self.new.discard(fresh); self.binary.discard(fresh)   # refused or failed: not a change
         if name in GIT_WRITE_TOOLS and not failed(out): self._keep_undo(name, out)
         self.activity.finish(act, out, ok=not failed(out))   # one spelling of failure, in one place
         if run is not None: run.write(f"< {name} {'ok' if not failed(out) else 'ERR'} {_1(out, 200)}")
@@ -1917,7 +1920,7 @@ def _begin_turn(self:Agent, run=None):
 @patch
 def _prepare(self:Agent, prompt):
     "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
-    self.before.clear(); self.new.clear()  # `changes()` reports this turn, not the session
+    self.before.clear(); self.new.clear(); self.binary.clear()  # `changes()` reports this turn, not the session
     self._drawn = []                       # pictures this turn's tools wrote, for the frontend
     self._walked, self._tree = False, {}
     self._begin_turn(current_run())
@@ -2104,32 +2107,30 @@ def _checkpoint(self:Agent):
     if d is None or not self.before: return
     d.mkdir(parents=True, exist_ok=True)
     written = {p: self.host.text_at(p) or '' for p in self.new if p in self.before}   # what the turn left in each file it created
-    (d/f'{self.current_turn_id}.json').write_text(json.dumps({'before': self.before, 'new': sorted(self.new), 'written': written}))
+    (d/f'{self.current_turn_id}.json').write_text(json.dumps({'before': self.before, 'new': sorted(self.new), 'written': written, 'binary': sorted(self.binary)}))
     files = sorted(d.glob('*.json'), key=lambda p: p.stat().st_mtime)
     while len(files) > 1 and sum(p.stat().st_size for p in files) > CHECKPOINT_BYTES: files.pop(0).unlink()
 
 def _snapshot(raw):
-    "A turn's file checkpoint as `({path: text}, {created paths}, {created path: text the turn left})`, whichever shape wrote it: bare texts (before 0.2.0) or `{'before', 'new', 'written'}`."
-    if isinstance(raw.get('before'), dict) and isinstance(raw.get('new'), list): return raw['before'], set(raw['new']), dict(raw.get('written') or {})
-    return raw, set(), {}
+    "A turn's file checkpoint as `({path: text}, {created paths}, {created path: text the turn left}, {undecodable paths})`, whichever shape wrote it: bare texts (before 0.2.0) or `{'before', 'new', 'written', 'binary'}`."
+    if isinstance(raw.get('before'), dict) and isinstance(raw.get('new'), list):
+        return raw['before'], set(raw['new']), dict(raw.get('written') or {}), set(raw.get('binary') or ())
+    return raw, set(), {}, set()
 
 @patch
-def _restore(self:Agent, turn_id, snap, new, written, can):
-    "Put each checkpointed path back: created files are removed only while they still hold what the turn wrote; one path failing does not stop the rest, and each is named."
-    restored, gone, kept, left, bad = 0, 0, [], [], []
+def _restore(self:Agent, turn_id, snap, delete, kept, binary, left=0):
+    "Put each checkpointed path back, exactly as the approval said: `delete` removed, `kept` and `binary` untouched and named, the rest written; one path failing does not stop the rest."
+    restored, gone, bad = 0, 0, []
     for p, text in snap.items():
-        remove = p in new and can
+        if p in kept or p in binary: continue
         try:
-            if remove:
-                if (self.host.text_at(p) or '') != written.get(p): kept.append(p); continue
-                self.host.delete(p); gone += 1
-            else:
-                self.host.write(p, text); restored += 1
-                if p in new: left.append(p)
-        except Exception as e: bad.append(f"could not {'remove' if remove else 'restore'} {p} ({agent_err(e)})")
+            if p in delete: self.host.delete(p); gone += 1
+            else: self.host.write(p, text); restored += 1
+        except Exception as e: bad.append(f"could not {'remove' if p in delete else 'restore'} {p} ({agent_err(e)})")
     return (f'restored {restored} file(s) to before {turn_id}' + (f'; removed {gone} file(s) created that turn' if gone else '')
             + ''.join(f'; kept {p}: changed after the turn' for p in kept)
-            + (f'; {len(left)} created that turn left empty (this host cannot delete)' if left else '')
+            + ''.join(f'; cannot restore {p} (binary)' for p in sorted(binary) if p in snap)
+            + (f'; {left} created that turn left empty (this host cannot delete)' if left else '')
             + ''.join(f'; {b}' for b in bad))
 
 @patch
@@ -2139,15 +2140,17 @@ def rewind(self:Agent, turn_id='', what='both'):
     out, d = [], self.checkpoint_dir
     if what in ('files', 'both'):
         f, g = (d/f'{turn_id}.json', d/f'{turn_id}.git.json') if d is not None else (None, None)
-        snap, new, written = _snapshot(json.loads(f.read_text())) if f is not None and f.exists() else ({}, set(), {})
+        snap, new, written, binary = _snapshot(json.loads(f.read_text())) if f is not None and f.exists() else ({}, set(), {}, set())
         git = json.loads(g.read_text()) if g is not None and g.exists() else self.git_undo.get(turn_id, [])
-        can = hasattr(self.host, 'delete')
+        made = sorted(p for p in snap if p in new and hasattr(self.host, 'delete'))
+        delete = [p for p in made if (self.host.text_at(p) or '') == written.get(p)]   # still exactly what the turn wrote
+        kept = [p for p in made if p not in delete]
         if not snap and not git: out.append(f'no file checkpoint for {turn_id}')
-        elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap), 'delete': sorted(p for p in snap if p in new and can),
+        elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap), 'delete': delete, 'kept': kept,
                                                                                   'git': [t['undoes'] for t in git if t.get('undo')]}, force=True).answer: out.append('rewind refused')
         else:   # git first: a checkout undone puts the tree where the file texts were taken from
             if git: out.append(self._undo_git(git))
-            if snap: out.append(self._restore(turn_id, snap, new, written, can))
+            if snap: out.append(self._restore(turn_id, snap, set(delete), kept, binary, len(new - set(made))))
     if what in ('chat', 'both'):
         try: out.append(f"chat on branch {self.undo_turn(turn_id)['branch_id']}, before {turn_id}")
         except Exception as e: out.append(agent_err(e))

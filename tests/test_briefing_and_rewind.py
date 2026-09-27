@@ -198,3 +198,32 @@ def test_one_path_failing_does_not_stop_the_rest_of_the_rewind(tmp_path):
     said = a.command('/rewind files')
     assert host.files['/proj/c.py'] == 'z\n' and host.files['/proj/a.py'] == 'y\n' and '/proj/b.py' in host.files
     assert 'could not restore /proj/a.py' in said and 'could not remove /proj/b.py' in said and 'restored 1 file(s)' in said, said
+
+
+def test_the_rewind_ask_lists_exactly_what_will_go_and_what_stays(tmp_path):
+    "`delete` is the final set: created files still holding what the turn wrote; one the person changed since is under `kept`, so the ask says both."
+    from ramabana.agent import Approvals
+    host = MemHost({'/proj/a.py': 'x\n'})
+    a, _ = fake_agent(host, cfg=tmp_path, approvals=Approvals(mode='ask', timeout=5))
+    tools = {t.__name__: t for t in a.tools}
+    a._prepare('t'); tools['create_file']('/proj/b.py', 'b\n'); tools['create_file']('/proj/c.py', 'c\n'); a._finish('done')
+    host.files['/proj/b.py'] = 'b\nmine\n'
+    seen = []
+    a.approvals.listen(on_ask=lambda ask: (seen.append(ask), a.approvals.answer(ask.id, True)))
+    said = a.command('/rewind files')
+    assert seen[0].args['delete'] == ['/proj/c.py'] and seen[0].args['kept'] == ['/proj/b.py'], seen[0].args
+    assert '"kept"' in seen[0].preview and '/proj/b.py' in seen[0].preview
+    assert 'removed 1 file(s)' in said and 'kept /proj/b.py: changed after the turn' in said
+    assert '/proj/c.py' not in host.files and host.files['/proj/b.py'] == 'b\nmine\n'
+
+
+def test_a_binary_pre_image_is_reported_as_unrestorable_rather_than_emptied(tmp_path):
+    a, host, tools = _full_agent(tmp_path, {'a.py': 'x = 1\n'})
+    (host.root/'img.bin').write_bytes(b'\x89PNG\xff\xfe\x00')
+    a._prepare('overwrite')
+    tools['create_file']('img.bin', 'text now\n'); tools['create_file']('a.py', 'x = 2\n')
+    assert a.binary == {'img.bin'}
+    a._finish('done')
+    said = a.command('/rewind files')
+    assert 'restored 1 file(s)' in said and 'cannot restore img.bin (binary)' in said, said
+    assert (host.root/'img.bin').read_text() == 'text now\n' and (host.root/'a.py').read_text() == 'x = 1\n'
