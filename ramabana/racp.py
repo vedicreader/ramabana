@@ -241,7 +241,8 @@ class Session:
         "On the turn's thread, inside `Approvals.request`, before it waits."
         try: ok, note, always = self.br.call(self._permit(a))
         except Exception as e: ok, note, always = False, f'the editor did not answer ({e!r})', False
-        answered = self.agent.approvals.answer(a.id, ok, note, session=always)
+        # the editor's option is labelled 'every write this session': scope it to file/notebook edits, never to shell
+        answered = self.agent.approvals.answer(a.id, ok, note, session=always, scope='edits')
         # a refused or cancelled call never fires `_act`, so close and drop the entry here
         if not ok or answered is None:
             self._send(acp.update_tool_call(a.id, status='failed'))
