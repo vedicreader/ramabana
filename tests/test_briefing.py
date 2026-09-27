@@ -511,8 +511,8 @@ def test_the_friendly_claude_names_route_to_the_harness_not_the_mcp_transport():
     `claude/` route strips the harness back to a model, which is the one that answers.
     """
     from ramabana.core import MODELS
-    for name, mid in (('sonnet', 'claude-sonnet-5'), ('opus', 'claude-opus-5'),
-                      ('fable', 'claude-fable-5'), ('claude-sonnet-5', 'claude-sonnet-5')):
+    for name, mid in (('sonnet', 'claude-sonnet-5'), ('opus', 'claude-opus-5-5'),
+                      ('fable', 'claude-fable-5-1'), ('claude-sonnet-5', 'claude-sonnet-5')):
         assert MODELS[name] == ('claude', mid), f'{name} -> {MODELS[name]}'
     assert not any(str(mid).startswith('claude_code/') for _, mid in MODELS.values())
 
@@ -538,11 +538,11 @@ def test_a_harness_is_held_to_its_own_window_not_the_tables():
     """
     from ramabana.core import DFLT_AGENT_CTX, _cloud_ctx, claude_ctx, resolve
     assert _cloud_ctx('claude-sonnet-5')[0] > 200_000, 'the tables still know a bigger one'
-    for name in ('sonnet', 'opus', 'claude/claude-opus-5'):
+    for name in ('sonnet', 'opus', 'claude/claude-opus-5-5'):
         assert resolve(name).ctx == 200_000, name
         assert resolve(name).ctx < _cloud_ctx('claude-sonnet-5')[0], 'and it is not the tables\' figure'
     # a family whose window is not recorded here still gets the affordable ceiling
-    assert resolve('claude-haiku-4-5').ctx == DFLT_AGENT_CTX
+    assert resolve('haiku').ctx == DFLT_AGENT_CTX
     assert claude_ctx('claude-unreleased-9') == DFLT_AGENT_CTX
 
 

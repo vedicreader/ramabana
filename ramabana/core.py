@@ -6,7 +6,7 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
-           'CLAUDE_MODELS', 'CLAUDE', 'CLAUDE_ALIASES', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
+           'CLAUDE_MODELS', 'CLAUDE_ALIASES', 'CLAUDE', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
            'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'PROBE_TTL',
            'PROBE_DIR', 'HARNESS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES',
            'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'API_KEYS', 'MODEL_ALIASES',
@@ -22,6 +22,7 @@ import difflib, functools, importlib, importlib.util, json, os, platform, re, sh
 from fastcore.all import Path, atomic_save
 from shalya.host import HostError
 import urai, rishi.core   # rishi registers its backends with urai on import
+from .models import CATALOG, claude_ids, claude_aliases, provider_models
 from dataclasses import dataclass, field
 
 # %% ../nbs/00_core.ipynb #2049138c
@@ -55,9 +56,9 @@ LLAMA = {'llama-qwen-0.6b': 'Qwen/Qwen3-0.6B-GGUF','llama-qwen-1.7b': 'Qwen/Qwen
 GPT = {name: f'openai/{name}' for name in ('gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano','gpt-5.4', 'gpt-5.4-mini', 'gpt-5.6', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra')}
 GPT.update({name: f'codex/{name}' for name in ('gpt-5.3-codex-spark', 'gpt-5.5')})
 CLOUD = {**GPT, 'gpt': GPT['gpt-5.6-terra'],'gpt-mini': GPT['gpt-5.6-luna'], 'gpt-sol': GPT['gpt-5.6-sol']}
-CLAUDE_MODELS = ('claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'claude-fable-5','claude-opus-4-8', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-opus-4-6')
-CLAUDE = {f'claude/{mid}': mid for mid in CLAUDE_MODELS}
-CLAUDE_ALIASES = {**{mid: mid for mid in CLAUDE_MODELS},'sonnet': 'claude-sonnet-5', 'opus': 'claude-opus-5', 'fable': 'claude-fable-5'}
+CLAUDE_MODELS = claude_ids()                    #: views of `ramabana.models.CATALOG['claude']`; kept under these names for callers
+CLAUDE_ALIASES = {**{mid: mid for mid in CLAUDE_MODELS}, **claude_aliases()}
+CLAUDE = {f'claude/{name}': mid for name, mid in CLAUDE_ALIASES.items()}
 DFLT_AGENT_CTX = 128_000
 CLAUDE_CTX = {'claude-opus': 200_000, 'claude-sonnet': 200_000}
 RUNTIME_NAMES = tuple(urai.RUNTIMES)   #: what rishi registered, in inference order; `urai.RUNTIMES` holds the records
@@ -228,24 +229,6 @@ def auth_status():
     }
 
 # %% ../nbs/00_core.ipynb #56303cec
-def _openai_ids():
-    "Every model id the current OpenAI key can list, or `[]` when it cannot be asked."
-    if not (key := os.getenv('OPENAI_API_KEY')): return []
-    try:
-        import httpx2 as httpx
-        r = httpx.get('https://api.openai.com/v1/models', headers={'Authorization': f'Bearer {key}'}, timeout=10)
-        r.raise_for_status()
-        return [x.get('id', '') for x in r.json().get('data', [])]
-    except Exception: return []
-
-def _openai_models(include_legacy=False):
-    "Canonical models the current OpenAI key can list. Older coding models are opt-in."
-    if not os.getenv('OPENAI_API_KEY'): return []
-    ids = probed('openai-models', _openai_ids, ttl=300, disk=False)
-    current = re.compile(r'^(?:gpt-5(?:\.\d+)?(?:-(?:mini|nano|pro|codex(?:-mini|-max)?|chat-latest|search-api|[a-z]+))?|o[34](?:-mini|-pro)?)$')
-    legacy = re.compile(r'^gpt-4\.1(?:-mini|-nano)?$')
-    return sorted({x for x in ids if (current.match(x) or (include_legacy and legacy.match(x))) and not re.search(r'-20\d\d-', x)})
-
 def _copilot_catalog():
     try:
         from rishi.copilot import copilot_catalog as cat
@@ -273,32 +256,14 @@ def available_models(include_legacy=False):
                 rows.append({'value': f'ollama/{m}', 'label': m, 'provider': 'ollama', 'source': 'on device via the ollama daemon'})
         except Exception: pass
     if runtime_available('claude'):
-        rows += [{'value': name, 'label': mid, 'provider': 'claude', 'source': 'Claude Code (CLI or SDK)'} for name, mid in CLAUDE.items()]
+        rows += [{'value': f'claude/{m}', 'label': m, 'provider': 'claude', 'source': 'Claude Code (CLI or SDK)'} for m in provider_models('claude', include_legacy)]
     if runtime_available('copilot'):
         for model in _copilot_chat_models():
             rows.append({'value': f'copilot/{model}', 'label': model, 'provider': 'copilot', 'source': 'GitHub Copilot subscription'})
     auth = auth_status()
-    if auth['openai']['available']:
-        for model in _openai_models(include_legacy):
-            rows.append({'value': f'openai/{model}', 'label': model, 'provider': 'openai', 'source': auth['openai']['source']})
-    try:
-        from fastllm.types import model_info_registry
-        vendors = ('openai', 'codex', 'gemini')
-        for vendor in vendors:
-            if not auth.get(vendor, {}).get('available'): continue
-            for v, model in model_info_registry:
-                if v != vendor: continue
-                if not include_legacy and re.match(r'^gpt-4(?:\.|-|$)', model): continue
-                rows.append({'value': f'{vendor}/{model}', 'label': model, 'provider': vendor, 'source': auth[vendor]['source']})
-    except Exception: pass
-    if auth['anthropic']['available']:
-        catalog = set()
-        try:
-            from fastllm.types import model_info_registry
-            catalog = {model for vendor, model in model_info_registry if vendor == 'anthropic' and model.startswith('claude-')}
-        except Exception: pass
-        catalog.update(model.split('/', 1)[1] for model in CLOUD.values() if model.startswith('anthropic/'))
-        for model in sorted(catalog): rows.append({'value': f'anthropic/{model}', 'label': model, 'provider': 'anthropic', 'source': auth['anthropic']['source']})
+    for vendor in ('openai', 'codex', 'gemini', 'anthropic'):
+        if not auth[vendor]['available']: continue
+        rows += [{'value': f'{vendor}/{m}', 'label': m, 'provider': vendor, 'source': auth[vendor]['source']} for m in provider_models(vendor, include_legacy)]
     seen, out = set(), []
     for row in rows:
         if row['value'] in seen: continue

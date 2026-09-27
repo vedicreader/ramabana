@@ -204,9 +204,9 @@ def test_an_unknown_model_names_the_near_miss_rather_than_the_whole_table():
     typed. `/models` is there for the rest.
     """
     with pytest.raises(KeyError) as e:
-        resolve('claude-sonnet-4.6')
+        resolve('claude-opus-5.5')
     msg = str(e.value)
-    assert 'claude-sonnet-4-6' in msg, msg
+    assert 'claude-opus-5-5' in msg, msg
     assert 'did you mean' in msg.lower(), msg
     assert '/models' in msg, msg
     assert 'gemma-e2b' not in msg, 'the whole table is still in the message'
@@ -218,7 +218,7 @@ def test_an_unknown_model_names_the_near_miss_rather_than_the_whole_table():
 
 
 def test_a_typed_model_name_fails_as_a_sentence_not_a_traceback():
-    """`--model claude-sonnet-4.6` printed thirty frames of `fastcore.script` and buried the message.
+    """`--model claude-opus-5.5` printed thirty frames of `fastcore.script` and buried the message.
 
     Everything else `main` refuses -- a bad theme, a missing pyrepl extra, `--vault` without a host --
     already prints one line and returns 2. Model resolution was the one that raised through.
@@ -226,11 +226,11 @@ def test_a_typed_model_name_fails_as_a_sentence_not_a_traceback():
     import subprocess, sys, pathlib
     exe = pathlib.Path(sys.executable).parent/'ramabana'
     if not exe.exists(): pytest.skip('console script not installed in this env')
-    r = subprocess.run([str(exe), '--model', 'claude-sonnet-4.6', 'hi'],
+    r = subprocess.run([str(exe), '--model', 'claude-opus-5.5', 'hi'],
                        capture_output=True, text=True, timeout=120)
     assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
     assert 'Traceback' not in r.stderr, r.stderr
-    assert 'claude-sonnet-4-6' in r.stderr, r.stderr
+    assert 'claude-opus-5-5' in r.stderr, r.stderr
     assert r.stderr.count('\n') <= 2, f'{r.stderr.count(chr(10))} lines: {r.stderr}'
 
 def test_a_remedy_names_an_extra_only_where_rishi_still_declares_one():
@@ -283,7 +283,7 @@ def test_a_claude_model_is_measured_against_its_own_window():
 def test_a_bigger_window_does_not_quietly_change_what_a_model_is_briefed_with():
     "Both ceilings sit above `SMALL_CTX`, so the tool budget must be the same either way."
     from ramabana.core import DFLT_AGENT_CTX, budget_for, resolve
-    before, after = budget_for(resolve('claude-haiku-4-5'), 6000), budget_for(resolve('claude-opus-5'), 6000)
+    before, after = budget_for(resolve('haiku'), 6000), budget_for(resolve('opus'), 6000)
     assert before.drop == after.drop == () and before.inline is after.inline is True
 
 def test_a_window_that_cannot_be_read_keeps_its_last_occupancy():

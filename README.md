@@ -46,7 +46,7 @@ export RAMABANA_MODEL=sonnet    # the same choice in every session
 
 | names | runs on | credential |
 |----|----|----|
-| `opus`, `sonnet`, `fable`, `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5` | Claude Code | a `claude /login` session |
+| `opus`, `sonnet`, `fable`, `haiku`, `claude-opus-5-5`, `claude-sonnet-5`, `claude-fable-5-1` | Claude Code | a `claude /login` session |
 | `gpt`, `gpt-mini`, `gpt-sol`, `gpt-5.6`, `gpt-4.1-mini` | the OpenAI API | `OPENAI_API_KEY` |
 | `gpt-5.5`, `gpt-5.3-codex-spark` | Codex | a Codex login |
 | `anthropic/<id>` | the Anthropic API | `ANTHROPIC_API_KEY` |
@@ -310,6 +310,7 @@ agent.turn_lines(), repr(agent.turn_use)
 Start with the page for the contract you need:
 
 - [core](00_core.ipynb): errors, routing, model budgets, and shared values
+- [models](01b_models.ipynb): the model catalog, curated and discovered
 - [runtime](01_runtime.ipynb): backends, usage, runs, and compaction
 - [tools](02_tools.ipynb): hosts, tool construction, and delegation
 - [agent](03_agent.ipynb): turns, approvals, activity, plans, history, and branching
