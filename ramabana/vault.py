@@ -64,11 +64,12 @@ class VaultHost(LocalHost):
                  remember_reads=True,   # file what `read_url` fetches. The next session has it
                  warm=True,             # open the vault in the background at construction
                  mk_chat=None,          # build the vault's chats with this. None -> vishalakshi's own
+                 graph_chat=None,       # the chat the entity graph is built on. None -> vishalakshi's local default, never `mk_chat`
                  pii=None,              # `off|redact|refuse` for what retrieval returns, or a callable for one
                  pii_ner=None,          # gate on titled names too. A callable, like `pii`, is read per call
                  **kwargs):             # forwarded to `LocalHost`
         super().__init__(roots, **kwargs)
-        self.mk_chat, self.pii, self.pii_ner = mk_chat, pii, pii_ner
+        self.mk_chat, self.graph_chat, self.pii, self.pii_ner = mk_chat, graph_chat, pii, pii_ner
         self.shelf = safe_shelf(shelf) if shelf else None
         self._vault, self._vlock, self._vthread = vault, threading.Lock(), None
         self.federate, self.remember_reads = federate, remember_reads
@@ -118,13 +119,13 @@ class VaultHost(LocalHost):
         return v
 
     def connect(self, wait=False):
-        "Rebuild the entity graph in a background thread, on the lent model when there is one."
+        "Rebuild the entity graph in a background thread, on `graph_chat`."
         if self._cthread is None or not self._cthread.is_alive():
             def run():
                 root = self.vault
                 v = self._worker_vault()
-                # the vault's chats come from `mk_chat` when a session lent one; the graph's included, or it loads a second runtime
-                try: v.connect(chat=None if self.mk_chat is None else self.mk_chat(None))
+                # never the lent `mk_chat`: that may be a hosted model, and every chunk here is private material
+                try: v.connect(chat=self.graph_chat)
                 except Exception as e: self.note(f'could not rebuild the memory graph: {agent_err(e)}')
                 finally:
                     if v is not root: v.db.conn.close()

@@ -263,7 +263,7 @@ def recorded(path=None, record=None):
 
 # %% ../nbs/04_testing.ipynb #nomodel01
 def no_model(model=None, **kw):
-    "A `mk_chat` for a host under test: every answer is an empty JSON object, so a graph build finds nothing and loads nothing."
+    "A quiet chat for a host under test (its `graph_chat`, or a `mk_chat`): every answer is an empty JSON object, so a graph build finds nothing and loads nothing."
     class _Quiet:
         def oneshot(self, prompt, sp='', **kw): return '{}'
         def __call__(self, prompt, **kw): return {'role': 'assistant', 'content': '{}'}
