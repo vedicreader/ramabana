@@ -126,7 +126,7 @@ Type `/` and press tab to complete a command. The list is what this session has,
 | `/commit [MESSAGE]`, `/pr [TITLE]` | a commit or pull request drafted from the diff, behind approval |
 | `/rewind [TURN] [files\|chat\|both]`, `/branches`, `/branch NAME` | undo a turn’s files or chat, and the conversation branches |
 | `/watch [RUN\|monitors]`, `/unwatch`, `/tell RUN TEXT` | a tmux pane on a run’s transcript, and a message to a running sub-agent |
-| `/NAME ARGS`, `#note TEXT` | a skill or `<cfg>/commands/NAME.md` as a turn, and a line for the next session’s memory |
+| `/NAME ARGS`, `#note TEXT` | a skill, or a `<cfg>/commands/NAME.md` (a repo’s `.agents/commands/` once `project_extensions` is opted in) with `$ARGUMENTS`, `$1..$n` and `@path` filled as a turn; a line for the next session’s memory |
 | `/root [add PATH]`, `/theme [NAME]`, `/mouse` | the open folders, the palette, and clicking blocks |
 | `/attach PATH`, `/detach [N]`, `/paste`, `/copy [turn]` | files and images in, text out |
 | `/skills`, `/skill NAME`, `/tools`, `/extensions`, `/reload` | what this session loaded, and re-reading it |

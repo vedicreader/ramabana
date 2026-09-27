@@ -9,19 +9,20 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES',
            'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL',
-           'HISTORY_TURNS', 'WARM_ROUNDS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'COMPLETE_SP',
-           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
-           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
-           'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives',
-           'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
-           'note_tools', 'Completer']
+           'HISTORY_TURNS', 'WARM_ROUNDS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK',
+           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
+           'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key',
+           'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text',
+           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'plan_tools', 'Agent',
+           'git_shell_denial', 'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
 from glob import escape as glob_escape
 from dataclasses import dataclass, field
 from pathlib import Path
-from fastcore.basics import patch
+from fastcore.basics import first, patch
+from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
@@ -2802,13 +2803,41 @@ def watch(self:Agent, target=''):
     except Exception: return f'no tmux here; in another terminal run: {_tail(log)}'
     return f'watching {target} in pane {self._panes[target]}'
 
+_AT_FILE = re.compile(r'(?<!\S)@(\S+)')
+SUBTASK = 'Delegate this to a sub-agent with `delegate_async` rather than doing it yourself:'
+
+@patch
+def _command_file(self:Agent, name):
+    "The command's markdown file: a root's `.agents/commands/` when project extensions are opted in (the repo's code, like its hooks), then `<cfg>/commands/`."
+    dirs = [Path(r)/'.agents'/'commands' for r in (self.host.roots if self.project_extensions else ())]
+    if self.cfg: dirs.append(self.cfg/'commands')
+    return first(f for d in dirs if (f := d/f'{name}.md').is_file())
+
+@patch
+def _fill_command(self:Agent, body, arg):
+    "`$ARGUMENTS` is the line, `$1..$n` its words; then each `@path` the host can read becomes a file block, one it cannot (outside the roots, absent) stays as written."
+    body = body.replace('$ARGUMENTS', arg)
+    try: words = shlex.split(arg)
+    except ValueError: words = arg.split()
+    for i, w in reversed(list(enumerate(words, 1))): body = body.replace(f'${i}', w)   # `$12` before `$1`
+    def inline(m):
+        path = m.group(1).rstrip('?!,;:.)]}\'"')
+        try: text = self.host.read(str(self.host.check(path)))
+        except Exception: text = None
+        return m.group(0) if text is None else f'<file path="{path}">\n{clip(text, MAX_CONTEXT_FILE).rstrip()}\n</file>'
+    return _AT_FILE.sub(inline, body)
+
 @patch
 def expand_command(self:Agent, line):
-    "The prompt a `/name ARGS` line stands for: the line for a skill, a `<cfg>/commands/name.md` body with `$ARGUMENTS` filled, else None."
+    "The prompt a `/name ARGS` line stands for: the line for a skill; a command file's body with `$ARGUMENTS`, `$1..$n` and `@path` filled, framed for a sub-agent when its frontmatter says `subtask`; else None."
     name, _, arg = line.strip()[1:].partition(' ')
     if name.lower() in {s.name.lower() for s in self.skills}: return line.strip()
-    f = self.cfg/'commands'/f'{name}.md' if self.cfg else None
-    return f.read_text().replace('$ARGUMENTS', arg.strip()).strip() if f and f.is_file() else None
+    if (f := self._command_file(name)) is None: return None
+    text = f.read_text()
+    try: meta, body = frontmatter(text)
+    except Exception: meta, body = {}, text.split('\n---\n', 1)[-1]   # malformed frontmatter is dropped, not a reason to refuse the command
+    body = self._fill_command(body, arg.strip()).strip()
+    return f'{SUBTASK}\n\n{body}' if meta.get('subtask') else body
 
 @patch
 def unwatch(self:Agent, target='all'):

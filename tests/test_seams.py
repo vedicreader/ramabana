@@ -26,6 +26,48 @@ def test_expand_command_knows_skills_and_command_files(tmp_path):
     if a.skills: assert a.expand_command(f'/{a.skills[0].name} fix it') == f'/{a.skills[0].name} fix it'
 
 
+def test_a_command_file_fills_its_arguments_and_inlines_the_files_it_names(tmp_path):
+    """`$1..$n` are the line's words (quoted words stay whole), `$ARGUMENTS` is the whole line, and an
+    `@path` becomes the file where the host can read it; a path outside the open roots stays as written,
+    since a command file is not a way round the sandbox."""
+    from ramabana.testing import FullHost
+    host = FullHost(files={'notes.md': 'remember the cedar\n'})
+    (tmp_path/'commands').mkdir()
+    (tmp_path/'commands'/'review.md').write_text('Review $1 for $2; all: $ARGUMENTS\n\n@notes.md and @/etc/hostname and @missing.md.\n')
+    a, _ = fake_agent(host, cfg=tmp_path)
+    out = a.expand_command('/review a.py "style and tests"')
+    assert out.startswith('Review a.py for style and tests; all: a.py "style and tests"')
+    assert '<file path="notes.md">\nremember the cedar\n</file>' in out
+    assert '@/etc/hostname' in out and '@missing.md.' in out           # left as written: outside the roots, and absent
+    (tmp_path/'commands'/'odd.md').write_text("Say $1 and $ARGUMENTS\n")
+    assert a.expand_command("/odd it's fine") == "Say it's and it's fine"   # an unbalanced quote is still just words
+
+
+def test_a_subtask_command_is_framed_for_a_sub_agent(tmp_path):
+    (tmp_path/'commands').mkdir()
+    (tmp_path/'commands'/'audit.md').write_text('---\nsubtask: true\n---\nAudit $ARGUMENTS\n')
+    (tmp_path/'commands'/'bad.md').write_text('---\nsubtask: [unclosed\n---\nStill a command $ARGUMENTS\n')
+    a, _ = fake_agent(cfg=tmp_path)
+    out = a.expand_command('/audit the vault')
+    assert out.endswith('Audit the vault') and 'delegate_async' in out.splitlines()[0]
+    assert a.expand_command('/bad here') == 'Still a command here'      # malformed frontmatter is not a reason to refuse
+
+
+def test_project_command_files_load_only_when_project_extensions_are_opted_in(tmp_path):
+    "A repo's `.agents/commands/` runs what the repo says, so it needs the opt-in project hooks and extensions already need; `<cfg>/commands/` is the person's own."
+    from ramabana.testing import FullHost
+    host = FullHost()
+    d = host.root/'.agents'/'commands'; d.mkdir(parents=True)
+    (d/'ship.md').write_text('Ship $ARGUMENTS\n')
+    (tmp_path/'commands').mkdir()
+    (tmp_path/'commands'/'ship.md').write_text('Mine: $ARGUMENTS\n')
+    a, _ = fake_agent(host, cfg=tmp_path)
+    assert a.expand_command('/ship it') == 'Mine: it'
+    b, _ = fake_agent(host, cfg=tmp_path, project_extensions=True)
+    assert b.expand_command('/ship it') == 'Ship it', 'the project one wins once trusted'
+    assert b.expand_command('/nosuch') is None
+
+
 def test_watch_and_background_completion_reach_a_frontend_callback(tmp_path):
     a, _ = fake_agent(cfg=tmp_path)
     seen = []
