@@ -10,7 +10,7 @@ from test_briefing_and_rewind import PY, _turn_that_wrote
 def test_decide_answers_what_needs_no_person_and_set_mode_settles_the_rest():
     ap = Approvals(tools={'edit_file', 'run_shell'}, mode='edits')
     assert ap.decide('edit_file', {'path': 'a.py'}).answer is True
-    assert ap.decide('list_files', {}).answer is True
+    assert ap.decide('ls', {}).answer is True
     assert ap.decide('run_shell', {'command': 'ls'}) is None and len(ap.history) == 3
     assert ap.set_mode('yolo') == f"usage: /approve [{'|'.join(APPROVE_MODES)}]"
     assert ap.set_mode('edits') == 'approvals: edits'

@@ -48,6 +48,13 @@ def test_every_name_the_seam_claims_to_re_export_is_really_shalyas():
     assert [n for n in ramabana.tools._all_ if not hasattr(shalya, n)] == []
 
 
+def test_the_phase_3_names_reach_through_the_shim():
+    "shalya 0.1.0's opt-in factories and `attempt` are part of the seam, so leela can spell them as before."
+    import ramabana.tools as t, shalya.tools as st, shalya.core as sc
+    assert t.OPTIN is st.OPTIN and t.attempt is sc.attempt and t.legacy_tools is st.legacy_tools
+    assert t.exhash_tools is st.exhash_tools and t.research_tools is st.research_tools and t.author_tools is st.author_tools
+
+
 def test_agent_error_is_the_host_refusal_shalya_raises():
     "`except AgentError` is the spelling the harness and Leela both use for what a host refuses."
     from shalya.core import HostError

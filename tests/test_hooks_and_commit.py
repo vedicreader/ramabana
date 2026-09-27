@@ -23,11 +23,11 @@ def test_hooks_can_deny_a_call_rewrite_its_arguments_and_replace_its_result():
     a, _ = fake_agent()
     a.registry.on('before_tool', lambda ag, name, args: 'denied by hook' if str(args.get('path', '')).endswith('secret') else None)
     a.registry.on('before_tool', lambda ag, name, args: {'path': '/proj/a.py'} if args.get('path') == '/proj/b.py' else None)
-    a.registry.on('after_tool', lambda ag, name, out: out.upper() if name == 'list_files' else None)
+    a.registry.on('after_tool', lambda ag, name, out: out.upper() if name == 'ls' else None)
     tools = {t.__name__: t for t in a.tools}
     assert tools['view_file']('/proj/secret').startswith(ERR) and 'denied by hook' in tools['view_file']('/proj/secret')
     assert 'def a' in tools['view_file']('/proj/b.py')
-    assert 'A.PY' in tools['list_files']()
+    assert 'A.PY' in tools['ls'](recursive=True)   # `MemHost` has no disk: the recursive listing walks the host
 
 
 def test_a_rewritten_write_goes_back_through_approvals():

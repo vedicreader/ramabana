@@ -66,15 +66,14 @@ def test_the_watch_and_memory_groups_arrive_with_a_vault_and_never_raise_without
     bare = NullHost()
     assert not (names(tools_for(bare)) & names(watch_tools(bare)))
     assert 'memory_search' not in names(tools_for(bare))
-    assert {'memory_search', 'memory_tree', 'poll_watches'} <= names(tools_for(host))
+    assert {'memory_search', 'memory_read', 'remember', 'watch', 'list_watches', 'cancel_watch'} <= names(tools_for(host))
+    assert not ({'memory_tree', 'poll_watches', 'set_reminder', 'watch_url'} & names(tools_for(host)))
 
     ts = {t.__name__: t for t in watch_tools(bare)}
-    for call, why in [(lambda: ts['remember']('x'), 'could not remember'),
-                      (lambda: ts['set_reminder']('x'), 'could not set reminder'),
-                      (lambda: ts['watch_url']('https://x'), 'could not watch'),
+    for call, why in [(lambda: ts['watch']('renew', kind='remind'), 'could not watch'),
+                      (lambda: ts['watch']('https://x', kind='url'), 'watch'),          # a kind this host has not got
                       (lambda: ts['list_watches'](), 'could not list'),
-                      (lambda: ts['cancel_watch']('abc'), 'could not cancel'),
-                      (lambda: ts['poll_watches'](), 'poll failed')]:
+                      (lambda: ts['cancel_watch']('abc'), 'could not cancel')]:
         out = call()
         assert failed(out) and out.startswith(ERR + why), out
 
@@ -222,7 +221,7 @@ def test_ask_memory_appears_only_for_a_host_that_can_ask_and_says_what_to_ask_ne
     host.mk_chat = fake_chat('litert', 'One invoice, 240.00 GBP. Holding back the details.', sent)
     out = {t.__name__: t for t in tools_for(host)}['ask_memory']('what is on invoice 4471?')
     assert 'One invoice, 240.00 GBP' in out
-    assert 'answered on a local model' in out and 'instruction=' in out
+    assert 'policy local' in out and 'instruction=' in out   # vishalakshi 0.1.17 names the policy in the footer
 
 
 # -- when retrieval itself would leave the machine --------------------------------------

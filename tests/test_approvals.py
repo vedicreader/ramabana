@@ -37,7 +37,7 @@ def test_the_gate_draws_its_line_around_the_write_tools_and_answers_as_a_bool():
     from ramabana.tools import GIT_READ_TOOLS, GIT_WRITE_TOOLS
     assert {'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell', 'run_python',
             'run_shell', 'run_shell_bg', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add',
-            'cart_remove', 'add_root', 'remember_note'} | GIT_WRITE_TOOLS == set(WRITE_TOOLS)
+            'cart_remove', 'add_root'} | GIT_WRITE_TOOLS == set(WRITE_TOOLS)
     assert not (set(GIT_READ_TOOLS) & set(WRITE_TOOLS)), 'rehearsing a merge is not approving one'
 
     ap = agent.Approvals(tools={'edit_file'}, mode='auto')
@@ -66,7 +66,7 @@ def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
 
     a.command('/subagents on')
     granted = {t.__name__ for t in read_only(a.tools, writes=True, block=NO_SUB)}
-    assert 'edit_file' in granted and not (granted & NO_SUB), 'writes yes, recursion never'
+    assert 'replace_text' in granted and not (granted & NO_SUB), 'writes yes, recursion never'
     assert a._sub_plain() is a.tools
 
     before = len(a.calls)

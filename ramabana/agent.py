@@ -919,10 +919,11 @@ class Agent:
                  history_name='agent',      # separate durable conversations can share one config dir
                  poll_every=POLL_EVERY,     # seconds between automatic watch polls; 0 never polls
                  verify='',                 # the project's check; empty reads `[tool.ramabana] verify`
-                 instruction_style='ramabana'): # 'ramabana' | 'aai' compatibility profile
+                 instruction_style='ramabana', # 'ramabana' | 'aai' compatibility profile
+                 optin=()):                 # shalya's opt-in tool groups: 'exhash', 'research', 'author', 'legacy'
         self.host, self.cfg, self.inline_skills = host, cfg, inline_skills
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
-        self.instruction_style = instruction_style
+        self.instruction_style, self.optin = instruction_style, tuple([optin] if isinstance(optin, str) else optin)
         self.history_name = history_name
         self.session_id = f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")}'
         self.turn_seq, self.current_turn_id = 0, ''
@@ -1147,7 +1148,7 @@ def _catalog_for(self:Agent, budget, full=True):
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
             extra += monitor_tools(lambda: self.monitors, mx=budget.tool_max)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
-                          drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew)
+                          drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
         self._catalogs[key] = ToolCatalog(built)
     return self._catalogs[key]
 
@@ -1253,7 +1254,6 @@ def memory_context(self:Agent, surface, max_chars=MEMORY_CHARS):
 
 def note_tools(note):
     "The memory tool a host without a vault still gets."
-    @writes
     @summary(lambda a: f'Remember: {_1(a.get("text"), 80)}')
     def remember_note(text: str) -> str:
         "Save one line to this project's memory file, read into every later briefing here."

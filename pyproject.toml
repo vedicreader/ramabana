@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.0.11,<0.1",   # EVENTS carries background_done and watch; 0.1 changes the tool set (ramabana 0.2)
+    "shalya>=0.1.0",   # native edits, ls, tools_for(optin=), git writes with undo
     "uraiyadal>=0.0.8",   # a refused approval's reason (`Ask.reply`) reaches the model
     "gheasy>=0.0.10",
     "exhash>=0.4.9",
@@ -29,7 +29,7 @@ dependencies = [
     "litesearch>=0.1.35",
     "liteparse>=2.12,<2.13",
     "rgapi>=0.1.19",
-    "vishalakshi>=0.1.16",   # federate names a failed leg
+    "vishalakshi>=0.1.17",   # note(key=), folder watches, age/stale
     "fastspec>=0.2.1",
     "pyyaml>=6.0",
     "mcp>=1.2",
@@ -40,7 +40,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.0.11,<0.1"]
+cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.0"]
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
 Documentation = "https://vedicreader.github.io/ramabana/"

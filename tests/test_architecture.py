@@ -10,7 +10,7 @@ from ramabana.tools import ToolCatalog, tools_for
 
 
 def test_one_catalog_drives_policy_summary_and_mcp_metadata():
-    catalog = ToolCatalog([*tools_for(MemHost()), *cart_tools(Cart())])
+    catalog = ToolCatalog([*tools_for(MemHost(), optin=('exhash',)), *cart_tools(Cart())])
     edit, search = catalog['edit_file'], catalog['search_code']
 
     assert edit.group == 'file' and edit.writes and edit.available
@@ -51,7 +51,8 @@ def test_every_frontend_uses_one_provider_capable_host(tmp_path):
 
     supplied = mk_host([tmp_path], web=False, memory=Memory(), apis=APIs(), index=False)
     assert supplied.memory_search('needle', 3) == ['needle', 3]
-    assert supplied.watch_actions == ('remind',)
+    from vishalakshi.acquire import ACTIONS
+    assert tuple(supplied.watch_actions) == tuple(ACTIONS)   # a vault behind it: every action, not reminders alone
     assert plain.research_note == 'web access is switched off'
     assert supplied.api_ops(match='users') == {
         'group': '', 'name': '', 'match': 'users', 'limit': None, 'offset': 0}

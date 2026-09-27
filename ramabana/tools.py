@@ -18,7 +18,8 @@ __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WR
            'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost',
            'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost',
            'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools',
-           'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes']
+           'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt',
+           'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, functools, json, re, threading, time, uuid
@@ -43,11 +44,12 @@ from fastcore.docments import frontmatter
 from shalya.core import WRITE_TOOLS as _TOOL_WRITES
 _cmds, _edits, _apply_edits, _diff = cmds, edits, apply_edits, diff_text
 #: the trolley is an extension, not a host group, so shalya cannot name its writes
-WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove', 'remember_note'}
+WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove'}
 
 # %% ../nbs/02_tools.ipynb #694f6d5d
 #: shalya's names, re-exported so `from ramabana.tools import *` still finds them; every entry resolves on `shalya` itself.
-_all_ = ['API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes']
+_all_ = ['API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes',
+         'attempt', 'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
 
 def __getattr__(name):
     "Resolve the deprecated Shalya compatibility surface without mirroring it into this module."
@@ -89,12 +91,12 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
                         model_id=lambda: getattr(spec(), 'model_id', ''), on_media=on_media)
 
 # %% ../nbs/02_tools.ipynb #de2cd1e8
-def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None):
-    "Every tool the host and its extensions support; groups from `Host.provides`, `drop` to exclude some."
+def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None, optin=()):
+    "Every tool the host and its extensions support; groups from `Host.provides`, `drop` to exclude some, `optin` to add shalya's opt-in groups."
     # `generate_image` saves what it draws, so a host that cannot write does not get it either.
     image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
              if image_available() and host.writes and 'image' not in set(drop or ()) else None)
-    return _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image)
+    return _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image, optin=optin)
 
 @dataclass(frozen=True)
 class ToolEntry:
@@ -162,7 +164,8 @@ def sub_briefing(writes=False):
     "The sub-agent standing instructions: the shared half, then the read-only or the write half."
     return f'{SUB_SP_HEAD}\n' + (SUB_WRITE_SP if writes else SUB_READ_SP)
 
-NO_SUB = frozenset({'delegate_search', 'delegate_parallel', 'delegate_async', 'delegate_status', 'delegate_result', 'delegate_cancel', 'watch_folder', 'cancel_folder_watch', 'check_folders'})
+#: what a sub-agent is never handed: delegation (no recursion) and the watches (a review that opens a watch would multiply)
+NO_SUB = frozenset({'delegate_search', 'delegate_async', 'delegate_result', 'delegate_cancel', 'watch', 'cancel_watch'})
 
 # %% ../nbs/02_tools.ipynb #9424aadf
 def _delegate_result(text):

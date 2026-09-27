@@ -45,7 +45,7 @@ def test_a_host_is_offered_exactly_the_groups_it_declares():
 
     mem = names(tools_for(MemHost()))
     assert {'search_code', 'run_shell'} <= mem          # MemHost declares code and shell
-    assert not ({'run_python', 'notebook_cells', 'memory_tree', 'api_load'} & mem)
+    assert not ({'run_python', 'notebook_cells', 'memory_read', 'api_load'} & mem)
 
     h = MemHost()
     tools_for(h)
@@ -55,6 +55,22 @@ def test_a_host_is_offered_exactly_the_groups_it_declares():
     dropped = names(tools_for(MemHost(), lambda: [], drop=('shell', 'skill')))
     assert {'run_shell', 'read_skill'} <= full - dropped
     assert {'view_file', 'replace_text', 'search_code', 'grep'} <= dropped   # the core never drops
+
+
+def test_optin_reaches_shalya_and_the_agent_catalog():
+    """`edit_file` is shalya's opt-in now. Ramabana's `tools_for` forwards `optin`, and an
+    `Agent(optin=...)` builds its catalog with it, so the write shows up in `catalog.writes`."""
+    import shalya.core as sc
+    from ramabana.testing import FullHost
+    from ramabana.tools import NO_SUB, WRITE_TOOLS
+    h = FullHost(files={'a.py': 'x = 1\n'})
+    assert 'edit_file' not in names(tools_for(h))
+    assert 'edit_file' in names(tools_for(h, optin=('exhash',)))
+    a, _ = fake_agent(optin=('exhash',))
+    assert 'edit_file' in names(a.tools) and 'edit_file' in a.catalog.writes
+    assert fake_agent()[0].optin == ()
+    assert WRITE_TOOLS == sc.WRITE_TOOLS | {'cart_add', 'cart_remove'}
+    assert NO_SUB == {'delegate_search', 'delegate_async', 'delegate_result', 'delegate_cancel', 'watch', 'cancel_watch'}
 
 
 def test_a_narrow_host_says_why_rather_than_failing_silently():
@@ -79,7 +95,7 @@ def test_every_tool_failure_is_spelled_the_same_way():
     "The activity feed and `Agent.problems` read this prefix; a tool that invents its own is invisible."
     fs = by_name(file_tools(MemHost()))
     assert failed(fs['view_file']('nope.py'))
-    assert failed(fs['edit_file']('a.py', 'not json'))
+    assert failed(fs['replace_text']('a.py', 'not json'))
     assert failed(fs['replace_text']('a.py', '[]'))
     assert tools.err('x') == ERR + 'x'
     assert failed(ERR + 'anything') and not failed('a normal result')
@@ -97,9 +113,6 @@ def test_file_edits_honor_an_optional_host_write_check():
             return path
     h = Guarded(); tools = by_name(file_tools(h))
     assert not failed(tools['replace_text']('a.py', '[{"oldText": "x = 1", "newText": "x = 2"}]'))
-    assert h.checked == ['/proj/a.py']
-    h.checked.clear()
-    assert failed(tools['edit_file']('a.py', 'not json'))
     assert h.checked == ['/proj/a.py']
 
 def test_exact_text_editing_writes_only_when_every_edit_is_located():
@@ -210,7 +223,7 @@ def test_reading_outside_the_folders_is_a_separate_decision_from_writing_outside
 
     assert all(str(root) in str(p) for p in open_host.walk())
     ts = by_name(tools_for(open_host))
-    assert 'sibling' not in ts['list_files']('notes.md')
+    assert 'sibling' not in ts['ls'](pattern='notes.md', recursive=True)
     assert 'the answer is 42' in ts['view_file'](str(sibling/'notes.md'))
     assert failed(ts['create_file'](str(sibling/'new.py'), 'x = 1'))
     assert not (sibling/'new.py').exists()
@@ -371,7 +384,7 @@ def test_entering_python_mode_keeps_every_tool_the_host_already_had(tmp_path):
     from ramabana.cli import mk_host
     host = mk_host(roots=(str(tmp_path),), vault=True, spec=True)
     before = {t.__name__ for t in tools_for(host)}
-    assert {'memory_tree', 'api_load', 'list_watches'} <= before, sorted(before)
+    assert {'memory_read', 'api_load', 'list_watches'} <= before, sorted(before)
     host.kernel = _Kernel()                       # what `use_kernel` does
     after = {t.__name__ for t in tools_for(host)}
     assert before == after, f'lost {sorted(before - after)}, gained {sorted(after - before)}'
@@ -396,15 +409,16 @@ def test_a_group_whose_backend_is_absent_is_absent_from_provides(tmp_path):
 
 
 def test_a_host_that_cannot_write_is_offered_no_editors():
-    """`NullHost.write` raises, so advertising `create_file`, `edit_file` and `replace_text`
-    hands a model three tools that can only fail. It gets `view_file` and nothing else, without
+    """`NullHost.write` raises, so advertising `create_file` and `replace_text` (and `edit_file`
+    when the exhash group is on) hands a model tools that can only fail. It gets `view_file` and nothing else, without
     needing `readonly=True` to make it honest."""
     assert names(file_tools(NullHost(['/x']))) == {'view_file'}
     assert names(tools_for(NullHost(['/x']))) == {'view_file'}
     assert NullHost().writes is False
 
     assert MemHost().writes is True                      # it writes into its dict, so it keeps them
-    assert {'create_file', 'edit_file', 'replace_text'} <= names(file_tools(MemHost()))
+    assert {'create_file', 'replace_text'} <= names(file_tools(MemHost()))
+    assert names(tools_for(NullHost(['/x']), optin=('exhash',))) == {'view_file'}   # the opt-in obeys the flag too
 
     class Frozen(MemHost): writes = False
     assert names(file_tools(Frozen())) == {'view_file'}   # the flag decides, not the class

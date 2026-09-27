@@ -22,11 +22,11 @@ from .core import PII_OFF
 # %% ../nbs/06_mcp.ipynb #6d6ba498
 INSTRUCTIONS = """Ramabana's tools over the folders this server was started on.
 
-`search_code` and `view_file` are the way in: file views are `lineno|hash|content`, and those
-hashes are the addresses `edit_file` takes, so an edit built on a stale view fails instead of
-damaging the wrong line. Notebooks are addressed by cell id (`notebook_cells`, then
-`view_cell`/`edit_cell`), never by line. `ask` hands a whole task to Ramabana's own agent and
-returns just its answer."""
+`search_code`, `grep` and `view_file` are the way in: `view_file` returns `lineno|hash|content` lines.
+Edit with `replace_text(path, edits)`, where each edit is `{"oldText", "newText"}` copied exactly from a
+fresh view; every edit must match once, and all apply or none. Notebooks are addressed by cell id
+(`notebook_cells`, then `view_cell`/`edit_cell`), never by line. `ask` hands a whole task to Ramabana's
+own agent and returns just its answer."""
 
 
 def _annotate(entry):
@@ -46,7 +46,8 @@ def server(host=None, agent=None, name='ramabana', readonly=True, delegate=True,
     mcp = FastMCP(name, instructions=INSTRUCTIONS, **kw)
     skills = discover(host.roots, getattr(agent, 'cfg', None)) if agent is None else agent.skills
     # the agent's own recorded tools when there is one. A client's call reaches its feed
-    every = agent.tools if agent is not None else tools_for(host, get_skills=lambda: skills)
+    # a client may still send last release's names, so the bare server keeps shalya's legacy shims one release
+    every = agent.tools if agent is not None else tools_for(host, get_skills=lambda: skills, optin=('legacy',))
     catalog = ToolCatalog(every)
     if readonly: catalog = catalog.read_only()
     mounted = []

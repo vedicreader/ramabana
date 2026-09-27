@@ -158,8 +158,8 @@ def test_a_reviewing_sub_agent_cannot_write_and_cannot_open_another_watch():
         def f(): return n
         f.__name__ = n
         return f
-    given = [named(n) for n in ('view_file', 'edit_file', 'run_shell', 'watch_folder',
-                                'check_folders', 'delegate_search')]
+    given = [named(n) for n in ('view_file', 'edit_file', 'run_shell', 'watch',
+                                'cancel_watch', 'delegate_search')]
     h = host(**{'a.py': 'one\n'})
     m, be = monitors(h, get_tools=lambda: given)
     m.add('/proj', 'Review.')

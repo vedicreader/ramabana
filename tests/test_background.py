@@ -128,7 +128,7 @@ def _subs(be, writes=False, approve=None, bg=None, tools=TOOLS):
 
 
 def test_the_async_tools_are_withheld_from_a_sub_agent():
-    for n in ('delegate_async', 'delegate_status', 'delegate_result', 'delegate_cancel'):
+    for n in ('delegate_async', 'delegate_result', 'delegate_cancel'):
         assert n in NO_SUB, f'{n} lets a sub-agent collect work it did not start'
 
 
