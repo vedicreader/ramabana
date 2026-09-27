@@ -1360,7 +1360,7 @@ class Ui:
             elif bare and k.name == 'A' and self.always_allow(): pass
             elif bare and k.name in ('a', 'A'):   self.answer(True, session=True)
             elif k.name == 'enter':                                 # a typed line answers only when it is one
-                if (ans := parse_answer(self.buf.text)) is None: self.reask(NOT_ANSWER)
+                if (ans := parse_answer(self.buf.text)) is None: self.buf.clear(); self.reask(NOT_ANSWER)
                 else: self.answer(ans[0], note=ans[1])
             elif k.name == 'ctrl+y':              self.answer(True)    # ...unless approved with it as guidance
             elif k.name == 'ctrl+c':              self.answer(False)     # stopping the turn refuses what it was waiting on
@@ -1430,7 +1430,7 @@ class Ui:
 # %% ../nbs/05_cli.ipynb #7f8df93c
 BELL_IDLE = 5   # seconds without a keystroke before a turn's end or an approval rings
 REASK_EVERY = 120   # seconds a question may wait before it rings and is shown again
-YES, NO = ('y', 'yes', 'ok', 'approve'), ('n', 'no', 'refuse', 'deny')
+YES, NO = ('y', 'yes', 'approve'), ('n', 'no', 'refuse', 'deny')   # no `ok`: too easy to type by accident
 NOT_ANSWER = 'not an answer · y approves · n refuses · n: REASON refuses with a reason · a approves all this session'
 
 def parse_answer(text):
@@ -1442,19 +1442,23 @@ def parse_answer(text):
 
 @patch
 def reask(self:Ui, body=''):
-    "Show the pending question, with `body` under it, ring, and start the wait for `nudge` again."
+    "Show the pending question, with `body` under it, ring, and start the wait for `nudge` again. The typed line stays."
     self._asked_at = time.monotonic()
     title = Text(self.ask.summary, style=f"bold {GRUVBOX['yellow']}")
     self.say(title + (Text('\n\n') + Text(body, style=GRUVBOX['fg1']) if body else Text('')), 'ask', fold=None)
-    self.buf.clear()
     self.ring()
     self.paint()
 
 @patch
 def nudge(self:Ui):
-    "Ring and repeat a question that has waited `REASK_EVERY` seconds since it was last shown. True when it did."
-    if self.ask is None or time.monotonic() - self._asked_at < REASK_EVERY: return False
-    self.reask(f'still waiting · {int(time.monotonic() - self.ask.asked)}s')
+    "Every `REASK_EVERY` seconds a waiting question rings, and repeats itself unless a line is being typed. True when it did."
+    now = time.monotonic()
+    if self.ask is None or now - self._asked_at < REASK_EVERY: return False
+    self._asked_at = now
+    if self.buf.text or now - self._key_at < BELL_IDLE:   # a half-typed reason is never taken away
+        self.ring()
+        return False
+    self.reask(f'still waiting · {int(now - self.ask.asked)}s')
     return True
 
 def ask_pattern(ask):
