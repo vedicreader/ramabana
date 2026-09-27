@@ -204,9 +204,9 @@ def test_an_unknown_model_names_the_near_miss_rather_than_the_whole_table():
     typed. `/models` is there for the rest.
     """
     with pytest.raises(KeyError) as e:
-        resolve('claude-sonnet-4.6')
+        resolve('gpt-5.6-tera')
     msg = str(e.value)
-    assert 'claude-sonnet-4-6' in msg, msg
+    assert 'gpt-5.6-terra' in msg, msg
     assert 'did you mean' in msg.lower(), msg
     assert '/models' in msg, msg
     assert 'gemma-e2b' not in msg, 'the whole table is still in the message'
@@ -218,7 +218,7 @@ def test_an_unknown_model_names_the_near_miss_rather_than_the_whole_table():
 
 
 def test_a_typed_model_name_fails_as_a_sentence_not_a_traceback():
-    """`--model claude-sonnet-4.6` printed thirty frames of `fastcore.script` and buried the message.
+    """`--model gpt-5.6-tera` printed thirty frames of `fastcore.script` and buried the message.
 
     Everything else `main` refuses -- a bad theme, a missing pyrepl extra, `--vault` without a host --
     already prints one line and returns 2. Model resolution was the one that raised through.
@@ -226,11 +226,11 @@ def test_a_typed_model_name_fails_as_a_sentence_not_a_traceback():
     import subprocess, sys, pathlib
     exe = pathlib.Path(sys.executable).parent/'ramabana'
     if not exe.exists(): pytest.skip('console script not installed in this env')
-    r = subprocess.run([str(exe), '--model', 'claude-sonnet-4.6', 'hi'],
+    r = subprocess.run([str(exe), '--model', 'gpt-5.6-tera', 'hi'],
                        capture_output=True, text=True, timeout=120)
     assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
     assert 'Traceback' not in r.stderr, r.stderr
-    assert 'claude-sonnet-4-6' in r.stderr, r.stderr
+    assert 'gpt-5.6-terra' in r.stderr, r.stderr
     assert r.stderr.count('\n') <= 2, f'{r.stderr.count(chr(10))} lines: {r.stderr}'
 
 def test_a_remedy_names_an_extra_only_where_rishi_still_declares_one():
@@ -283,7 +283,7 @@ def test_a_claude_model_is_measured_against_its_own_window():
 def test_a_bigger_window_does_not_quietly_change_what_a_model_is_briefed_with():
     "Both ceilings sit above `SMALL_CTX`, so the tool budget must be the same either way."
     from ramabana.core import DFLT_AGENT_CTX, budget_for, resolve
-    before, after = budget_for(resolve('claude-haiku-4-5'), 6000), budget_for(resolve('claude-opus-5'), 6000)
+    before, after = budget_for(resolve('haiku'), 6000), budget_for(resolve('opus'), 6000)
     assert before.drop == after.drop == () and before.inline is after.inline is True
 
 def test_a_window_that_cannot_be_read_keeps_its_last_occupancy():
@@ -445,3 +445,31 @@ def test_the_ollama_daemon_is_asked_for_the_window_it_holds(monkeypatch):
     ctx, seen = _measured(spec, 32_768, monkeypatch)
     assert ctx == 32_768, 'capped, since a daemon will happily hold a window nothing budgeted for'
     assert seen['n_ctx'] == 32_768, 'and the daemon is told, rather than left on its 4096 default'
+
+
+OLD_CLAUDE_IDS = ('claude/claude-opus-5', 'claude-opus-5', 'claude-sonnet-4-6', 'claude/claude-opus-4-8', 'claude-haiku-4-5',
+                  'claude/claude-haiku-4-5', 'claude/opus-5', 'claude/sonnet', 'claude/haiku', 'claude-sonnet-5', 'claude/claude-fable-5-1')
+
+def test_a_model_id_the_catalog_moved_past_still_resolves(monkeypatch):
+    """Histories and pinned settings carry the ids that were current when they were written. Resume
+    validates the logged model name, so an id the picker no longer lists must still resolve: the
+    picker shows what is current, and Claude Code decides what it still serves."""
+    import ramabana.core as core
+    real = core.runtime_available
+    monkeypatch.setattr(core, 'runtime_available', lambda rt: rt == 'claude' or real(rt))
+    for name in OLD_CLAUDE_IDS:
+        spec, bare = core.resolve(name), name.split('/', 1)[-1]
+        assert spec.backend == 'claude' and spec.model_id == core.CLAUDE_ALIASES.get(bare, bare), (name, spec)
+    assert core.resolve('opus-5').model_id == 'claude-opus-5'
+    assert core.resolve('opus').model_id == core.CLAUDE_ALIASES['opus'], 'a tier alias tracks the latest'
+    for name in ('gpt-4.1-mini', 'gpt-5.6', 'gpt-5.5', 'openai/gpt-6-astra', 'codex/gpt-5.4'): assert core.resolve(name).backend == 'remote', name
+    with pytest.raises(KeyError): core.resolve('gpt-9')
+
+
+def test_the_picker_lists_only_the_current_catalog(monkeypatch):
+    import ramabana.core as core, ramabana.models as models
+    monkeypatch.setattr(core, 'runtime_available', lambda rt: rt == 'claude')
+    for p in models.LIVE: monkeypatch.setitem(models.LIVE, p, lambda: [])
+    rows = core.available_models()
+    assert [r['label'] for r in rows if r['provider'] == 'claude'] == list(models.CATALOG['claude'])
+    assert not any('claude-opus-5' == r['label'] or 'claude-sonnet-4-6' == r['label'] for r in rows)

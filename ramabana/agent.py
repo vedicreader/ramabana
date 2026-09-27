@@ -6,10 +6,10 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
-           'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'APPROVE_MODES',
-           'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES',
-           'TODO_STATUSES', 'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WARM_ROUNDS',
-           'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
+           'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT',
+           'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS',
+           'WARM_ROUNDS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
            'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
            'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'Approvals', 'always', 'never', 'applied', 'apply',
            'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives', 'project_context', 'work_rules',
@@ -328,6 +328,7 @@ def answer_md(ask):
 
 # %% ../nbs/03_agent.ipynb #ca1437e3
 EDIT_GROUPS = ('file', 'notebook')
+ALWAYS_ASK = ('add_root',)         #: gated calls no bulk mode short of `auto` answers: opening a folder widens what every later write may touch
 
 def subject(name, args):
     "What a saved rule is matched against: the command, else the path, else the summary."
@@ -421,14 +422,15 @@ class Approvals:
         a = self.current
         return a if (a is not None and a.pending) else None
 
-    def answer(self, id, ok, note='', session=False):
-        "Answer the pending request. Optionally approve all later writes this session."
+    def answer(self, id, ok, note='', session=False, scope='auto'):
+        "Answer the pending request. `scope` is the mode a `session` approval switches to: 'auto' for everything, 'edits' to unlock only file/notebook writes."
         a = self.current
         if a is None or a.id != id or not a.pending: return None
-        if ok and session: self.mode = 'auto'   # only an approval may turn the policy off
+        if ok and session: self.mode = scope   # only an approval may turn the policy off, and only as far as `scope` says
         # record and notify before waking the model thread. A recorder finishes first
         a.answer, a.note = bool(ok), note or ''
-        if ok and session and not a.note: a.note = 'approved for the rest of this session'
+        if ok and session and not a.note:
+            a.note = 'approved for the rest of this session' if scope == 'auto' else f'writes approved for the rest of this session ({scope})'
         self._notify('answer', a)
         a._done.set()
         return a
@@ -469,6 +471,11 @@ class Approvals:
         self.history.append(a)
         return a
 
+    @staticmethod
+    def edits_cover(name):
+        "Whether `edits` mode runs `name` unasked: a file or notebook write, never `add_root`, which widens the boundary itself."
+        return group_of(name) in EDIT_GROUPS and name not in ALWAYS_ASK
+
     def decide(self, name, args, force=False, ask=None):
         "The resolved `Ask` when nobody needs asking: not gated, `off`, a saved rule, `auto` or `edits`. None when a person must answer."
         a = self.ask(name, args) if ask is None else ask
@@ -476,7 +483,7 @@ class Approvals:
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
         if (v := self.rule_for(name, args)) is not None:
             return a.resolve(True, 'allowed by a saved rule') if v == 'allow' else self._decided(a, False, 'denied by a saved rule')
-        if self.mode == 'auto' or (self.mode == 'edits' and group_of(name) in EDIT_GROUPS): return a.resolve(True)
+        if self.mode == 'auto' or (self.mode == 'edits' and self.edits_cover(name)): return a.resolve(True)
         return None
 
     def set_mode(self, mode):
@@ -487,7 +494,7 @@ class Approvals:
 
     def _settle(self):
         a = self.pending
-        if a is None or self.mode == 'ask' or (self.mode == 'edits' and group_of(a.tool) not in EDIT_GROUPS): return ''
+        if a is None or self.mode == 'ask' or (self.mode == 'edits' and not self.edits_cover(a.tool)): return ''
         ok = self.mode != 'off'
         self.answer(a.id, ok, f'answered by /approve {self.mode}')
         return f' · {"approved" if ok else "refused"} what was waiting'

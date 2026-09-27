@@ -112,14 +112,17 @@ def test_the_two_module_level_caches_are_gone():
 
 def test_the_openai_and_copilot_catalogues_go_through_the_one_memo(monkeypatch, probes):
     forget_probes()
-    monkeypatch.setenv('OPENAI_API_KEY', 'sk-not-a-real-key')
+    import ramabana.models as models
     calls = []
-    monkeypatch.setattr(core, '_openai_ids', lambda: calls.append(1) or ['gpt-5', 'gpt-4.1'])
-    assert core._openai_models() == ['gpt-5']
-    assert core._openai_models(include_legacy=True) == ['gpt-4.1', 'gpt-5']
+    monkeypatch.setitem(models.LIVE, 'openai', lambda: calls.append(1) or ['gpt-6-nova', 'gpt-4.1'])
+    for p in ('anthropic', 'codex'): monkeypatch.setitem(models.LIVE, p, lambda: [])
+    got = models.provider_models('openai')
+    assert got == [*models.CATALOG['openai'], 'gpt-6-nova'], 'curated first, then what the listing adds'
+    assert 'gpt-4.1' in models.provider_models('openai', legacy=True)
     assert len(calls) == 1, 'one listing serves both readings of it'
-    monkeypatch.delenv('OPENAI_API_KEY')
-    assert core._openai_models() == [], 'and no key is no models, whatever is memoized'
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    monkeypatch.setattr(core, 'runtime_available', lambda rt: False)
+    assert all(r['provider'] != 'openai' for r in core.available_models()), 'and no key is no openai rows, whatever is memoized'
 
 
 def test_runtime_available_and_runtime_detail_read_the_same_table():
