@@ -978,6 +978,21 @@ wheels = [
 ]
 
 [[package]]
+name = "dhrona"
+version = "0.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aidialog" },
+    { name = "fastcore" },
+    { name = "llmsurgery" },
+    { name = "uraiyadal" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ec/f8/677d8c37acddc10bf360bb5759cbddeb6e47a3d8beef4a8a0cd5879ec117/dhrona-0.1.4.tar.gz", hash = "sha256:c3277068aa1cb3462d14ba46693c9981fd97ea769d9b6af53eb987fde0dc9bf5", size = 23891, upload-time = "2026-09-27T07:10:58.623Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a7/5e/f57e0c8cfe36465fe539d1364e58cfc1b1b7b66250337413b532bf8d318c/dhrona-0.1.4-py3-none-any.whl", hash = "sha256:0ce1437a403fc530dd681650710ec31dbb1725cb56316176ca60e6f17583024c", size = 29038, upload-time = "2026-09-27T07:10:57.294Z" },
+]
+
+[[package]]
 name = "diskcache"
 version = "5.6.3"
 source = { registry = "https://pypi.org/simple" }
@@ -3858,9 +3873,13 @@ cli = [
     { name = "shalya", extra = ["tmux"] },
     { name = "teleprint" },
 ]
+dhrona = [
+    { name = "dhrona" },
+]
 
 [package.dev-dependencies]
 dev = [
+    { name = "dhrona" },
     { name = "nbdev" },
     { name = "notebook" },
     { name = "pytest" },
@@ -3873,6 +3892,7 @@ dev = [
 requires-dist = [
     { name = "agent-client-protocol", specifier = ">=0.12.1" },
     { name = "dhrishti", specifier = ">=0.1.2" },
+    { name = "dhrona", marker = "extra == 'dhrona'", specifier = ">=0.1.4" },
     { name = "exhash", specifier = ">=0.4.9" },
     { name = "fastcore", specifier = ">=2.1.16" },
     { name = "fastspec", specifier = ">=0.2.1" },
@@ -3894,10 +3914,11 @@ requires-dist = [
     { name = "uraiyadal", specifier = ">=0.0.8" },
     { name = "vishalakshi", specifier = ">=0.1.17" },
 ]
-provides-extras = ["cli"]
+provides-extras = ["cli", "dhrona"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "dhrona", specifier = ">=0.1.4" },
     { name = "nbdev", specifier = ">=3.3.11" },
     { name = "notebook", specifier = ">=7.6.1" },
     { name = "pytest", specifier = ">=8.0.0" },

@@ -2042,6 +2042,8 @@ def main(
     json: bool = False,                  # with a prompt: print reply, usage, changes, activity, problems and session as JSON
     bell: bool = True,                   # --no-bell keeps the terminal quiet when a turn ends or an approval waits
     tmux: str = 'auto',                  # auto | on | off: read sibling panes and run background commands in panes
+    warm: bool = True,                   # --no-warm starts with an empty chat instead of dhrona's example rounds
+    optin: str = '',                     # shalya's opt-in tool groups, comma separated: exhash,research,author
 ):
     "Run Ramabana as a terminal agent or Python prompt. Name every folder it may work on: --root .,~/notes"
     if kernels:
@@ -2081,6 +2083,7 @@ def main(
                                read_outside=read_outside, subagent_writes=subagent_writes,
                                pii=pii, pii_ner=pii_ner, host_kw=dict(tmux=TMUX_MODES[tmux]),
                                max_tool_calls=max_tool_calls, max_steps=max_steps,
+                               warm=warm, optin=tuple(s.strip() for s in optin.split(',') if s.strip()),
                                cfg=Path(cfg).expanduser() if cfg else None)
     except KeyError as e:
         print(e.args[0] if e.args else e, file=sys.stderr)

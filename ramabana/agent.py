@@ -8,12 +8,12 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'APPROVE_MODES',
            'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES',
-           'TODO_STATUSES', 'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'REPLAYED',
-           'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS',
-           'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask',
-           'ask_md', 'answer_md', 'subject', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
-           'tool_plan', 'request_text', 'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo',
-           'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'note_tools', 'Completer']
+           'TODO_STATUSES', 'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WARM_ROUNDS',
+           'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
+           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'Approvals', 'always', 'never', 'applied', 'apply',
+           'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives', 'project_context', 'work_rules',
+           'system_prompt', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -939,7 +939,8 @@ class Agent:
                  poll_every=POLL_EVERY,     # seconds between automatic watch polls; 0 never polls
                  verify='',                 # the project's check; empty reads `[tool.ramabana] verify`
                  instruction_style='ramabana', # 'ramabana' | 'aai' compatibility profile
-                 optin=()):                 # shalya's opt-in tool groups: 'exhash', 'research', 'author', 'legacy'
+                 optin=(),                  # shalya's opt-in tool groups: 'exhash', 'research', 'author', 'legacy'
+                 warm=True):                # seed a fresh session with dhrona's example rounds, when dhrona is installed
         self.host, self.cfg, self.inline_skills = host, cfg, inline_skills
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
         self.instruction_style, self.optin = instruction_style, tuple([optin] if isinstance(optin, str) else optin)
@@ -983,6 +984,8 @@ class Agent:
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self._watch_found, self._watch_lock = [], threading.Lock()   # poll results no turn has carried yet
         self.git_undo = {}       # turn id -> the git writes it made, each with gheasy's `undo` token, for /rewind
+        self.warm, self._warmed, self.warm_report = bool(warm), False, {'used': [], 'skipped': []}
+        self.on_warm = None      # frontend hook: callable(warm_report) once a fresh session is seeded
         self._monitor_thread = None
         # the folders something *else* is changing. Reviews run on the sub-agent model, read-only
         self.monitors = Monitors(host, get_backend=lambda: self._be_or_none('subagent'), get_tools=self._sub_plain, log_dir=lambda: self.runs_dir)
@@ -1797,6 +1800,35 @@ def watch_notice(self:Agent):
         if (h := r.get('housekeeping')): lines.append(f"housekeeping: {h.get('stale', 0)} stale, {h.get('pruned', 0)} pruned")
     return '\n\n<watch-results>\n' + '\n'.join(lines) + '\nSearch memory (`memory_search`) for what they filed.\n</watch-results>'
 
+# %% ../nbs/03_agent.ipynb #45435c30
+WARM_ROUNDS = 3   #: accepted dhrona rounds a fresh session is seeded with; each is a few hundred tokens
+
+@patch
+def warm_start(self:Agent):
+    "Seed a fresh chat with dhrona's accepted rounds whose calls bind to the tools on offer; a resumed, small-window or opted-out session gets none."
+    if not self.warm or self._warmed: return []
+    b = self._be('turn')
+    if b.hist or b._resume_hist is not None or not self.budget.inline: return []
+    self._warmed = True
+    try: from dhrona.core import fit_rounds, round_msgs
+    except ImportError:
+        self.host.note('no warm start: dhrona is not installed (uv add "ramabana[dhrona]")'); return []
+    try: used, skipped = fit_rounds(self._plain, model=b.spec.name, limit=WARM_ROUNDS)
+    except Exception as e:
+        self.warm_report = {'used': [], 'skipped': [], 'problem': agent_err(e)}
+        self.host.note(f'no warm start: {agent_err(e)}'); return []
+    self.warm_report = {'used': [{'name': r['meta'].get('name', ''), 'rank': r['meta'].get('rank', 50), 'model': r['meta'].get('model')} for r in used],
+                        'skipped': [{'name': r['meta'].get('name', ''), 'reason': why} for r, why in skipped]}
+    msgs = [m for r in used for m in round_msgs(r)]
+    if msgs: b.resume_hist(msgs)
+    line = f"warm start: {len(used)} round(s) used ({', '.join(r['name'] for r in self.warm_report['used']) or 'none'}), {len(skipped)} skipped"
+    self.host.note(line)
+    if (run := current_run()) is not None: run.write(line)
+    if self.on_warm is not None:
+        try: self.on_warm(self.warm_report)
+        except Exception: pass
+    return msgs
+
 # %% ../nbs/03_agent.ipynb #12dd6fa4
 @patch
 def poll_monitors(self:Agent):
@@ -1853,12 +1885,14 @@ def _prepare(self:Agent, prompt):
     self._drawn = []                       # pictures this turn's tools wrote, for the frontend
     self._walked, self._tree = False, {}
     self._begin_turn(current_run())
+    seeded = []
+    if not self._session_started:   # before the checkpoint: a /rewind to before turn 1 keeps the seeds
+        self._session_started = True
+        seeded = self.warm_start()
+        self.registry.fire('session_start', self)
     self.checkpoints[self.current_turn_id] = {'before': self._be('turn').snapshot_hist(),
                                               'branch_id': self.current_branch_id}
     for old in list(self.checkpoints)[:-MAX_CHECKPOINTS]: self.checkpoints.pop(old, None)
-    if not self._session_started:
-        self._session_started = True
-        self.registry.fire('session_start', self)
     self.registry.fire('before_turn', self, prompt)
     self.poll_watches()
     reviews = self.monitors.drain()   # what a watched folder produced since the last turn
@@ -1874,6 +1908,7 @@ def _prepare(self:Agent, prompt):
     self._turn_plan = {'route': route, 'text': plan,
                        'tools': [name for name, _ in requested],
                        'skills': [skill.name for skill in loaded]}
+    if seeded: self._turn_plan['warm'] = [r['name'] for r in self.warm_report['used']]
     # planning has teeth: safe query tools run before generation. The model gets evidence
     preflights = []
     first = {'repo': 'search_code', 'web': 'web_search'}.get(route)

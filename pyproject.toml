@@ -41,6 +41,9 @@ dependencies = [
 
 [project.optional-dependencies]
 cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.0"]
+dhrona = [
+    "dhrona>=0.1.4",
+]
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
 Documentation = "https://vedicreader.github.io/ramabana/"
@@ -73,7 +76,15 @@ include = ["/ramabana", "/README.md", "/pyproject.toml"]
 path = "ramabana/__init__.py"
 
 [dependency-groups]
-dev = ["ramabana[cli]", "rishi[all]>=0.1.38", "nbdev>=3.3.11", "notebook>=7.6.1", "pytest>=8.0.0", "pytest-xdist>=3.5.0"]
+dev = [
+    "ramabana[cli]",
+    "rishi[all]>=0.1.38",
+    "nbdev>=3.3.11",
+    "notebook>=7.6.1",
+    "pytest>=8.0.0",
+    "pytest-xdist>=3.5.0",
+    "dhrona>=0.1.4",
+]
 
 [tool.pytest.ini_options]
 addopts = "-m 'not slow' -n auto"
