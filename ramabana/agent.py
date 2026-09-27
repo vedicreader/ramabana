@@ -1381,6 +1381,26 @@ def runs(self:Agent, active=False):
     with getattr(self, '_runs_lock', threading.RLock()):
         return [row(r) for r in _run_store(self).values() if not active or live(r)]
 
+# %% ../nbs/03_agent.ipynb #95a69923
+@patch
+def _side_runs(self:Agent):
+    "Runs that are not foreground roots: background delegations and monitor reviews."
+    bg, out = getattr(self, '_background', None), []
+    if bg is not None:
+        with bg.lock: out += list(bg.runs.values())
+    with self.monitors.lock: return out + list(self.monitors.runs.values())
+
+@patch
+def run(self:Agent, run_id=''):
+    "Find a registered run, or the foreground root when `run_id` is empty."
+    roots = list(_run_store(self).values()) + self._side_runs()
+    if not run_id: run_id = self._foreground
+    def walk(r):
+        if r.id == run_id:return r
+        return next((hit for child in r.children if (hit := walk(child)) is not None), None)
+    return next((hit for root in roots if (hit := walk(root)) is not None), None)
+
+
 # %% ../nbs/03_agent.ipynb #4b5c9dc8
 @patch(as_prop=True)
 def busy(self:Agent): return bool(self.runs(active=True))
@@ -2407,16 +2427,6 @@ def _stream_chunk(out, chunk):
     return chunk[len(text):] if chunk.startswith(text) else chunk
 
 @patch
-def run(self:Agent, run_id=''):
-    "Find a registered run, or the foreground root when `run_id` is empty."
-    roots = list(_run_store(self).values()) + self._side_runs()
-    if not run_id: run_id = self._foreground
-    def walk(r):
-        if r.id == run_id:return r
-        return next((hit for child in r.children if (hit := walk(child)) is not None), None)
-    return next((hit for root in roots if (hit := walk(root)) is not None), None)
-
-@patch
 def _new_run(self:Agent, prompt):
     _run_store(self)
     with self._runs_lock:
@@ -2553,14 +2563,6 @@ def command(self:Agent, line):
 def runs_dir(self:Agent):
     "`<cfg>/runs/<session>`: one transcript per run plus `monitors.log`, or None without a config dir."
     return None if self.cfg is None else self.cfg/'runs'/self.session_id
-
-@patch
-def _side_runs(self:Agent):
-    "Runs that are not foreground roots: background delegations and monitor reviews."
-    bg, out = getattr(self, '_background', None), []
-    if bg is not None:
-        with bg.lock: out += list(bg.runs.values())
-    with self.monitors.lock: return out + list(self.monitors.runs.values())
 
 @patch
 def tell(self:Agent, run_id, text=''):
