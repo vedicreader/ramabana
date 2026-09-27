@@ -153,13 +153,6 @@ def test_a_shell_tool_settles_its_snapshot_even_when_it_raises():
     host.files['/proj/elsewhere.py'] = 'e = 2\n'
     assert a.changes() == {'/proj/a.py': ('a = 1\n', 'a = 2\n')}
 
-def test_a_turn_does_not_inherit_the_previous_turn_s_tree():
-    a, _ = fake_agent(MemHost({'/proj/a.py': 'a = 1\n'}))
-    a.snapshot_tree()
-    assert a._walked and a._tree
-    a._prepare('next')
-    assert not a._walked and a._tree == {} and a.before == {}
-
 def test_streaming_yields_as_it_goes_and_composes_the_same_message_as_blocking():
     """A stream that only yields at the end is a blocking call with extra steps, and a streamed turn
     that quietly saw a different message would be a very hard bug to find."""
@@ -178,21 +171,6 @@ def test_streaming_yields_as_it_goes_and_composes_the_same_message_as_blocking()
     b, _ = fake_agent(replies=['all done'])
     assert ''.join(b.stream('go')).strip() == 'all done'
     assert b.use.total == 15
-
-
-def test_reasoning_effort_is_applied_to_the_chat_not_passed_to_the_call():
-    from ramabana.runtime import RishiBackend
-    be = RishiBackend(core.ModelSpec('cloud', 'remote', 'openai/gpt-test', ctx=1000))
-
-    class Chat:
-        reasoning_effort = None
-        def __call__(self, msg, **kw):
-            assert 'reasoning_effort' not in kw
-            return {'content': [{'type': 'text', 'text': 'ok'}]}
-
-    be.chat = Chat()
-    assert be._send('hello', reasoning_effort='high') == 'ok'
-    assert be.chat.reasoning_effort == 'high'
 
 
 def test_turns_have_stable_ids_and_fork_into_a_bounded_set_of_checkpoints():

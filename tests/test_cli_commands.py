@@ -8,7 +8,7 @@ from teleprint.testing import EmuTty
 
 from ramabana.agent import Approvals, Ask
 from ramabana.cli import Ui, ask_once, ask_pattern, headless_prompt
-from ramabana.testing import fake_agent
+from ramabana.testing import fake_agent, MemHost
 from ramabana.tools import WRITE_TOOLS
 
 
@@ -47,6 +47,35 @@ def test_a_commands_file_is_a_prompt_with_its_arguments_filled_in(ui, tmp_path):
     assert asyncio.iscoroutine(_submit(ui, '/hello the world'))
     assert ui._prompt == 'Greet the world warmly.'
     assert ui.agent.expand_command('/nosuch x') is None
+
+
+def test_command_files_fill_positional_args_at_files_and_shell_and_honour_subtask(tmp_path):
+    """A command body is more than `$ARGUMENTS`: `$1..$n` split like a shell line, `@path` inlines a
+    file the host can read, and `!`cmd`` runs through the same approval gate a model's `run_shell`
+    would. A project `.agents/commands/` file shadows the user-level `<cfg>/commands/` one, and a
+    `subtask` command hands the work to a sub-agent instead of running in this turn.
+    """
+    host = MemHost({'/proj/notes.txt': 'keep calm'}, root=str(tmp_path), commands={'echo hi': (0, 'hi there')})
+    a, _ = fake_agent(host=host, cfg=tmp_path)
+    a.approvals = Approvals(tools={'run_shell'}, mode='auto')
+
+    (tmp_path/'commands').mkdir()
+    (tmp_path/'commands'/'greet.md').write_text('Greet $1 about @/proj/notes.txt, then !`echo hi`.\n')
+    got = a.expand_command('/greet world extra')
+    assert 'Greet world about' in got and 'keep calm' in got and 'hi there' in got
+
+    a.approvals = Approvals(tools={'run_shell'}, mode='off')
+    refused = a.expand_command('/greet world extra')
+    assert 'refused' in refused
+
+    project = tmp_path/'.agents'/'commands'
+    project.mkdir(parents=True)
+    (project/'greet.md').write_text('---\ndescription: the project one wins\n---\nProject greets $ARGUMENTS.\n')
+    assert a.expand_command('/greet world') == 'Project greets world.'
+
+    (project/'delegated.md').write_text('---\nsubtask: true\n---\nInvestigate $ARGUMENTS.\n')
+    out = a.expand_command('/delegated the bug')
+    assert 'delegate_async' in out and 'Investigate the bug.' in out
 
 
 def test_a_note_goes_to_the_agent_when_it_can_keep_one(ui):

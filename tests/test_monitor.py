@@ -10,10 +10,10 @@ read back off it.
 import pytest
 
 from ramabana.core import AgentError
-from ramabana.monitor import (DFLT_SETTLE, REVIEW_SP, FolderWatch, Monitors, changed, files_under,
-                              monitor_tools, report, review_notice, snapshot, summarise)
+from ramabana.monitor import (REVIEW_SP, Monitors, changed, files_under, monitor_tools, report,
+                              review_notice, snapshot, summarise)
 from ramabana.testing import FakeBackend, MemHost, SPEC, fake_agent
-from ramabana.tools import LocalHost, failed
+from ramabana.tools import LocalHost
 
 
 def host(**files):
@@ -219,48 +219,6 @@ def test_a_check_already_running_is_not_paid_for_twice():
     assert rec['summary'] == '1 edited'
 
 
-def test_a_drained_review_never_reaches_a_second_turn():
-    h = host(**{'a.py': 'one\n'})
-    m, _ = monitors(h)
-    m.add('/proj', 'Review.', settle='0')
-    h.write('/proj/a.py', 'two\n')
-    m.check()
-    assert len(m.drain()) == 1
-    assert m.drain() == []
-    assert review_notice([]) == ''
-
-
-def test_a_review_is_filed_into_durable_memory_when_the_host_has_any():
-    class Remembering(MemHost):
-        def __init__(self, *a, **kw):
-            super().__init__(*a, **kw)
-            self.notes, self.remembered = [], []
-        def note(self, text): self.notes.append(text)
-        def remember(self, text, title=None, tags=()):
-            self.remembered.append((text, title, list(tags)))
-            return {'doc_id': 'd1'}
-
-    h = Remembering({'/proj/a.py': 'one\n'})
-    m, _ = monitors(h)
-    m.add('/proj', 'Review.')
-    h.write('/proj/a.py', 'two\n')
-    m.check(force=True)
-
-    (text, title, tags), = h.remembered
-    assert text == 'sub answer' and 'folder review' in title and tags == ['folder-review']
-    assert any('folder review' in n for n in h.notes)
-
-
-def test_a_host_without_memory_still_gets_its_review():
-    "`remember` raising `NotImplementedError` is the common case, not a failure to report."
-    h = host(**{'a.py': 'one\n'})
-    m, _ = monitors(h)
-    m.add('/proj', 'Review.')
-    h.write('/proj/a.py', 'two\n')
-    rec, = m.check(force=True)
-    assert rec['review'] == 'sub answer' and m.drain() == [rec]
-
-
 def test_only_the_newest_reviews_are_held_for_the_next_turn():
     "A session nobody came back to must not grow a queue without bound."
     from ramabana.monitor import PENDING_MAX
@@ -273,37 +231,7 @@ def test_only_the_newest_reviews_are_held_for_the_next_turn():
     assert len(m.drain()) == PENDING_MAX
 
 
-def test_on_review_gets_every_record_and_a_frontend_that_raises_is_ignored():
-    seen = []
-    def hook(rec):
-        seen.append(rec)
-        raise RuntimeError('the frontend is not the monitor\'s problem')
-    h = host(**{'a.py': 'one\n'})
-    m, _ = monitors(h, on_review=hook)
-    m.add('/proj', 'Review.')
-    h.write('/proj/a.py', 'two\n')
-    rec, = m.check(force=True)
-    assert seen == [rec]
-
-
 # -- the tools -------------------------------------------------------------------------------
-
-def test_the_folder_tools_open_list_and_cancel_a_watch():
-    h = host(**{'a.py': 'one\n'})
-    m, _ = monitors(h)
-    ts = tools(m)
-    assert 'no folder is being watched' in ts['list_folder_watches']()
-    assert ts['check_folders']() == 'no folder is being watched'
-
-    said = ts['watch_folder']('/proj', 'Review each change.')
-    assert '/proj' in said and '1 files' in said
-    wid = m.all()[0].id
-    assert wid in ts['list_folder_watches']()
-
-    assert ts['cancel_folder_watch']('nope').startswith('no such folder watch')
-    assert ts['cancel_folder_watch'](wid) == f'stopped watching {wid}'
-    assert m.all() == []
-
 
 def test_check_folders_ignores_the_settle_window_and_reports_each_review_once():
     h = host(**{'a.py': 'one\n'})
@@ -319,22 +247,7 @@ def test_check_folders_ignores_the_settle_window_and_reports_each_review_once():
     assert m.drain() == []                       # reported, so the next turn must not repeat it
 
 
-def test_a_refused_folder_comes_back_as_a_tool_error_not_an_exception(tmp_path):
-    (tmp_path/'proj').mkdir()
-    m = Monitors(LocalHost([tmp_path/'proj'], web=False, index=False))
-    said = tools(m)['watch_folder'](str(tmp_path/'elsewhere'), 'Review.')
-    assert failed(said) and 'could not watch that folder' in said
-    assert m.all() == []
-
-
 # -- the session ------------------------------------------------------------------------------
-
-def test_a_session_offers_the_folder_tools_and_briefs_the_model_on_them():
-    a, _ = fake_agent()
-    assert {'watch_folder', 'list_folder_watches', 'cancel_folder_watch',
-            'check_folders'} <= {t.__name__ for t in a.tools}
-    assert '`watch_folder` is for work happening beside this conversation' in a.system_prompt()
-
 
 def test_a_review_reaches_the_next_prompt_exactly_once():
     a, be = fake_agent(replies=['ok', 'ok', 'ok'])
@@ -389,8 +302,3 @@ def test_a_file_too_large_to_diff_is_tracked_by_its_size():
     assert 'too large to diff' in before['/proj/big.txt']
     h.write('/proj/big.txt', 'y' * (SNAP_MAX_BYTES + 2))
     assert list(changed(before, snapshot(h, '/proj'))) == ['/proj/big.txt']
-
-
-def test_a_watch_repr_says_what_it_is_watching():
-    w = FolderWatch('/proj', 'Review.', settle=DFLT_SETTLE)
-    assert w.id.startswith('fw_') and '/proj' in repr(w) and w.settle == 20

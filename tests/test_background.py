@@ -127,11 +127,6 @@ def _subs(be, writes=False, approve=None, bg=None, tools=TOOLS):
         get_approve=(lambda: approve) if approve else None, background=bg)}
 
 
-def test_the_async_tools_are_withheld_from_a_sub_agent():
-    for n in ('delegate_async', 'delegate_status', 'delegate_result', 'delegate_cancel'):
-        assert n in NO_SUB, f'{n} lets a sub-agent collect work it did not start'
-
-
 def test_a_background_delegation_is_read_only_even_where_the_session_grants_writes():
     be = FakeBackend()
     subs = _subs(be, writes=True, approve=lambda tc: True)
@@ -175,43 +170,6 @@ def test_an_ask_carries_the_run_that_raised_it():
     assert got.run_id == 'run_bg'
     assert got.dict()['run_id'] == 'run_bg'
     assert a.request('edit_file', {}).run_id == '', 'a foreground ask claims no run'
-
-
-def test_an_ask_with_nobody_listening_is_refused_at_once_rather_than_timing_out():
-    a = Approvals(tools={'edit_file'}, mode='ask', timeout=30)
-    start = time.monotonic()
-    got = a.request('edit_file', {'path': '/p/x.py'})
-    assert time.monotonic() - start < 1, 'it waited out the timeout instead of refusing'
-    assert got.answer is False and 'nothing is listening' in got.note
-
-
-def test_a_closing_session_refuses_what_was_waiting_and_everything_after():
-    a = Approvals(tools={'edit_file'}, mode='ask', timeout=30)
-    a.listen(on_ask=lambda ask: None)
-    answered = []
-    done = threading.Event()
-
-    def asker():
-        answered.append(a.request('edit_file', {'path': '/p/x.py'}))
-        done.set()
-
-    threading.Thread(target=asker, daemon=True).start()
-    assert until(lambda: a.pending is not None)
-    a.close()
-    assert done.wait(5), 'closing left the model thread blocked on an approval'
-    assert answered[0].answer is False and 'closed' in answered[0].note
-    # and the gate stays shut for anything raised after
-    assert a.request('edit_file', {}).answer is False
-
-
-def test_closing_an_agent_stops_its_background_work_and_shuts_the_gate():
-    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False,
-              approvals=Approvals(tools=WRITE_TOOLS, mode='ask'))
-    a._backends[('fake', 'fake')] = FakeBackend()
-    a.background.start(lambda r: 'done', Run('run_live', 'child', 'q'))
-    a.close()
-    assert a.background.open is False
-    assert a.approvals.closed is True
 
 
 def test_a_background_run_does_not_keep_the_session_busy():

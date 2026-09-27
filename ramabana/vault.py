@@ -291,3 +291,9 @@ class WorkspaceHost(VaultHost, SpecHost):
     def api_count(self, group='', name='', match=''): return self._api_call('api_count', group, name, match)
     def api_call(self, operation, name='', **params): return self._api_call('api_call', operation, name, **params)
 
+    def delete(self, path):
+        "Remove a file through the same sandbox `write` enforces. Raises if it cannot be resolved or does not exist."
+        p = self.check(path, must_exist=True)
+        Path(p).unlink()
+        return str(p)
+

@@ -226,6 +226,31 @@ def test_the_trolley_writes_are_withheld_from_a_surface_that_may_not_act():
     assert not ({t.__name__ for t in read_only(ts, effects=False)} & writing)
 
 
+def test_a_call_repeated_past_doom_loop_stops_resolving_itself_from_auto_alone():
+    """`mode='auto'` exists so a trusted session does not have to answer every write, but a model
+    stuck retrying the same edit would then repeat it forever with nobody the wiser. The same
+    call, args and all, has to fall back to asking once it has run DOOM_LOOP times in a row --
+    and a merely similar call (a different path) must not trip it.
+    """
+    ap = agent.Approvals(tools={'edit_file'}, mode='auto', timeout=5)
+    for _ in range(agent.DOOM_LOOP - 1):
+        assert ap.request('edit_file', {'path': 'a.py'}), 'auto still lets the first couple through'
+
+    stop = ap.listen()
+    answer_when_asked(ap, True, 'fine, but slow down')
+    d = ap.request('edit_file', {'path': 'a.py'})
+    stop()
+    assert d and f'{agent.DOOM_LOOP} times running' in d.preview
+
+    assert ap.request('edit_file', {'path': 'b.py'}), 'a different path resets the streak'
+
+    silent = agent.Approvals(tools={'edit_file'}, mode='auto', timeout=5)
+    for _ in range(agent.DOOM_LOOP - 1): silent.request('edit_file', {'path': 'a.py'})
+    t0 = time.time()
+    refused = silent.request('edit_file', {'path': 'a.py'})
+    assert not refused and time.time() - t0 < 1, 'refused fast, not hung, with nobody listening'
+
+
 def test_every_tool_named_a_write_is_also_marked_one():
     """The two representations are kept in two packages: shalya marks the tool, Ramabana adds the
     names shalya has never heard of. Nothing failed when they disagreed."""

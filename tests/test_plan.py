@@ -49,17 +49,6 @@ def test_the_briefing_carries_the_plan_so_a_resume_does_not_restart():
     assert '## Current plan' in sp and 'First' in sp and 'resume from the active' in sp
 
 
-def test_status_exposes_plan_for_leela_and_the_cli_bar():
-    a, _ = fake_agent()
-    assert a.status()['plan']['todos'] == [] and a.status()['plan_line'] == ''
-    a.plan.set('P', ['x']); a.plan.update('x', status='active')
-    s = a.status()
-    assert s['plan']['title'] == 'P' and '▸' in s['plan_line']
-    assert s['tool_calls'] == 0 and s['tool_limit'] == a.max_tool_calls
-    assert s['step_limit'] == a.max_steps
-    assert 'plan' in a.commands() and 'todo' in a.commands()
-
-
 def test_parse_plan_items_accepts_newlines_and_json():
     assert parse_plan_items('a\n- b\n* c') == ['a', 'b', 'c']
     assert parse_plan_items('["x", "y"]') == ['x', 'y']

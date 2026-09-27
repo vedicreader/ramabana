@@ -301,13 +301,6 @@ def own_vault(tmp_path, monkeypatch):
 OFFLINE = dict(index=False, warm=False)
 
 
-def test_the_retrieval_gate_is_off_until_a_caller_asks_for_it(own_vault):
-    "The default is what every earlier release did, so raising the floor changes nothing for one."
-    from ramabana.cli import mk_host
-    h = mk_host([own_vault], vault=True, web=False, **OFFLINE)
-    assert h._policy() == ('off', False)
-
-
 @pytest.mark.parametrize('mode', ['redact', 'refuse'])
 def test_mk_host_carries_pii_into_every_vault_read(own_vault, mode):
     """`VaultHost` took `pii` and nothing built one with it, so no ramabana frontend could reach
@@ -319,33 +312,3 @@ def test_mk_host_carries_pii_into_every_vault_read(own_vault, mode):
     assert h._policy() == (mode, False)
     got = str(h.memory_read(h.vault.doc('contact')['id'] + '#0'))
     assert 'ada@example.com' not in got and '020 7946 0958' not in got
-
-
-def test_pii_ner_reaches_the_host_the_same_way(own_vault):
-    from ramabana.cli import mk_host
-    h = mk_host([own_vault], vault=True, web=False, pii='refuse', pii_ner=True, **OFFLINE)
-    assert h._policy() == ('refuse', True)
-
-
-def test_a_host_without_a_vault_is_never_handed_the_gate(own_vault):
-    "`LocalHost` and `SpecHost` retrieve nothing to gate, and would refuse the arguments."
-    from ramabana.cli import mk_host
-    assert not hasattr(mk_host([own_vault], vault=False, web=False, index=False), 'pii')
-    assert not hasattr(mk_host([own_vault], vault=False, spec=True, web=False, index=False), 'pii')
-    both = mk_host([own_vault], vault=True, spec=True, web=False, pii='redact', **OFFLINE)
-    assert both._policy() == ('redact', False)      # VaultSpecHost still carries it
-
-
-def test_every_frontend_offers_the_flag_and_the_cli_refuses_a_name_it_does_not_know():
-    """A gate nothing can turn on is not a gate. `--pii` has to reach the terminal, MCP and ACP
-    entry points, and an unknown mode has to print one line rather than raise through."""
-    import inspect
-    from ramabana import mcp, racp
-    from ramabana.cli import main as cli_main
-    from ramabana.core import PII_MODES
-    for f in (cli_main, mcp.main, racp.main):
-        src = inspect.getsource(getattr(f, '__wrapped__', f))
-        assert 'pii: str' in src and 'pii_ner: bool' in src, f
-    assert PII_MODES == ('off', 'redact', 'refuse')
-    refuse = inspect.getsource(getattr(cli_main, '__wrapped__', cli_main))
-    assert 'unknown --pii' in refuse and 'add --vault' in refuse

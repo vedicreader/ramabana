@@ -5,8 +5,10 @@
 ## Modules
 
 - [ramabana.coding_patterns](https://vedicreader.github.io/ramabana/coding_patterns.html.md): Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
+- [ramabana.mcpclient](https://vedicreader.github.io/ramabana/mcpclient.html.md): Local or remote MCP servers, named in a project `.agents/mcp.json` or `<cfg>/mcp.json`, wrapped as ordinary Ramabana tools with [AnswerDotAI/mcpmini](https://github.com/AnswerDotAI/mcpmini) -- the mirror of `ramabana.mcp`, which serves tools rather than consuming them.
 - [ramabana.monitor](https://vedicreader.github.io/ramabana/monitor.html.md): A folder somebody else is changing, looked at between turns, and the standing review that fires when it moves.
 - [ramabana.racp](https://vedicreader.github.io/ramabana/acp.html.md): Ramabana as an [Agent Client Protocol](https://agentclientprotocol.com/) agent: an editor drives this host, with its own files and its own terminal.
+- [ramabana.serve](https://vedicreader.github.io/ramabana/serve.html.md): Sessions, prompts and approvals over HTTP and SSE, for a GUI that wants to be a thin client rather than re-implementing the approval gate. The other half of `ramabana-acp`: an editor drives one in-process agent over stdio; this drives any number of agents over the network.
 - [ramabana.theory](https://vedicreader.github.io/ramabana/theory.html.md): Naur's programming-as-theory-building, in the sense this team uses the word.
 - [ramabana.vault](https://vedicreader.github.io/ramabana/vault.html.md): Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing watches that return work to the agent.
 - [ramabana.write_docs](https://vedicreader.github.io/ramabana/write_docs.html.md): The voiceless register for the prose that ships with code, adapted from Answer.AI's write_docs.

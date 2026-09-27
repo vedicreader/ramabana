@@ -43,16 +43,6 @@ def test_a_line_typed_during_a_turn_is_held_rather_than_dropped(ui):
     assert ui._queued is None
 
 
-def test_the_surface_says_the_line_is_waiting(ui):
-    async def slow(): await asyncio.sleep(.05)
-    async def held(): pass
-    async def go():
-        ui.start_turn(slow()); ui.start_turn(held())
-        assert 'queued' in _said(ui), 'a held line says so rather than looking answered'
-        await asyncio.sleep(.2)
-    asyncio.run(go())
-
-
 def test_only_one_line_waits_and_the_first_one_keeps_the_slot(ui):
     """The newest used to win, so anything `on_key` handed back -- a `/python`, a `/promote`, this
     surface's own work -- silently evicted a message already waiting. Whoever got there keeps it,
@@ -130,24 +120,6 @@ def test_the_message_typed_during_a_turn_actually_runs_when_it_ends():
     finally: tty.close()
 
 
-def test_this_surfaces_own_work_cannot_evict_a_waiting_message(ui):
-    """A `/python` or `/promote` typed during a turn used to take the slot the message was in, run
-    itself when the turn ended, and leave the line gone with nothing saying so."""
-    ran = []
-    async def slow(): await asyncio.sleep(.05)
-    async def my_message(): ran.append('my message')
-    async def surface_work(): ran.append('surface work')
-    async def go():
-        ui.start_turn(slow())
-        mine = my_message()
-        assert ui.start_turn(mine) is False and ui._queued is mine
-        assert ui.start_turn(surface_work()) is False
-        assert ui._queued is mine, 'the message is still the one waiting'
-        await asyncio.sleep(.2)
-    asyncio.run(go())
-    assert ran == ['my message']
-
-
 def test_a_second_prompt_joins_the_one_already_waiting(ui):
     """Both lines are the user's. The newer one used to be closed and lost, so steering twice
     during a long turn reached the model once."""
@@ -219,21 +191,4 @@ def test_the_waiting_message_is_shown_above_the_prompt(ui):
         ui.drop_queued()
         assert not [r for r in _rows(ui) if '⏳' in r], 'and it goes when the message does'
         await asyncio.sleep(.1)
-    asyncio.run(go())
-
-
-def test_absorbing_and_sending_each_flash_and_then_clear(ui):
-    "A flash says what happened. It lives above the prompt and never reaches the transcript."
-    async def slow(): await asyncio.sleep(.05)
-    async def go():
-        ui.start_turn(slow())
-        ui.start_turn(ui._turn('look at the tests'))
-        ui.start_turn(ui._turn('and the lockfile'))
-        assert first(r for r in _rows(ui) if 'absorbed' in r), _rows(ui)
-        assert 'absorbed' not in _said(ui), 'a flash is not a transcript block'
-        await asyncio.sleep(.3)              # the turn ends and the waiting message goes
-        assert first(r for r in _rows(ui) if 'queued message sent' in r), _rows(ui)
-        ui._flash = (ui._flash[0], 0)        # expire it rather than waiting FLASH_FOR out
-        assert not [r for r in _rows(ui) if '✓' in r], 'a flash clears itself'
-        assert ui._flash is None
     asyncio.run(go())

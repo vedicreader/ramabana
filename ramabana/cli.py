@@ -666,7 +666,10 @@ async def run_turn(ui, prompt):
         ui.ring()
         ui.touch(now=True)
         ui.paint()
-    if blk is not None and ui._reply: ui.log_cell('**assistant**\n\n' + ui._reply, cell_type='markdown')
+    if blk is not None and ui._reply:
+        ui.log_cell('**assistant**\n\n' + ui._reply, cell_type='markdown')
+        if ui.agent.goal is not None and (nxt := ui.agent.goal_after_turn(ui._reply)) is not None:
+            return await run_turn(ui, nxt)
     return blk
 
 # %% ../nbs/05_cli.ipynb #2874a64d

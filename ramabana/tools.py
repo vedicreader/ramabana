@@ -8,17 +8,18 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP', 'SUB_SP', 'NO_SUB', 'ASYNC_MAX',
            'ASYNC_KEEP', 'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'ToolEntry', 'ToolCatalog',
            'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'delegate', 'delegate_many', 'Background',
-           'named_skills', 'subagent_tools', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES',
-           'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API',
-           'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
-           'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX',
-           'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools',
-           'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err',
-           'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write',
-           'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost',
-           'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost',
-           'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools',
-           'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes']
+           'named_skills', 'named_agent', 'subagent_tools', 'worktree_tools', 'API_VENDORS', 'Capability', 'DENY',
+           'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit',
+           'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API',
+           'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS',
+           'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill',
+           'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied',
+           'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools',
+           'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise',
+           'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost',
+           'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for',
+           'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index',
+           'skill_tools', 'watch_tools', 'web_tools', 'writes']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, functools, json, re, threading, time, uuid
@@ -367,11 +368,20 @@ def named_skills(get_skills, names):
                  f"{', '.join(s.name for s in every) or 'none'}]")
 
 
+def named_agent(get_agents, name):
+    "The named `/agent` profile, and a note when it does not exist."
+    if not name or get_agents is None: return None, ''
+    profiles = get_agents() or {}
+    if name in profiles: return profiles[name], ''
+    return None, f"\n\n[no agent profile named {name}; this repository has {', '.join(profiles) or 'none'}]"
+
+
 def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=None,
                    get_writes=None,     # the session's sub-agent write toggle, read per call
                    get_approve=None,    # the gate those writes answer to
                    background=None,     # the register async delegations live in; one is made if None
-                   get_log_dir=None):   # callable -> the folder run transcripts go in, or None
+                   get_log_dir=None,    # callable -> the folder run transcripts go in, or None
+                   get_agents=None):    # callable -> {name: {'description','model','body'}}, the `/agent` profiles
     "The delegation tools, routed to the configured sub-agent backend. Arguments are callables, read per call."
     bg = ifnone(background, Background())
     def _writes(): return bool(get_writes()) if get_writes is not None else False
@@ -379,13 +389,15 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
     @acts
     @summary(lambda a: f'Delegate: {_1(a.get("question"), 120)}')
-    def delegate_search(question: str, skills: str = '') -> str:
-        "Delegate a broad question to a sub-agent and return only its conclusion. Ask one self-contained question."
-        b = get_backend()
+    def delegate_search(question: str, skills: str = '', agent: str = '') -> str:
+        "Delegate a broad question to a sub-agent and return only its conclusion. Ask one self-contained question. `agent` names a `/agent` profile to brief and route it with."
+        prof, note2 = named_agent(get_agents, agent)
+        b = (get_cloud_backend(prof['model']) if prof and prof.get('model') and get_cloud_backend else None) or get_backend()
         if b is None: return 'no model is available to delegate to'
         sk, note = named_skills(get_skills, skills)
-        return clip(delegate(b, question, get_tools(), skills=sk, writes=_writes(),
-                             approve=_approve()), MAX_TOOL_CHARS) + note
+        sp = f"{sub_briefing(_writes())}\n\n{prof['body']}" if prof else None
+        return clip(delegate(b, question, get_tools(), sp=sp, skills=sk, writes=_writes(),
+                             approve=_approve()), MAX_TOOL_CHARS) + note + note2
 
     @acts
     @summary(lambda a: f'Delegate in parallel: {_1(a.get("questions"), 110)}')
@@ -444,3 +456,23 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
     return [delegate_search, delegate_parallel, delegate_async, delegate_status,
             delegate_result, delegate_cancel]
+
+
+def worktree_tools(agent):
+    "Delegation into an isolated git worktree and branch, and running one prompt across several models to compare."
+    @acts
+    @summary(lambda a: f'Delegate in a worktree: {_1(a.get("question"), 100)}')
+    def delegate_worktree(question: str, branch: str = '', model: str = '') -> str:
+        "Run `question` to completion in a fresh git worktree and branch, isolated from this session's own files. Returns a background run id; collect it with delegate_result."
+        return agent._delegate_worktree(question, branch, model or None)
+
+    @acts
+    @summary(lambda a: f'Multirun: {_1(a.get("prompt"), 90)}')
+    def multirun(models: str, prompt: str) -> str:
+        "Run the same `prompt` in its own worktree and branch for each of `models` (comma-separated), to compare their answers. One background run id per model."
+        names = [m.strip() for m in str(models).replace(',', ' ').split() if m.strip()]
+        if not names: return 'no models given'
+        tag = uuid.uuid4().hex[:6]
+        return '\n'.join(agent._delegate_worktree(prompt, branch=f'multirun-{tag}/{m}', model=m) for m in names)
+
+    return [delegate_worktree, multirun]

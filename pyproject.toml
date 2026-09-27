@@ -37,6 +37,10 @@ dependencies = [
     "dhrishti>=0.1.2",
     "jupyter-client>=8.9.1",
     "agent-client-protocol>=0.12.1",
+    "mcpmini>=0.0.5",
+    "starlette>=1.6.0",
+    "sse-starlette>=3.4.8",
+    "uvicorn[standard]>=0.52.4",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +54,7 @@ ramabana = "ramabana.cli:main"
 ramabana-mcp = "ramabana.mcp:main"
 ramabana-acp = "ramabana.racp:main"
 ramabana-tick = "ramabana.monitor:tick"
+ramabana-serve = "ramabana.serve:main"
 
 [project.entry-points.nbdev]
 ramabana = "ramabana._modidx:d"

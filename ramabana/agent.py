@@ -6,14 +6,15 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
-           'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'APPROVE_MODES', 'INLINE_SKILLS',
-           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES',
-           'TODO_MARK', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP',
-           'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
-           'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'Approvals',
-           'always', 'never', 'applied', 'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives',
-           'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent',
-           'note_tools', 'Completer']
+           'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'DOOM_LOOP', 'APPROVE_MODES',
+           'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES',
+           'TODO_STATUSES', 'TODO_MARK', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WALKTHROUGH_SP', 'REPLAYED',
+           'CHECKPOINT_BYTES', 'GOAL_STUCK_LIMIT', 'GOAL_STEP_LIMIT', 'COMMIT_SP', 'PR_SP', 'COMPLETE_SP',
+           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
+           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'Approvals', 'always', 'never',
+           'applied', 'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives', 'project_context',
+           'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent', 'note_tools',
+           'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -22,6 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from fastcore.basics import patch
 from fastcore.xtras import atomic_save
+from fastcore.docments import frontmatter
 from urai import parse_args, tc_name
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
@@ -30,7 +32,7 @@ from shalya.tools import group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background)
+                            tools_for, Background, worktree_tools)
 from .monitor import (Monitors, POB_READER, beat_notes, beat_notice, monitor_tools,
                               pob, pob_path, review_notice)
 
@@ -305,11 +307,17 @@ def answer_md(ask):
 
 # %% ../nbs/03_agent.ipynb #ca1437e3
 EDIT_GROUPS = ('file', 'notebook')
+DOOM_LOOP = 3   #: repeats of one call, args and all, that force an ask regardless of mode
 
 def subject(name, args):
     "What a saved rule is matched against: the command, else the path, else the summary."
     return str(args.get('command') or args.get('path') or _summary(name, args))
 
+
+def _call_key(args):
+    "A canonical, hashable stand-in for `args`, so the same call can be told from a merely similar one."
+    try: return json.dumps(args, sort_keys=True, default=str)
+    except Exception: return str(args)
 
 def _load_rules(path):
     "Saved rules as `(tool, pattern, verdict)` triples, and why they could not be read."
@@ -339,6 +347,7 @@ class Approvals:
         self.history = []                   # every `Ask` this session, answered or not
         self._watchers = []                 # (on_ask, on_answer) per registered frontend
         self._lock = threading.Lock()
+        self._repeat, self._streak = None, 0   # the last (tool, args) key, and how many times running
 
 
     @property
@@ -432,13 +441,14 @@ class Approvals:
         self.history.append(a)
         return a
 
-    def decide(self, name, args, force=False, ask=None):
-        "The resolved `Ask` when nobody needs asking: not gated, `off`, a saved rule, `auto` or `edits`. None when a person must answer."
+    def decide(self, name, args, force=False, ask=None, doom=False):
+        "The resolved `Ask` when nobody needs asking: not gated, `off`, a saved rule, `auto` or `edits`. `doom` (repeated `DOOM_LOOP` times) blocks the last two once a tool is gated at all."
         a = self.ask(name, args) if ask is None else ask
         if not force and name not in self.tools: return a.resolve(True)
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
         if (v := self.rule_for(name, args)) is not None:
             return a.resolve(True, 'allowed by a saved rule') if v == 'allow' else self._decided(a, False, 'denied by a saved rule')
+        if doom: return None
         if self.mode == 'auto' or (self.mode == 'edits' and group_of(name) in EDIT_GROUPS): return a.resolve(True)
         return None
 
@@ -457,8 +467,13 @@ class Approvals:
 
     def request(self, name, args, force=False, timeout=None):
         "Raise one request and wait for it. Returns the resolved `Ask`, whose `reply()` carries the reason."
+        key = (name, _call_key(args))
+        self._streak = self._streak + 1 if key == self._repeat else 1
+        self._repeat = key
+        doom = self._streak >= DOOM_LOOP
         a = self.ask(name, args)
-        if (d := self.decide(name, args, force, ask=a)) is not None: return d
+        if doom: a.preview = f'the same call, {self._streak} times running\n\n{a.preview}'.strip()
+        if (d := self.decide(name, args, force, ask=a, doom=doom)) is not None: return d
         # closing first: the more useful reason; `current` taken under the close lock, so an ask landing in the gap does not wait out its timeout
         with self._lock:
             closing = self.closed
@@ -918,6 +933,7 @@ class Agent:
                  history_name='agent',      # separate durable conversations can share one config dir
                  poll_every=POLL_EVERY,     # seconds between automatic watch polls; 0 never polls
                  verify='',                 # the project's check; empty reads `[tool.ramabana] verify`
+                 mcp_servers=None,          # extra `{name: spec}` MCP servers, e.g. an editor's own; win over config files by name
                  instruction_style='ramabana'): # 'ramabana' | 'aai' compatibility profile
         self.host, self.cfg, self.inline_skills = host, cfg, inline_skills
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
@@ -941,6 +957,8 @@ class Agent:
         self.activity = Activity(on_change=on_activity)   # the live account of what it is doing
         self._nested = threading.local()   # per thread: the delegate calls whose sub-agents are running
         self.plan = Plan()       # durable checklist for stop/start and sub-agent bites
+        self.goal = None         # active `/goal` objective: {'text', 'stuck', 'steps'}, or None
+        self._walkthroughs = {}  # diff hash -> its narrative, so a repeat /walkthrough does not re-spend the summary job
         self.on_plan = None      # frontend hook: callable(plan) after every mutation
         self.on_media = None     # frontend hook: callable(paths) the moment a tool writes a picture
         self.calls = []          # (tool, args) per call this session. What the UI shows as activity
@@ -948,6 +966,7 @@ class Agent:
         self._load_history()
         self._load_plan()
         self.before = {}         # path -> its text just before a write tool touched it, this turn
+        self._new_files = set()  # paths in `self.before` that did not exist before this turn
         self._walked = False     # whether a tree baseline is held for the running command
         self._tree = {}          # that baseline: path -> its text when the command started
         self._tool_calls_turn = 0 # backend-independent guard for local/native tool loops
@@ -957,6 +976,8 @@ class Agent:
         self._usage_seen = {}    # backend cumulative counters already folded into `use`
         self.note = 'not started'
         self._backends, self._skills, self._reg, self._tools = {}, None, None, None
+        self._agent_profiles = None
+        self._mcp_servers, self._mcp, self._mcp_loop, self._mcp_clients = mcp_servers, None, None, []
         self._catalogs, self._views = {}, {}
         self._catalog_view = ToolCatalog()
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
@@ -1006,6 +1027,33 @@ def skills(self:Agent):
             self._skills = []
             self.note = f'skills unavailable ({agent_err(e)})'
     return self._skills
+
+@patch(as_prop=True)
+def agents(self:Agent):
+    "Named `/agent` profiles this session can delegate to: project `.agents/agents/`, then `<cfg>/agents/`. Found once."
+    if self._agent_profiles is None:
+        found = {}
+        dirs = [Path(r)/'.agents'/'agents' for r in getattr(self.host, 'roots', None) or ()]
+        if self.cfg is not None: dirs.append(self.cfg/'agents')
+        for d in dirs:
+            if not d.is_dir(): continue
+            for f in sorted(d.glob('*.md')):
+                try: meta, body = frontmatter(f.read_text())
+                except Exception: continue
+                found.setdefault(f.stem, {'description': meta.get('description', ''),
+                                          'model': meta.get('model', ''), 'body': body.strip()})
+        self._agent_profiles = found
+    return self._agent_profiles
+
+@patch(as_prop=True)
+def mcp_tools(self:Agent):
+    "Every tool this session's MCP servers offer, connected once and kept for the session's life."
+    if self._mcp is None:
+        from .mcpclient import mcp_tools as _mcp_tools
+        def _note(name, e): self.note = f'mcp {name} unavailable ({agent_err(e)})'
+        self._mcp, self._mcp_loop, self._mcp_clients = _mcp_tools(
+            self.cfg, self.host.roots, extra=self._mcp_servers, loop=self._mcp_loop, on_error=_note)
+    return self._mcp
 
 # %% ../nbs/03_agent.ipynb #a29bf6f1
 @patch
@@ -1058,7 +1106,11 @@ def _record(self:Agent, f):
             return err(denied)
         if is_write(f):   # first touch only: later edits are part of one change
             if (p := args.get('path')):
-                if p not in self.before: self.before[p] = self.host.text_at(p) or ''
+                if p not in self.before:
+                    # `text_at` coerces a missing file to '', same as an existing empty one; `read`
+                    # tells them apart, so a rewind can remove what this turn created, not just empty it
+                    if self.host.read(p) is None: self._new_files.add(p)
+                    self.before[p] = self.host.text_at(p) or ''
             elif name == 'run_shell': self.snapshot_tree()
         nested = name in DELEGATE_TOOLS   # every call its sub-agent makes hangs off this one
         if nested: self._delegating.append(act.id)
@@ -1122,9 +1174,12 @@ def _catalog_for(self:Agent, budget, full=True):
                                         lambda: self.skills, self._cloud_backend_or_none,
                                         lambda: self.subagent_writes,
                                         lambda: self.approvals.gate if self.approvals is not None else None,
-                                        background=self.background, get_log_dir=lambda: self.runs_dir)
+                                        background=self.background, get_log_dir=lambda: self.runs_dir,
+                                        get_agents=lambda: self.agents)
+                extra += worktree_tools(self)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
             extra += monitor_tools(lambda: self.monitors, mx=budget.tool_max)
+            extra += self.mcp_tools
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
                           drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew)
         self._catalogs[key] = ToolCatalog(built)
@@ -1170,6 +1225,47 @@ def background_notice(self:Agent):
     with self.background.lock: done, self._bg_done = self._bg_done, []
     if not done: return ''
     return '\n\n<background-results>\n' + '\n\n'.join(f'## {r.id} ({r.state}): {r.question}\n{a}' for r, a in done) + '\n</background-results>'
+
+
+@patch
+def _worktree_dir(self:Agent):
+    "Where worktrees this session makes are rooted."
+    if self.cfg is not None:
+        d = self.cfg/'worktrees'
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    import tempfile
+    return Path(tempfile.mkdtemp(prefix='ramabana-worktree-'))
+
+@patch
+def spawn_worktree(self:Agent, branch, model=None):
+    "A fresh git worktree on `branch` under this repo's root, and a write-enabled `Agent` rooted there, isolated from this session's own tree."
+    from gheasy.repo import GitRepo
+    from .vault import WorkspaceHost
+    repo = GitRepo.at(self.host.roots[0])
+    path = str(self._worktree_dir()/branch.replace('/', '-'))
+    repo.add_worktree(path, branch, create=True)
+    host = WorkspaceHost([path])
+    child = Agent(host, model=model or self.model.name, approvals=Approvals(tools=WRITE_TOOLS, mode='auto'),
+                 project_extensions=False, cfg=self.cfg)
+    return child, path
+
+@patch
+def _delegate_worktree(self:Agent, question, branch='', model=None):
+    "Run `question` to completion in a fresh git worktree and branch, as a background run. Returns the started run's id, or why it could not start."
+    branch = branch or f'ramabana/{uuid.uuid4().hex[:8]}'
+    rid, d = f'run_{uuid.uuid4().hex[:12]}', self.runs_dir
+    run = Run(rid, 'background', str(question), str(model or self.model.name), log=None if d is None else d/f'{rid}.log')
+    def work(r):
+        try: child, path = self.spawn_worktree(branch, model)
+        except Exception as e: return f'could not create the worktree: {agent_err(e)}'
+        try:
+            with run_context(r): reply = child.ask(question)
+            return f'{reply}\n\nworktree: {path} (branch {branch})\n' + (child.changed_line() or 'nothing changed')
+        finally: child.close()
+    try: rid = self.background.start(work, run)
+    except Exception as e: return f'could not start the worktree delegation: {agent_err(e)}'
+    return f'started {rid} on branch {branch}. Collect it with delegate_result({rid!r}).'
 
 
 # %% ../nbs/03_agent.ipynb #d598e329
@@ -1378,7 +1474,7 @@ def chat_or_none(self:Agent, job='turn'):
 @patch
 def _forget(self:Agent):
     "Drop what is rebuilt from disk. The registry keeps whatever this process registered on it."
-    self._skills = self._tools = None
+    self._skills = self._tools = self._agent_profiles = None
     self._catalogs.clear(); self._views.clear()
     if self._reg is not None: self._reg.drop_loaded()
 
@@ -1477,6 +1573,20 @@ def changed_line(self:Agent):
         return f"+{d.count('+')} -{d.count('-')}"
     ch = self.changes()
     return 'changed: ' + ', '.join(f'{Path(p).name} ({pm(b, a)})' for p, (b, a) in ch.items()) if ch else ''
+
+WALKTHROUGH_SP = ('Break the diff below into a short numbered narrative of "stops": each stop names one file or '
+                  'one cohesive change, gives a one-sentence explanation of why it changed, and tags itself '
+                  '[key change] or [context]. Output only the numbered list, most important stops first.')
+
+@patch
+def walkthrough(self:Agent):
+    "The turn's `changes()` as a narrative walkthrough, cached by diff hash so a repeat call does not re-spend the summary job."
+    ch = self.changes()
+    if not ch: return 'nothing changed this turn'
+    diff = '\n\n'.join(diff_text(b, a, p) for p, (b, a) in ch.items())
+    key = hashlib.sha1(diff.encode()).hexdigest()
+    if key not in self._walkthroughs: self._walkthroughs[key] = self.summarise(diff, WALKTHROUGH_SP)
+    return self._walkthroughs[key]
 
 @patch
 def verify_command(self:Agent):
@@ -1685,6 +1795,7 @@ def _begin_turn(self:Agent, run=None):
 def _prepare(self:Agent, prompt):
     "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
     self.before.clear()                    # `changes()` reports this turn, not the session
+    self._new_files.clear()
     self._drawn = []                       # pictures this turn's tools wrote, for the frontend
     self._walked, self._tree = False, {}
     self._begin_turn(current_run())
@@ -1862,32 +1973,65 @@ def checkpoint_dir(self:Agent):
 
 @patch
 def _checkpoint(self:Agent):
-    "Keep this turn's pre-write texts on disk, dropping the oldest turns past `CHECKPOINT_BYTES`."
+    "Keep this turn's before and after texts on disk, dropping the oldest turns past `CHECKPOINT_BYTES`."
     d = self.checkpoint_dir
     if d is None or not self.before: return
     d.mkdir(parents=True, exist_ok=True)
-    (d/f'{self.current_turn_id}.json').write_text(json.dumps(self.before))
+    snap = {'before': self.before, 'new': sorted(self._new_files),
+            'after': {p: self.host.text_at(p) for p in self.before}}
+    (d/f'{self.current_turn_id}.json').write_text(json.dumps(snap))
     files = sorted(d.glob('*.json'), key=lambda p: p.stat().st_mtime)
     while len(files) > 1 and sum(p.stat().st_size for p in files) > CHECKPOINT_BYTES: files.pop(0).unlink()
+
+@patch
+def _load_checkpoint(self:Agent, turn_id):
+    "One turn's checkpoint, old (`{path: text}`) or current (`{'before','new','after'}`) shape alike; None when there is none."
+    d = self.checkpoint_dir
+    f = d/f'{turn_id}.json' if d is not None else None
+    if f is None or not f.exists(): return None
+    raw = json.loads(f.read_text())
+    return raw if 'before' in raw and 'after' in raw else {'before': raw, 'new': [], 'after': {}}
+
+@patch
+def _restore(self:Agent, mapping, new_paths, label):
+    "Write or remove each path in `mapping` ({path: text}); `new_paths` marks the ones a falsy text should delete, not empty."
+    if self.approvals is not None and not self.approvals.request('rewind', {'paths': list(mapping)}, force=True).answer:
+        return 'rewind refused'
+    removed = emptied = wrote = 0
+    for p, text in mapping.items():
+        if p in new_paths and not text and hasattr(self.host, 'delete'):
+            try:
+                self.host.delete(p); removed += 1; continue
+            except Exception: pass
+        if p in new_paths and not text: emptied += 1
+        else: wrote += 1
+        self.host.write(p, text or '')
+    bits = [f'restored {wrote + emptied} file(s) {label}']
+    if removed: bits.append(f'{removed} removed')
+    if emptied: bits.append(f'{emptied} created that turn could not be removed, left empty')
+    return ', '.join(bits)
 
 @patch
 def rewind(self:Agent, turn_id='', what='both'):
     "Put files, chat or both back to before `turn_id`, the last turn when empty. One approval covers the batch of files."
     turn_id = str(turn_id or (self.history[-1]['turn_id'] if self.history else self.current_turn_id))
-    out, d = [], self.checkpoint_dir
+    out = []
     if what in ('files', 'both'):
-        f = d/f'{turn_id}.json' if d is not None else None
-        snap = json.loads(f.read_text()) if f is not None and f.exists() else {}
-        if not snap: out.append(f'no file checkpoint for {turn_id}')
-        elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap)}, force=True).answer: out.append('rewind refused')
-        else:
-            for p, text in snap.items(): self.host.write(p, text)
-            made = [p for p, t in snap.items() if not t]
-            out.append(f'restored {len(snap)} file(s) to before {turn_id}' + (f'; {len(made)} created that turn are empty, not removed' if made else ''))
+        snap = self._load_checkpoint(turn_id)
+        out.append(f'no file checkpoint for {turn_id}' if snap is None else
+                   self._restore(snap['before'], set(snap['new']), f'to before {turn_id}'))
     if what in ('chat', 'both'):
         try: out.append(f"chat on branch {self.undo_turn(turn_id)['branch_id']}, before {turn_id}")
         except Exception as e: out.append(agent_err(e))
     return '; '.join(out)
+
+@patch
+def redo(self:Agent, turn_id=''):
+    "Put files forward to after `turn_id`'s writes, the last turn when empty. The complement of `/rewind files`."
+    turn_id = str(turn_id or (self.history[-1]['turn_id'] if self.history else self.current_turn_id))
+    snap = self._load_checkpoint(turn_id)
+    if snap is None or not snap.get('after'): return f'no file checkpoint for {turn_id}'
+    return self._restore(snap['after'], set(), f'to after {turn_id}')
 
 # %% ../nbs/03_agent.ipynb #32a8d985
 @patch
@@ -1970,6 +2114,10 @@ def close(self:Agent):
         try: b.close()
         except Exception: pass
     self._backends.clear()
+    if self._mcp_loop is not None:
+        from .mcpclient import close_mcp_clients
+        close_mcp_clients(self._mcp_clients, self._mcp_loop)
+        self._mcp_loop.close()
     self.host.close()
 
 # %% ../nbs/03_agent.ipynb #4c0be3cb
@@ -2150,6 +2298,25 @@ def classify(self:Agent, text, labels):
     out = self.oneshot(f'{text}\n\nChoose exactly one label from: {", ".join(labels)}.',
                        'Reply with only the single best label and nothing else.', 'classify', 32).lower()
     return next((l for l in labels if l.lower() in out), out.strip())
+
+GOAL_STUCK_LIMIT = 3   #: consecutive 'stuck' verdicts that block a goal rather than continuing it
+GOAL_STEP_LIMIT = 20    #: auto-continued turns one goal may spend before it stops on its own
+
+@patch
+def goal_after_turn(self:Agent, reply):
+    "Classify `reply` against the active `/goal`, on the cheap model. The next prompt to auto-send, or None once the goal is done, blocked, or was never set."
+    if self.goal is None: return None
+    verdict = self.classify(f"Objective: {self.goal['text']}\n\nThe assistant's last reply:\n{reply}",
+                            ['continue', 'done', 'stuck'])
+    if verdict == 'done':
+        self.goal = None
+        return None
+    self.goal['stuck'] = self.goal['stuck'] + 1 if verdict == 'stuck' else 0
+    self.goal['steps'] += 1
+    if self.goal['stuck'] >= GOAL_STUCK_LIMIT or self.goal['steps'] >= GOAL_STEP_LIMIT:
+        self.goal = None
+        return None
+    return f"Continue toward the goal: {self.goal['text']}"
 
 # %% ../nbs/03_agent.ipynb #3497fd64
 @patch
@@ -2360,12 +2527,31 @@ def command(self:Agent, line):
         t, _, w = arg.partition(' ')
         if t in ('files', 'chat', 'both'): t, w = '', t
         return self.rewind(t, w.strip() or 'both')
+    if name == 'redo':
+        return self.redo(arg)
     if name == 'branches':
         return '\n'.join(f"{'*' if b['branch_id'] == self.current_branch_id else ' '} {b['branch_id']:<16} from {b['parent_branch_id'] or '-'}@{b['parent_turn_id'] or '-'}" for b in self.branches())
     if name == 'branch':
         if not arg: return self.current_branch_id
         try: return f"on {self.switch_branch(arg)['branch_id']}"
         except Exception as e: return agent_err(e)
+    if name == 'goal':
+        if not arg:
+            if self.goal is None: return 'no active goal'
+            return f"goal: {self.goal['text']} (stuck {self.goal['stuck']}/{GOAL_STUCK_LIMIT}, step {self.goal['steps']}/{GOAL_STEP_LIMIT})"
+        if arg.lower() in ('off', 'clear', 'none'):
+            had, self.goal = self.goal is not None, None
+            return 'goal cleared' if had else 'no active goal'
+        self.goal = {'text': arg, 'stuck': 0, 'steps': 0}
+        return f'goal set: {arg}'
+    if name == 'walkthrough': return self.walkthrough()
+    if name == 'agent':
+        if not arg:
+            if not self.agents: return 'no agent profiles found (.agents/agents/ or <cfg>/agents/)'
+            return '\n'.join(f"{n:16} {p['description'][:90]}" for n, p in sorted(self.agents.items()))
+        p = self.agents.get(arg)
+        if p is None: return f"no agent profile named {arg}; this repository has {', '.join(self.agents) or 'none'}"
+        return f"{arg}" + (f" ({p['model']})" if p['model'] else '') + f"\n\n{p['body']}"
     if name == 'commit': return self.commit(arg)
     if name == 'pr': return self.pull_request(arg)
     if name in self.registry.commands:
@@ -2573,12 +2759,47 @@ def watch(self:Agent, target=''):
     return f'watching {target} in pane {self._panes[target]}'
 
 @patch
+def _command_file(self:Agent, name):
+    "The command's markdown file: a project `.agents/commands/` first, then `<cfg>/commands/`."
+    for root in getattr(self.host, 'roots', None) or ():
+        f = Path(root)/'.agents'/'commands'/f'{name}.md'
+        if f.is_file(): return f
+    return self.cfg/'commands'/f'{name}.md' if self.cfg else None
+
+_AT_FILE = re.compile(r'(?<!\S)@(\S+)')
+_SHELL_SUB = re.compile(r'!`([^`]+)`')
+
+@patch
+def _fill_command(self:Agent, body, arg):
+    "Substitute `$ARGUMENTS`/`$1..$9`, `@path` file contents, and `!`cmd`` shell output into a command body."
+    body = body.replace('$ARGUMENTS', arg)
+    for i, part in enumerate(shlex.split(arg) if arg else (), 1): body = body.replace(f'${i}', part)
+    def sub_file(m):
+        path = m.group(1).rstrip('?!,;:.)]}\'"')   # sentence punctuation, never a filename
+        text = self.host.text_at(path)
+        return f'<file path="{path}">\n{text}\n</file>' if text is not None else m.group(0)
+    body = _AT_FILE.sub(sub_file, body)
+    def sub_shell(m):
+        cmd = m.group(1)
+        if self.approvals is not None and not self.approvals.request('run_shell', {'command': cmd}, force=True).answer:
+            return f'[{cmd}: refused]'
+        try: _, out = self.host.run_cmd(cmd, timeout=60)
+        except Exception as e: out = f'{cmd} failed: {agent_err(e)}'
+        return (out or '').strip()
+    return _SHELL_SUB.sub(sub_shell, body)
+
+@patch
 def expand_command(self:Agent, line):
-    "The prompt a `/name ARGS` line stands for: the line for a skill, a `<cfg>/commands/name.md` body with `$ARGUMENTS` filled, else None."
+    "The prompt a `/name ARGS` line stands for: a skill line, or a command file's body with its substitutions filled and its `subtask` frontmatter honoured; None when neither names `name`."
     name, _, arg = line.strip()[1:].partition(' ')
     if name.lower() in {s.name.lower() for s in self.skills}: return line.strip()
-    f = self.cfg/'commands'/f'{name}.md' if self.cfg else None
-    return f.read_text().replace('$ARGUMENTS', arg.strip()).strip() if f and f.is_file() else None
+    f = self._command_file(name)
+    if f is None or not f.is_file(): return None
+    meta, body = frontmatter(f.read_text())
+    body = self._fill_command(body, arg.strip()).strip()
+    if meta.get('subtask'):
+        return f'Delegate the following to a sub-agent with `delegate_async` rather than doing it yourself:\n\n{body}'
+    return body
 
 @patch
 def unwatch(self:Agent, target='all'):
@@ -2596,7 +2817,7 @@ def unwatch(self:Agent, target='all'):
 def commands(self:Agent):
     "Every command name, built-in and registered, for a help line or an autocomplete."
     return sorted({'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
-                   'subagents', 'plan', 'todos', 'todo', 'rewind', 'branches', 'branch', 'commit', 'pr', *self.registry.commands})
+                   'subagents', 'plan', 'todos', 'todo', 'goal', 'walkthrough', 'agent', 'rewind', 'redo', 'branches', 'branch', 'commit', 'pr', *self.registry.commands})
 
 # %% ../nbs/03_agent.ipynb #8fd374fe
 COMPLETE_SP = """You are a code completion engine inside an editor. You are given the code before \

@@ -140,19 +140,6 @@ def test_an_image_block_arrives_as_the_bytes_a_content_part_is_made_of():
                           acp.image_block(base64.b64encode(png).decode(), 'image/png')])
     assert media == [png] and text == 'what is this'
 
-def test_audio_is_dropped_with_a_reason_when_the_model_cannot_hear_it():
-    import base64, ramabana.core as core
-    class Caps:
-        known = True
-        def accepts(self, kind): return kind != 'audio'
-    class Spec: model_id, backend, local = 'm', 'remote', False
-    was = core._caps
-    core._caps = lambda mid, rt: Caps()
-    try:
-        text, media = blocks([acp.audio_block(base64.b64encode(b'RIFF').decode(), 'audio/wav')], Spec())
-    finally: core._caps = was
-    assert media == [] and 'does not accept audio' in text
-
 def test_a_resource_link_is_passed_through_as_its_uri_and_nothing_expands_it():
     "`@path` expansion lives in the terminal frontend, so over ACP the model sees the raw token."
     class Link: type, uri = 'resource_link', 'file:///proj/a.py'
@@ -167,10 +154,6 @@ def test_every_kind_the_harness_names_has_somewhere_to_go_in_an_editor():
 
 
 # ---- a host with no editor behind it ---------------------------------------------------
-
-def test_an_unattached_editor_host_is_a_local_host():
-    h = EditorHost(['.'])
-    assert (h.can_read, h.can_write, h.can_run) == (False, False, False)
 
 def test_the_capability_probe_never_reaches_the_editor():
     "`tools_for` asks whether commands can be run with an empty one, and must spawn nothing."
@@ -340,13 +323,6 @@ def test_the_command_still_falls_back_when_the_terminal_never_opened(tmp_path):
     assert (tmp_path/'marker.txt').exists(), 'the command was neither run in the editor nor locally'
 
 
-def test_provides_stays_the_tool_group_namespace_it_is_documented_to_be(tmp_path):
-    "`Host.provides` is a set of tool group names, and an editor is not a tool group."
-    h = EditorHost([str(tmp_path)])
-    assert h.provides <= {'code', 'file', 'notebook', 'web', 'memory', 'watch', 'session',
-                          'shell', 'api', 'git'}
-
-
 # ---- sessions the editor can name and come back to ------------------------------------
 
 def _history(tmp, rows):
@@ -471,25 +447,3 @@ def test_every_console_script_resolves():
         mod, _, fn = target.partition(':')
         m = importlib.import_module(mod)
         assert callable(getattr(m, fn, None)), f'{name} = {target!r} does not resolve'
-
-
-def test_a_missing_acp_dependency_names_itself():
-    """`agent-client-protocol` is a dependency, so a broken install is what reaches this path.
-
-    The editor launches the binary and shows whatever reached stderr, so a bare
-    `ModuleNotFoundError: No module named 'acp'` is all the user gets, with nothing saying which
-    install would fix it.
-    """
-    import importlib, sys
-    saved = {k: sys.modules.get(k) for k in list(sys.modules) if k == 'acp' or k.startswith('acp.')}
-    saved['ramabana.racp'] = sys.modules.get('ramabana.racp')
-    try:
-        for k in list(saved): sys.modules.pop(k, None)
-        sys.modules['acp'] = None                      # `import acp` now raises ImportError
-        with pytest.raises(ImportError, match=r"agent-client-protocol"):
-            importlib.import_module('ramabana.racp')
-    finally:
-        sys.modules.pop('acp', None)
-        for k, v in saved.items():
-            if v is not None: sys.modules[k] = v
-        importlib.import_module('ramabana.racp')

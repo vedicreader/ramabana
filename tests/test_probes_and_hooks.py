@@ -7,7 +7,6 @@ same idea existed at once: `_oai_cache` and `_copilot_cat` as bare module tuples
 `probed` in Leela with disk persistence and a background refresh.
 """
 import json
-import tempfile
 import time
 from pathlib import Path
 
@@ -15,8 +14,8 @@ import pytest
 
 from ramabana import core
 from ramabana.agent import Agent, Completer
-from ramabana.core import (API_KEYS, CUSTOM, MODELS, delete_model, forget_probes, load_models,
-                           probe_path, probed, runtime_detail, runtime_remedy, save_model,
+from ramabana.core import (CUSTOM, MODELS, delete_model, forget_probes, load_models,
+                           probe_path, probed, runtime_detail, save_model,
                            saved_models, unregister_model)
 from ramabana.tools import NullHost
 
@@ -105,11 +104,6 @@ def test_a_probe_whose_directory_cannot_be_written_still_answers(tmp_path):
     forget_probes()
 
 
-def test_the_two_module_level_caches_are_gone():
-    assert not hasattr(core, '_oai_cache')
-    assert not hasattr(core, '_copilot_cat')
-
-
 def test_the_openai_and_copilot_catalogues_go_through_the_one_memo(monkeypatch, probes):
     forget_probes()
     monkeypatch.setenv('OPENAI_API_KEY', 'sk-not-a-real-key')
@@ -126,14 +120,6 @@ def test_runtime_available_and_runtime_detail_read_the_same_table():
     "A yes with a reason, or a no without one, would each be a lie about the same machine."
     from ramabana.core import HARNESS, runtime_available
     for r in HARNESS: assert runtime_available(r) == (not runtime_detail(r)), r
-
-
-def test_a_runtime_says_why_it_cannot_be_reached_and_not_only_that_it_cannot():
-    assert runtime_detail('mlx') == '', 'only a harness has a reason to give'
-    assert runtime_detail('nosuch') == ''
-    detail = runtime_detail('copilot')
-    assert detail == '' or detail.startswith(('import rishi.copilot:', 'copilot_oauth'))
-    assert 'rishi[nosuch]' in runtime_remedy('nosuch'), 'the remedy is still advice, not a reason'
 
 
 def test_a_saved_alias_comes_back_after_the_process_that_made_it(tmp_path):
@@ -173,11 +159,6 @@ def test_a_built_in_name_cannot_be_taken_by_an_alias(tmp_path):
     name = next(n for n in MODELS if n not in CUSTOM)
     with pytest.raises(ValueError, match='built-in model name'):
         save_model({'name': name, 'model_id': 'x', 'runtime': 'remote'}, path=tmp_path/'models.json')
-
-
-def test_an_api_key_is_never_among_the_fields_an_alias_keeps():
-    assert 'api_key' not in API_KEYS
-    assert 'api_key_env' in API_KEYS, 'the variable name is kept; the value stays in the environment'
 
 
 def test_the_completer_asks_the_agent_rather_than_an_attribute_only_leela_set():

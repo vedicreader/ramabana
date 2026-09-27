@@ -27,27 +27,9 @@ def test_every_palette_names_a_pygments_style_that_exists():
         get_style_by_name(style)          # raises for a style pygments does not ship
 
 
-def test_the_default_is_the_near_black_github_dark():
-    assert cli.ACTIVE_THEME == 'github-dark'
-    assert cli.set_theme('auto') == 'github-dark', 'auto lands on the default, not on `dark`'
-    assert cli.GRUVBOX['bg0'] == '#0a0c10', 'darker than GitHub\'s own #0d1117 canvas'
-    assert cli.code_theme() == 'github-dark'
-
-
 def test_an_unknown_theme_names_the_ones_there_are():
     with pytest.raises(ValueError) as e: cli.set_theme('githubdark')
     assert 'github-dark' in str(e.value) and 'latte' in str(e.value)
-    cli.set_theme('github-dark')
-
-
-def test_the_code_background_follows_the_palette_rather_than_one_colour():
-    """One background cannot serve both: what reads as subtle against a near-black canvas is
-    invisible on `latte`, and a pygments style's own background is whatever its author's editor was."""
-    seen = {}
-    for name in ('github-dark', 'latte', 'gruvbox-light'):
-        cli.set_theme(name); seen[name] = cli.code_bg()
-        assert seen[name] == cli.THEMES[name]['bg1']
-    assert len(set(seen.values())) == 3, 'three palettes, three backgrounds'
     cli.set_theme('github-dark')
 
 

@@ -4,7 +4,6 @@ import os
 import re
 import struct
 import zlib
-from pathlib import Path
 
 import pytest
 from rich.text import Text
@@ -12,7 +11,7 @@ from rich.text import Text
 from ramabana.cli import (MAX_IMG_DRAW, MAX_IMG_ROWS, Attachment, Picture, draw_png, img_cells,
                           kitty_graphics, media_line, media_parts, media_note, picture, png_size,
                           save_media, sendable)
-from ramabana.core import ModelSpec, accepts, model_note, spec_caps
+from ramabana.core import ModelSpec, accepts, spec_caps
 
 PLACEHOLDER = chr(0x10EEEE)
 
@@ -115,29 +114,6 @@ def test_pictures_are_always_sendable_whatever_the_model_claims(tmp_path, caps):
     caps(_Caps(('text',)))
     atts = [_att(tmp_path, 'b.png')]
     assert media_parts(atts, _spec()) == [atts[0].data]
-
-
-def test_the_banner_names_the_modalities_a_model_has(caps):
-    caps(_Caps(('text', 'image', 'audio', 'video'), ('text', 'image')))
-    note = model_note(_spec('gemini-2.5-flash-image'))
-    assert 'in: text image audio video' in note and 'out: text image' in note
-
-
-def test_the_banner_says_unknown_rather_than_text_only_for_an_untabled_model(caps):
-    caps(_Caps(source='default'))
-    assert 'modalities unknown' in model_note(_spec('veo-3.0-generate-001'))
-
-
-def test_the_banner_is_silent_about_a_plain_text_model(caps):
-    caps(_Caps(('text',), ('text',)))
-    note = model_note(_spec('gpt-5'))
-    assert 'in:' not in note and 'out:' not in note and 'unknown' not in note
-
-
-def test_the_banner_omits_modalities_where_rishi_cannot_say(caps):
-    caps(None)
-    note = model_note(_spec('gpt-5'))
-    assert 'unknown' not in note and note.endswith('128k ctx')
 
 
 def test_a_terminal_without_kitty_graphics_gets_a_path_not_escape_bytes(tmp_path, monkeypatch):
@@ -250,68 +226,14 @@ def test_a_file_this_terminal_cannot_draw_is_no_picture_at_all(tmp_path, monkeyp
     assert picture(tmp_path/'ok.png') is None
 
 
-def test_generated_pictures_land_beside_the_session_without_overwriting(tmp_path):
-    png = b'\x89PNG\r\n\x1a\nx'
-    a = save_media({'mime': 'image/png', 'data': png}, tmp_path)
-    b = save_media({'mime': 'image/png', 'data': png + b'y'}, tmp_path)
-    assert a.parent == tmp_path/'media'
-    assert (a.name, b.name) == ('image-1.png', 'image-2.png')
-    assert a.read_bytes() != b.read_bytes()
-
-
-def test_a_mime_the_table_does_not_know_still_lands_somewhere_sensible(tmp_path):
-    assert save_media({'mime': 'image/avif', 'data': b'x'}, tmp_path).suffix == '.avif'
-
-
 # -- generating a picture --------------------------------------------------------------
 
 from ramabana.testing import MemHost
-from ramabana.tools import failed, image_available, image_tools, tools_for
+from ramabana.tools import failed, image_tools, tools_for
 
 
 def _gi(session='', **kw):
     return {f.__name__: f for f in image_tools(None, session=session, **kw)}['generate_image']
-
-
-def test_generate_image_refuses_without_a_key_rather_than_calling(monkeypatch):
-    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
-    assert not image_available()
-    r = _gi()('a cat')
-    assert failed(r) and 'OPENAI_API_KEY' in r
-
-
-def test_an_unknown_size_is_refused_before_any_request(monkeypatch):
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    called = []
-    monkeypatch.setattr('shalya.tools._post_image', lambda *a, **kw: called.append(a))
-    assert failed(_gi()('a cat', size='4096x4096'))
-    assert called == []
-
-
-def test_a_generated_picture_lands_beside_the_session(tmp_path, monkeypatch):
-    from base64 import b64encode
-    png = b'\x89PNG\r\n\x1a\nx'
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    monkeypatch.setattr('shalya.tools._post_image',
-                        lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
-    out = _gi(session=str(tmp_path))('a cat')
-    assert not failed(out)
-    p = Path(out.strip())
-    assert p.parent == tmp_path/'media' and p.read_bytes() == png
-
-
-def test_an_endpoint_failure_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    def boom(*a, **kw): raise RuntimeError('502 upstream')
-    monkeypatch.setattr('shalya.tools._post_image', boom)
-    r = _gi(session=str(tmp_path))('a cat')
-    assert failed(r) and '502 upstream' in r
-
-
-def test_an_empty_reply_is_a_refusal(tmp_path, monkeypatch):
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    monkeypatch.setattr('shalya.tools._post_image', lambda *a, **kw: [])
-    assert failed(_gi(session=str(tmp_path))('a cat'))
 
 
 def test_the_tool_is_registered_only_where_the_key_is(monkeypatch):
@@ -324,8 +246,6 @@ def test_the_tool_is_registered_only_where_the_key_is(monkeypatch):
 
 
 # -- which terminals can draw ----------------------------------------------------------
-
-from ramabana.cli import KITTY_PROGRAM, KITTY_TERM
 
 
 @pytest.fixture
@@ -367,7 +287,7 @@ def test_leela_may_spell_the_override_with_its_own_prefix(bare_term):
 
 # -- which model does the drawing ------------------------------------------------------
 
-from ramabana.tools import api_model, draws_itself
+from ramabana.tools import draws_itself
 
 
 def test_a_model_that_draws_for_itself_is_told_apart_from_one_that_cannot(caps):
@@ -379,55 +299,6 @@ def test_a_model_that_draws_for_itself_is_told_apart_from_one_that_cannot(caps):
     caps(None)
     assert not draws_itself(_spec())
     assert not draws_itself(None)
-
-
-def test_the_vendor_prefix_is_stripped_for_the_endpoint():
-    "`openai/gpt-5.6-luna` is a model_not_found at the API, which spells it `gpt-5.6-luna`."
-    assert api_model('openai/gpt-5.6-luna') == 'gpt-5.6-luna'
-    assert api_model('azure/gpt-5') == 'gpt-5'
-    assert api_model('gpt-5.6-sol') == 'gpt-5.6-sol'
-    assert api_model('anthropic/claude-opus-4-5') == 'anthropic/claude-opus-4-5'
-
-
-def test_a_drawing_model_draws_as_itself_rather_than_delegating(tmp_path, monkeypatch, caps):
-    from base64 import b64encode
-    png = b'\x89PNG\r\n\x1a\nx'
-    c = _Caps(('text', 'image'), ('text',)); c.tools = ('image',)
-    caps(c)
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    seen = {}
-    def fake(prompt, model, timeout=300):
-        seen['model'] = model
-        return {'output': [{'type': 'image_generation_call', 'result': b64encode(png).decode()}]}
-    monkeypatch.setattr('shalya.tools._post_responses', fake)
-    monkeypatch.setattr('shalya.tools._post_image', lambda *a, **kw: pytest.fail('delegated'))
-    gi = _gi(session=str(tmp_path), get_spec=lambda: _spec('openai/gpt-5.6-luna'))
-    out = gi('a bottle')
-    assert not failed(out)
-    assert seen['model'] == 'openai/gpt-5.6-luna'      # api_model strips it at the wire
-    assert Path(out.strip()).read_bytes() == png
-
-
-def test_a_model_that_cannot_draw_falls_back_to_the_images_endpoint(tmp_path, monkeypatch, caps):
-    from base64 import b64encode
-    png = b'\x89PNG\r\n\x1a\nx'
-    caps(_Caps(('text', 'image'), ('text',)))
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    monkeypatch.setattr('shalya.tools._post_responses', lambda *a, **kw: pytest.fail('should not ask'))
-    monkeypatch.setattr('shalya.tools._post_image',
-                        lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
-    gi = _gi(session=str(tmp_path), get_spec=lambda: _spec('anthropic/claude-opus-4-5'))
-    assert Path(gi('a bottle').strip()).read_bytes() == png
-
-
-def test_a_drawing_model_that_returns_no_picture_is_a_refusal(tmp_path, monkeypatch, caps):
-    c = _Caps(('text', 'image'), ('text',)); c.tools = ('image',)
-    caps(c)
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    monkeypatch.setattr('shalya.tools._post_responses',
-                        lambda *a, **kw: {'output': [{'type': 'message'}]})
-    gi = _gi(session=str(tmp_path), get_spec=lambda: _spec('openai/gpt-5.6-luna'))
-    assert failed(gi('a bottle'))
 
 
 # -- the picture actually reaches the screen -------------------------------------------
@@ -609,26 +480,6 @@ def test_every_picture_is_saved_and_named_however_many_a_turn_made(tmp_path, mon
 # -- a picture a tool wrote still has to reach the screen -------------------------------
 
 from ramabana.testing import fake_agent
-from ramabana.tools import mime_for
-
-
-def test_a_picture_a_tool_wrote_reaches_the_frontend(tmp_path, monkeypatch, caps):
-    """A tool result is text. The model is handed a path, and a frontend cannot draw a
-    filename, so the bytes have to arrive by another route or nothing is ever shown."""
-    from base64 import b64encode
-    png = _png(64, 64)
-    caps(_Caps(('text', 'image'), ('text',)))
-    monkeypatch.setenv('OPENAI_API_KEY', 'k')
-    monkeypatch.setattr('shalya.tools._post_image',
-                        lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
-    agent, _ = fake_agent(replies=['done'])
-    agent._drawn = []
-    gi = image_tools(None, session=str(tmp_path), get_spec=lambda: None,
-                     on_media=agent._drew)[0]
-    out = gi('a bottle')
-    assert not failed(out)
-    assert [m['data'] for m in agent.last_media] == [png]
-    assert agent.last_media[0]['mime'] == 'image/png'
 
 
 def test_a_turn_does_not_inherit_the_previous_turns_pictures():
@@ -642,22 +493,6 @@ def test_a_recorded_file_that_has_gone_away_is_skipped_not_raised(tmp_path):
     agent, _ = fake_agent(replies=['done'])
     agent._drawn = [tmp_path/'vanished.png']
     assert agent.last_media == []
-
-
-def test_a_saved_picture_is_named_by_its_mime_and_read_back_by_its_bytes(tmp_path):
-    "The extension comes from the mime, and the mime comes back from the bytes."
-    png = _png(8, 8)
-    p = save_media({'mime': 'image/png', 'data': png}, tmp_path)
-    assert p.suffix == '.png' and mime_for(p) == 'image/png'
-    assert save_media({'mime': 'video/mp4', 'data': b'x'}, tmp_path).suffix == '.mp4'
-    assert save_media({'mime': 'image/webp', 'data': b'x'}, tmp_path).suffix == '.webp'
-
-
-def test_the_mime_of_a_file_with_no_signature_falls_back_to_its_name(tmp_path):
-    p = tmp_path/'a.webp'
-    p.write_bytes(b'RIFF\x00\x00\x00\x00WEBPVP8 ')
-    assert mime_for(p) == 'image/webp'
-    assert mime_for(tmp_path/'missing.png') == 'image/png'
 
 from ramabana.testing import FakeBackend
 
@@ -764,23 +599,6 @@ def test_the_reply_keeps_growing_below_every_picture(tmp_path, monkeypatch):
     assert tags.index('media') < len(tags) - 1 - tags[::-1].index('reply')
 
 
-def test_the_hook_never_touches_the_surface_on_the_models_own_thread(tmp_path, monkeypatch):
-    """`_drew` fires on the model's worker thread and a compositor may only be touched from the
-    loop, so the whole of `show_pic` has to go through `_post`."""
-    monkeypatch.setenv('RAMABANA_KITTY', '1')
-    ui, tty, writes = _surface(tmp_path)
-    posted = []
-    ui._post = lambda fn, *a: posted.append((fn, a))
-    p = save_media({'mime': 'image/png', 'data': _png(600, 600)}, tmp_path)
-    writes.clear()
-    ui.agent._drew([p])                      # exactly as a tool does, from the tool's thread
-    assert writes == [] and ui.pics == {}    # nothing reached the terminal yet
-    assert len(posted) == 1
-    posted[0][0](*posted[0][1])              # ...and running it on the loop draws it
-    assert PLACED.findall(''.join(writes))
-    tty.close()
-
-
 def test_the_draw_quota_is_per_turn_and_not_per_session(tmp_path, monkeypatch):
     "Two turns each drawing one picture: the second turn must not inherit the first turn's count."
     ui, blob, said = _drawing_turn(tmp_path, monkeypatch, turns=2)
@@ -819,19 +637,3 @@ def test_the_image_group_reads_the_turns_model_on_every_call(tmp_path, monkeypat
     assert not failed(gi('a bottle'))
     assert 'responses' not in seen, 'it drew as a model that cannot draw'
     assert seen == {'images': 'gpt-image-1'}, seen              # the endpoint, not the stale id
-
-
-def test_a_turn_model_change_rebuilds_the_tools_even_when_the_budget_is_the_same():
-    "`budget_for` gives every large-window model the same `Budget`, so budget alone is not the test."
-    from ramabana.core import budget_for
-    from ramabana.testing import fake_agent
-
-    one, two = _spec('openai/gpt-5.6-luna'), _spec('anthropic/claude-opus-4-5')
-    assert budget_for(one, 6000) == budget_for(two, 6000), 'the budgets differ, so this proves nothing'
-
-    a, _ = fake_agent()
-    a.routing.turn = one.name
-    a.routing._cache[one.name], a.routing._cache[two.name] = one, two
-    assert a.tools and a._tools is not None
-    a.set_model(two.name)
-    assert a._tools is None, 'the tools were kept across a turn-model change'

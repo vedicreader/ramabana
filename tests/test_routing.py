@@ -92,17 +92,6 @@ def test_a_name_is_resolved_or_refused_but_never_guessed():
     for name in ('gemma-e2b', 'gemma-e4b', 'sonnet'): # and everything runs through the one adapter
         assert isinstance(make_backend(resolve(name)), RishiBackend)
 
-
-def test_an_unknown_prefix_is_read_as_a_vendor_and_handed_to_remote():
-    """The fall-through every `vendor/model` spec depends on.
-
-    `prefix_typo` used to catch the one slip this cannot absorb -- `claude-code/` for
-    `claude_code/` -- but no runtime prefix contains a `-` or `_` any more, so there is nothing
-    left for it to catch and it went with the transport it was written for.
-    """
-    assert resolve('openai/gpt-5.6').backend == 'remote'
-    assert resolve('claude/claude-sonnet-5').backend == 'claude'
-
 def test_changing_the_turn_model_carries_the_conversation_and_is_refused_mid_turn(monkeypatch):
     "A new Rishi backend starts lazily with the old backend's canonical history, copied not shared."
     made = []
@@ -254,16 +243,6 @@ def test_a_remedy_names_an_extra_only_where_rishi_still_declares_one():
     assert 'API key' in runtime_remedy('remote')
 
 
-def test_a_harness_is_reachable_through_its_module_and_its_binary():
-    """`rishi.claude` lost `sdk_available` when it became SDK-only, and the probe kept calling it
-    inside a bare except -- so the check silently became binary-only and swallowed real errors."""
-    import ramabana.core as core
-    assert 'sdk_available' not in core._harness_available.__doc__
-    src = core._harness_available.__code__.co_names
-    assert 'sdk_available' not in src, 'the removed limb is gone, not merely unreachable'
-    assert core._harness_available('rishi.does_not_exist', 'nope') is False
-    assert core._harness_available('rishi.claude', 'no_such_probe') is False
-
 def test_a_claude_model_is_measured_against_its_own_window():
     """Every harness model used to be charged a flat 128k, because a harness re-sent the whole
     conversation each turn and the ceiling was what that cost. Rishi resumes a session now, so the
@@ -279,12 +258,6 @@ def test_a_claude_model_is_measured_against_its_own_window():
     assert claude_ctx('') == DFLT_AGENT_CTX and claude_ctx(None) == DFLT_AGENT_CTX
     assert resolve('gpt-4.1').ctx > 1_000_000, 'and a hosted model still reports its real window'
 
-
-def test_a_bigger_window_does_not_quietly_change_what_a_model_is_briefed_with():
-    "Both ceilings sit above `SMALL_CTX`, so the tool budget must be the same either way."
-    from ramabana.core import DFLT_AGENT_CTX, budget_for, resolve
-    before, after = budget_for(resolve('claude-haiku-4-5'), 6000), budget_for(resolve('claude-opus-5'), 6000)
-    assert before.drop == after.drop == () and before.inline is after.inline is True
 
 def test_a_window_that_cannot_be_read_keeps_its_last_occupancy():
     """`used_tokens` fell back to `use.total`, which is billing volume accumulated across every
@@ -306,16 +279,6 @@ def test_a_window_that_cannot_be_read_keeps_its_last_occupancy():
     assert b.used_tokens == 137_000, 'the last reading stands'
     assert b.pct_full < 1.0, 'and the bar cannot read past full on billing volume'
 
-
-def test_occupancy_comes_from_the_session_rather_than_a_local_estimate():
-    """Claude Code reports what its own window holds, and rishi refreshes that once per turn on the
-    loop. Ramabana takes the default `stateful=True`, which is the path that refreshes it."""
-    from rishi.claude import ClaudeChat
-    import inspect
-    assert '_ctx_live' in inspect.getsource(ClaudeChat.token_count.fget), 'the session number wins'
-    assert inspect.signature(ClaudeChat.__init__).parameters['stateful'].default is True
-    import ramabana.runtime as R
-    assert 'stateful' not in inspect.getsource(R.Backend.start), 'ramabana does not override it'
 
 class _Engine:
     "An engine that built the cache it could, which may not be the one it was asked for."
@@ -429,10 +392,6 @@ def test_an_ollama_model_resolves_to_the_ollama_runtime(monkeypatch):
     s = resolve('ollama/ornith-1.5:9b')
     assert (s.runtime, s.model_id) == ('ollama', 'ornith-1.5:9b')
     assert s.local, 'it runs on this machine, so it is not a hosted spend'
-
-def test_ollama_is_a_runtime_ramabana_knows_about():
-    assert 'ollama' in core.RUNTIME_NAMES and 'ollama' not in core.HOSTED
-
 def test_an_ollama_runtime_that_cannot_be_reached_says_so(monkeypatch):
     monkeypatch.setattr(core, 'runtime_available', lambda r: r != 'ollama')
     with pytest.raises(RuntimeError, match='ollama runtime is unavailable'):

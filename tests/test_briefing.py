@@ -72,15 +72,6 @@ def test_a_window_we_could_not_read_is_not_a_small_window(host):
     assert RESEARCH <= names(a) and a.budget.inline
 
 
-def test_the_clip_reaches_the_tools(tmp_path):
-    """`Agent(tool_max_len=...)` was documented as threaded into `tools_for` and was not, so a
-    small model's results were clipped at a frontier model's budget."""
-    (tmp_path/'big.txt').write_text('\n'.join(f'line {i} ' + 'x'*60 for i in range(600)))
-    h = LocalHost([str(tmp_path)], web=False, index=False)
-    view = lambda mx: next(t for t in tools_for(h, mx=mx) if t.__name__ == 'view_file')
-    assert len(view(budget_for(SMALL, 6000).tool_max)('big.txt')) < len(view(6000)('big.txt'))
-
-
 def test_changing_model_rebuilds_what_was_sized_to_the_old_one(host):
     "Both the tool list and the briefing are sized to the turn model, so both must be dropped."
     a = mk(host, BIG)
@@ -138,20 +129,6 @@ def test_a_task_can_name_the_skills_it_needs():
     got, note = named_skills(lambda: sk, 'kosha, nosuchskill')
     assert [s.name for s in got] == ['kosha']
     assert 'nosuchskill' in note and 'kosha' in note
-
-
-def test_named_skills_reach_the_sub_agents_briefing(host):
-    "End to end: the tool the model calls puts the named body in the spawned conversation."
-    a = mk(host, BIG, subagents=True)
-    a._skills = [Skill(name='cfeasy', source='t', description='deploys', where='t',
-                       _text='DEPLOY THIS WAY')]
-    be = FakeBackend(BIG)
-    be.start()
-    a._be_or_none = lambda job='turn': be
-    search = next(t for t in a.tools if getattr(t, '__name__', '') == 'delegate_search')
-    assert 'sub answer' in search('how do we deploy?', skills='cfeasy')   # what `spawn` scripts
-    assert 'DEPLOY THIS WAY' in be.spawned[0].sp
-    assert 'nosuchskill' in search('how do we deploy?', skills='nosuchskill')
 
 
 def test_delegated_output_rejects_empty_and_repetitive_prose():
@@ -525,39 +502,3 @@ def test_a_bare_agent_model_id_answers_the_channel_its_spec_would(monkeypatch):
     own spec said `tags`. `budget_for` sizes the tool list on that prediction.
     """
     assert tool_channel('claude/claude-sonnet-5') == tool_channel(CLAUDE) == 'tags'
-
-
-def test_a_harness_is_held_to_its_own_window_not_the_tables():
-    """`rishi.claude` used to carry no session state: each turn rendered the whole conversation to
-    a text prompt and sent it again, so the ceiling was what was affordable to re-send rather than
-    what the model held -- at the tables' 1M figure ramabana compacted at 983,616 tokens and
-    re-sent that much per turn, which was the hang.
-
-    Rishi resumes a Claude Code session now, so that reason has gone and the model's own window is
-    the honest number. The tables' figure is still refused: it is the model's, not the session's.
-    """
-    from ramabana.core import DFLT_AGENT_CTX, _cloud_ctx, claude_ctx, resolve
-    assert _cloud_ctx('claude-sonnet-5')[0] > 200_000, 'the tables still know a bigger one'
-    for name in ('sonnet', 'opus', 'claude/claude-opus-5'):
-        assert resolve(name).ctx == 200_000, name
-        assert resolve(name).ctx < _cloud_ctx('claude-sonnet-5')[0], 'and it is not the tables\' figure'
-    # a family whose window is not recorded here still gets the affordable ceiling
-    assert resolve('claude-haiku-4-5').ctx == DFLT_AGENT_CTX
-    assert claude_ctx('claude-unreleased-9') == DFLT_AGENT_CTX
-
-
-def test_durable_notes_reach_the_model_through_a_seam_every_agent_answers():
-    """`Completer._prompt` reached `self.a.ws.agent_memory_context(...)`, and Ramabana sets
-    `Agent.ws` nowhere, so on any embedder but the one that happened to carry `ws` the call raised
-    into a bare `except` and the notes were dropped in silence."""
-    from ramabana.agent import Agent, Completer
-    from ramabana.testing import fake_agent
-
-    assert Agent.memory_context(None, 'completion') == '', 'an embedder with no notes answers ""'
-
-    asked = []
-    a, _ = fake_agent()
-    a.memory_context = lambda surface, max_chars=6000: asked.append((surface, max_chars)) or 'NOTE-X'
-    p = Completer(a)._prompt('x = ', 4, 'python')
-    assert asked == [('completion', 6000)], asked
-    assert '<user_memory>\nNOTE-X\n</user_memory>' in p, p

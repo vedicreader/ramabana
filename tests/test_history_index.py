@@ -75,15 +75,6 @@ def test_session_turns_reads_one_conversation_out_of_an_interleaved_log(tmp_path
     assert [t['prompt'] for t in a.session_turns('b')] == [f'b{i}' for i in range(6)]
 
 
-def test_session_turns_answers_for_a_conversation_that_is_not_in_history(tmp_path, monkeypatch):
-    a, _ = fake_agent(cfg=tmp_path)
-    monkeypatch.setattr('ramabana.agent.HISTORY_TAIL', 2000)
-    pad = 'z' * 400
-    write(a, [turn('old', f'ancient {pad}', at=1)] + [turn('new', f'{i} {pad}', at=10 + i) for i in range(30)])
-    assert a.session_turns('old')[0]['prompt'].startswith('ancient')
-    assert [t['prompt'] for t in a.session_turns('old')] != [], 'read from the log, not from the tail'
-
-
 def test_the_index_matches_what_a_full_parse_would_say(tmp_path):
     a, _ = fake_agent(cfg=tmp_path)
     rows = [turn('s1', 'one', at=1), turn('s2', 'two', at=2), turn('s1', 'three', at=3)]

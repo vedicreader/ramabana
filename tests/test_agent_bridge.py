@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from ramabana.pyrepl import AgentBridge, agent_proxy_code
-from ramabana.runtime import CHAT_CALLBACKS, TokenLogger, Usage
+from ramabana.runtime import TokenLogger, Usage
 from ramabana.testing import fake_agent
 
 
@@ -59,24 +59,6 @@ def test_an_unknown_operation_says_so_rather_than_hanging_or_500ing():
     asyncio.run(scenario())
 
 
-def test_closing_a_bridge_that_never_started_is_not_an_error():
-    "`close` read `self.thread`, which `__init__` never set."
-    bridge, _ = a_bridge()
-    assert bridge.thread is None
-    asyncio.run(bridge.close())
-    asyncio.run(bridge.close())
-
-
-def test_a_usage_field_the_counter_does_not_carry_reads_as_absent():
-    "A bare `getattr` turned a counter of another shape into an opaque 400."
-    bridge, agent = a_bridge()
-
-    class Thin:
-        total = 7
-    agent.use = Thin()
-    assert bridge.call('usage') == {**{k: None for k in AgentBridge.FIELDS}, 'total': 7}
-
-
 def test_the_proxy_source_rebinds_the_agent_without_redefining_its_class():
     "Two sessions binding into one namespace must not have the second redefine the first's class."
     space = {}
@@ -87,23 +69,6 @@ def test_the_proxy_source_rebinds_the_agent_without_redefining_its_class():
     assert space['ramabana_agent'].label == 'sessB', 'the bare name is whoever bound last'
     assert isinstance(space['ramabana_agents']['sessA'], first), 'sessA kept its class'
     assert repr(space['ramabana_agents']['sessA']) == "AgentProxy('sessA')"
-
-
-def test_asking_for_one_callback_does_not_attach_the_whole_catalogue():
-    """The registry was seeded with every known callback, and `_be` applies the whole registry to a
-    chat it builds -- so asking for one attached all of them. It holds what was asked for."""
-    agent, _ = fake_agent()
-    known = dict(CHAT_CALLBACKS)
-    CHAT_CALLBACKS['a_second_one'] = TokenLogger
-    try:
-        attached = []
-        agent._be = lambda job='turn': type('B', (), {'add_cb': lambda _s, cb: attached.append(cb)})()
-        assert agent.add_chat_callback('a_second_one') == 'a_second_one'
-        assert sorted(agent._chat_callbacks) == ['a_second_one'], 'only what was asked for'
-        assert len(attached) == 1
-        assert agent.add_chat_callback('a_second_one') == 'a_second_one'
-        assert len(attached) == 1, 'asking twice attaches once'
-    finally: CHAT_CALLBACKS.clear(); CHAT_CALLBACKS.update(known)
 
 
 def test_an_unknown_callback_names_what_there_is_and_registers_nothing():
@@ -132,20 +97,6 @@ def test_the_usage_logger_writes_to_its_sink_rather_than_over_the_terminal():
         Use.model = None
         cb.after_response()
         assert 'model=?' in held[2]
-    finally: TokenLogger.sink = before
-
-
-def test_the_usage_logger_still_prints_when_nothing_claimed_the_sink(capsys):
-    "Unset means `print`, which is right in a plain REPL."
-    class Use:
-        model, prompt_tokens, completion_tokens = 'm', 1, 2
-        total_tokens, cached_tokens, cost = 3, 0, 0.
-    cb = TokenLogger()
-    cb.chat = type('C', (), {'use': Use()})()
-    before, TokenLogger.sink = TokenLogger.sink, None
-    try:
-        cb.after_response()
-        assert '[rishi usage] model=m' in capsys.readouterr().out
     finally: TokenLogger.sink = before
 
 

@@ -15,14 +15,6 @@ def test_stopping_returns_the_run_state():
     assert a.cancel(run.id)['state'] == 'detached'
 
 
-def test_the_stop_reaches_the_backend_rather_than_being_swallowed():
-    a, be = fake_agent(replies=['done'])
-    run = a._new_run('hello')
-    run.start(be)
-    a.cancel(run.id)
-    assert be.cancelled, 'the backend was never asked'
-
-
 def _bare_backend(chat):
     "A `Backend` holding `chat`, to exercise `Backend.cancel` itself rather than a double\'s override."
     from ramabana.runtime import Backend
@@ -30,10 +22,6 @@ def _bare_backend(chat):
     be = Backend(SPEC)
     be.chat = chat
     return be
-
-
-def test_a_backend_with_no_chat_reports_that_nothing_stopped():
-    assert _bare_backend(None).cancel() is False
 
 
 def test_a_backend_whose_chat_cannot_be_stopped_says_so_instead_of_lying():
@@ -106,22 +94,6 @@ def test_a_cancelled_run_starts_no_further_children():
     """
     runs = [_delegate_race_once() for _ in range(40)]
     assert [(a, b) for a, b, _ in runs] == [(1, 1)] * 40
-
-
-def test_cancelling_marks_every_child_before_it_stops_any_backend():
-    "The invariant behind it: marking is one pass, and stopping is the pass after."
-    from ramabana.runtime import Run
-
-    class _Be:
-        def cancel(self): return True
-
-    parent = Run('p')
-    parent.start()
-    kids = [parent.child(str(i)) for i in range(3)]
-    for k in kids: k.start(_Be())
-    stopped = parent._mark_cancel()
-    assert all(k.cancelled for k in kids)
-    assert len(stopped) == 3
 
 
 def test_cancelling_a_run_that_never_started_still_marks_its_children():

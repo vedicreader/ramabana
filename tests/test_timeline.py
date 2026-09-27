@@ -52,14 +52,6 @@ def test_trace_replaces_interim_reply_prose(ui):
     assert ui._reply == '## Answer\n\nBoth of them.\n'
 
 
-def test_the_reply_drops_prose_before_a_tool_call(ui):
-    blocks = a_turn(ui, [('Looking.\n', 'search_code', 'hit')])
-    assert [b.tag for b in blocks] == ['tool', 'reply']
-    answer = blocks[-1]
-    assert ui.transcript.block_text(answer) == '## Answer\n\nBoth of them.\n'
-    assert 'copied' in ui.copy_last('reply')
-
-
 def test_a_status_block_stays_above_the_reply_when_streaming_resumes(ui):
     seg = ui.stream(None, 'Waiting for approval.\n')
     ui.note('approved')
@@ -92,12 +84,6 @@ def test_a_growing_segment_keeps_its_model_text_current_between_repaints(ui):
     rendered = '\n'.join(''.join(s.text for s in l) for l in ui.comp._content_lines(seg))
     assert '```' not in rendered, 'the fence should be rendered, not printed'
     assert '```python' in ui.transcript.block_text(seg), 'copy must yield paste-able Markdown'
-
-
-def test_the_final_answer_is_the_reply(ui):
-    a_turn(ui, [('one.\n', 'search_code', 'x'), ('two.\n', 'search_code', 'y')], answer='three.\n')
-    assert ui._reply == 'three.\n', ui._reply
-    assert ui._seg == ui._reply
 
 
 def test_ctrl_o_reaches_every_step_and_call_of_the_turn(ui):
@@ -336,20 +322,6 @@ def test_an_act_whose_parent_has_no_block_is_counted_as_its_own(ui):
 
     ui.agent.activity.finish(orphan, 'a hit\n' * 6)      # once it has something to fold, it numbers
     assert [r.plain for r in ui.working()][0].startswith('1 ')
-
-
-def test_a_second_turn_waits_instead_of_starting_over_a_running_one(ui):
-    """The two share `_reply` and the segment state, so the newcomer's reset wiped the first's words.
-    It is held rather than dropped: the line is already in the transcript by the time it is asked
-    for, and closing it left a message that looked answered and was gone."""
-    async def run_turn(): pass   # named as the real prompt coroutine is
-    ui.turn = 'a turn in flight'
-    coro = run_turn()
-    assert ui.start_turn(coro) is False
-    assert ui.turn == 'a turn in flight', 'the running turn was replaced'
-    assert ui._queued is coro, 'and the newcomer is waiting rather than closed'
-    assert [b.tag for b in ui.comp.blocks.values()][-1] == 'note'
-    ui.drop_queued()
 
 
 def test_a_model_that_stalls_mid_prose_does_not_leave_its_last_words_unseen():

@@ -26,6 +26,10 @@ from . import __version__
 from .agent import DFLT_TIMEOUT, Agent, Approvals, REPLAYED
 from .core import PII_OFF, accepts
 from .vault import WorkspaceHost
+from shalya.core import apply_edits, edits
+from shalya.tools import cmds
+from exhash import exhash as _exhash_apply
+from .mcpclient import acp_mcp_spec
 
 # %% ../nbs/16_acp.ipynb #8e6cca6b
 #: `Act.kind` and a bare tool name, both onto the ten kinds ACP knows
@@ -235,7 +239,22 @@ class Session:
         "A write the editor can render as a diff where the whole new text is known; else the preview."
         path = (args or {}).get('path', '')
         if tool == 'create_file' and path: return [acp.tool_diff_content(path, args.get('text', ''))]
+        if path and (after := self._after_text(tool, path, args)) is not None:
+            before, after = after
+            return [acp.tool_diff_content(path, after, before)]
         return [acp.tool_content(acp.text_block(preview))] if preview else None
+
+    def _after_text(self, tool, path, args):
+        "`(before, after)` for a real diff, when `tool`'s edit can be replayed without writing anything."
+        before = self.host.text_at(path)
+        if before is None: return None
+        try:
+            if tool == 'replace_text': return before, apply_edits(before, edits(args.get('spec', '')))
+            if tool == 'edit_file':
+                res = _exhash_apply(before, cmds(args.get('commands', '')))
+                return before, '\n'.join(res.lines) + ('\n' if before.endswith('\n') else '')
+        except Exception: pass
+        return None
 
     def _ask(self, a):
         "On the turn's thread, inside `Approvals.request`, before it waits."
@@ -307,22 +326,23 @@ class AcpAgent(acp.Agent):
                 prompt_capabilities=PromptCapabilities(image=True, audio=True, embedded_context=True)),
             agent_info=Implementation(name='ramabana', title='Ramabana', version=__version__))
 
-    async def _open(self, cwd, extra=None, sid=None):
+    async def _open(self, cwd, extra=None, sid=None, mcp_servers=None):
         roots = [cwd, *(extra or [])] if cwd else list(self.roots)
+        servers = dict(acp_mcp_spec(m) for m in (mcp_servers or []))
         s = Session(roots, self.conn, asyncio.get_running_loop(), sid, self.model, self.mk,
-                    self.timeout, **self.kw)
+                    self.timeout, mcp_servers=servers, **self.kw)
         self.sessions[s.sid] = s.attach(self.caps)
         await self.conn.session_update(s.sid, s.commands())
         return s
 
     async def new_session(self, cwd, additional_directories=None, mcp_servers=None, **kw):
-        # `mcp_servers` is ignored: this agent brings its own tools, not the editor's
-        return NewSessionResponse(session_id=(await self._open(cwd, additional_directories)).sid)
+        s = await self._open(cwd, additional_directories, mcp_servers=mcp_servers)
+        return NewSessionResponse(session_id=s.sid)
 
     async def load_session(self, cwd, session_id, mcp_servers=None, additional_directories=None, **kw):
         "Resume the named conversation and replay it, so what the terminal started the editor continues."
         if (s := self.sessions.get(session_id)) is None:
-            s = await self._open(cwd, additional_directories, session_id)
+            s = await self._open(cwd, additional_directories, session_id, mcp_servers=mcp_servers)
             try: picked = s.agent.resume_session(session_id)
             except Exception as e:
                 # never fall back to 'latest': it would hand over whichever conversation ran last

@@ -3,8 +3,10 @@
 Modules:
 
 - `ramabana.coding_patterns`: Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
+- `ramabana.mcpclient`: Local or remote MCP servers, named in a project `.agents/mcp.json` or `<cfg>/mcp.json`, wrapped as ordinary Ramabana tools with [AnswerDotAI/mcpmini](https://github.com/AnswerDotAI/mcpmini) -- the mirror of `ramabana.mcp`, which serves tools rather than consuming them.
 - `ramabana.monitor`: A folder somebody else is changing, looked at between turns, and the standing review that fires when it moves.
 - `ramabana.racp`: Ramabana as an [Agent Client Protocol](https://agentclientprotocol.com/) agent: an editor drives this host, with its own files and its own terminal.
+- `ramabana.serve`: Sessions, prompts and approvals over HTTP and SSE, for a GUI that wants to be a thin client rather than re-implementing the approval gate. The other half of `ramabana-acp`: an editor drives one in-process agent over stdio; this drives any number of agents over the network.
 - `ramabana.theory`: Naur's programming-as-theory-building, in the sense this team uses the word.
 - `ramabana.vault`: Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing watches that return work to the agent.
 - `ramabana.write_docs`: The voiceless register for the prose that ships with code, adapted from Answer.AI's write_docs.
