@@ -4,7 +4,6 @@
 
 ## 0.1.42
 
-- `ramabana.models` owns the model catalog: curated ids per provider (`CATALOG`) plus live discovery (OpenAI and Anthropic `/v1/models`, Codex's own `models_cache.json`), filtered by what a model is rather than which generation it belongs to. `available_models` lists gpt-6-*, claude-fable-5-1, claude-opus-5-5 and the Claude Code tier aliases; `fastllm.types.model_info_registry` is no longer read.
 
 ## 0.1.41
 
