@@ -269,3 +269,41 @@ def test_pruning_spares_rules_for_tools_this_session_merely_withholds(tmp_path):
     assert 'run_shell' not in {t.__name__ for t in a.tools} and 'git_commit' not in {t.__name__ for t in a.tools}
     assert a.approvals.rules == [tuple(r) for r in keep] and 'delegate_parallel' in a.approvals.problem
     assert json.loads(p.read_text()) == keep
+
+
+def test_the_same_gated_call_three_times_running_is_put_to_the_person_whatever_the_mode():
+    """A model that repeats one gated call, args and all, is looping: `auto` would let it spin and
+    `ask` would nag with the same question. The third repeat is an explicit ask through the ordinary
+    request path (so a CLI waits, and a frontend re-asks), and where nobody can be asked it is
+    refused with the loop named, on the recorder like any other refusal."""
+    heard, asked = [], []
+    ap = agent.Approvals(tools={'edit_file'}, mode='auto', timeout=5, on_answer=heard.append)
+    stop = ap.listen(on_ask=lambda a: (asked.append(a), ap.answer(a.id, False, 'stop looping')))
+    call = edit_call('a.py')
+    assert ap.gate(call) and ap.gate(call) and not asked           # auto: the first two run unasked
+    d = ap.gate(call)
+    assert not d and 'stop looping' in d.reply() and 'three times' in asked[0].preview
+    assert ap.gate(edit_call('b.py')) and len(asked) == 1           # a different call is not the loop
+    assert ap.gate(call) and ap.gate(call) and ap.gate(call).answer is False   # and it counts afresh
+    stop()
+
+    lone = agent.Approvals(tools={'edit_file'}, mode='auto', on_answer=heard.append)
+    assert lone.gate(call) and lone.gate(call)
+    d = lone.gate(call)
+    assert not d and 'three times' in d.reply() and 'listening' in d.reply()
+    assert heard[-1] is d, 'the recorder hears the refusal'
+
+    ap = agent.Approvals(tools={'edit_file'}, mode='off')
+    assert all(ap.gate(call).answer is False for _ in range(3))    # `off` refuses before any of this
+    assert all(agent.Approvals(tools={'edit_file'}).gate({'function': {'name': 'search_code', 'arguments': {'q': 'x'}}}) for _ in range(4))   # an ungated call is never the loop
+
+
+def test_a_refused_doom_loop_is_one_ask_row_on_the_activity(tmp_path):
+    a, be = fake_agent(cfg=tmp_path, approvals=agent.Approvals(mode='auto'))
+    assert 'create_file' in {t.__name__ for t in a.tools}        # building the catalog tells the gate what is a write
+    tc = {'function': {'name': 'create_file', 'arguments': {'path': '/proj/z.py', 'text': 'x = 1\n'}}}
+    assert a.approvals.gate(tc) and a.approvals.gate(tc)
+    d = a.approvals.gate(tc)
+    assert not d and 'three times' in d.reply()
+    asks = [x for x in a.activity.acts if x.kind == 'ask']
+    assert len(asks) == 1 and asks[0].tool == 'create_file' and asks[0].ok is False and 'three times' in asks[0].detail

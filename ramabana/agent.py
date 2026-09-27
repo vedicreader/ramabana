@@ -7,13 +7,14 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
-           'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT',
-           'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS',
-           'WARM_ROUNDS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
-           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
-           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'Approvals', 'always', 'never', 'applied', 'apply',
-           'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives', 'project_context', 'work_rules',
-           'system_prompt', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'note_tools', 'Completer']
+           'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES',
+           'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL',
+           'HISTORY_TURNS', 'WARM_ROUNDS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'COMPLETE_SP',
+           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
+           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
+           'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives',
+           'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
+           'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -329,10 +330,20 @@ def answer_md(ask):
 # %% ../nbs/03_agent.ipynb #ca1437e3
 EDIT_GROUPS = ('file', 'notebook')
 ALWAYS_ASK = ('add_root',)         #: gated calls no bulk mode short of `auto` answers: opening a folder widens what every later write may touch
+DOOM_LOOP = 3                      #: repeats of one gated call, args and all, that put it to the person whatever the mode
 
 def subject(name, args):
     "What a saved rule is matched against: the command, else the path, else the summary."
     return str(args.get('command') or args.get('path') or _summary(name, args))
+
+
+def call_key(name, args):
+    "One call as a hashable: the same tool with the same arguments, however the dict is ordered."
+    try: return name, json.dumps(args, sort_keys=True, default=str)
+    except Exception: return name, str(args)
+
+
+def _times(n): return {2: 'twice', 3: 'three times'}.get(n, f'{n} times')
 
 
 def _load_rules(path):
@@ -363,6 +374,7 @@ class Approvals:
         self.history = []                   # every `Ask` this session, answered or not
         self._watchers = []                 # (on_ask, on_answer) per registered frontend
         self._lock = threading.Lock()
+        self._repeat, self._streak = None, 0    # the last call's key, and how many times running
 
 
     @property
@@ -476,15 +488,22 @@ class Approvals:
         "Whether `edits` mode runs `name` unasked: a file or notebook write, never `add_root`, which widens the boundary itself."
         return group_of(name) in EDIT_GROUPS and name not in ALWAYS_ASK
 
-    def decide(self, name, args, force=False, ask=None):
-        "The resolved `Ask` when nobody needs asking: not gated, `off`, a saved rule, `auto` or `edits`. None when a person must answer."
+    def decide(self, name, args, force=False, ask=None, loop=False):
+        "The resolved `Ask` when nobody needs asking: not gated, `off`, a saved rule, `auto` or `edits`. None when a person must answer; `loop` (the `DOOM_LOOP`th repeat) keeps a saved allow, `auto` and `edits` from answering."
         a = self.ask(name, args) if ask is None else ask
         if not force and name not in self.tools: return a.resolve(True)
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
-        if (v := self.rule_for(name, args)) is not None:
-            return a.resolve(True, 'allowed by a saved rule') if v == 'allow' else self._decided(a, False, 'denied by a saved rule')
+        if (v := self.rule_for(name, args)) == 'deny': return self._decided(a, False, 'denied by a saved rule')
+        if loop: return None
+        if v == 'allow': return a.resolve(True, 'allowed by a saved rule')
         if self.mode == 'auto' or (self.mode == 'edits' and self.edits_cover(name)): return a.resolve(True)
         return None
+
+    def _looping(self, name, args):
+        "Whether this call is the `DOOM_LOOP`th repeat running: the same tool, the same arguments, nothing else between."
+        key = call_key(name, args)
+        self._streak, self._repeat = (self._streak + 1 if key == self._repeat else 1), key
+        return self._streak >= DOOM_LOOP
 
     def set_mode(self, mode):
         "Switch modes, answering a pending ask the new policy would have answered; returns the note."
@@ -502,14 +521,17 @@ class Approvals:
     def request(self, name, args, force=False, timeout=None):
         "Raise one request and wait for it. Returns the resolved `Ask`, whose `reply()` carries the reason."
         a = self.ask(name, args)
-        if (d := self.decide(name, args, force, ask=a)) is not None: return d
+        loop = self._looping(name, args) and (force or name in self.tools)
+        if loop: a.preview = f'the same call {_times(self._streak)} running -- allow it?\n\n{a.preview}'.strip()
+        if (d := self.decide(name, args, force, ask=a, loop=loop)) is not None: return d
         # closing first: the more useful reason; `current` taken under the close lock, so an ask landing in the gap does not wait out its timeout
         with self._lock:
             closing = self.closed
             if not closing: self.current = a
         if closing: return self._decided(a, False, 'the session is closing')
         if self.listeners < 1:
-            return self._decided(a, False, 'nothing is listening for approvals, so this could not be asked')
+            why = f'the same call {_times(self._streak)} running, and nothing is listening to ask about it' if loop else 'nothing is listening for approvals, so this could not be asked'
+            return self._decided(a, False, why)
         self._notify('ask', a)
         wait_for = self.timeout if timeout is None else timeout
         if not a.wait(wait_for):   # `None` waits for as long as it takes: only `answer`, `cancel_all` or `close` end it
