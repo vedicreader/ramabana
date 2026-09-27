@@ -19,6 +19,30 @@ def test_a_finished_background_delegation_reaches_the_next_turn_unasked():
     assert a.background.result('run_x') == 'x is 42', 'and `delegate_result` still answers'
 
 
+def test_what_a_poll_fired_reaches_the_next_prompt_once():
+    """`poll_watches` runs at the top of a turn in a thread; what it fired used to reach only the host's
+    note stream, so the model never knew a reminder had come due until it searched memory by luck."""
+    from ramabana.testing import MemHost
+    class Polls(MemHost):
+        def poll(self): return dict(checked=5, ran=2, results=[dict(id='w3', kind='url', target='https://x.test', status='ok'),
+                                                                dict(id='w7', action='remind', target='renew domain', status='ok')],
+                                    housekeeping=dict(stale=1, pruned=0))
+    a, _ = fake_agent(Polls({'/proj/a.py': 'x\n'}), replies=['ok', 'ok'])
+    a.poll_watches(force=True).join()
+    out = a._prepare('next')
+    assert '<watch-results>' in out and '2 of 5 watches fired' in out and '- w3 url https://x.test: ok' in out
+    assert '- w7 remind renew domain: ok' in out and 'housekeeping: 1 stale, 0 pruned' in out and 'memory_search' in out
+    assert '<watch-results>' not in a._prepare('again'), 'a notice is delivered once'
+    quiet, _ = fake_agent()
+    t = quiet.poll_watches(force=True); t and t.join()
+    assert quiet.watch_notice() == ''                       # MemHost.poll raises NotImplementedError: nothing to say
+    class Idle(MemHost):
+        def poll(self): return dict(checked=3, ran=0, results=[], housekeeping=dict(stale=0, pruned=0))
+    idle, _ = fake_agent(Idle({'/proj/a.py': 'x\n'}))
+    idle.poll_watches(force=True).join()
+    assert idle.watch_notice() == ''                        # a poll that found nothing produces no notice
+
+
 def test_hooks_can_deny_a_call_rewrite_its_arguments_and_replace_its_result():
     a, _ = fake_agent()
     a.registry.on('before_tool', lambda ag, name, args: 'denied by hook' if str(args.get('path', '')).endswith('secret') else None)

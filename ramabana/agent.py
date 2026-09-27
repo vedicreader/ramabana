@@ -970,6 +970,7 @@ class Agent:
         self._catalogs, self._views = {}, {}
         self._catalog_view = ToolCatalog()
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
+        self._watch_found, self._watch_lock = [], threading.Lock()   # poll results no turn has carried yet
         self._monitor_thread = None
         # the folders something *else* is changing. Reviews run on the sub-agent model, read-only
         self.monitors = Monitors(host, get_backend=lambda: self._be_or_none('subagent'), get_tools=self._sub_plain, log_dir=lambda: self.runs_dir)
@@ -1682,10 +1683,24 @@ def poll_watches(self:Agent, force=False):
         except NotImplementedError: return           # no watches here. Nothing to say about it
         except Exception as e: return self.host.note(f'could not poll watches: {agent_err(e)}')
         if r.get('ran'): self.host.note(f"{r['ran']} of {r.get('checked', 0)} watches fired; see memory_search")
+        if r.get('ran') or (r.get('housekeeping') or {}).get('stale'):
+            with self._watch_lock: self._watch_found.append(r)
     from fastcore.parallel import startthread
     self._poll_thread = startthread(run, daemon=True)
     self._poll_thread.name = 'ramabana-poll'
     return self._poll_thread
+
+@patch
+def watch_notice(self:Agent):
+    "What the polls since the last turn fired, as one `<watch-results>` block for the model, or ''. Drains once."
+    with self._watch_lock: found, self._watch_found = self._watch_found, []
+    if not found: return ''
+    lines = []
+    for r in found:
+        lines.append(f"{r.get('ran', 0)} of {r.get('checked', 0)} watches fired")
+        lines += [f"- {w.get('id', '?')} {w.get('kind') or w.get('action') or ''} {w.get('target', '')}: {w.get('status', '')}" for w in r.get('results') or ()]
+        if (h := r.get('housekeeping')): lines.append(f"housekeeping: {h.get('stale', 0)} stale, {h.get('pruned', 0)} pruned")
+    return '\n\n<watch-results>\n' + '\n'.join(lines) + '\nSearch memory (`memory_search`) for what they filed.\n</watch-results>'
 
 # %% ../nbs/03_agent.ipynb #12dd6fa4
 @patch
@@ -1781,6 +1796,7 @@ def _prepare(self:Agent, prompt):
         outgoing = _append(outgoing, f'\n\n<preflight-tool name="{name}">\n{evidence}\n</preflight-tool>')
     if reviews: outgoing = _append(outgoing, review_notice(reviews))
     if (done := self.background_notice()): outgoing = _append(outgoing, done)
+    if (fired := self.watch_notice()): outgoing = _append(outgoing, fired)
     # what the beat found while no session was running. Read once, under this session's id
     if (left := self.beat_drain()): outgoing = _append(outgoing, beat_notice(left))
     for skill in loaded:
