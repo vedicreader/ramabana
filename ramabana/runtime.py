@@ -294,7 +294,7 @@ def surgical_history(msgs, policy=None, count=None):
 def reorient(kernel_alive=True, skills=()):
     "Builds the system reminder shown after context rewriting."
     live = ("Context was rewritten, but the kernel is unchanged. The user's namespace, imports, and "
-            "variables remain available. Do not re-import, rebuild, or rerun setup; use `list_vars` "
+            "variables remain available. Do not re-import, rebuild, or rerun setup; use `inspect_python()` "
             "to inspect them."
             if kernel_alive else
             "Context was rewritten and the kernel restarted with an empty namespace. Rebuild variables "

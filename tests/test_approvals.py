@@ -139,7 +139,7 @@ def test_every_watcher_and_the_recorder_hear_the_same_ask_with_a_preview():
     ap.gate({'function': {'name': 'edit_file', 'arguments': {}}})
     assert sorted(seen) == ['one', 'recorder', 'two']
 
-    p = agent.preview_for('edit_file', {'path': 'a.py', 'commands': '[["12|ab|","s","old","new"]]'})
+    p = agent.preview_for('edit_file', {'path': 'a.py', 'commands': [['12|ab|', 's', 'old', 'new']]})
     assert '12|ab|' in p and 'old' in p and 'new' in p
     p2 = agent.preview_for('create_file', {'path': 'b.py', 'text': 'x = 1'})
     assert 'new file' in p2 and 'x = 1' in p2

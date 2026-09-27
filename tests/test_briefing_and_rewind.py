@@ -20,8 +20,8 @@ def test_claude_md_and_the_users_agents_md_reach_the_briefing(tmp_path):
 
 def test_a_replace_text_preview_is_a_diff_and_a_shell_preview_is_the_command():
     host = MemHost({'/proj/a.py': 'def a(): pass\n'})
-    spec = json.dumps([{'oldText': 'pass', 'newText': 'return 1'}])
-    diff = preview_for('replace_text', {'path': '/proj/a.py', 'spec': spec}, host)
+    edits = [{'oldText': 'pass', 'newText': 'return 1'}]
+    diff = preview_for('replace_text', {'path': '/proj/a.py', 'edits': edits}, host)
     assert '-def a(): pass' in diff and '+def a(): return 1' in diff
     shell = preview_for('run_shell', {'command': 'pytest -q', 'cwd': '/proj'}, host)
     assert 'pytest -q' in shell and '/proj' in shell and '{' not in shell

@@ -333,7 +333,7 @@ def test_a_session_offers_the_folder_tools_and_briefs_the_model_on_them():
     a, _ = fake_agent()
     assert {'watch_folder', 'list_folder_watches', 'cancel_folder_watch',
             'check_folders'} <= {t.__name__ for t in a.tools}
-    assert '`watch_folder` is for work happening beside this conversation' in a.system_prompt()
+    assert '`watch(' not in a.system_prompt()   # the briefing's watch rule follows the vault's `watch` tool, which this host has not got
 
 
 def test_a_review_reaches_the_next_prompt_exactly_once():

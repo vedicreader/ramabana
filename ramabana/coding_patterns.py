@@ -86,8 +86,8 @@ Use Ramabana's native tools rather than instructions written for another harness
 
 - `search_code` finds repository and installed-package behaviour.
 - `view_file` or the notebook cell tools read the exact source before editing.
-- `replace_text`, `edit_file` or `edit_cell` make narrow, auditable changes.
-- For an edit tool whose `edits` or `commands` field is a JSON string, build and check that inner JSON on its own first. A parse error means nothing changed: fix the payload rather than resending it.
+- `replace_text` or `edit_cell` make narrow, auditable changes (`edit_file` when the exhash group is on).
+- `edits` is a list of `{"oldText", "newText"}` objects and `commands` a list of lists: send them as structured values, not as a JSON string. A refused edit means nothing changed: fix the payload rather than resending it.
 - `inspect_python` reads live state without mutation. `run_python` performs requested transformations in new bindings.
 - `run_shell` verifies edits with the repository's own commands.
 - `read_skill` loads specialized workflows before using them. Read `write_docs` for the prose that ships with code, `write_prose` for narrative writing, and `theory` for the design a codebase is derived from.

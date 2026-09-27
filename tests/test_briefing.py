@@ -21,8 +21,7 @@ BIG = ModelSpec('sonnet', 'remote', 'claude-sonnet-4-5', 200_000)
 CLAUDE = ModelSpec('claude/claude-sonnet-5', 'claude', 'claude-sonnet-5', 128_000)
 
 
-RESEARCH = {'web_search', 'read_url', 'research', 'memory_search', 'memory_read',
-            'memory_tree', 'memory_topics', 'memory_forget'}
+RESEARCH = {'web_search', 'read_url', 'memory_search', 'memory_read', 'memory_forget'}
 
 #: Stands in for the `exhash` body the briefing inlines: ~3k tokens, which is what made a 16k
 #: window unusable. A literal keeps the test independent of which skills are installed.
@@ -51,11 +50,14 @@ def test_a_frugal_agent_differs_from_a_full_one_in_every_way_the_budget_decides(
     "Small window: no research tools, no inlined skill body, smaller clip, shorter briefing."
     small, big = mk(host, SMALL), mk(host, BIG)
     assert not (names(small) & RESEARCH) and RESEARCH <= names(big)
-    assert '## exhash' in big.system_prompt() and '## exhash' not in small.system_prompt()
+    # the exhash body rides only with `edit_file`: opting the group in brings both, and the saving without it is the point
+    hashed = mk(host, BIG, optin=('exhash',))
+    assert '## exhash' in hashed.system_prompt() and '## exhash' not in big.system_prompt() and '## exhash' not in small.system_prompt()
+    assert len(hashed.system_prompt()) - len(big.system_prompt()) > 5_000
     assert small.budget.tool_max < big.budget.tool_max
     assert '16k window' in small.budget.note and big.budget.note == 'full briefing'
-    # And the whole point: the frugal briefing is dramatically smaller.
-    assert estimate_tokens(small.system_prompt()) < estimate_tokens(big.system_prompt()) / 2
+    # And the whole point: the frugal briefing is dramatically smaller than a full one carrying the skill body.
+    assert estimate_tokens(small.system_prompt()) < estimate_tokens(hashed.system_prompt()) / 2
 
 
 def test_a_window_we_could_not_read_is_not_a_small_window(host):
@@ -83,7 +85,7 @@ def test_the_clip_reaches_the_tools(tmp_path):
 
 def test_changing_model_rebuilds_what_was_sized_to_the_old_one(host):
     "Both the tool list and the briefing are sized to the turn model, so both must be dropped."
-    a = mk(host, BIG)
+    a = mk(host, BIG, optin=('exhash',))
     cur = {'spec': BIG}
     a.routing.spec = lambda job='turn', fallback=True: cur['spec']
     a.routing.set = lambda name, job='turn': cur.__setitem__('spec', SMALL) or SMALL
@@ -350,7 +352,7 @@ def test_the_briefing_describes_only_the_tools_the_model_was_given():
     h = FullHost(files={'a.py': 'x = 1\n'})
     sp = A.system_prompt(h, tools=tools_for(h))
     for t in {t.__name__ for t in tools_for(h)} & {n for n, _ in A.RULES if n}: assert t in sp
-    assert 'delegate_parallel' not in sp          # this host offers no sub-agents
+    assert 'delegate_search' not in sp            # this host offers no sub-agents
 
 
 def test_the_coding_standard_reaches_the_briefing_it_was_written_for(host):

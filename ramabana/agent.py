@@ -11,9 +11,9 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'TODO_MARK', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP',
            'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
            'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'Approvals',
-           'always', 'never', 'applied', 'apply', 'note', 'tool_plan', 'request_text', 'prompt_directives',
-           'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items', 'plan_tools', 'Agent',
-           'note_tools', 'Completer']
+           'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text',
+           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'parse_plan_items',
+           'plan_tools', 'Agent', 'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -50,10 +50,7 @@ _GROUP_KIND = {'code': 'search', 'file': 'view', 'notebook': 'view', 'session': 
 _KIND = {
     'edit_file': 'edit', 'replace_text': 'edit', 'create_file': 'edit', 'edit_cell': 'edit',
     'add_cell': 'edit', 'read_terminal': 'view', 'remember': 'memory',
-    'delegate_search': 'delegate', 'delegate_parallel': 'delegate', 'delegate_async': 'delegate',
-    'delegate_status': 'delegate', 'delegate_result': 'delegate', 'delegate_cancel': 'delegate',
-    'watch_folder': 'watch', 'list_folder_watches': 'watch',
-    'cancel_folder_watch': 'watch', 'check_folders': 'watch',
+    'delegate_search': 'delegate', 'delegate_async': 'delegate', 'delegate_result': 'delegate', 'delegate_cancel': 'delegate',
     'cart_stores': 'cart', 'cart_open': 'cart', 'cart_find': 'cart',
     'cart_add': 'cart', 'cart_show': 'cart', 'cart_remove': 'cart',
 }
@@ -211,7 +208,7 @@ def _tc(tool_call):
 
 # %% ../nbs/03_agent.ipynb #f0c058fe
 def _fmt_cmds(commands):
-    "exhash commands as one readable block, rather than as a JSON blob nobody reads."
+    "exhash commands (a list of lists, or the JSON of one) as one readable block, rather than as a blob nobody reads."
     try:
         cmds = json.loads(commands) if isinstance(commands, str) else commands
         if not isinstance(cmds, list): raise ValueError
@@ -230,7 +227,15 @@ def preview_for(name, args, host=None):
     "What this call would actually do, as text a person can read in a couple of seconds."
     p = args.get('path', '')
     if name == 'edit_file':   return f'{p}\n\n{_fmt_cmds(args.get("commands", ""))}'[:MAX_PREVIEW]
-    if name == 'edit_cell':   return f'{p} cell {args.get("cell_id","?")}\n\n{_fmt_cmds(args.get("commands",""))}'[:MAX_PREVIEW]
+    if name == 'edit_cell':
+        cid = args.get('cell_id', '?')
+        try:
+            es = edits(args.get('edits', []))
+            if host is not None and hasattr(host, 'nb_cell'):
+                before = host.nb_cell(p, cid)[2]
+                return f'{p} cell {cid}\n\n{diff_text(before, apply_edits(before, es), f"{p}#{cid}")}'[:MAX_PREVIEW]
+            return f'{p} cell {cid}\n\n' + '\n'.join(f'- {o}\n+ {n}' for o, n in es)[:MAX_PREVIEW]
+        except Exception as e: return f'{p} cell {cid}\n\n{agent_err(e)}'
     if name == 'create_file':
         text, exists = args.get('text', ''), False
         try: exists = bool(host and host.check(p).exists())
@@ -242,7 +247,7 @@ def preview_for(name, args, host=None):
     if name == 'run_python':  return str(args.get('code', ''))[:MAX_PREVIEW]
     if name == 'run_shell':   return (f"$ {args.get('command', '')}" + (f'\n  in {c}' if (c := args.get('cwd')) else ''))[:MAX_PREVIEW]
     if name == 'replace_text' and host is not None:
-        try: return diff_text(before := host.read(p) or '', apply_edits(before, edits(args.get('spec', ''))), p)[:MAX_PREVIEW]
+        try: return diff_text(before := host.read(p) or '', apply_edits(before, edits(args.get('edits', []))), p)[:MAX_PREVIEW]
         except Exception as e: return f'{p}\n\n{agent_err(e)}'
     return json.dumps(args, indent=2, default=str)[:MAX_PREVIEW]
 
@@ -487,6 +492,10 @@ def note(): return 'provided by rishi.remote'
 # %% ../nbs/03_agent.ipynb #6b808b15
 INLINE_SKILLS = ('exhash', 'coding_patterns')
 
+def inline_for(inline, names):
+    "The skills to inline for a tool list: `exhash` is ~3k tokens a turn and only earns them when `edit_file` is offered."
+    return tuple(s for s in inline if s != 'exhash' or not names or 'edit_file' in names)
+
 
 def tool_plan(prompt):
     "A small deterministic routing step before the model sees a turn. Never another model call."
@@ -579,10 +588,9 @@ RULES = (
                   '  context, or search results; never shorten, repair, or reconstruct a path.'),
     ('replace_text', 'To change a file: read it, then `replace_text` with `oldText` copied exactly from\n'
                      '  what you read. Send every change to one file as one call.'),
-    ('edit_file', '`edit_file` is the other editor: it addresses lines by the hashes `view_file`\n'
-                  '  returns, so a stale read fails instead of damaging the wrong line. Use it when that\n'
-                  '  matters, and read the `exhash` skill before your first one.'),
-    ('notebook_cells', 'Never use `view_file` or `edit_file` on an `.ipynb` file. Call `notebook_cells` on\n'
+    ('edit_file', '`edit_file` addresses lines by the hashes `view_file` returns, so a stale read fails\n'
+                  '  instead of damaging the wrong line; read the `exhash` skill before your first one.'),
+    ('notebook_cells', 'Never use `view_file` or `replace_text` on an `.ipynb` file. Call `notebook_cells` on\n'
                        '  its exact path, choose the returned cell id, then `view_cell` and `edit_cell`.'),
     (None, 'A `<notebook path="…">` block is the open notebook and its exact path. Its cells are\n'
            '  already visible; use that path with the notebook tools and never reconstruct it.'),
@@ -592,7 +600,7 @@ RULES = (
                   '  watcher or slow suite goes to `run_shell_bg`, read with `shell_output`.'),
     ('run_python', 'Code cells inside `<notebook>` have already executed. Their printed `<output>` is not\n'
                    '  Python and must never be copied into `run_python`. For a request about `df`, call\n'
-                   '  `list_vars` first, then run only the transformation the user asked for.'),
+                   '  `inspect_python()` with no code first, then run only the transformation the user asked for.'),
     ('run_python', '`run_python` shares the user’s kernel namespace. Read anything; bind results to NEW\n'
                    '  names. You cannot rebind or delete the user’s variables, so do not try.'),
     ('web_search', 'Use `web_search`/`read_url` only when the answer depends on current external\n'
@@ -605,16 +613,16 @@ RULES = (
                    '  derived from, `theory`.'),
     (None, 'Before bulk work on an uncertain task, state the question, the smallest experiment that answers\n'
            '  it, and what counts as success; run one pilot first, and report “it ran” apart from “the output is right”.'),
-    ('environment', 'This kernel, the project venv and bare `python` can be three interpreters; `environment`\n'
-                    '  lists them, and `run_shell` needs the one you mean.'),
+    ('run_shell', 'This kernel, the project venv and bare `python` can be three interpreters; "On this\n'
+                  '  machine" above lists them, and `run_shell` needs the one you mean.'),
     ('delegate_search', 'A sub-agent’s report is a hypothesis until a tool result of your own confirms the facts your\n'
                         '  next step rests on. Verify those and only those.'),
-    ('delegate_parallel', 'When two or more questions are independent and each would take several tool calls,\n'
-                          '  send them together with `delegate_parallel` rather than working through them yourself.'),
-    ('watch_folder', '`watch_folder` is for work happening beside this conversation: another agent editing\n'
-                     '  the repo, a build writing output. Its `instructions` are the whole brief the reviewer\n'
-                     '  gets, so write them self-contained. Its reviews arrive on their own; `check_folders`\n'
-                     '  looks now.'),
+    ('delegate_search', 'When two or more questions are independent and each would take several tool calls,\n'
+                        '  pass them together as `questions` rather than working through them yourself.'),
+    ('watch', '`watch(target, kind=\'folder\', instructions=…)` is for work happening beside this conversation:\n'
+              '  another agent editing the repo, a build writing output. `instructions` are the whole brief the\n'
+              '  reviewer gets, so write them self-contained; `pattern` narrows the files. Reviews arrive at the\n'
+              '  start of a later turn; `list_watches` shows what is watched.'),
     (None, 'Make the change the user asked for and no other. Do not reformat, reorganise, or\n'
            '  “improve” code you were not asked to touch, and never discard their edits.'),
     (None, 'Writes may be put to the user for approval. A refusal comes back with their reason --\n'
@@ -653,7 +661,7 @@ def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=(), cfg
             '\n- To *look at* live state, prefer `inspect_python`: neither of its scopes can change\n'
             '  what the user made, so it needs no approval. Start with the default sandbox and pass\n'
             f"  `scope='overlay'` when it refuses a library call you need.{conc}")
-    env = getattr(host, 'environment', lambda: '')() if 'environment' in names or not names else ''
+    env = getattr(host, 'environment', lambda: '')()
     machine = f'\n\nOn this machine:\n{env}' if env else ''
     sp = f"""You are Ramabana, a coding agent. Follow the user's latest explicit request and the project instructions below. You are working in these folders:
 {roots}{machine}
@@ -1214,7 +1222,7 @@ def system_prompt(self:Agent):
     if self._sp: return self._sp
     if self._tools is None: self.tools
     # a skill body is 3k tokens of a 12k budget, and `read_skill` still reaches it
-    inline = self.inline_skills if self.budget.inline else ()
+    inline = inline_for(self.inline_skills if self.budget.inline else (), {getattr(t, '__name__', '') for t in self._plain})
     parts = []
     if self.subagents and 'delegate_async' in {getattr(t, '__name__', '') for t in self._plain}:
         parts.append('Sub-agents may write, run commands and run Python, behind this session’s approvals.'
@@ -1754,7 +1762,7 @@ def _prepare(self:Agent, prompt):
     preflights = []
     first = {'repo': 'search_code', 'web': 'web_search'}.get(route)
     if first: preflights.append((first, request))
-    eager = {'search_code', 'web_search', 'research', 'memory_search', 'list_files'}
+    eager = {'search_code', 'web_search', 'research', 'memory_search'}
     preflights += [(name, query or request) for name, query in requested if name in eager]
     by_name = {getattr(t, '__name__', ''): t for t in self.tools}
     outgoing = _append(outgoing, f'\n\n<tool-plan route="{route}">{plan}</tool-plan>')
