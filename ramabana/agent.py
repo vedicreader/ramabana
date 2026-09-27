@@ -8,12 +8,12 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'APPROVE_MODES', 'INLINE_SKILLS',
            'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES',
-           'TODO_MARK', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP',
-           'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
-           'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'Approvals',
-           'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text',
+           'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'REPLAYED', 'CHECKPOINT_BYTES',
+           'COMMIT_SP', 'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER',
+           'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject',
+           'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text',
            'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'plan_tools', 'Agent',
-           'note_tools', 'Completer']
+           'git_shell_denial', 'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -30,7 +30,7 @@ from shalya.tools import group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, parse_plan_items)
+                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS)
 from .monitor import Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -636,6 +636,9 @@ RULES = (
                    '  derived from, `theory`.'),
     (None, 'Before bulk work on an uncertain task, state the question, the smallest experiment that answers\n'
            '  it, and what counts as success; run one pilot first, and report “it ran” apart from “the output is right”.'),
+    ('git_status', 'Git goes through its tools: `git_status`, `git_diff`, `git_log`, `git_divergence` to look;\n'
+                   '  `git_commit`, `git_checkout`, `git_stash`, `git_remote` to act, each returning an `undo` token.\n'
+                   '  `run_shell` refuses `git commit|push|pull|fetch|stash|switch|checkout`.'),
     ('run_shell', 'This kernel, the project venv and bare `python` can be three interpreters; "On this\n'
                   '  machine" above lists them, and `run_shell` needs the one you mean.'),
     ('delegate_search', 'A sub-agent’s report is a hypothesis until a tool result of your own confirms the facts your\n'
@@ -707,7 +710,7 @@ CLAUDE_NOTES = """## Working as Claude
 
 These apply on top of the rules above, and outrank them where they disagree.
 
-- The environment and the repository history are the user's. Do not install packages, change environment configuration, or run any git command -- read-only ones included -- unless the user approved that exact command in this conversation. Where git would answer something, name the command and ask.
+- The environment and the repository history are the user's. Do not install packages or change environment configuration. Looking at git is yours to do with `git_status`, `git_diff`, `git_log` and `git_divergence`; a git write -- `git_commit`, `git_checkout`, `git_stash`, `git_remote` -- needs the user's approval of that exact action in this conversation, and `run_shell` is never the way to do it.
 - Approval does not travel. Confirm before an action that is hard to reverse or that is visible outside this machine, and look at the target before you delete or overwrite it. If what you find contradicts how it was described, say that instead of proceeding.
 - There is no momentum. Never extend agreed work into new decisions, and when in doubt whether something was agreed, it was not. Approval for a downstream change does not cover an upstream one.
 - A question outranks the work in flight. Answer it in prose and end the turn. A question is never approval to continue and never an occasion to change code.
@@ -971,6 +974,7 @@ class Agent:
         self._catalog_view = ToolCatalog()
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self._watch_found, self._watch_lock = [], threading.Lock()   # poll results no turn has carried yet
+        self.git_undo = {}       # turn id -> the git writes it made, each with gheasy's `undo` token, for /rewind
         self._monitor_thread = None
         # the folders something *else* is changing. Reviews run on the sub-agent model, read-only
         self.monitors = Monitors(host, get_backend=lambda: self._be_or_none('subagent'), get_tools=self._sub_plain, log_dir=lambda: self.runs_dir)
@@ -1060,6 +1064,34 @@ def _cloud_backend_or_none(self:Agent, model):
         return backend if backend.start() is not None else None
     except Exception: return None
 
+# %% ../nbs/03_agent.ipynb #d69ed3f9
+#: the git subcommands `run_shell` refuses, and the tool that performs each with an `undo` token
+GIT_SHELL = {'commit': 'git_commit', 'push': 'git_remote', 'pull': 'git_remote', 'fetch': 'git_remote',
+             'stash': 'git_stash', 'switch': 'git_checkout', 'checkout': 'git_checkout'}
+_SEG = re.compile(r'\s*(?:&&|\|\||;|\|)\s*')
+_GIT_VALUED = ('-C', '-c', '--git-dir', '--work-tree', '--namespace')   # git's own options that take a value, as `classify` strips them
+
+
+def _git_sub(args):
+    "The git subcommand in `args` (the words after `git`), past git's own leading options; '' when there is none."
+    rest = list(args)
+    while rest and rest[0].startswith('-'): rest = rest[2:] if rest[0] in _GIT_VALUED and len(rest) > 1 else rest[1:]
+    return rest[0] if rest else ''
+
+
+def git_shell_denial(command):
+    "Why `run_shell` refuses this command: a git write or remote operation a git tool performs. '' when it may run."
+    from gheasy.repo import classify
+    for seg in _SEG.split(str(command or '')):
+        try: words = shlex.split(seg)
+        except ValueError: words = seg.split()
+        while words and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*=.*', words[0]): words.pop(0)   # leading NAME=value
+        if not words or Path(words[0]).name != 'git': continue
+        sub = _git_sub(words[1:])
+        if sub in GIT_SHELL and classify(words[1:]) != 'read':
+            return f'`git {sub}` goes through `{GIT_SHELL[sub]}` here; it returns an `undo` token and keeps the tree snapshot for /rewind'
+    return ''
+
 # %% ../nbs/03_agent.ipynb #62782197
 @patch
 def _record(self:Agent, f):
@@ -1074,7 +1106,7 @@ def _record(self:Agent, f):
             return ('Tool-call budget exhausted for this turn. Stop calling tools and '
                     'summarise the evidence and unfinished work now.')
         denied, rewritten = None, False
-        for r in self.registry.fire('before_tool', self, name, args):
+        for r in (self._deny_git_shell(name, args), *self.registry.fire('before_tool', self, name, args)):
             if isinstance(r, str): denied = denied or r
             elif isinstance(r, dict): a, kw, args, rewritten = (), dict(r), _named(f, (), dict(r)), True
         if rewritten and is_write(f) and self.approvals is not None and not (ask := self.approvals.request(name, args)).answer:
@@ -1090,10 +1122,10 @@ def _record(self:Agent, f):
         if is_write(f):   # first touch only: later edits are part of one change
             if (p := args.get('path')):
                 if p not in self.before: self.before[p] = self.host.text_at(p) or ''
-            elif name == 'run_shell': self.snapshot_tree()
+            elif name == 'run_shell' or name in GIT_WRITE_TOOLS: self.snapshot_tree()
         nested = name in DELEGATE_TOOLS   # every call its sub-agent makes hangs off this one
         if nested: self._delegating.append(act.id)
-        shelled = name == 'run_shell' and self._walked
+        shelled = (name == 'run_shell' or name in GIT_WRITE_TOOLS) and self._walked
         try: out = f(*a, **kw)
         except NotImplementedError as e:   # a raise ends the turn. A readable failure does not
             self.activity.finish(act, agent_err(e), ok=False)
@@ -1106,10 +1138,29 @@ def _record(self:Agent, f):
             if shelled: self.settle_tree()
         for r in self.registry.fire('after_tool', self, name, out):
             if isinstance(r, str): out = r
+        if name in GIT_WRITE_TOOLS and not failed(out): self._keep_undo(name, out)
         self.activity.finish(act, out, ok=not failed(out))   # one spelling of failure, in one place
         if run is not None: run.write(f"< {name} {'ok' if not failed(out) else 'ERR'} {_1(out, 200)}")
         return out
     return wrapper
+
+
+@patch
+def _deny_git_shell(self:Agent, name, args):
+    "The `before_tool` rule every agent carries: `run_shell` does not do what a git tool does."
+    return git_shell_denial(args.get('command', '')) if name == 'run_shell' else None
+
+
+@patch
+def _keep_undo(self:Agent, name, out):
+    "Remember a git write's `undo` token, what it undoes and where HEAD went, against this turn, for `/rewind`."
+    try: d = json.loads(out)
+    except Exception: return
+    if not isinstance(d, dict): return
+    self.git_undo.setdefault(self.current_turn_id, []).append({k: str(d.get(k) or '') for k in ('summary', 'undo', 'undoes', 'head')} | {'tool': name})
+    if (cd := self.checkpoint_dir) is not None:
+        cd.mkdir(parents=True, exist_ok=True)
+        (cd/f'{self.current_turn_id}.git.json').write_text(json.dumps(self.git_undo[self.current_turn_id]))
 
 # %% ../nbs/03_agent.ipynb #c18c7d36
 @patch(as_prop=True)
@@ -1947,18 +1998,35 @@ def rewind(self:Agent, turn_id='', what='both'):
     turn_id = str(turn_id or (self.history[-1]['turn_id'] if self.history else self.current_turn_id))
     out, d = [], self.checkpoint_dir
     if what in ('files', 'both'):
-        f = d/f'{turn_id}.json' if d is not None else None
+        f, g = (d/f'{turn_id}.json', d/f'{turn_id}.git.json') if d is not None else (None, None)
         snap = json.loads(f.read_text()) if f is not None and f.exists() else {}
-        if not snap: out.append(f'no file checkpoint for {turn_id}')
-        elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap)}, force=True).answer: out.append('rewind refused')
-        else:
-            for p, text in snap.items(): self.host.write(p, text)
-            made = [p for p, t in snap.items() if not t]
-            out.append(f'restored {len(snap)} file(s) to before {turn_id}' + (f'; {len(made)} created that turn are empty, not removed' if made else ''))
+        git = json.loads(g.read_text()) if g is not None and g.exists() else []
+        if not snap and not git: out.append(f'no file checkpoint for {turn_id}')
+        elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap), 'git': [t['undoes'] for t in git if t.get('undo')]}, force=True).answer: out.append('rewind refused')
+        else:   # git first: a checkout undone puts the tree where the file texts were taken from
+            if git: out.append(self._undo_git(git))
+            if snap:
+                for p, text in snap.items(): self.host.write(p, text)
+                made = [p for p, t in snap.items() if not t]
+                out.append(f'restored {len(snap)} file(s) to before {turn_id}' + (f'; {len(made)} created that turn are empty, not removed' if made else ''))
     if what in ('chat', 'both'):
         try: out.append(f"chat on branch {self.undo_turn(turn_id)['branch_id']}, before {turn_id}")
         except Exception as e: out.append(agent_err(e))
     return '; '.join(out)
+
+
+@patch
+def _undo_git(self:Agent, writes):
+    "Apply a turn's git `undo` tokens, newest first, and name the writes gheasy cannot take back (a push, a stash)."
+    from gheasy.repo import GitRepo
+    done, problems = 0, []
+    for w in [w for w in reversed(writes) if w.get('undo')]:
+        try: GitRepo.at(self.host.roots[0]).undo(w['undo']); done += 1
+        except Exception as e: problems.append(f"{w['tool']}: {agent_err(e)}")
+    stuck = [w['tool'] for w in writes if not w.get('undo')]
+    parts = [f'undid {done} git write(s)'] if done else []
+    if stuck: parts.append(f'{len(stuck)} git write(s) this turn cannot be undone here: {", ".join(stuck)}')
+    return '; '.join(parts + problems)
 
 # %% ../nbs/03_agent.ipynb #32a8d985
 @patch
@@ -2351,7 +2419,7 @@ def pull_request(self:Agent, title=''):
     body = body.strip() or subjects
     if self.approvals is not None and not self.approvals.request('pull_request', {'title': t, 'base': base, 'head': branch}, force=True).answer: return 'pull request refused'
     try:
-        if not r.info()['upstream']: r.push(publish=True)
+        if not r.info()['upstream'] and failed(pushed := self._tool('git_remote')('push', publish=True)): return pushed
         return gh_api(token=gh_token(), path=str(r.root))[2].pulls.create(title=t, head=branch, base=base, body=body)['html_url']
     except Exception as e:
         return (f'GitHub is out of reach ({agent_err(e)}); run:\n'
