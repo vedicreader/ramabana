@@ -118,12 +118,13 @@ class VaultHost(LocalHost):
         return v
 
     def connect(self, wait=False):
-        "Rebuild the entity graph in a background thread."
+        "Rebuild the entity graph in a background thread, on the lent model when there is one."
         if self._cthread is None or not self._cthread.is_alive():
             def run():
                 root = self.vault
                 v = self._worker_vault()
-                try: v.connect()
+                # the vault's chats come from `mk_chat` when a session lent one; the graph's included, or it loads a second runtime
+                try: v.connect(chat=None if self.mk_chat is None else self.mk_chat(None))
                 except Exception as e: self.note(f'could not rebuild the memory graph: {agent_err(e)}')
                 finally:
                     if v is not root: v.db.conn.close()
