@@ -23,8 +23,8 @@ from shalya.core import one_line as _1
 # %% auto #0
 __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_STEPS', 'PENDING_MAX', 'DFLT_SETTLE', 'REVIEW_SP',
            'POB_READER', 'TICKS', 'POB_HOME', 'BEAT_TAG', 'secs', 'files_under', 'snapshot', 'changed', 'summarise',
-           'report', 'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'monitor_tools', 'on_tick',
-           'pob_path', 'pob', 'beat_notes', 'beat_notice', 'heartbeat', 'tick']
+           'report', 'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'on_tick', 'pob_path', 'pob',
+           'beat_notes', 'beat_notice', 'heartbeat', 'tick']
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
 SNAP_MAX_FILES = 2000
@@ -159,6 +159,7 @@ class FolderWatch:
         self.snap = {}          # the last look. `Monitors.add` takes the first
         self.reviewed = None    # monotonic clock of the last review. The settle window runs from it
         self.reviews, self.last_status = 0, ''
+        self.vaulted = False    # mirrored from a vault row by `Monitors.sync`, which also drops it when the row goes
 
     def __repr__(self): return f'FolderWatch({self.id} {self.folder} {len(self.snap)} files)'
 
@@ -174,7 +175,7 @@ class Monitors:
                  log_dir=None):      # callable -> where review transcripts and `monitors.log` go, or None
         self.host, self.get_backend, self.get_tools = host, get_backend, get_tools
         self.on_review, self.log_dir, self.runs = on_review, log_dir, {}
-        self.watches = {}
+        self.watches, self._unwatchable = {}, set()   # vault rows that could not be snapshotted are noted once
         self.pending = deque(maxlen=PENDING_MAX)   # reviews no turn has carried yet
         self.lock = threading.Lock()               # guards `watches` and `pending`
         self.checking = threading.Lock()
@@ -217,6 +218,7 @@ def check(self: Monitors,
     "One record per changed folder; `None` if another pass owns the check and `block` is off, `[]` if nothing changed."
     if not self.checking.acquire(blocking=block): return None
     try:
+        self.sync()
         out = []
         for w in self.all():
             try:
@@ -280,57 +282,34 @@ def _record(self: Monitors, w, status, **kw):
 
 @patch
 def _file(self: Monitors, rec):
-    "Tell the user out of band, and put the review in durable memory when the host has any."
+    "Tell the user out of band, and file the review in durable memory under one key per watch, so the latest replaces the last."
     line = f"{Path(rec['folder']).name}: {rec['summary'] or rec['status']}"
     try: self.host.note(f'folder review -- {line}')
     except Exception: pass
     if not rec['review']: return
-    try: self.host.remember(rec['review'], title=f'folder review: {line}', tags=['folder-review'])
+    try: self.host.remember(rec['review'], title=f'folder review: {line}', tags=['folder-review'], key=f'folder-review:{rec["watch_id"]}')
     except Exception: pass      # no memory on this host. The review still reaches the next turn
 
 # %% ../nbs/17_monitor.ipynb #e838671d
-def monitor_tools(get_monitors, mx=MAX_TOOL_CHARS):
-    "Watching a folder somebody else is changing, and the review that fires when it moves."
-
-    @summary(lambda a: f'Watch folder {_1(a.get("folder"), 80)}')
-    def watch_folder(folder: str, instructions: str, pattern: str = '', settle: str = DFLT_SETTLE) -> str:
-        "Watch `folder`; review later changes matching `pattern` against `instructions`, grouped by `settle`."
-        try: w = get_monitors().add(folder, instructions, pattern=pattern, settle=settle)
-        except Exception as e: return err('could not watch that folder', e)
-        which = f' matching {w.pattern}' if w.pattern else ''
-        return f'watching {w.folder} as {w.id} ({len(w.snap)} files{which}); every change is reviewed'
-
-    @summary(lambda a: 'List watched folders')
-    def list_folder_watches() -> str:
-        "Every folder being watched, what it is reviewed for, and how many reviews it has produced."
-        ws = get_monitors().all()
-        if not ws: return 'no folder is being watched'
-        return clip('\n'.join(
-            f"{w.id}  {w.folder}  {len(w.snap)} files  settle={int(w.settle)}s  reviews={w.reviews}"
-            f"  {w.last_status or 'never fired'}  {w.instructions[:80]}" for w in ws), mx)
-
-    @summary(lambda a: f'Stop watching {a.get("watch_id","?")}')
-    def cancel_folder_watch(watch_id: str) -> str:
-        "Stop watching one folder. Only when the user asks. Reviews already filed stay in memory."
-        if get_monitors().remove(watch_id): return f'stopped watching {watch_id}'
-        return f'no such folder watch: {watch_id}'
-
-    @summary(lambda a: 'Check watched folders')
-    def check_folders() -> str:
-        "Run and report every waiting review now, ignoring `settle`; each review is returned once."
-        m = get_monitors()
-        if not m.all(): return 'no folder is being watched'
-        try: busy = m.check(force=True, block=False) is None
-        except Exception as e: return err('could not check the watched folders', e)
-        recs = m.drain()
-        if not recs:
-            if busy: return 'a review is already running; its answer arrives on your next turn'
-            return 'nothing has changed since the last look'
-        return clip('\n\n'.join(
-            f"{r['folder']} -- {r['summary'] or r['status']}\n"
-            f"{r['review'] or r['error'] or r['changes']}" for r in recs), mx)
-
-    return [watch_folder, list_folder_watches, cancel_folder_watch, check_folders]
+@patch
+def sync(self: Monitors):
+    "Mirror the host's folder watches: a new vault row becomes a watch whose first look is now; a row gone from the vault drops its watch."
+    try: rows = [r for r in (self.host.watches() or ()) if (r.get('kind') or r.get('action')) == 'folder']
+    except Exception: return []          # a host without a watches table has nothing to mirror
+    seen, new = set(), []
+    for r in rows:
+        wid = str(r['id']); seen.add(wid)
+        if wid in self.watches or wid in self._unwatchable: continue
+        w = FolderWatch(r['target'], r.get('instructions') or '', r.get('pattern') or '', note=r.get('note') or '')
+        w.id, w.vaulted = wid, True
+        try: w.snap = snapshot(self.host, w.folder, w.pattern)
+        except Exception as e:
+            self._unwatchable.add(wid); self.host.note(f'cannot watch {w.folder}: {agent_err(e)}'); continue
+        with self.lock: self.watches[wid] = w
+        new.append(w)
+    with self.lock:
+        for wid in [k for k, w in self.watches.items() if w.vaulted and k not in seen]: del self.watches[wid]
+    return new
 
 # %% ../nbs/17_monitor.ipynb #b10df102
 POB_READER = 'ramabana'   #: the notes-stream reader a session drains under

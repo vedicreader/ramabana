@@ -11,9 +11,9 @@ import pytest
 
 from ramabana.core import AgentError
 from ramabana.monitor import (DFLT_SETTLE, REVIEW_SP, FolderWatch, Monitors, changed, files_under,
-                              monitor_tools, report, review_notice, snapshot, summarise)
+                              report, review_notice, snapshot, summarise)
 from ramabana.testing import FakeBackend, MemHost, SPEC, fake_agent
-from ramabana.tools import LocalHost, failed
+from ramabana.tools import NO_SUB, LocalHost, MemoryHost, WatchHost, failed, read_only, tools_for, watch_tools
 
 
 def host(**files):
@@ -27,7 +27,22 @@ def monitors(h=None, backend=None, **kw):
     return Monitors(h or host(), get_backend=lambda: be, **kw), be
 
 
-def tools(m): return {t.__name__: t for t in monitor_tools(lambda: m)}
+class VaultLike(MemHost, MemoryHost, WatchHost):
+    "A host whose watches table is a list; what `Monitors.sync` reads. Memory is the notes it was handed."
+    def __init__(self, files): super().__init__(files); self.rows, self.notes = [], []
+    def watch(self, target, action='remind', every='1d', note=None, **params):
+        w = dict(id=f'w{len(self.rows)+1}', kind=action, action=action, target=target, every=86400, note=note,
+                 runs=0, last_status='', **params)
+        self.rows.append(w); return w
+    def watches(self, due_only=False): return list(self.rows)
+    def unwatch(self, wid): self.rows = [r for r in self.rows if r['id'] != wid]; return True
+    def poll(self): return {'checked': 0, 'ran': 0, 'results': []}
+    def remember(self, text, title=None, tags=(), key=''): self.notes.append((title, key, text)); return dict(doc_id='d1', title=title)
+    def memory_search(self, query, limit=8): return []
+    def memory_tree(self, document=''): return []
+    def memory_read(self, node_id): return {}
+    def memory_forget(self, doc_id): return False
+    watch_actions = ('url', 'remind', 'web', 'folder')
 
 
 # -- what counts as a change ----------------------------------------------------------------
@@ -158,7 +173,7 @@ def test_a_reviewing_sub_agent_cannot_write_and_cannot_open_another_watch():
         def f(): return n
         f.__name__ = n
         return f
-    given = [named(n) for n in ('view_file', 'edit_file', 'run_shell', 'watch',
+    given = [named(n) for n in ('view_file', 'replace_text', 'run_shell', 'watch',
                                 'cancel_watch', 'delegate_search')]
     h = host(**{'a.py': 'one\n'})
     m, be = monitors(h, get_tools=lambda: given)
@@ -210,8 +225,6 @@ def test_a_check_already_running_is_not_paid_for_twice():
     try:
         assert m.check(block=False) is None          # `None`, not `[]`: somebody else is looking
         assert be.spawned == []
-        assert tools(m)['check_folders']() == (
-            'a review is already running; its answer arrives on your next turn')
     finally:
         m.checking.release()
 
@@ -236,8 +249,8 @@ def test_a_review_is_filed_into_durable_memory_when_the_host_has_any():
             super().__init__(*a, **kw)
             self.notes, self.remembered = [], []
         def note(self, text): self.notes.append(text)
-        def remember(self, text, title=None, tags=()):
-            self.remembered.append((text, title, list(tags)))
+        def remember(self, text, title=None, tags=(), key=''):
+            self.remembered.append((text, title, list(tags), key))
             return {'doc_id': 'd1'}
 
     h = Remembering({'/proj/a.py': 'one\n'})
@@ -246,8 +259,8 @@ def test_a_review_is_filed_into_durable_memory_when_the_host_has_any():
     h.write('/proj/a.py', 'two\n')
     m.check(force=True)
 
-    (text, title, tags), = h.remembered
-    assert text == 'sub answer' and 'folder review' in title and tags == ['folder-review']
+    (text, title, tags, key), = h.remembered
+    assert text == 'sub answer' and 'folder review' in title and tags == ['folder-review'] and key.startswith('folder-review:fw_')
     assert any('folder review' in n for n in h.notes)
 
 
@@ -286,55 +299,57 @@ def test_on_review_gets_every_record_and_a_frontend_that_raises_is_ignored():
     assert seen == [rec]
 
 
-# -- the tools -------------------------------------------------------------------------------
+# -- the tools: shalya's `watch(kind='folder')` on the vault, reviewed here ------------------------
 
-def test_the_folder_tools_open_list_and_cancel_a_watch():
-    h = host(**{'a.py': 'one\n'})
-    m, _ = monitors(h)
-    ts = tools(m)
-    assert 'no folder is being watched' in ts['list_folder_watches']()
-    assert ts['check_folders']() == 'no folder is being watched'
-
-    said = ts['watch_folder']('/proj', 'Review each change.')
-    assert '/proj' in said and '1 files' in said
-    wid = m.all()[0].id
-    assert wid in ts['list_folder_watches']()
-
-    assert ts['cancel_folder_watch']('nope').startswith('no such folder watch')
-    assert ts['cancel_folder_watch'](wid) == f'stopped watching {wid}'
-    assert m.all() == []
-
-
-def test_check_folders_ignores_the_settle_window_and_reports_each_review_once():
-    h = host(**{'a.py': 'one\n'})
-    m, _ = monitors(h)
-    ts = tools(m)
-    ts['watch_folder']('/proj', 'Review each change.', '', '10m')
-    assert ts['check_folders']() == 'nothing has changed since the last look'
-
+def test_a_folder_watch_opened_through_the_vault_is_reviewed_by_the_harness():
+    """The model opens a folder watch with the one `watch` tool; the row lives in the vault. The harness
+    mirrors those rows, takes the baseline on first sight, reviews with a read-only sub-agent and files
+    each review under one key per watch, so the latest review replaces the last."""
+    h = VaultLike({'/proj/a.py': 'one\n'})
+    m, be = monitors(h)
+    wt = {t.__name__: t for t in watch_tools(h)}
+    said = wt['watch']('/proj', kind='folder', instructions='Review each change.', pattern='*.py')
+    assert said.startswith('watching folder /proj as w1')
+    assert [w.id for w in m.all()] == []                     # nothing seen until the harness looks
+    assert m.check(force=True) == [] and [w.id for w in m.all()] == ['w1']   # first look snapshots, reviews nothing
     h.write('/proj/a.py', 'two\n')
-    out = ts['check_folders']()
-    assert 'sub answer' in out and '1 edited' in out
-    assert ts['check_folders']() == 'nothing has changed since the last look'
-    assert m.drain() == []                       # reported, so the next turn must not repeat it
+    rec, = m.check(force=True)
+    assert rec['watch_id'] == 'w1' and rec['review'] == 'sub answer'
+    assert h.notes[-1][:2] == ('folder review: proj: 1 edited', 'folder-review:w1')
+    assert 'w1' in wt['list_watches']()
+    assert wt['cancel_watch']('w1') == 'cancelled w1' and m.check() == [] and m.all() == []
 
 
-def test_a_refused_folder_comes_back_as_a_tool_error_not_an_exception(tmp_path):
-    (tmp_path/'proj').mkdir()
-    m = Monitors(LocalHost([tmp_path/'proj'], web=False, index=False))
-    said = tools(m)['watch_folder'](str(tmp_path/'elsewhere'), 'Review.')
-    assert failed(said) and 'could not watch that folder' in said
-    assert m.all() == []
+def test_a_folder_watch_outside_the_open_folders_is_reported_not_raised():
+    h = VaultLike({'/proj/a.py': 'one\n'})
+    h.check = lambda path, must_exist=False, reading=False: (_ for _ in ()).throw(AgentError(f'outside the open folders: {path}'))
+    m, _ = monitors(h)
+    h.watch('/elsewhere', action='folder', instructions='Review.')
+    assert m.check(force=True) == [] and m.all() == []
+
+
+def test_a_session_without_a_vault_offers_no_folder_tools_but_the_monitor_api_still_works():
+    a, _ = fake_agent()
+    names = {t.__name__ for t in a.tools}
+    assert not ({'watch_folder', 'check_folders', 'list_folder_watches', 'cancel_folder_watch', 'watch'} & names)
+    assert '`watch(' not in a.system_prompt()                                     # the rule appears only with the tool
+    a.monitors.add('/proj', 'Review.')                                            # the beat and tests keep this
+    assert [w.folder for w in a.monitors.all()] == ['/proj']
+    assert 'watching' in a.watch()
+
+
+def test_a_vault_session_offers_watch_and_no_sub_agent_can_open_one():
+    "Review Focus: a reviewing or delegated sub-agent never gets a watch-creating tool."
+    a, _ = fake_agent(VaultLike({'/proj/a.py': 'one\n'}))
+    names = {t.__name__ for t in a.tools}
+    assert {'watch', 'list_watches', 'cancel_watch'} <= names and 'remember_note' not in names   # (the small fake model's budget drops the memory group)
+    assert '`watch(target, kind=' in a.system_prompt()
+    sub = {t.__name__ for t in read_only(a._sub_plain(), block=NO_SUB)}
+    assert not (sub & {'watch', 'cancel_watch', 'watch_folder', 'check_folders'}) and 'list_watches' in sub
+    assert not (sub & NO_SUB)
 
 
 # -- the session ------------------------------------------------------------------------------
-
-def test_a_session_offers_the_folder_tools_and_briefs_the_model_on_them():
-    a, _ = fake_agent()
-    assert {'watch_folder', 'list_folder_watches', 'cancel_folder_watch',
-            'check_folders'} <= {t.__name__ for t in a.tools}
-    assert '`watch(' not in a.system_prompt()   # the briefing's watch rule follows the vault's `watch` tool, which this host has not got
-
 
 def test_a_review_reaches_the_next_prompt_exactly_once():
     a, be = fake_agent(replies=['ok', 'ok', 'ok'])

@@ -31,8 +31,7 @@ from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, Too
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background, parse_plan_items)
-from .monitor import (Monitors, POB_READER, beat_notes, beat_notice, monitor_tools,
-                              pob, pob_path, review_notice)
+from .monitor import Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
 MAX_DETAIL = 4000     # chars of a tool result kept for the fold
@@ -1155,7 +1154,6 @@ def _catalog_for(self:Agent, budget, full=True):
                                         lambda: self.approvals.gate if self.approvals is not None else None,
                                         background=self.background, get_log_dir=lambda: self.runs_dir)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
-            extra += monitor_tools(lambda: self.monitors, mx=budget.tool_max)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
                           drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
         self._catalogs[key] = ToolCatalog(built)
@@ -2597,6 +2595,7 @@ def watch(self:Agent, target=''):
     if not target:
         rows = [f"{r['id']}  {r['state']:10} {r['question'][:50]}  {r.get('log') or ''}"
                 for r in self.runs(active=True) + [r.dict() for r in self._side_runs() if not r.terminal]]
+        self.monitors.sync()
         rows += [f'{w.id}  watching   {w.folder}  {w.reviews} review(s)' for w in self.monitors.all()]
         return '\n'.join(rows) or 'nothing is running or watched'
     log = self.monitors.log if target == 'monitors' else getattr(self.run(target), 'log', None)
