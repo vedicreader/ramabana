@@ -1234,11 +1234,11 @@ def _deny_git_shell(self:Agent, name, args):
 
 @patch
 def _keep_undo(self:Agent, name, out):
-    "Remember a git write's `undo` token, what it undoes and where HEAD went, against this turn, for `/rewind`."
+    "Remember a git write's `undo` token, what it undoes and where HEAD and the branch went, against this turn, for `/rewind`."
     try: d = json.loads(out)
     except Exception: return
     if not isinstance(d, dict): return
-    self.git_undo.setdefault(self.current_turn_id, []).append({k: str(d.get(k) or '') for k in ('summary', 'undo', 'undoes', 'head')} | {'tool': name})
+    self.git_undo.setdefault(self.current_turn_id, []).append({k: str(d.get(k) or '') for k in ('summary', 'undo', 'undoes', 'head', 'branch')} | {'tool': name})
     if (cd := self.checkpoint_dir) is not None:
         cd.mkdir(parents=True, exist_ok=True)
         (cd/f'{self.current_turn_id}.git.json').write_text(json.dumps(self.git_undo[self.current_turn_id]))
@@ -2141,9 +2141,11 @@ def rewind(self:Agent, turn_id='', what='both'):
         made = sorted(p for p in snap if p in new)
         delete = [p for p in made if (self.host.text_at(p) or '') == written.get(p)]   # still exactly what the turn wrote
         kept = [p for p in made if p not in delete]
+        undo = [t for t in git if t.get('undo')]
         if not snap and not git: out.append(f'no file checkpoint for {turn_id}')
+        elif (moved := self._git_moved(undo)): out.append(moved)   # nothing is touched: files put back without the git undo would not match the tree
         elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap), 'delete': delete, 'kept': kept,
-                                                                                  'git': [t['undoes'] for t in git if t.get('undo')]}, force=True).answer: out.append('rewind refused')
+                                                                                  'git': [f"{t['tool']}: {t['summary']} (undoes {t['undoes']})" for t in undo]}, force=True).answer: out.append('rewind refused')
         else:   # git first: a checkout undone puts the tree where the file texts were taken from
             if git: out.append(self._undo_git(git))
             if snap: out.append(self._restore(turn_id, snap, set(delete), kept, binary))
@@ -2152,6 +2154,21 @@ def rewind(self:Agent, turn_id='', what='both'):
         except Exception as e: out.append(agent_err(e))
     return '; '.join(out)
 
+
+@patch
+def _git_moved(self:Agent, writes):
+    "Why the turn's git writes cannot be undone now: HEAD or the branch moved after the turn's last write. Empty when the repo is where the turn left it. gheasy's undo is a `reset --hard` to the pre-write head, which would drop any later commit."
+    last = next((w for w in reversed(writes) if w.get('head')), None)
+    if last is None: return ''
+    from gheasy.repo import GitRepo
+    r = GitRepo.at(self.host.roots[0])
+    def ask(*a):
+        try: return r.run(*a).strip()
+        except Exception: return ''
+    head, branch = ask('rev-parse', 'HEAD'), ask('branch', '--show-current')
+    if head and not head.startswith(last['head']): return f"HEAD moved after the turn ({last['head']}..{head[:9]}); git undo refused and files left as they are -- undo the later commits first, or /rewind chat"
+    if last.get('branch') and branch != last['branch']: return f"branch changed after the turn ({last['branch']} -> {branch or 'detached'}); git undo refused and files left as they are -- go back to {last['branch']} first, or /rewind chat"
+    return ''
 
 @patch
 def _undo_git(self:Agent, writes):

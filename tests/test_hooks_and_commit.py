@@ -112,6 +112,51 @@ def test_a_git_write_leaves_an_undo_token_that_rewind_applies_and_run_shell_refu
 
 
 
+def _repo_with_a_commit(tmp_path):
+    repo = tmp_path/'repo'; repo.mkdir()
+    _git(repo, 'init', '-q', '-b', 'main'); _git(repo, 'config', 'user.email', 't@t'); _git(repo, 'config', 'user.name', 't')
+    (repo/'a.txt').write_text('hi\n'); _git(repo, 'add', 'a.txt'); _git(repo, 'commit', '-q', '-m', 'init')
+    return repo
+
+
+def test_rewind_refuses_the_git_undo_once_head_has_moved_and_keeps_the_later_commit(tmp_path):
+    """gheasy's undo is a `reset --hard` to the pre-write head. A commit made after the turn would go with it, so
+    the rewind checks HEAD first and, when it moved, touches neither git nor files."""
+    from shalya.host import LocalHost
+    repo = _repo_with_a_commit(tmp_path)
+    a, _ = fake_agent(host=LocalHost([str(repo)], index=False), cfg=tmp_path/'cfg', approvals=Approvals(tools=set(), mode='auto'))
+    tools = {t.__name__: t for t in a.tools}
+    a._prepare('commit the change')
+    tools['replace_text']('a.txt', [{'oldText': 'hi', 'newText': 'hello'}])
+    tools['git_commit']('turn commit', 'a.txt')
+    a._finish('done')
+    turn_head = _git(repo, 'rev-parse', 'HEAD')
+    (repo/'b.txt').write_text('mine\n'); _git(repo, 'add', 'b.txt'); _git(repo, 'commit', '-q', '-m', 'user commit after the turn')
+    said = a.command('/rewind files')
+    assert 'HEAD moved after the turn' in said and 'git undo refused' in said and 'undid' not in said and 'restored' not in said, said
+    assert _git(repo, 'rev-parse', 'HEAD') != turn_head and _git(repo, 'log', '--oneline').count('\n') == 2, 'the later commit is intact'
+    assert (repo/'a.txt').read_text() == 'hello\n' and (repo/'b.txt').exists(), 'files untouched: they would diverge from git otherwise'
+    assert not any(x.tool == 'rewind' for x in a.approvals.history), 'refused before anybody was asked'
+    _git(repo, 'reset', '-q', '--hard', 'HEAD~1')                   # the person takes the later commit back
+    said = a.command('/rewind files')
+    assert 'undid 1 git write' in said and 'restored 1 file' in said, said
+    assert _git(repo, 'log', '--oneline').count('\n') == 0 and (repo/'a.txt').read_text() == 'hi\n'
+    ask = next(x for x in a.approvals.history if x.tool == 'rewind')
+    assert ask.args['git'] and ask.args['git'][0].startswith('git_commit: ') and 'undoes' in ask.args['git'][0], ask.args
+
+
+def test_rewind_refuses_the_git_undo_when_the_branch_changed_after_the_turn(tmp_path):
+    from shalya.host import LocalHost
+    repo = _repo_with_a_commit(tmp_path)
+    a, _ = fake_agent(host=LocalHost([str(repo)], index=False), cfg=tmp_path/'cfg')
+    tools = {t.__name__: t for t in a.tools}
+    a._prepare('commit'); (repo/'a.txt').write_text('hello\n'); tools['git_commit']('turn commit', 'a.txt'); a._finish('done')
+    _git(repo, 'checkout', '-q', '-b', 'feature')
+    said = a.command('/rewind files')
+    assert 'branch changed after the turn (main -> feature)' in said and 'git undo refused' in said, said
+    assert _git(repo, 'branch', '--show-current') == 'feature' and _git(repo, 'log', '--oneline').count('\n') == 1
+
+
 def test_rewind_undoes_git_writes_from_memory_when_no_checkpoint_was_written():
     "No config dir means no `<turn>.git.json`; the turn's tokens are still held on the agent."
     a, _ = fake_agent()

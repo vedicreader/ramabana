@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.1
+
+- **Rewind.** `/rewind` refuses the git undo once HEAD or the branch has moved after the turn (`HEAD moved after the turn (<old>..<new>); git undo refused`), and then leaves the files alone too, so files and git never diverge; before, gheasy's undo (`reset --hard` to the pre-write head) silently dropped every later commit from the branch. The approval names each git write it will undo (`tool: summary (undoes ...)`); `Agent.git_undo` rows and `<turn>.git.json` carry `branch`.
+
 ## 0.2.0
 
 
