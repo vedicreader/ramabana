@@ -10,7 +10,7 @@ Docs: https://vedicreader.github.io/ramabana/mcpclient.html.md"""
 __all__ = ['DFLT_MCP_TIMEOUT', 'MCPLoop', 'mcp_config', 'mcp_tools', 'close_mcp_clients', 'acp_mcp_spec']
 
 # %% ../nbs/18_mcpclient.ipynb #489ead61
-import asyncio, json, threading
+import asyncio, json, os, threading
 from pathlib import Path
 
 from mcpmini.core import MCPClient
@@ -38,10 +38,10 @@ class MCPLoop:
 
 
 # %% ../nbs/18_mcpclient.ipynb #66fce77c
-def mcp_config(cfg, roots, extra=None):
-    "`{name: spec}` for every server: `extra` (an editor's own `mcp_servers`) first, then a project `.agents/mcp.json`, then `<cfg>/mcp.json`. Earlier entries win by name."
+def mcp_config(cfg, roots, extra=None, project=False):
+    "`{name: spec}` for every server: `extra` (an editor's own `mcp_servers`) first, then a project `.agents/mcp.json` (only when `project` opts in, matching extensions), then `<cfg>/mcp.json`. Earlier entries win by name."
     found = dict(extra or {})
-    paths = [Path(r)/'.agents'/'mcp.json' for r in roots or ()]
+    paths = [Path(r)/'.agents'/'mcp.json' for r in roots or ()] if project else []
     if cfg is not None: paths.append(Path(cfg)/'mcp.json')
     for p in paths:
         if not p.is_file(): continue
@@ -52,13 +52,21 @@ def mcp_config(cfg, roots, extra=None):
 
 
 # %% ../nbs/18_mcpclient.ipynb #624b03a3
+def _stdio_env(env):
+    "The child's environment: this process's own, plus `env`'s overrides. `mcpmini` only inherits when `env` is None."
+    return {**os.environ, **env} if env else None
+
+def _tool_hints(raw):
+    "`{name: annotations}` from a `tools/list` reply; a missing or malformed `annotations` becomes `{}`, never a crash."
+    return {t['name']: (a if isinstance(a := t.get('annotations'), dict) else {}) for t in raw}
+
 def _connect(spec, loop):
     "A started `MCPClient` for `spec` (`{'command': [...], 'env': {...}}` or `{'url': ..., 'token': ...}`), and its tools' annotations by name."
     client = (MCPClient.http(spec['url'], token=spec.get('token')) if 'url' in spec else
-             MCPClient.stdio(spec['command'], env=spec.get('env')))
+             MCPClient.stdio(spec['command'], env=_stdio_env(spec.get('env'))))
     loop.run(client.start())
     raw = loop.run(client.rpc('tools/list'))['tools']
-    return client, {t['name']: t.get('annotations') or {} for t in raw}
+    return client, _tool_hints(raw)
 
 def _wrap(client, name, hints, loop):
     "One MCP tool as a plain Python callable, marked a write unless the server declared it read-only."
@@ -66,13 +74,13 @@ def _wrap(client, name, hints, loop):
     def call(*a, **kw): return loop.run(fn(*a, **kw))
     call.__name__ = call.__qualname__ = fn.__name__
     call.__doc__, call.__signature__, call.__annotations__ = fn.__doc__, fn.__signature__, fn.__annotations__
-    return call if hints.get(name, {}).get('readOnlyHint') else writes(call)
+    return call if hints.get(name, {}).get('readOnlyHint') is True else writes(call)
 
 
 # %% ../nbs/18_mcpclient.ipynb #4342e20e
-def mcp_tools(cfg, roots, extra=None, loop=None, on_error=None):
+def mcp_tools(cfg, roots, extra=None, project=False, loop=None, on_error=None):
     "Every tool an `mcp_config` server offers, as plain Python callables; the loop they run on; the connected clients, so a caller can close them. A server that cannot connect is skipped, not fatal."
-    servers = mcp_config(cfg, roots, extra)
+    servers = mcp_config(cfg, roots, extra, project)
     if not servers: return [], loop, []
     loop = loop or MCPLoop()
     out, clients = [], []

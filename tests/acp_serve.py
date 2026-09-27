@@ -3,7 +3,7 @@
 `tests/test_acp.py` spawns this. `ACP_SCRIPT` picks what the model decides to do; the host,
 the tools, the approval gate and the protocol are all real.
 """
-import asyncio, os, pathlib
+import asyncio, json, os, pathlib
 from ramabana.racp import AcpAgent, mk_agent, serve
 from ramabana.testing import SCRIPTED, ScriptedBackend, Step
 
@@ -34,6 +34,10 @@ SCRIPTS = {
     'shell': [Step(text='Running the tests. '),
               Step(tool=('run_shell', {'command': 'echo hello'})),
               Step(text='They pass.')],
+    'replace': [Step(text='Fixing the import. '),
+                Step(tool=('replace_text', {'path': str(ROOT/'a.py'),
+                                            'spec': json.dumps([{'oldText': 'import b', 'newText': 'import c'}])})),
+                Step(text='Fixed.')],
 }
 
 def mk(roots, **kw):

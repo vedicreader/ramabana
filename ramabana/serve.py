@@ -93,15 +93,19 @@ async def _events(agent, prompt):
         except Exception as e: put('error', {'message': str(e)})
         finally: put('done', None)
     threading.Thread(target=pump, daemon=True, name='ramabana-serve-turn').start()
+    finished = False
     try:
         while True:
             kind, data = await q.get()
             if kind == 'done':
+                finished = True
                 yield {'event': 'done', 'data': json.dumps({'reply': agent.history[-1].get('reply', '') if agent.history else ''})}
                 return
             yield {'event': kind, 'data': json.dumps(data)}
     finally:
         unhook()
+        # a client that disconnects mid-stream must not leave the turn (and its tokens) running unattended
+        if not finished: agent.cancel()
 
 async def _prompt(request):
     agent = request.app.state.sessions.get(request.path_params['sid'])

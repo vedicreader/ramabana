@@ -258,7 +258,11 @@ class Session:
 
     def _ask(self, a):
         "On the turn's thread, inside `Approvals.request`, before it waits."
-        try: ok, note, always = self.br.call(self._permit(a))
+        # `_body` reads the host (`text_at`, for a diff) and must run here, on the turn's own thread:
+        # inside `_permit`, on the editor's event loop, an `EditorHost` read calls back into that same
+        # loop through `self.br` and deadlocks waiting on itself
+        body = self._body(a.tool, a.args, a.preview)
+        try: ok, note, always = self.br.call(self._permit(a, body))
         except Exception as e: ok, note, always = False, f'the editor did not answer ({e!r})', False
         # the editor's option is labelled 'every write this session': scope it to file/notebook edits, never to shell
         answered = self.agent.approvals.answer(a.id, ok, note, session=always, scope='edits')
@@ -267,11 +271,10 @@ class Session:
             self._send(acp.update_tool_call(a.id, status='failed'))
             self.gated.pop(self._key(a.tool, a.args), None)
 
-    async def _permit(self, a):
+    async def _permit(self, a, body):
         path = (a.args or {}).get('path', '')
         self.gated[self._key(a.tool, a.args)] = a.id
         self.seen.add(a.id)
-        body = self._body(a.tool, a.args, a.preview)
         await self.conn.session_update(self.sid, acp.start_tool_call(
             a.id, a.summary or a.tool, kind=TOOL.get(a.tool, 'other'), status='pending',
             content=body, locations=[ToolCallLocation(path=path)] if path else None, raw_input=a.args))

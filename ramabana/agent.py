@@ -1051,8 +1051,10 @@ def mcp_tools(self:Agent):
     if self._mcp is None:
         from .mcpclient import mcp_tools as _mcp_tools
         def _note(name, e): self.note = f'mcp {name} unavailable ({agent_err(e)})'
+        # a project's own .agents/mcp.json runs whatever command it names, so it needs the same opt-in as project extensions
         self._mcp, self._mcp_loop, self._mcp_clients = _mcp_tools(
-            self.cfg, self.host.roots, extra=self._mcp_servers, loop=self._mcp_loop, on_error=_note)
+            self.cfg, self.host.roots, extra=self._mcp_servers, project=self.project_extensions,
+            loop=self._mcp_loop, on_error=_note)
     return self._mcp
 
 # %% ../nbs/03_agent.ipynb #a29bf6f1
@@ -1246,7 +1248,12 @@ def spawn_worktree(self:Agent, branch, model=None):
     path = str(self._worktree_dir()/branch.replace('/', '-'))
     repo.add_worktree(path, branch, create=True)
     host = WorkspaceHost([path])
-    child = Agent(host, model=model or self.model.name, approvals=Approvals(tools=WRITE_TOOLS, mode='auto'),
+    # 'edits' lets the child write inside its own worktree without a listener; run_shell still asks
+    # and is refused with nobody listening. add_root's group is 'file' too, so 'edits' would auto-approve
+    # widening the sandbox itself -- deny it outright rather than let a background child open any folder
+    approvals = Approvals(tools=WRITE_TOOLS, mode='edits')
+    approvals.always('add_root', '*', verdict='deny', glob=True)
+    child = Agent(host, model=model or self.model.name, approvals=approvals,
                  project_extensions=False, cfg=self.cfg)
     return child, path
 
@@ -2771,14 +2778,7 @@ _SHELL_SUB = re.compile(r'!`([^`]+)`')
 
 @patch
 def _fill_command(self:Agent, body, arg):
-    "Substitute `$ARGUMENTS`/`$1..$9`, `@path` file contents, and `!`cmd`` shell output into a command body."
-    body = body.replace('$ARGUMENTS', arg)
-    for i, part in enumerate(shlex.split(arg) if arg else (), 1): body = body.replace(f'${i}', part)
-    def sub_file(m):
-        path = m.group(1).rstrip('?!,;:.)]}\'"')   # sentence punctuation, never a filename
-        text = self.host.text_at(path)
-        return f'<file path="{path}">\n{text}\n</file>' if text is not None else m.group(0)
-    body = _AT_FILE.sub(sub_file, body)
+    "Substitute `!`cmd`` shell output, `$ARGUMENTS`/`$1..$9`, then `@path` file contents into a command body. Shell runs first, on the body as written, so nothing a later substitution inlines (an `@file`'s own text, `$ARGUMENTS`) can inject a fresh command."
     def sub_shell(m):
         cmd = m.group(1)
         if self.approvals is not None and not self.approvals.request('run_shell', {'command': cmd}, force=True).answer:
@@ -2786,7 +2786,17 @@ def _fill_command(self:Agent, body, arg):
         try: _, out = self.host.run_cmd(cmd, timeout=60)
         except Exception as e: out = f'{cmd} failed: {agent_err(e)}'
         return (out or '').strip()
-    return _SHELL_SUB.sub(sub_shell, body)
+    body = _SHELL_SUB.sub(sub_shell, body)
+    body = body.replace('$ARGUMENTS', arg)
+    try: parts = shlex.split(arg) if arg else []
+    except ValueError: parts = arg.split()   # an unmatched quote in free text is not a shell error
+    for i, part in enumerate(parts, 1): body = body.replace(f'${i}', part)
+    def sub_file(m):
+        path = m.group(1).rstrip('?!,;:.)]}\'"')   # sentence punctuation, never a filename
+        # `read`, not `text_at`: `text_at` maps a missing file to '', indistinguishable from an empty one
+        text = self.host.read(path)
+        return f'<file path="{path}">\n{text}\n</file>' if text is not None else m.group(0)
+    return _AT_FILE.sub(sub_file, body)
 
 @patch
 def expand_command(self:Agent, line):
@@ -2795,7 +2805,8 @@ def expand_command(self:Agent, line):
     if name.lower() in {s.name.lower() for s in self.skills}: return line.strip()
     f = self._command_file(name)
     if f is None or not f.is_file(): return None
-    meta, body = frontmatter(f.read_text())
+    try: meta, body = frontmatter(f.read_text())
+    except Exception: meta, body = {}, f.read_text()   # malformed frontmatter is not a reason to refuse the command
     body = self._fill_command(body, arg.strip()).strip()
     if meta.get('subtask'):
         return f'Delegate the following to a sub-agent with `delegate_async` rather than doing it yourself:\n\n{body}'

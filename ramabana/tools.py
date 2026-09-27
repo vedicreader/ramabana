@@ -32,7 +32,7 @@ from fastcore.parallel import parallel
 import shalya as _shalya
 from shalya import (MAX_TOOL_CHARS, Host, HostError, NO_ROOTS, implemented, image_available,
                     group_of, is_write, has_effect, summarise, read_only, clip, err, find,
-                    acts, summary, cmds, edits, apply_edits, diff_text)
+                    acts, summary, cmds, edits, apply_edits, diff_text, writes)
 from shalya.core import one_line as _1
 from shalya.host import _fuse
 from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for
@@ -44,7 +44,7 @@ from fastcore.docments import frontmatter
 from shalya.core import WRITE_TOOLS as _TOOL_WRITES
 _cmds, _edits, _apply_edits, _diff = cmds, edits, apply_edits, diff_text
 #: the trolley is an extension, not a host group, so shalya cannot name its writes
-WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove', 'remember_note'}
+WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove', 'remember_note', 'delegate_worktree', 'multirun'}
 
 # %% ../nbs/02_tools.ipynb #694f6d5d
 #: shalya's names, re-exported so `from ramabana.tools import *` still finds them; every entry resolves on `shalya` itself.
@@ -460,13 +460,13 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
 def worktree_tools(agent):
     "Delegation into an isolated git worktree and branch, and running one prompt across several models to compare."
-    @acts
+    @writes
     @summary(lambda a: f'Delegate in a worktree: {_1(a.get("question"), 100)}')
     def delegate_worktree(question: str, branch: str = '', model: str = '') -> str:
         "Run `question` to completion in a fresh git worktree and branch, isolated from this session's own files. Returns a background run id; collect it with delegate_result."
         return agent._delegate_worktree(question, branch, model or None)
 
-    @acts
+    @writes
     @summary(lambda a: f'Multirun: {_1(a.get("prompt"), 90)}')
     def multirun(models: str, prompt: str) -> str:
         "Run the same `prompt` in its own worktree and branch for each of `models` (comma-separated), to compare their answers. One background run id per model."

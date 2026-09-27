@@ -202,6 +202,20 @@ def test_a_new_file_reaches_the_editor_as_a_diff_to_read(tmp_path):
     diffs = contents(ed.updates, 'diff')
     assert diffs and any(d.path.endswith('b.py') for d in diffs)
 
+def test_a_gated_edit_reaches_the_editor_as_a_diff_without_deadlocking_on_its_own_read(tmp_path):
+    """`_after_text` reads the file to build the before/after diff. That read used to happen inside
+    `_permit`, the coroutine `_ask` runs on the editor's own event loop; when the editor advertises
+    `read_text_file`, that read calls back into the very loop already blocked waiting for it, and
+    the whole connection would hang until the approval timeout. A tight `t` here means a regression
+    fails fast rather than by hanging for the real 30s timeout `drive` sets up."""
+    ed = Buffers('allow_once', buffers={'a.py': 'import b  # unsaved edit\n'})
+    init, new, res = run(drive(tmp_path, ed, script='replace'), t=15)
+    assert res.stop_reason == 'end_turn'
+    diffs = contents(ed.updates, 'diff')
+    assert diffs and any('import c' in d.new_text and 'import b  # unsaved edit' in (d.old_text or '')
+                         for d in diffs), [(d.old_text, d.new_text) for d in diffs]
+
+
 def test_each_write_is_gated_on_its_own_unless_the_session_was_allowed(tmp_path):
     ed = Editor('allow_once')
     run(drive(tmp_path, ed))

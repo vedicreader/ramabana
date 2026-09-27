@@ -4,8 +4,11 @@ touching the parent's own tree, and the background run that drives it.
 import subprocess
 import time
 
+from shalya.core import is_write
+
 from ramabana.agent import Agent
 from ramabana.testing import fake_agent
+from ramabana.tools import worktree_tools
 from ramabana.vault import WorkspaceHost
 
 
@@ -76,5 +79,27 @@ def test_multirun_starts_one_worktree_delegation_per_model(tmp_path):
     assert started[0][2] == 'gpt-4.1' and started[1][2] == 'sonnet'
     assert started[0][1] != started[1][1], 'each model gets its own branch'
     assert out.count('started run_') == 2
+
+
+def test_worktree_tools_are_gated_like_any_other_write(tmp_path):
+    "Starting a worktree delegation is itself a write: it must ask, not run unattended just because it delegates."
+    parent, _ = fake_agent(cfg=tmp_path)
+    delegate_worktree, multirun = worktree_tools(parent)
+    assert is_write(delegate_worktree) and is_write(multirun)
+
+
+def test_the_child_worktree_still_asks_before_running_shell_or_opening_a_root(tmp_path):
+    "'edits' lets it write files inside its own tree without a listener; run_shell and add_root must still ask."
+    repo = _git_repo(tmp_path)
+    parent = Agent(WorkspaceHost([str(repo)]), extensions=False, cfg=tmp_path/'.cfg')
+    child, _ = parent.spawn_worktree('feature/gated')
+    try:
+        assert child.approvals.mode == 'edits'
+        assert child.approvals.request('run_shell', {'command': 'echo hi'}).answer is False, \
+            'unrestricted shell in the child would escape the worktree entirely'
+        assert child.approvals.request('add_root', {'path': str(tmp_path)}).answer is False
+    finally:
+        parent.close()
+        child.close()
 
     parent.close()

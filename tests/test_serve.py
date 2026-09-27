@@ -1,6 +1,7 @@
 """The headless server: sessions, a prompt streamed as SSE events, approvals answered over HTTP,
 and an OpenAPI document built from the same routes the app serves.
 """
+import asyncio
 import json
 import threading
 import time
@@ -8,7 +9,7 @@ import time
 from starlette.testclient import TestClient
 
 from ramabana.agent import Approvals
-from ramabana.serve import app
+from ramabana.serve import _events, app
 from ramabana.testing import fake_agent
 
 
@@ -82,6 +83,28 @@ def test_a_pending_approval_answers_over_http_and_reaches_the_waiting_ask(tmp_pa
 
     assert c.post(f'/sessions/{agent.session_id}/approval',
                   json={'id': 'nosuch', 'ok': True}).status_code == 409
+
+
+def test_disconnecting_mid_stream_cancels_the_turn_instead_of_leaving_it_running():
+    "A client that walks away must not leave the turn (and its tokens) running unattended."
+    agent, _ = fake_agent()
+    release = threading.Event()
+    def slow_stream(prompt, **kw):
+        yield 'partial '
+        release.wait(5)   # held "in flight" until the test lets it go, after asserting cancel fired
+    agent.stream = slow_stream
+    cancelled = []
+    agent.cancel = lambda: cancelled.append(True)
+
+    async def go():
+        gen = _events(agent, 'hi')
+        first = await gen.__anext__()
+        assert first['event'] == 'chunk'
+        await gen.aclose()
+        release.set()   # let the pump thread's now-orphaned `put('done', ...)` land while the loop still runs
+        await asyncio.sleep(0.05)
+    asyncio.run(go())
+    assert cancelled == [True]
 
 
 def test_openapi_document_lists_every_route(tmp_path):
