@@ -1815,7 +1815,7 @@ def warm_start(self:Agent):
     "Seed a fresh chat with dhrona's accepted rounds whose calls bind to the tools on offer; a resumed, small-window or opted-out session gets none."
     if not self.warm or self._warmed: return []
     b = self._be('turn')
-    if b.hist or b._resume_hist is not None or not self.budget.inline: return []
+    if b.hist or b._resume_hist or not self.budget.inline: return []   # an empty pending restore (`set_model` before turn 1) is still fresh
     self._warmed = True
     try: from dhrona.core import fit_rounds, round_msgs
     except ImportError:

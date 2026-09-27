@@ -14,7 +14,7 @@ dhrona = pytest.importorskip('dhrona')
 
 from ramabana.agent import WARM_ROUNDS, Agent
 from ramabana.core import Budget
-from ramabana.testing import FullHost, MemHost, fake_agent
+from ramabana.testing import FakeBackend, FullHost, MemHost, fake_agent
 
 
 def names(hist): return [tc.name for m in hist if m.get('tool_calls') for tc in m['tool_calls']]
@@ -54,6 +54,21 @@ def test_a_resumed_session_is_not_seeded(tmp_path, full):        # Review Focus 
     b.ask('again')
     assert be2.hist_[0]['content'] == 'start' and not names(be2.hist_)
     assert b.warm_report['used'] == [] and 'warm' not in b.history[-1]['plan']
+
+
+def test_changing_the_model_before_the_first_prompt_still_seeds(tmp_path, full, monkeypatch):
+    "`set_model` carries the conversation across backends; before turn 1 there is none to carry, and the session is still fresh."
+    from ramabana import agent as agent_mod
+    made = []
+    def build(spec, **kw):
+        made.append(FakeBackend(spec, replies=['ok'], **kw)); return made[-1]
+    monkeypatch.setattr(agent_mod, 'make_backend', build)
+    a = Agent(MemHost({'/proj/a.py': 'x = 1\n'}), model='gemma-e2b', cfg=tmp_path, extensions=False, subagents=False)
+    a.set_model('gemma-12b')                                 # a lazy backend: nothing has started yet
+    assert a.warm_start(), 'a fresh session, whatever model it starts on'   # a frontend may seed before the first prompt
+    a.ask('hello')
+    be = made[-1]
+    assert be.hist_[0]['content'] != 'hello' and be.hist_[-2]['content'].startswith('hello') and a.warm_report['used']
 
 
 def test_no_warm_and_no_dhrona_leave_the_chat_empty(monkeypatch, full):    # Review Focus 2
