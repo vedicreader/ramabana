@@ -244,7 +244,7 @@ timeline  a turn reads top to bottom · ┆ narration · │ a call · the answe
 transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
 edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
 media   drop or paste a path to attach · @path in a prompt · /attach PATH · /detach [N] · ctrl+v or /paste clipboard image
-memory  #note TEXT keeps a line for later sessions · /SKILL ARGS runs a skill or a <cfg>/commands file as a prompt
+memory  #note TEXT keeps a line for later sessions · /SKILL ARGS runs a skill or a <cfg>/commands/*.md file ($1..$n, $ARGUMENTS, @path) as a prompt
 copy    select with the mouse as in any scrollback · /copy the last reply · /copy turn for all of it · ctrl+r then y for any block
 approve y approve · n ⏎ refuse · n: REASON ⏎ refuse with a reason · a approve all · ctrl+y approve with a note · A always allow this · anything else shows the question again
           ctrl+g asks for more · /approve off|ask|edits|auto asks for less
