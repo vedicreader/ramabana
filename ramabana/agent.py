@@ -385,14 +385,15 @@ class Approvals:
         a = self.current
         return a if (a is not None and a.pending) else None
 
-    def answer(self, id, ok, note='', session=False):
-        "Answer the pending request. Optionally approve all later writes this session."
+    def answer(self, id, ok, note='', session=False, scope='auto'):
+        "Answer the pending request. `scope` is the mode a `session` approval switches to: 'auto' for everything, 'edits' to unlock only file/notebook writes."
         a = self.current
         if a is None or a.id != id or not a.pending: return None
-        if ok and session: self.mode = 'auto'   # only an approval may turn the policy off
+        if ok and session: self.mode = scope   # only an approval may turn the policy off, and only as far as `scope` says
         # record and notify before waking the model thread. A recorder finishes first
         a.answer, a.note = bool(ok), note or ''
-        if ok and session and not a.note: a.note = 'approved for the rest of this session'
+        if ok and session and not a.note:
+            a.note = 'approved for the rest of this session' if scope == 'auto' else f'writes approved for the rest of this session ({scope})'
         self._notify('answer', a)
         a._done.set()
         return a
