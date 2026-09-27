@@ -51,7 +51,8 @@ def test_the_tools_ramabana_defines_itself_are_marked_where_they_are_defined(nam
 
 def test_the_summary_reads_what_the_call_was_given():
     by = {t.__name__: t for t in every_tool()}
-    assert summarise(by['delegate_search'], {'question': 'where is X'}) == 'Delegate: where is X'
+    assert summarise(by['delegate_search'], {'questions': ['where is X']}) == 'Delegate: where is X'
+    assert summarise(by['delegate_search'], {'questions': ['a', 'b']}) == 'Delegate 2 questions: a; b'
     assert summarise(by['cart_add'], {'item': 'tea', 'qty': 2}) == 'Add to trolley: 2 x tea'
     assert summarise(by['update_todo'], {'id': '3', 'status': 'done'}) == 'Todo 3 → done'
     assert summarise(by['update_todo'], {'text': 'four'}) == 'Todo new → add'

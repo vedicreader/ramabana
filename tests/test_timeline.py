@@ -164,7 +164,7 @@ def test_a_delegate_holds_its_sub_agents_calls_instead_of_scattering_them(ui):
     were, which is most of why a delegating turn read as the same search over and over.
     """
     acts = ui.agent.activity
-    parent = acts.start('delegate_search', {'question': 'which files import fastllm?'})
+    parent = acts.start('delegate_search', {'questions': ['which files import fastllm?']})
     kids = [acts.start('search_code', {'query': q}, parent_action_id=parent.id)
             for q in ('fastllm', 'import fastllm')]
     for k in kids: acts.finish(k, 'a hit')
@@ -297,7 +297,7 @@ def test_a_running_delegate_shows_a_bounded_window_of_its_sub_calls(ui):
     """
     from ramabana.cli import MAX_GROUP_ROWS
     acts = ui.agent.activity
-    parent = acts.start('delegate_parallel', {'questions': '["a","b"]'})
+    parent = acts.start('delegate_search', {'questions': ['a', 'b']})
     kids = [acts.start('search_code', {'query': str(i)}, parent_action_id=parent.id) for i in range(60)]
     for k in kids: acts.finish(k, 'a hit')
 

@@ -380,30 +380,21 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
     def _writes(): return bool(get_writes()) if get_writes is not None else False
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
 
-    @acts
-    @summary(lambda a: f'Delegate: {_1(a.get("question"), 120)}')
-    def delegate_search(question: str, skills: str = '') -> str:
-        "Delegate a broad question to a sub-agent and return only its conclusion. Ask one self-contained question."
-        b = get_backend()
-        if b is None: return 'no model is available to delegate to'
-        sk, note = named_skills(get_skills, skills)
-        return clip(delegate(b, question, get_tools(), skills=sk, writes=_writes(),
-                             approve=_approve()), MAX_TOOL_CHARS) + note
+    def _questions(qs):
+        "The non-empty question texts, from a list or one bare string."
+        return [str(q).strip() for q in (qs if isinstance(qs, (list, tuple)) else [qs]) if str(q).strip()]
 
     @acts
-    @summary(lambda a: f'Delegate in parallel: {_1(a.get("questions"), 110)}')
-    def delegate_parallel(questions: str, skills: str = '', cloud_model: str = '') -> str:
-        "Delegate independent questions concurrently and return their answers. `questions` is a JSON array of strings."
+    @summary(lambda a: (lambda qs: f'Delegate: {_1(qs[0], 120)}' if len(qs) == 1 else f'Delegate {len(qs)} questions: {_1("; ".join(qs), 100)}')(_questions(a.get('questions', []))))
+    def delegate_search(questions: list[str], skills: str = '', cloud_model: str = '') -> str:
+        "Delegate self-contained questions to sub-agents and return only their conclusions: one question runs one sub-agent, several run concurrently."
+        qs = _questions(questions)
+        if not qs: return 'no questions given'
         b = get_cloud_backend(cloud_model) if cloud_model and get_cloud_backend is not None else get_backend()
         if b is None: return f"no model is available to delegate to{f' ({cloud_model})' if cloud_model else ''}"
-        try:
-            qs = json.loads(questions) if isinstance(questions, str) else list(questions)
-            if not isinstance(qs, list) or not all(isinstance(q, str) for q in qs):
-                raise ValueError('expected a JSON array of strings')
-        except Exception as e:
-            return err('could not parse questions', e)
-        if not qs: return 'no questions given'
         sk, note = named_skills(get_skills, skills)
+        if len(qs) == 1:
+            return clip(delegate(b, qs[0], get_tools(), skills=sk, writes=_writes(), approve=_approve()), MAX_TOOL_CHARS) + note
         answers = delegate_many(b, qs, get_tools(), skills=sk, writes=_writes(), approve=_approve())
         return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2) + note
 
@@ -425,19 +416,14 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         return f'started {rid} ({asked}). Collect it with delegate_result({rid!r}).' + note
 
     @acts
-    @summary(lambda a: f'Check delegation {a["run_id"]}' if a.get('run_id') else 'Check the background delegations')
-    def delegate_status(run_id: str = '') -> str:
-        "A background delegation's status, or every delegation started this session when `run_id` is empty."
-        rows = bg.status(run_id)
+    @summary(lambda a: f'Collect delegation {a["run_id"]}' if a.get('run_id') else 'List the background delegations')
+    def delegate_result(run_id: str = '') -> str:
+        "The answer a background delegation left, or what it is still doing; with no `run_id`, every delegation started this session and its state."
+        if run_id: return clip(bg.result(run_id), MAX_TOOL_CHARS)
+        rows = bg.status('')
         if isinstance(rows, str): return rows
         if not rows: return 'nothing has been delegated in the background'
         return clip('\n'.join(f"{r['id']}  {r['state']:10} {r['question'][:80]}" for r in rows), MAX_TOOL_CHARS)
-
-    @acts
-    @summary(lambda a: f'Collect delegation {a.get("run_id","?")}')
-    def delegate_result(run_id: str) -> str:
-        "The answer a background delegation left, or what it is still doing."
-        return clip(bg.result(run_id), MAX_TOOL_CHARS)
 
     @acts
     @summary(lambda a: f'Cancel delegation {a.get("run_id","?")}')
@@ -445,5 +431,4 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         "Stop a background delegation. What it had already done is not undone."
         return bg.cancel(run_id)
 
-    return [delegate_search, delegate_parallel, delegate_async, delegate_status,
-            delegate_result, delegate_cancel]
+    return [delegate_search, delegate_async, delegate_result, delegate_cancel]

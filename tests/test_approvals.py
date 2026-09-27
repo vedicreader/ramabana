@@ -70,7 +70,7 @@ def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
     assert a._sub_plain() is a.tools
 
     before = len(a.calls)
-    search(question='add a docstring to a.py')
+    search(questions=['add a docstring to a.py'])
     spawned = be.spawned[-1]
     assert spawned.approve is not None and len(a.calls) > before
     # the briefing is built from named halves, so these are the halves and not a phrase to match
@@ -79,7 +79,7 @@ def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
 
     a.command('/subagents off')
     assert a.subagent_writes is False and a._sub_plain() is a._plain
-    search(question='where else do we do X?')
+    search(questions=['where else do we do X?'])
     assert be.spawned[-1].approve is None
     assert SUB_READ_SP in be.spawned[-1].sp
     assert SUB_WRITE_SP not in be.spawned[-1].sp

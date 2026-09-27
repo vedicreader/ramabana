@@ -79,7 +79,7 @@ A summary has to still work a week later with the source gone. Naming what the s
 
 Never hard-wrap prose. Write each paragraph as one continuous line and let the display soft-wrap it. Put code symbols in backticks: function names, parameters, file paths, module and package names, and literal syntax.
 
-To have a draft checked, send these rules and the draft to a subagent with `delegate_parallel`. Name the audience, so tell 12 can be judged. Ask for flagged spans rather than a rewrite. Only do this when the user asks for a docs check.
+To have a draft checked, send these rules and the draft to a subagent with `delegate_search`. Name the audience, so tell 12 can be judged. Ask for flagged spans rather than a rewrite. Only do this when the user asks for a docs check.
 
 Docs: https://vedicreader.github.io/ramabana/write_docs.html.md"""
 
