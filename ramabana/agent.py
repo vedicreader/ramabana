@@ -6,14 +6,14 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
-           'DELEGATE_TOOLS', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'APPROVE_MODES', 'INLINE_SKILLS',
-           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES',
-           'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'REPLAYED', 'CHECKPOINT_BYTES',
-           'COMMIT_SP', 'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER',
-           'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject',
-           'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text',
-           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'plan_tools', 'Agent',
-           'git_shell_denial', 'note_tools', 'Completer']
+           'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'APPROVE_MODES',
+           'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES', 'OUTPUT_CONTRACT', 'CLAUDE_NOTES',
+           'TODO_STATUSES', 'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'REPLAYED',
+           'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS',
+           'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask',
+           'ask_md', 'answer_md', 'subject', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
+           'tool_plan', 'request_text', 'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo',
+           'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -111,11 +111,19 @@ class Act:
                 'args': {k: _arg(v) for k, v in (self.args or {}).items()}}
 
 
+ARG_TEXT = 2000   #: chars kept of a string inside a list or dict argument (an edit's text), newlines intact
+
+
 def _arg(v, n=300):
-    "One argument as it is persisted: long text clipped, every other shape (lists, dicts, numbers) kept as JSON."
+    "One argument as it is persisted: a top-level string on one clipped line, every other shape kept as JSON with its strings clipped to `ARG_TEXT`."
     if isinstance(v, str): return _1(v, n)
     if v is None or isinstance(v, (bool, int, float)): return v
-    return json.loads(json.dumps(v, default=str))
+    def deep(x):
+        if isinstance(x, str): return x if len(x) <= ARG_TEXT else x[:ARG_TEXT] + '…'
+        if isinstance(x, dict): return {str(k): deep(u) for k, u in x.items()}
+        if isinstance(x, (list, tuple)): return [deep(u) for u in x]
+        return x if x is None or isinstance(x, (bool, int, float)) else str(x)
+    return deep(v)
 
 
 def _clip(out, n=MAX_DETAIL):
@@ -1068,8 +1076,36 @@ def _cloud_backend_or_none(self:Agent, model):
 #: the git subcommands `run_shell` refuses, and the tool that performs each with an `undo` token
 GIT_SHELL = {'commit': 'git_commit', 'push': 'git_remote', 'pull': 'git_remote', 'fetch': 'git_remote',
              'stash': 'git_stash', 'switch': 'git_checkout', 'checkout': 'git_checkout'}
-_SEG = re.compile(r'\s*(?:&&|\|\||;|\|)\s*')
 _GIT_VALUED = ('-C', '-c', '--git-dir', '--work-tree', '--namespace')   # git's own options that take a value, as `classify` strips them
+_NAMEVAL = re.compile(r'[A-Za-z_][A-Za-z0-9_]*=.*')
+_SHELLS, _WRAPPERS = {'bash', 'sh', 'zsh', 'dash', 'ksh'}, {'env', 'xargs', 'nohup', 'time', 'command', 'exec', 'nice'}
+
+
+def _segments(command):
+    "The simple commands in a line, each as its words: split on `&&`, `||`, `;`, `|` and `&` after quoting is honoured."
+    try: toks = list(shlex.shlex(str(command or ''), posix=True, punctuation_chars=True))
+    except ValueError: toks = str(command or '').split()
+    out, cur = [], []
+    for t in toks:
+        if t in ('&&', '||', ';', ';;', '|', '&'): out.append(cur); cur = []
+        else: cur.append(t)
+    return [s for s in out + [cur] if s]
+
+
+def _git_args(words):
+    "The argument list `words` hands to git, seen through one `env`/`xargs`/`nohup` wrapper; a `sh -c` line comes back as text; None when it is not a git call."
+    while words and _NAMEVAL.fullmatch(words[0]): words = words[1:]
+    if not words: return None
+    head = Path(words[0]).name
+    if head == 'git': return words[1:]
+    if head in _SHELLS:
+        i = next((i for i, w in enumerate(words) if re.fullmatch(r'-[a-zA-Z]*c', w)), -1)   # `-c`, `-lc`, `-ec`
+        return words[i + 1] if 0 < i < len(words) - 1 else None
+    if head in _WRAPPERS:
+        rest = words[1:]
+        while rest and (rest[0].startswith('-') or (head == 'env' and _NAMEVAL.fullmatch(rest[0]))): rest = rest[1:]
+        return _git_args(rest)
+    return None
 
 
 def _git_sub(args):
@@ -1082,13 +1118,14 @@ def _git_sub(args):
 def git_shell_denial(command):
     "Why `run_shell` refuses this command: a git write or remote operation a git tool performs. '' when it may run."
     from gheasy.repo import classify
-    for seg in _SEG.split(str(command or '')):
-        try: words = shlex.split(seg)
-        except ValueError: words = seg.split()
-        while words and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*=.*', words[0]): words.pop(0)   # leading NAME=value
-        if not words or Path(words[0]).name != 'git': continue
-        sub = _git_sub(words[1:])
-        if sub in GIT_SHELL and classify(words[1:]) != 'read':
+    for words in _segments(command):
+        args = _git_args(words)
+        if isinstance(args, str):                       # `sh -c "…"`: the quoted text is a command line of its own
+            if (why := git_shell_denial(args)): return why
+            continue
+        if args is None: continue
+        sub = _git_sub(args)
+        if sub in GIT_SHELL and classify(args) != 'read':
             return f'`git {sub}` goes through `{GIT_SHELL[sub]}` here; it returns an `undo` token and keeps the tree snapshot for /rewind'
     return ''
 
@@ -1264,9 +1301,16 @@ def tools(self:Agent):
         self._catalog_view = view
         if self.approvals is not None:
             self.approvals.tools = self.approvals.tools | view.writes
-            self.approvals.prune(view.names)
+            self.approvals.prune(self.known_tools())
         self._tools = view.map(self._record).tools
     return self._tools
+
+
+@patch
+def known_tools(self:Agent):
+    "Every tool name some session could offer: shalya's whole table (opt-ins and one-release shims included) plus this agent's own, before any budget or read-only trim."
+    from shalya.tools import tool_groups
+    return set(tool_groups()) | self._catalog_for(budget_for(None, self.tool_max_len)).names
 
 
 # %% ../nbs/03_agent.ipynb #f37435ce
@@ -2000,7 +2044,7 @@ def rewind(self:Agent, turn_id='', what='both'):
     if what in ('files', 'both'):
         f, g = (d/f'{turn_id}.json', d/f'{turn_id}.git.json') if d is not None else (None, None)
         snap = json.loads(f.read_text()) if f is not None and f.exists() else {}
-        git = json.loads(g.read_text()) if g is not None and g.exists() else []
+        git = json.loads(g.read_text()) if g is not None and g.exists() else self.git_undo.get(turn_id, [])
         if not snap and not git: out.append(f'no file checkpoint for {turn_id}')
         elif self.approvals is not None and not self.approvals.request('rewind', {'paths': list(snap), 'git': [t['undoes'] for t in git if t.get('undo')]}, force=True).answer: out.append('rewind refused')
         else:   # git first: a checkout undone puts the tree where the file texts were taken from

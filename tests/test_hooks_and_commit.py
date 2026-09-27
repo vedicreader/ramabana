@@ -110,30 +110,13 @@ def test_a_git_write_leaves_an_undo_token_that_rewind_applies_and_run_shell_refu
     assert (repo/'a.txt').read_text() == 'hello\n', 'the uncommitted edit is kept, not lost'
 
 
-def test_a_git_write_leaves_an_undo_token_that_rewind_applies_and_run_shell_refuses_the_same_write(tmp_path):
-    from shalya.host import LocalHost
-    from ramabana.tools import failed
-    repo, cfg = tmp_path/'repo', tmp_path/'cfg'
-    repo.mkdir()
-    _git(repo, 'init', '-q', '-b', 'main'); _git(repo, 'config', 'user.email', 't@t'); _git(repo, 'config', 'user.name', 't')
-    (repo/'a.txt').write_text('hi\n'); _git(repo, 'add', 'a.txt'); _git(repo, 'commit', '-q', '-m', 'init')
-    _git(repo, 'checkout', '-q', '-b', 'other'); (repo/'a.txt').write_text('other\n'); _git(repo, 'commit', '-q', '-am', 'on other'); _git(repo, 'checkout', '-q', 'main')
-    a, _ = fake_agent(host=LocalHost([str(repo)], index=False), cfg=cfg)
-    tools = {t.__name__: t for t in a.tools}
-    out = tools['run_shell']('git commit -m x')
-    assert failed(out) and '`git_commit`' in out and a.activity.rows()[-1]['ok'] is False
-    assert not failed(tools['run_shell']('git status')), 'a read runs'
-    before_count = _git(repo, 'log', '--oneline').count('\n')
-    a._prepare('commit the change')
-    (repo/'a.txt').write_text('hello\n')
-    a.command('/commit fix')                                   # still binds git_commit(msg, paths)
-    kept = a.git_undo[a.current_turn_id]
-    assert kept[0]['tool'] == 'git_commit' and kept[0]['undo'] and kept[0]['head']
-    assert (a.checkpoint_dir/f'{a.current_turn_id}.git.json').exists()
-    tools['git_checkout']('other')                              # a git write is snapshotted: the checkout moved a file
-    assert '/a.txt' in ''.join(a.changes()) and len(a.git_undo[a.current_turn_id]) == 2
+
+
+def test_rewind_undoes_git_writes_from_memory_when_no_checkpoint_was_written():
+    "No config dir means no `<turn>.git.json`; the turn's tokens are still held on the agent."
+    a, _ = fake_agent()
+    a._prepare('push it')
+    a.git_undo[a.current_turn_id] = [{'tool': 'git_remote', 'summary': 'pushed main', 'undo': '', 'undoes': '', 'head': ''}]
     a._finish('done')
     said = a.command('/rewind files')
-    assert 'undid 2 git write' in said, said
-    assert _git(repo, 'log', '--oneline').count('\n') == before_count and _git(repo, 'branch', '--show-current') == 'main'
-    assert (repo/'a.txt').read_text() == 'hello\n', 'the uncommitted edit is kept, not lost'
+    assert '1 git write(s) this turn cannot be undone here: git_remote' in said and 'no file checkpoint' not in said

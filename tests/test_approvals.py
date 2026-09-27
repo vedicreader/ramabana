@@ -256,3 +256,16 @@ def test_a_saved_rule_for_a_removed_tool_is_dropped_with_a_note(tmp_path):
     assert 'remember_note' in a.approvals.problem and 'no such tool' in a.approvals.problem
     assert json.loads(p.read_text()) == [['run_shell', 'ls*', 'allow'], ['rewind', '*', 'allow']]
     assert agent.Approvals().prune({'run_shell'}) == []                      # nothing saved, nothing to say
+
+
+def test_pruning_spares_rules_for_tools_this_session_merely_withholds(tmp_path):
+    """A read-only session (or a frugal budget) offers fewer tools than exist; its saved rules for
+    `run_shell` or `git_commit` must survive it. Only a name no session can ever offer goes."""
+    p = tmp_path/'approvals.json'
+    keep = [['run_shell', 'ls*', 'allow'], ['replace_text', '*', 'allow'], ['git_commit', '*', 'allow'], ['create_file', '*.md', 'allow']]
+    p.write_text(json.dumps(keep + [['delegate_parallel', '*', 'allow']]))
+    a, _ = fake_agent(approvals=agent.Approvals(rules_path=p), readonly=True)
+    a.tools
+    assert 'run_shell' not in {t.__name__ for t in a.tools} and 'git_commit' not in {t.__name__ for t in a.tools}
+    assert a.approvals.rules == [tuple(r) for r in keep] and 'delegate_parallel' in a.approvals.problem
+    assert json.loads(p.read_text()) == keep

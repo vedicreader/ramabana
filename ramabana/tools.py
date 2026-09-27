@@ -382,8 +382,11 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
 
     def _questions(qs):
-        "The non-empty question texts: a list, the JSON of one, newline text, or one bare question."
-        return parse_plan_items(qs)
+        "The non-empty question texts: a list, or the JSON text of one; any other string is exactly one question."
+        if isinstance(qs, str) and qs.strip().startswith('['):
+            try: qs = json.loads(qs)
+            except Exception: pass
+        return [str(q).strip() for q in (qs if isinstance(qs, (list, tuple)) else [qs]) if str(q).strip()]
 
     @acts
     @summary(lambda a: (lambda qs: f'Delegate: {_1(qs[0], 120)}' if len(qs) == 1 else f'Delegate {len(qs)} questions: {_1("; ".join(qs), 100)}')(_questions(a.get('questions', []))))

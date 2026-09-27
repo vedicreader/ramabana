@@ -193,3 +193,6 @@ def test_a_calls_list_arguments_reach_the_activity_and_the_history_faithfully(tm
     assert saved['activity'][0]['args']['edits'] == edits and saved['activity'][1]['args']['items'] == ['one', 'two']
     long = a.activity.start('create_file', {'path': 'b.py', 'text': 'x' * 1000}).dict()['args']['text']
     assert len(long) < 400 and long.startswith('xxx')
+    from ramabana.agent import ARG_TEXT
+    big = a.activity.start('replace_text', {'path': 'b.py', 'edits': [{'oldText': 'y\n' * 2000, 'newText': 'z'}]}).dict()['args']['edits']
+    assert isinstance(big, list) and big[0]['newText'] == 'z' and len(big[0]['oldText']) <= ARG_TEXT + 1 and big[0]['oldText'].startswith('y\ny\n')
