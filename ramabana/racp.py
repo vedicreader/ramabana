@@ -26,6 +26,7 @@ from . import __version__
 from .agent import DFLT_TIMEOUT, Agent, Approvals, REPLAYED
 from .core import PII_OFF, accepts
 from .vault import WorkspaceHost
+from shalya.core import apply_edits, edits
 
 # %% ../nbs/16_acp.ipynb #8e6cca6b
 #: `Act.kind` and a bare tool name, both onto the ten kinds ACP knows
@@ -232,14 +233,27 @@ class Session:
                                     for t in plan.todos]))
 
     def _body(self, tool, args, preview):
-        "A write the editor can render as a diff where the whole new text is known; else the preview."
+        "A write the editor can render as a diff where the new text is known or can be replayed; else the preview. Reads the host: call it on the turn's thread."
         path = (args or {}).get('path', '')
-        if tool == 'create_file' and path: return [acp.tool_diff_content(path, args.get('text', ''))]
+        if path and (texts := self._texts(tool, path, args)) is not None: return [acp.tool_diff_content(path, texts[1], texts[0])]
         return [acp.tool_content(acp.text_block(preview))] if preview else None
+
+    def _texts(self, tool, path, args):
+        "`(before, after)` for an edit replayed over the host's text without writing: `create_file` is its text, `replace_text` and `edit_cell` apply their `edits`; None when it cannot be replayed."
+        try:
+            if tool == 'create_file': return self.host.text_at(path) or None, str(args.get('text', ''))
+            if tool == 'replace_text' and (before := self.host.read(path)) is not None: return before, apply_edits(before, edits(args.get('edits')))
+            if tool == 'edit_cell':
+                before = self.host.nb_cell(path, args.get('cell_id'))[2]
+                return before, apply_edits(before, edits(args.get('edits')))
+        except Exception: pass
+        return None
 
     def _ask(self, a):
         "On the turn's thread, inside `Approvals.request`, before it waits."
-        try: ok, note, always = self.br.call(self._permit(a))
+        # the diff reads the host here: inside `_permit`, on the editor's loop, an `EditorHost` read would call back into that loop and wait on itself
+        body = self._body(a.tool, a.args, a.preview)
+        try: ok, note, always = self.br.call(self._permit(a, body))
         except Exception as e: ok, note, always = False, f'the editor did not answer ({e!r})', False
         # the editor's option is labelled 'every write this session': scope it to file/notebook edits, never to shell
         answered = self.agent.approvals.answer(a.id, ok, note, session=always, scope='edits')
@@ -248,11 +262,10 @@ class Session:
             self._send(acp.update_tool_call(a.id, status='failed'))
             self.gated.pop(self._key(a.tool, a.args), None)
 
-    async def _permit(self, a):
+    async def _permit(self, a, body):
         path = (a.args or {}).get('path', '')
         self.gated[self._key(a.tool, a.args)] = a.id
         self.seen.add(a.id)
-        body = self._body(a.tool, a.args, a.preview)
         await self.conn.session_update(self.sid, acp.start_tool_call(
             a.id, a.summary or a.tool, kind=TOOL.get(a.tool, 'other'), status='pending',
             content=body, locations=[ToolCallLocation(path=path)] if path else None, raw_input=a.args))

@@ -493,3 +493,52 @@ def test_a_missing_acp_dependency_names_itself():
         for k, v in saved.items():
             if v is not None: sys.modules[k] = v
         importlib.import_module('ramabana.racp')
+
+
+# ---- what the editor sees of an edit ---------------------------------------------------
+
+def test_a_gated_edit_reaches_the_editor_as_the_diff_it_would_make(tmp_path):
+    """`replace_text` and `edit_cell` carry an `edits` list, not the new text, so the editor was shown a
+    preview to read. Replaying the edits over the host's text gives it a real diff to render, with no
+    write; an edit that cannot be replayed (a wrong oldText) falls back to the preview. The text is
+    read on the turn's thread, before the request crosses onto the editor's loop, where an
+    `EditorHost` read would wait on that same loop."""
+    import threading
+    from ramabana.racp import Session
+    import nbformat
+    (tmp_path/'a.py').write_text('import b\nprint(b)\n')
+    nb = nbformat.v4.new_notebook(); c = nbformat.v4.new_code_cell('x = 1'); c['id'] = 'c1'; nb.cells.append(c)
+    nbformat.write(nb, tmp_path/'n.ipynb')
+    shown = []
+
+    class Conn:
+        async def session_update(self, session_id, update, **kw): pass
+        async def request_permission(self, session_id, tool_call, options, **kw):
+            shown.append((threading.current_thread().name, tool_call))
+            return RequestPermissionResponse(outcome=AllowedOutcome(outcome='selected', option_id='allow_once'))
+
+    async def go():
+        s = Session([str(tmp_path)], Conn(), asyncio.get_running_loop(), timeout=10, cfg=tmp_path/'.cfg')
+        s.agent.approvals.tools |= {'replace_text', 'edit_cell'}
+        reads = []
+        real = s.host.read
+        s.host.read = lambda p: (reads.append(threading.current_thread().name), real(p))[1]
+        ok1 = await asyncio.to_thread(s.agent.approvals.request, 'replace_text',
+                                      {'path': 'a.py', 'edits': [{'oldText': 'import b\n', 'newText': 'import c\n'}]})
+        ok2 = await asyncio.to_thread(s.agent.approvals.request, 'edit_cell',
+                                      {'path': 'n.ipynb', 'cell_id': 'c1', 'edits': [{'oldText': 'x = 1', 'newText': 'x = 2'}]})
+        ok3 = await asyncio.to_thread(s.agent.approvals.request, 'replace_text',
+                                      {'path': 'a.py', 'edits': [{'oldText': 'nope', 'newText': 'x'}]})
+        return s, (ok1, ok2, ok3), reads
+
+    s, oks, reads = asyncio.run(asyncio.wait_for(go(), 60))
+    assert all(o.answer for o in oks), [o.note for o in oks]
+    diffs = [c for _, tc in shown for c in (tc.content or []) if getattr(c, 'type', '') == 'diff']
+    assert len(diffs) == 2, [type(c).__name__ for _, tc in shown for c in (tc.content or [])]
+    assert (diffs[0].old_text, diffs[0].new_text) == ('import b\nprint(b)\n', 'import c\nprint(b)\n')
+    assert (diffs[1].old_text, diffs[1].new_text) == ('x = 1', 'x = 2') and diffs[1].path.endswith('n.ipynb')
+    assert (tmp_path/'a.py').read_text() == 'import b\nprint(b)\n', 'shown, not written'
+    third = [c for c in (shown[2][1].content or []) if getattr(c, 'type', '') == 'content']
+    assert third, 'an edit that cannot be replayed still shows the preview'
+    assert reads and all(t != shown[0][0] for t in reads), 'the host is read on the turn thread, not the editor loop'
+    s.close()
