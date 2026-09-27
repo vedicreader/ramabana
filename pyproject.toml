@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.0.11",   # EVENTS carries background_done and watch
+    "shalya>=0.0.11,<0.1",   # EVENTS carries background_done and watch; 0.1 changes the tool set (ramabana 0.2)
     "uraiyadal>=0.0.8",   # a refused approval's reason (`Ask.reply`) reaches the model
     "gheasy>=0.0.10",
     "exhash>=0.4.9",
@@ -40,7 +40,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.0.11"]
+cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.0.11,<0.1"]
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
 Documentation = "https://vedicreader.github.io/ramabana/"
