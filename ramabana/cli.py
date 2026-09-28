@@ -291,6 +291,8 @@ GUIDE = """START
   --python                    start a protected Python prompt
   --attach NAME  --kernels     join or list live dhrishti sessions
   --theme auto|dark|light      choose the terminal palette
+  --tmux auto|on|off           read and run commands in tmux panes
+  --pane auto|on|off           the now pane; auto opens it in tmux
 MODES
   /python  /agent  /vars  /promote NAME
   Python enter runs complete code; tab completes; ctrl+c interrupts.
@@ -301,6 +303,8 @@ READING A TURN
   ctrl+r browses, searches and copies blocks; /mouse to click them.
 WORK
   /plan  /todo  /sessions  /resume [ID|latest]  /model [NAME]
+  enter mid-turn steers the turn; alt+enter queues the next one.
+  /pane shows the turn and its sub-agents; /pane off closes it.
   --max-tool-calls auto|N  --max-steps auto|N  /tool-budget  /steps
   --profile auto|small|full  the tool set and briefing the model is given
 FILES AND API
@@ -693,7 +697,7 @@ class Ui:
         self._flash = None         # (text, when it expires): what happened, not what is pending
         self._queued_echo = []     # what a queued line printed, held for when it runs
         self._hold = False         # alt+enter: a line typed mid-turn waits for the turn rather than steering it
-        self.pane = None           # the tmux pane drawing `now.json`, or None
+        self.pane, self._pane_at = None, None   # the tmux pane drawing `now.json`, or None, and the `now.json` it draws
         self._now_at, self._now_busy, self._now_dirty = 0.0, False, False   # the last `now.json` write, whether it caught the agent busy, and whether the throttle dropped one since
         self._echoed = []          # (block, body, kind, kw) for the line just typed
         self.acts = {}             # act id -> its block, for calls that have one of their own
@@ -879,6 +883,7 @@ class Ui:
                 self.flush_stream()   # a model that stalls mid-prose must not leave its last words unseen
                 self.paint()
             if self.turn is not None or self._now_busy or self._now_dirty: self.write_now()
+            if self.pane is not None and _now_file(self.agent) != self._pane_at: self.open_pane()   # `/resume` moved `now.json`
 
     def write_now(self, force=False):
         "Write `now.json` for the pane, at most every `PANE_EVERY` seconds unless `force`."
@@ -1045,8 +1050,8 @@ class Ui:
         return True
 
     def steer(self, line):
-        "Send `line` into the running turn, read after its current call. False when no turn of ours is listening."
-        if self.turn is None or not self.agent.steer(line): return False
+        "Send `line` into the running turn, read after its current call. False when no turn of ours is listening, or the line has files: they only travel with a turn."
+        if self.turn is None or self.attachments or file_refs(line) or not self.agent.steer(line): return False
         self._retract()
         self._echo(Text('↪ ' + line), 'user', pad=True)
         self._echoed = []   # its turn is already running: the entry stands
@@ -2334,8 +2339,8 @@ def _tmux_pane(host):
     except Exception: return None
 
 def _alive(pane):
-    "Whether tmux still has `pane`: ctrl+c in the viewer ends it without telling us."
-    try: return bool(pane.refresh())
+    "Whether `pane` still draws: ctrl+c in the viewer ends it without telling us, and `remain-on-exit` keeps it dead."
+    try: return not pane.refresh().dead
     except Exception: return False
 
 _act_now = Ui._act
@@ -2351,14 +2356,15 @@ def open_pane(self:Ui, arg=''):
     if arg == 'off': return self.note(self.close_pane() or 'no pane is open')
     if arg: return self.note('usage: /pane [off]', 'error')
     if (p := _now_file(self.agent)) is None: return self.note('the pane reads <cfg>/runs, and this session has no --cfg', 'error')
-    if self.pane is not None and not _alive(self.pane): self.pane = None
-    if self.pane is not None: return self.note(f'the pane is already open in {self.pane.id} · /pane off closes it')
+    if self.pane is not None and self._pane_at == p and _alive(self.pane):
+        return self.note(f'the pane is already open in {self.pane.id} · /pane off closes it')
+    self.close_pane()   # one whose viewer left, or that draws the session `/resume` left
     self.write_now(force=True)
     cmd = pane_cmd(p)
     if (me := _tmux_pane(self.agent.host)) is None:
         why = 'tmux is turned off (--tmux off)' if getattr(self.agent.host, '_tmux', None) is False else 'no tmux here'
         return self.note(f'{why}; in another terminal run: {cmd}')
-    try: self.pane = me.split('right', cmd, size='35%')
+    try: self.pane, self._pane_at = me.split('right', cmd, size='35%'), p
     except Exception as e: return self.note(f'the pane did not open ({agent_err(e)}); in another terminal run: {cmd}', 'error')
     return self.note(f'the pane is open in {self.pane.id} · /pane off closes it')
 
@@ -2366,11 +2372,10 @@ def open_pane(self:Ui, arg=''):
 def close_pane(self:Ui):
     "Kill the `now` pane: what was closed, or '' when none was open."
     if (p := self.pane) is None: return ''
-    self.pane = None
-    if not _alive(p): return f'the pane {p.id} was already closed'
-    try: p.kill()
+    self.pane, alive = None, _alive(p)
+    try: p.kill()   # a dead pane `remain-on-exit` kept still holds its half of the window
     except Exception: pass
-    return f'closed the pane {p.id}'
+    return f'closed the pane {p.id}' if alive else f'the pane {p.id} was already closed'
 
 @patch
 def start_pane(self:Ui, mode='auto'):

@@ -1,5 +1,6 @@
 "The `now` pane: the Ui keeps `<runs_dir>/now.json` fresh, and `/pane` opens a tmux split that draws it."
 import asyncio, os, shlex
+from types import SimpleNamespace
 
 import pytest
 from teleprint.compositor import Compositor
@@ -25,8 +26,11 @@ def ui(tmp_path):
     tty.close()
 
 class Pane:
-    def __init__(self, id): self.id, self.killed, self.alive = id, False, True
-    def kill(self): self.killed = True
+    "A tmux pane: `alive` is tmux still having it, `dead` its viewer gone while `remain-on-exit` keeps it."
+    def __init__(self, id): self.id, self.killed, self.alive, self.dead = id, False, True, False
+    def kill(self):
+        if not self.alive: raise RuntimeError(f"can't find {self.id}")
+        self.killed = True
     def refresh(self):
         if not self.alive: raise RuntimeError(f"can't find {self.id}")
         return self
@@ -39,6 +43,13 @@ class Me:
         self.made.append(Pane(f'%{40 + len(self.made)}'))
         return self.made[-1]
 
+@pytest.fixture
+def clock(monkeypatch):
+    "The Ui's `time.monotonic`, held still so a slow first paint cannot spend the throttle window."
+    c = SimpleNamespace(now=100.0)
+    monkeypatch.setattr(cli, 'time', SimpleNamespace(monotonic=lambda: c.now))
+    return c
+
 def _said(u): return ' '.join(u.transcript.block_text(b) for b in u.comp.blocks.values())
 
 def _submit(u, line):
@@ -46,7 +57,7 @@ def _submit(u, line):
     return u.submit()
 
 
-def test_the_snapshot_is_throttled_while_calls_change_and_written_idle_when_the_turn_ends(ui, monkeypatch):
+def test_the_snapshot_is_throttled_while_calls_change_and_written_idle_when_the_turn_ends(ui, clock, monkeypatch):
     wrote = []
     real = cli.write_snapshot
     monkeypatch.setattr(cli, 'write_snapshot', lambda agent, path: (wrote.append(path), real(agent, path)))
@@ -54,7 +65,7 @@ def test_the_snapshot_is_throttled_while_calls_change_and_written_idle_when_the_
     ui.agent.activity.finish(act, 'ok')
     assert len(wrote) == 1, 'two changes inside 0.2s are one write'
     assert wrote[0] == ui.agent.runs_dir/'now.json'
-    ui._now_at -= cli.PANE_EVERY
+    clock.now += cli.PANE_EVERY
     ui.agent.activity.start('grep', {'pattern': 'x'})
     assert len(wrote) == 2, 'a change after the window writes again'
 
@@ -107,13 +118,45 @@ def test_a_pane_its_viewer_left_is_forgotten_and_opened_again(ui):
     assert ui.pane is None and not me.made[1].killed and 'already closed' in _said(ui)
 
 
-def test_a_change_the_throttle_dropped_while_idle_is_flushed_by_the_next_tick(ui, monkeypatch):
+def test_a_dead_pane_tmux_kept_is_not_open_and_is_killed_before_the_next(ui):
+    "With `remain-on-exit on` a viewer that quit leaves its pane dead but present."
+    me = ui.agent.host.tmux_pane = Me()
+    _submit(ui, '/pane')
+    me.made[0].dead = True
+    _submit(ui, '/pane')
+    assert me.made[0].killed and len(me.splits) == 2 and ui.pane is me.made[1], 'the dead one goes, a live one opens'
+    me.made[1].dead = True
+    _submit(ui, '/pane off')
+    assert me.made[1].killed and ui.pane is None and 'already closed' in _said(ui)
+
+
+def _tick(ui, secs=.25):
+    async def go():
+        task = asyncio.ensure_future(ui.animate())
+        await asyncio.sleep(secs)
+        task.cancel()
+    asyncio.run(go())
+
+def test_a_pane_follows_the_session_resume_moves_now_json_to(ui):
+    me = ui.agent.host.tmux_pane = Me()
+    _submit(ui, '/pane')
+    was = ui.agent.runs_dir/'now.json'
+    ui.agent.session_id = 'agent_resumed'
+    now = ui.agent.runs_dir/'now.json'
+    _tick(ui)
+    assert me.made[0].killed and me.splits[-1] == ('right', cli.pane_cmd(now), '35%') and ui.pane is me.made[1]
+    assert now != was and read_snapshot(now) is not None, 'the new pane draws the resumed session'
+    _submit(ui, '/pane')
+    assert len(me.splits) == 2 and 'already open' in _said(ui)
+
+
+def test_a_change_the_throttle_dropped_while_idle_is_flushed_by_the_next_tick(ui, clock, monkeypatch):
     wrote = []
     monkeypatch.setattr(cli, 'write_snapshot', lambda agent, path: wrote.append(path))
     ui.write_now(force=True)
     ui.agent.activity.start('read_file', {'path': 'a.py'})
     assert len(wrote) == 1 and ui.turn is None, 'inside the window: dropped'
-    ui._now_at -= cli.PANE_EVERY
+    clock.now += cli.PANE_EVERY
     async def tick():
         task = asyncio.ensure_future(ui.animate())
         await asyncio.sleep(.25)

@@ -220,12 +220,14 @@ def _model_refused(sub, reply):
     problems = getattr(sub, 'problems', None) or []
     return bool(problems) and str(reply or '').strip() == str(problems[-1]).strip()
 
-def _inboxed(f, run):
-    "The tool, with any message the user sent the run appended to its result. `run` may be a callable that finds it, or None."
+def _inboxed(f, run, heard=None):
+    "The tool, with any message the user sent the run appended to its result and handed to `heard`. `run` may be a callable that finds it, or None."
     @functools.wraps(f)
     def call(*a, **kw):
         out, r = f(*a, **kw), run() if callable(run) else run
-        if isinstance(out, str) and r is not None and (msgs := r.drain_inbox()): out += f'\n\n<user-message key="{r.key}">\n' + '\n'.join(msgs) + '\n</user-message>'
+        if isinstance(out, str) and r is not None and (msgs := r.drain_inbox()):
+            out += f'\n\n<user-message key="{r.key}">\n' + '\n'.join(msgs) + '\n</user-message>'
+            if heard: heard(msgs)
         return out
     return call
 

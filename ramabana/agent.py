@@ -1024,6 +1024,7 @@ class Agent:
         self.history_name = history_name
         self.session_id = f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")}'
         self.inbox_key = uuid.uuid4().hex[:8]   # every root run's key: the briefing that names it is cached for the session
+        self._steered = []                      # what the root turn read from its inbox: the turn's history keeps it
         self.turn_seq, self.current_turn_id = 0, ''
         self.current_branch_id, self.checkpoints, self._branch_hist = 'main', {}, {}
         self.routing = routing or Routing(turn=model)
@@ -1445,7 +1446,7 @@ def tools(self:Agent):
             self.approvals.tools = self.approvals.tools | view.writes
             self.approvals.prune()
         root = lambda: r if (r := current_run()) is self.run() else None   # a sub-agent's call leaves the root's inbox alone
-        self._tools = view.map(lambda f: _inboxed(self._record(f), root)).tools
+        self._tools = view.map(lambda f: _inboxed(self._record(f), root, lambda msgs: self._steered.extend(msgs))).tools
     return self._tools
 
 
@@ -2027,6 +2028,7 @@ def _begin_turn(self:Agent, run=None):
     self._begun = rid
     self.turn_use = Usage()                  # a stopped turn cannot inherit the last one's cost
     self._tool_calls_turn = 0                # applies even when a native engine owns the loop
+    self._steered = []
     self.turn_seq += 1
     self.current_turn_id = f'{self.session_id}:turn_{self.turn_seq:06d}'
     self.activity.mark(self.current_turn_id)  # and so does `turn_md()`
@@ -2146,7 +2148,8 @@ def resume_session(self:Agent, selector='latest'):
     turns = [t for t in self.session_turns(picked['id']) if t.get('state', 'complete') in REPLAYED]
     canonical = []
     for turn in turns:
-        canonical.append({'role': 'user', 'content': str(turn.get('prompt', ''))})
+        steer = '\n'.join(turn.get('steered') or ())   # what the user sent while the turn ran is theirs too
+        canonical.append({'role': 'user', 'content': str(turn.get('prompt', '')) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
         body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
         if body.strip(): canonical.append({'role': 'assistant', 'content': body})
     if picked['model']: self.set_model(picked['model'])
@@ -2166,7 +2169,7 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
     turn = {'at': time.time(), 'session': getattr(self, 'session_id', '') or '', 'state': state,
             'turn_id': self.current_turn_id, 'branch_id': self.current_branch_id,
             'model': self._be('turn').spec.name,
-            'prompt': str(prompt), 'reply': text, 'error': error,
+            'prompt': str(prompt), 'steered': list(self._steered), 'reply': text, 'error': error,
             'plan': dict(getattr(self, '_turn_plan', {})),
             'usage': self.turn_use.dict(), 'usage_label': repr(self.turn_use),
             'activity': self.activity.rows(mark=self.activity._mark)}

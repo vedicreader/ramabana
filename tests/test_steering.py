@@ -96,6 +96,24 @@ def test_a_line_sent_after_the_last_call_is_left_over_not_lost():
     assert a.leftovers() == [], 'taken once'
 
 
+def test_a_line_the_turn_read_is_kept_in_its_history_and_replayed_on_resume(tmp_path):
+    "What the user said mid-turn is part of the conversation, not only of one tool result."
+    a, be = _scripted(Step('looking'), Step(tool=READ), Step('done'))
+    a.cfg = tmp_path
+    g = a.stream('go')
+    next(g)
+    a.steer('check the tests too')
+    list(g)
+    assert a.history[-1]['steered'] == ['check the tests too']
+    b, bbe = fake_agent(cfg=tmp_path)
+    b.set_model = lambda name: None           # the scripted model is not a registered one
+    b.resume_session(a.session_id)
+    user = bbe._resume_hist[0]['content']
+    assert user.startswith('go') and 'check the tests too' in user, user
+    list(a.stream('again'))
+    assert a.history[-1]['steered'] == [], 'one turn\'s steering is not the next one\'s'
+
+
 def test_tell_still_reaches_sub_agent_runs():
     a, _ = fake_agent()
     root = a._new_run('q')
@@ -162,6 +180,23 @@ def test_alt_enter_mid_turn_queues_as_the_next_turn(ui):
         _type(ui, 'and the lockfile', 'alt+enter')
         assert run.inbox == [], 'nothing reached the running turn'
         assert ui._queued_prompt == 'look at the tests\n\nand the lockfile'
+        ui.drop_queued(); run.finish()
+        await asyncio.sleep(.1)
+    asyncio.run(go())
+
+
+def test_a_line_with_files_waits_for_the_next_turn_rather_than_steering(ui):
+    "Attachments only travel with a turn, so a line that names or carries one is queued."
+    from ramabana.cli import FileAttachment
+    async def go():
+        ui.start_turn(_slow())
+        run = ui.agent._new_run('q')
+        _type(ui, 'look at @a.py too')
+        assert run.inbox == [] and ui._queued_prompt == 'look at @a.py too', 'an @path is queued'
+        ui.drop_queued()
+        ui.attachments.append(FileAttachment('b.py', 'def b(): pass'))
+        _type(ui, 'and this')
+        assert run.inbox == [] and ui._queued_prompt == 'and this', 'so is a line with an attachment waiting'
         ui.drop_queued(); run.finish()
         await asyncio.sleep(.1)
     asyncio.run(go())

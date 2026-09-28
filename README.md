@@ -107,6 +107,7 @@ The one-turn form prints each problem on stderr, and exits 1 when the turn model
 | `--json` | off | with a prompt: reply, usage, changes, activity, problems and session as JSON |
 | `--no-bell` | bell on | no terminal bell when a turn ends or an approval waits |
 | `--tmux MODE` | `auto` | `on` or `off`: read the sibling panes and run background commands in panes |
+| `--pane MODE` | `auto` | `on` or `off`: the now pane at startup. `auto` opens it only inside tmux |
 | `--optin A,B` | none | extra tool groups: `exhash` (the hash-addressed `edit_file`), `research`, `author`, `legacy` |
 | `--warm` / `--no-warm` | on for `full`, off for `small` | seed the chat with a few of dhrona’s example rounds (`uv add "ramabana[dhrona]"`), or start empty. The small profile starts cold because a small model copies an example’s paths literally; `--warm` seeds it with one round |
 | `--profile P` | `auto` | `small` offers fourteen tools and a one-screen briefing, `full` everything; `auto` briefs a local model, or one with a window at or under 32k, small. `/model` shows which is active. The small profile also leaves out extension tools unless they are marked with [`ramabana.tools.small_tool`](https://vedicreader.github.io/ramabana/tools.html#small_tool) |
@@ -129,6 +130,7 @@ Type `/` and press tab to complete a command. The list is what this session has,
 | `/commit [MESSAGE]`, `/pr [TITLE]` | a commit or pull request drafted from the diff, behind approval |
 | `/rewind [TURN] [files\|chat\|both]`, `/branches`, `/branch NAME` | undo a turn’s files (edits restored, git writes undone, files it created removed while unchanged since) or chat, and the conversation branches |
 | `/watch [RUN\|monitors]`, `/unwatch`, `/tell RUN TEXT` | a tmux pane on a run’s transcript, and a message to a running sub-agent |
+| `/pane`, `/pane off` | the now pane in a tmux split, and closing it |
 | `/NAME ARGS`, `#note TEXT` | a skill, or a `<cfg>/commands/NAME.md` (a repo’s `.agents/commands/` once `project_extensions` is opted in) with `$ARGUMENTS`, `$1..$n` and `@path` filled as a turn; a line for the next session’s memory |
 | `/root [add PATH]`, `/theme [NAME]`, `/mouse` | the open folders, the palette, and clicking blocks |
 | `/attach PATH`, `/detach [N]`, `/paste`, `/copy [turn]` | files and images in, text out |
@@ -142,7 +144,8 @@ The keys:
 
 | key | what it does |
 |----|----|
-| `enter` | send. `tab` completes a `/command` or an `@path` |
+| `enter` | send. Mid-turn it steers: the running turn reads the line after its current tool call. A line with an `@path`, or sent while something is attached, waits for the next turn instead. `tab` completes a `/command` or an `@path` |
+| `alt+enter` | mid-turn, queue the line as the next turn. On macOS, set the terminal’s Option key to send Meta |
 | `ctrl+t` | show or hide the plan |
 | `ctrl+p`, `ctrl+n` | walk the prompts you have sent |
 | `up`, `down`, `ctrl+r` | browse the transcript. `pgup`, `pgdn`, `/?` to search, `y` to copy a block, `esc` to leave |
@@ -150,7 +153,7 @@ The keys:
 | `alt+1` to `alt+9` | open one entry of it |
 | `ctrl+g` | ask for approval one step more strictly |
 | `ctrl+v` | attach an image from the clipboard |
-| `ctrl+c` | stop the turn. Again terminates it, a third time quits |
+| `ctrl+c` | stop the turn, and drop what was queued or sent and not yet read. Again terminates it, a third time quits |
 | `ctrl+d` | quit |
 
 A turn reads top to bottom: `┆` narration, `│` a tool call, then the answer. Drop a path on the terminal, write `@path` in a prompt, or use `/attach PATH` to send a file or an image with the prompt.
@@ -183,6 +186,8 @@ Writes reach those folders and nowhere else. Reads start out in the same folders
 Delegated sub-agents are read-only: they report what they found and change nothing. `--subagent-writes`, or `/subagents on`, lets them write, run commands and run Python behind this session’s approvals. `delegate_async(writes=True)` is refused until then, and the briefing says so.
 
 Every run keeps a transcript under `<cfg>/runs/<session>/`. Inside tmux, `/watch RUN` opens a pane tailing it, `/watch monitors` tails the folder reviews, and `/tell RUN TEXT` hands a running sub-agent a message it reads with its next tool result. `read_terminal` reads the sibling panes, and `run_shell_bg` runs in a pane of its own.
+
+`/pane` opens the now pane in a split on the right: the turn, the call it is on, and each sub-agent run with its own calls. The split needs tmux 3.1 or later, and `--pane on` opens it at startup. Outside tmux, or with `--tmux off`, `/pane` prints the `ramabana-pane` command to run in another terminal instead.
 
 ## Budgets, cost and history
 
