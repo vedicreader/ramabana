@@ -30,7 +30,7 @@ own agent and returns just its answer."""
 
 
 def _annotate(entry):
-    "MCP hints derived from the same catalog entry approvals and activity use."
+    "MCP hints from the catalog entry that approvals and activity use."
     if not isinstance(entry, ToolEntry): entry = ToolCatalog([entry]).entries[0]
     readonly = not entry.writes and not entry.effects
     return ToolAnnotations(readOnlyHint=readonly,
@@ -45,8 +45,7 @@ def server(host=None, agent=None, name='ramabana', readonly=True, delegate=True,
     host = host if host is not None else LocalHost()
     mcp = FastMCP(name, instructions=INSTRUCTIONS, **kw)
     skills = discover(host.roots, getattr(agent, 'cfg', None)) if agent is None else agent.skills
-    # the agent's own recorded tools when there is one. A client's call reaches its feed
-    # a client may still send last release's names, so the bare server keeps shalya's legacy shims one release
+    # legacy shims for last release's clients, kept one release
     every = agent.tools if agent is not None else tools_for(host, get_skills=lambda: skills, optin=('legacy',))
     catalog = ToolCatalog(every)
     if readonly: catalog = catalog.read_only()
@@ -78,7 +77,7 @@ def server(host=None, agent=None, name='ramabana', readonly=True, delegate=True,
 
 # %% ../nbs/06_mcp.ipynb #71696cad
 def _mount_ask(mcp, agent):
-    "Add the `ask` tool: one whole Ramabana turn, with only its answer coming back."
+    "Add the `ask` tool: one Ramabana turn, returning only its answer."
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, openWorldHint=True))
     async def ask(task: str) -> str:
@@ -88,13 +87,13 @@ def _mount_ask(mcp, agent):
 # %% ../nbs/06_mcp.ipynb #9ceb572b
 @call_parse
 def main(
-    root: str = '.',                 # folders to serve, comma separated
-    model: str = None,               # the model `ask` runs on. Omit to serve tools only
+    root: str = '.',                 # comma-separated folders to serve
+    model: str = None,               # model for `ask`; omit to serve tools only
     write: bool = False,             # mount the write tools too
-    web: bool = True,                # let the web tools reach the network through fossick
-    read_outside: bool = False,      # let reads name any path on this machine. Writes stay inside
-    vault: bool = False,             # keep what is read in a vishalakshi vault, for the next session
-    pii: str = PII_OFF,              # off | redact | refuse for what vault retrieval hands the model
+    web: bool = True,                # let web tools reach the network via fossick
+    read_outside: bool = False,      # reads may name any path; writes stay inside
+    vault: bool = False,             # keep reads in a vishalakshi vault
+    pii: str = PII_OFF,              # off | redact | refuse PII from the vault
     pii_ner: bool = False,           # --pii also gates titled names, not only patterns
     transport: str = 'stdio',        # stdio | sse | streamable-http
     cfg: str = None,                 # config dir, for skills and extensions

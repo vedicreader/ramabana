@@ -12,7 +12,6 @@ import os, re
 from fastcore.all import Path
 
 # %% ../nbs/01b_models.ipynb #49247004
-#: Curated ids per provider, in display order. Live discovery adds to these; it never replaces them.
 CATALOG = {
     'claude': ('fable', 'opus', 'sonnet', 'haiku', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'),
     'anthropic': ('claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'),
@@ -55,7 +54,6 @@ def codex_ids():
     except Exception: return []
     return [m['slug'] for m in models if m.get('visibility') == 'list' and m.get('slug')]
 
-#: The live listing per provider. A provider absent here is curated only.
 LIVE = {'openai': openai_ids, 'anthropic': anthropic_ids, 'codex': codex_ids}
 
 # %% ../nbs/01b_models.ipynb #ad2610e2
@@ -63,7 +61,7 @@ _HIDE = re.compile(r'-20\d\d-\d\d-\d\d|-\d{4}$|:|(?:^|-)(?:realtime|audio|image|
 _LEGACY = re.compile(r'^(?:gpt-4|gpt-3\.5|claude-[23]-)')
 
 def _current(provider, mid, legacy=False):
-    "Whether a listed id belongs in a picker: no snapshots or single-purpose models, and older generations only when `legacy`."
+    "Whether a listed id belongs in a picker; older generations only when `legacy`."
     return bool(re.search(r'\d', mid or '')) and not _HIDE.search(mid) and (legacy or not _LEGACY.match(mid))
 
 # %% ../nbs/01b_models.ipynb #ca5783b2

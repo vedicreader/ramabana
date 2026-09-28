@@ -23,7 +23,7 @@ from urai import resp_text, tool_rows
 from .core import agent_err, env, force_tags, local_ctx, local_window, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
-MAX_KEEP = 8_000        # tail kept per call. An engine that logs a lot must not eat memory
+MAX_KEEP = 8_000        # bytes of tail kept per call
 _NOISE = ('created tensorflow lite', 'xnnpack delegate', 'metal delegate', 'tflite','loading model', 'initialized', 'gpu delegate', 'w0000', 'i0000')
 _SIGNAL = ('error', 'fail', 'exceed', 'exceeds', 'too long', 'out of memory', 'oom','invalid', 'refus', 'cannot', 'unsupported', 'abort')
 
@@ -79,7 +79,7 @@ class _Tee:
 # %% ../nbs/01_runtime.ipynb #821d64c1
 class captured:
     "Context manager: `with captured() as cap: ...`, then read `cap.text`."
-    _lock = threading.Lock()   # two threads redirecting one descriptor would restore each other's copies
+    _lock = threading.Lock()
     def __init__(self, fds=(1, 2), enabled=None):
         self.fds = fds
         self.text = ''
@@ -117,7 +117,7 @@ class captured:
 
 # %% ../nbs/01_runtime.ipynb #1b16a11e
 def capture(fn, *a, **kw):
-    "Call `fn`, returning `(result, captured_problem_text)`. Exceptions carry the text out too."
+    "Call `fn` and return `(result, problems)`; an exception carries them out too."
     cap, err, out = captured(), None, None
     with cap:
         try: out = fn(*a, **kw)
@@ -128,9 +128,9 @@ def capture(fn, *a, **kw):
     return out, cap.problems
 
 # %% ../nbs/01_runtime.ipynb #da1ec431
-CHARS_PER_TOKEN = 3.25       #: ornith and qwen3 both measure 3.50. Estimate high: see `estimate_tokens`
-RESERVE = 16_384             # headroom kept below the window: one full reply plus its tool results
-KEEP_RECENT = 20_000         # tokens of recent conversation compaction does not touch
+CHARS_PER_TOKEN = 3.25
+RESERVE = 16_384             # tokens of headroom below the window
+KEEP_RECENT = 20_000         # tokens of recent conversation left uncompacted
 SUMMARY_PREFIX = 'Previous conversation summary:\n'
 SURGICAL_POLICY = {'user': 2000, 'assistant': 150, 'call': 60, 'result': 35}
 
@@ -151,7 +151,7 @@ def halvings(budget, tries=3, floor=256):
 def threshold(ctx, reserve=RESERVE):
     "The token count at which a conversation should be compacted, or None when there is no window."
     if not ctx or ctx <= 0: return None
-    return max(1, ctx - min(reserve, max(1, ctx // 4)))   # a quarter of the window, for small models
+    return max(1, ctx - min(reserve, max(1, ctx // 4)))
 
 def should_compact(used, ctx, reserve=RESERVE):
     "Whether `used` tokens against a `ctx` window has crossed the line."
@@ -160,7 +160,7 @@ def should_compact(used, ctx, reserve=RESERVE):
 
 # %% ../nbs/01_runtime.ipynb #d990cc6d
 def serialise(msgs, mx=2000):
-    "Messages as the tagged block the summarizer reads. Tool results clipped: they are the bulk."
+    "Messages as the tagged block the summarizer reads, each text clipped to `mx`."
     if not msgs: return '(no new messages)'
     out = []
     for i, m in enumerate(msgs, 1):
@@ -172,7 +172,7 @@ def serialise(msgs, mx=2000):
 
 
 def split_previous(msgs):
-    "`(previous_summary_or_None, remaining_msgs)`. So an update updates rather than re-summarises."
+    "Split off a leading summary: `(previous_summary_or_None, remaining_msgs)`."
     if not msgs: return None, msgs
     t = resp_text(msgs[0])
     if msgs[0].get('role') == 'user' and t.startswith(SUMMARY_PREFIX):
@@ -366,14 +366,14 @@ def compact_notebook_context(prompt, fits):
 
 # %% ../nbs/01_runtime.ipynb #4ee869b3
 class Compactor:
-    "Decides when to compact, and does it. Not a callback on either engine."
+    "Decide when to compact, and do it."
     def __init__(self,
                  reserve=RESERVE,
                  keep_recent=KEEP_RECENT,
-                 auto=True,                  # compact automatically on crossing the threshold
+                 auto=True,                  # compact on crossing the threshold
                  kernel_alive=True,          # what the reorientation note may promise
-                 on_compact=None,            # called with the compacted checkpoint once it exists
-                 strategy='summary'):         # 'summary' | 'surgical' deterministic DSL
+                 on_compact=None,            # called with each new checkpoint
+                 strategy='summary'):         # 'summary' or deterministic 'surgical'
         self.reserve, self.keep_recent, self.auto = reserve, keep_recent, auto
         self.strategy = strategy
         self.kernel_alive, self.on_compact = kernel_alive, on_compact
@@ -410,7 +410,7 @@ class Compactor:
         return kept
 
     def compact(self, backend, summariser, extra='', summary_ctx=0, summary_output=1024, summary_count=None):
-        "Summarise `backend`'s conversation with `summariser(prompt, sp)` and replace it. The summary, or `''`."
+        "Summarise `backend`'s history with `summariser(prompt, sp)`, replace it, return the summary."
         msgs = list(backend.hist or [])
         if not msgs:
             self.note = 'nothing to compact'
@@ -436,13 +436,11 @@ class Compactor:
                 try: self.on_compact(text)
                 except Exception: pass
             return text
-        # the system prompt and the output share the window with this request
         input_budget = None
         if summary_ctx:
             sp_tokens = estimate_tokens(SUMMARISE_SP, summary_count)
             input_budget = max(128, summary_ctx - summary_output - sp_tokens - 64)
-        # the budget is an estimate wherever the backend has no tokenizer, so a prompt built to
-        # fit can still overflow
+        # an estimated budget can still overflow, so retry on halvings
         text, err = '', None
         for b in halvings(input_budget):
             try:
@@ -501,8 +499,8 @@ class ThinkFilter:
 
 # %% ../nbs/01_runtime.ipynb #e4819aa1
 MAX_STEPS = 40
-ONESHOT_TOKENS = 1024     # a cheap job's default output cap
-ONESHOT_HEADROOM = 64     # what a chat template costs on top of the prompt it wraps
+ONESHOT_TOKENS = 1024
+ONESHOT_HEADROOM = 64     # tokens a chat template adds
 ONESHOT_CUT = '[earlier text omitted]\n'
 
 @dataclass
@@ -515,7 +513,7 @@ class Usage:
         return Usage(model=o.model or self.model,**{k:getattr(self,k)+getattr(o,k) for k in fs})
     def __radd__(self,o): return self if o in (None,0) else self+o
     def __sub__(self,o):
-        "What this counter has added since `o`. A backend counts cumulatively. A turn is a delta."
+        "What this cumulative counter has added since `o`: one turn's delta."
         if o is None: return self
         fs=('input','output','total','cached','cache_write','reasoning','cost','turns')
         return Usage(model=self.model or o.model, **{k:max(0, getattr(self,k)-getattr(o,k)) for k in fs})
@@ -531,7 +529,6 @@ class Usage:
 # %% ../nbs/01_runtime.ipynb #af66f277
 IMG_TOKENS = 1024
 
-#: what a built OpenAI content part calls a picture or sound, so it is charged as media not stringified base64.
 _MEDIA_PARTS = ('image_url', 'input_audio')
 
 def _parts(msg):
@@ -555,7 +552,7 @@ class Backend:
         self.chat,self.use,self.note=None,Usage(model=spec.model_id),'not started'
         self.problems,self.last_native,self._tried,self.run=[], '', False, None
         self._resume_hist=None
-        self._used=0                 # last occupancy the engine reported. See `used_tokens`
+        self._used=0
         self.lock=threading.Lock()
     @property
     def ready(self): return self.chat is not None
@@ -621,15 +618,14 @@ class Backend:
         if self.start() is None:return self.note
         with self.lock:
             self.run=run
-            self._tag_reminded=False   # one reminder per turn. See `TAG_REMINDER`
-            self._sync_callbacks()     # anything registered while a turn was running
+            self._tag_reminded=False
+            self._sync_callbacks()
             try:
                 for again in (True,False):
                     try:
                         out=self._send(msg,**kw)
                         if run is not None and run.cancelled:return ''
                         self.use=self._usage(); self._check_reply(out)
-                        # one corrective turn, appended not re-run: the narrated call is already said
                         if not self._tag_reminded and self._needs_tag_retry(out):
                             self._tag_reminded=True
                             out=self._send(TAG_REMINDER,**kw); self.use=self._usage()
@@ -642,8 +638,8 @@ class Backend:
         if self.start() is None:yield self.note; return
         with self.lock:
             self.run=run
-            self._tag_reminded=False   # one reminder per turn. See `TAG_REMINDER`
-            self._sync_callbacks()     # anything registered while a turn was running
+            self._tag_reminded=False
+            self._sync_callbacks()
             try:
                 for again in (True,False):
                     n,buf=0,[]
@@ -665,12 +661,12 @@ class Backend:
                         return
                     except Exception as e:
                         if run is not None and run.cancelled:return
-                        # only before anything reached the screen: a retry cannot unsay a chunk
+                        # retry only before any chunk was shown
                         if not (again and not n and self._recover(e)):
                             yield f'\n\n{self._failed("failed",e)}'; return
             finally:self.run=None
     def _recover(self,e):
-        "Fix what made `e` happen, if this backend knows how. One retry is worth taking. No by default."
+        "Fix what made `e` happen and return True to retry once. False by default."
         return False
     def _check_reply(self,text):
         "Look at a finished reply for a failure the transport could not raise. Nothing by default."
@@ -683,7 +679,7 @@ class Backend:
         return self.problem(why) if strict else (f'({why})' if self.last_native else '(no reply)')
     
     def _fit_oneshot(self,prompt,sp='',max_tokens=None):
-        "`prompt` cut down to what is left of the window once `sp` and the reply have room"
+        "Cut `prompt` to the window left after `sp` and the reply."
         ctx=self.spec.ctx
         if not ctx:return prompt
         room=ctx-self.count_tokens(sp)-(max_tokens or ONESHOT_TOKENS)-ONESHOT_HEADROOM
@@ -696,7 +692,7 @@ class Backend:
         return ONESHOT_CUT+body
 
     def oneshot(self,prompt,sp='',max_tokens=None,job='one-shot'):
-        "One question in a conversation that is thrown away. `job` is what a failure is named after."
+        "Ask one question in a throwaway conversation; `job` names a failure."
         if self.start() is None or not self.lock.acquire(False):return ''
         try:return answer_only(self._oneshot(self._fit_oneshot(prompt,sp,max_tokens),sp,max_tokens) or '')
         except Exception as e:self._failed(f'{job} failed',e); return ''
@@ -741,7 +737,7 @@ class Backend:
     
     @property
     def used_tokens(self):
-        "used tokens or token count from rishi chat."
+        "Tokens in use, from the rishi chat when there is one."
         try:
             if self.chat: self._used = self.chat.token_count
         except Exception: pass
@@ -776,7 +772,7 @@ _MK_CHAT = None
 @contextmanager
 def use_chat(f):
     "Build model conversations with `f` for the duration, instead of rishi's `Chat`."
-    global _MK_CHAT   # process-global, which is why this is a block and not a setting
+    global _MK_CHAT
     old, _MK_CHAT = _MK_CHAT, f
     try: yield f
     finally: _MK_CHAT = old
@@ -792,7 +788,7 @@ class RishiBackend(Backend):
         return self._prefill
     @property
     def tool_channel(self):
-        "Where this backend's tool schemas actually travel. The chat answers once there is one."
+        "The channel this backend's tool schemas travel on, from the chat once it exists."
         return tool_channel(self.spec,self.chat)
     def _runtime_kw(self):
         kw={**getattr(self.spec, 'config', {}), **self.kw}
@@ -808,7 +804,7 @@ class RishiBackend(Backend):
                 kw['backend'] = backends[backend.lower()]()
             eng.setdefault('max_num_tokens',self.spec.ctx)
             kw['eng_kw']=eng
-            if conv := dict(kw.pop('conv_kw',{}) or {}): kw['conv_kw']=conv   # rishi constrains a tool call itself
+            if conv := dict(kw.pop('conv_kw',{}) or {}): kw['conv_kw']=conv
         return kw
     def _measure(self):
         "Narrow the window to what the model was trained for, capped by what is worth filling."
@@ -823,7 +819,7 @@ class RishiBackend(Backend):
                     tools=self.tools,approve=self.approve,tool_max_len=self.tool_max_len,
                     max_steps=self.max_steps,ctx_limit=self.spec.ctx,**self._runtime_kw()))
     def _fitted(self,chat):
-        "Take the window from the engine, which is the only thing that knows it."
+        "Take the window from the engine."
         try: real=int(chat.engine.n_ctx())
         except Exception: return chat
         if real and real<self.spec.ctx:
@@ -836,7 +832,7 @@ class RishiBackend(Backend):
         return type(self)(self.spec,sp=sp,tools=tools,tool_max_len=self.tool_max_len,
                           max_steps=self.max_steps,shared=True,**shared,**kw)
     def _turn_kw(self, kw):
-        "Apply hosted turn controls at the layer Rishi owns. Chat.__call__ only accepts generation controls."
+        "Apply hosted turn controls to the chat; `Chat.__call__` takes only generation controls."
         kw = dict(kw or {})
         effort = kw.pop('reasoning_effort', None)
         if effort is not None and hasattr(self.chat, 'reasoning_effort'):
@@ -846,7 +842,7 @@ class RishiBackend(Backend):
         return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
     MCP_REFUSED=('mcp','strict_mcp_config','allowed_tools','disallowed','not permitted','policy')
     def _recover(self,e):
-        "Learn that this model's wire tool channel is closed. Later turns stop trying it."
+        "Learn that this model's wire tool channel is closed, and retry on tags."
         if not self.tools or tool_channel(self.spec,self.chat)=='tags':return False
         if not any(s in f'{e}'.lower() for s in self.MCP_REFUSED):return False
         force_tags(self.spec.model_id,agent_err(e))
@@ -858,7 +854,7 @@ class RishiBackend(Backend):
         if hist:self.restore_hist(hist)
         return True
     def _check_reply(self,text):
-        "Report a tag call that came back as prose, which is what the tags channel costs."
+        "Report a tag call that came back as prose."
         if self._needs_tag_retry(text):
             how=('a <tool_call> block came back as prose' if '<tool_call' in (text or '')
                  else 'a tool call came back as bare JSON, with no <tool_call> tags around it')
@@ -883,7 +879,7 @@ class RishiBackend(Backend):
         if self.spec.runtime!='mlx':
             return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
         if getattr(self,'_oneshot_chat',None) is None:
-            if not hasattr(self.chat,'engine'):   # nothing to share: a replayed chat has no engine
+            if not hasattr(self.chat,'engine'):   # a replayed chat has no engine
                 return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
             from rishi import Chat
             self._oneshot_chat=Chat(self.spec.model_id,runtime='mlx',engine=self.chat.engine,think=False,
@@ -897,14 +893,12 @@ class RishiBackend(Backend):
             raise RuntimeError(f'{type(self.chat).__name__} cannot have its history replaced')
         self.chat.hist[:]=self.chat.mk_msgs([summary,*keep]); self.chat._recreate_conv()
     def _usage(self):
-        # a chat with no counter at all, rather than one that spent nothing
         if (u:=getattr(self.chat,'use',None)) is None: return Usage(model=self.spec.model_id)
         return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
                      total=u.total_tokens,cached=u.cached_tokens,cache_write=u.cache_creation_tokens,
                      reasoning=u.reasoning_tokens,cost=u.cost,turns=u.n)
     def _refresh(self): self.chat.reconfigure(sp=self.sp,tools=self.tools)
 
-# Dead names from when llama.cpp and FastLLM were separate backends.
 def __getattr__(name):
     if name in ('LlamaBackend','FastllmBackend'):
         import warnings
@@ -985,10 +979,9 @@ class Run:
 
     def _mark_cancel(self):
         "Mark this run and every descendant cancelled, and return the backends left to stop."
-        # mark all first, then stop: stopping a backend frees its worker to take the next queued child, so interleaving would let a cancelled run spawn a sibling
+        # mark all before stopping any, or a freed worker spawns a cancelled run's sibling
         with self._lock:
             if self.terminal: return []
-            # a pending run has nothing of its own to stop, but what it started still does
             pending = self.state == 'pending'
             self.state = 'cancelling'
             children, backend = list(self.children), None if pending else self.backend

@@ -1,5 +1,5 @@
 """Ramabana as an [Agent Client Protocol](https://agentclientprotocol.com/) agent: an editor
-drives this host, with its own files and its own terminal.
+drives this host through its own files and terminal.
 
 Docs: https://vedicreader.github.io/ramabana/acp.html.md"""
 
@@ -17,7 +17,6 @@ try:
     from acp.schema import (AgentCapabilities, AvailableCommand, Implementation, InitializeResponse,
                             LoadSessionResponse, NewSessionResponse, PermissionOption, PromptCapabilities,
                             PromptResponse, ToolCallLocation, ToolCallUpdate)
-# an editor surfaces the startup failure only through stderr, so name the package there
 except ImportError as e: raise ImportError(
     f"ramabana-acp needs agent-client-protocol: pip install agent-client-protocol ({e})") from None
 from fastcore.basics import ifnone
@@ -29,7 +28,7 @@ from .vault import WorkspaceHost
 from shalya.core import apply_edits, edits
 
 # %% ../nbs/16_acp.ipynb #8e6cca6b
-#: `Act.kind` and a bare tool name, both onto the ten kinds ACP knows
+#: `Act.kind` and tool names -> ACP's tool kinds
 KIND = {'search': 'search', 'view': 'read', 'edit': 'edit', 'web': 'fetch', 'run': 'execute',
         'delegate': 'think', 'memory': 'other', 'skill': 'other', 'tool': 'other'}
 TOOL = {'edit_file': 'edit', 'replace_text': 'edit', 'create_file': 'edit', 'edit_cell': 'edit',
@@ -47,19 +46,19 @@ class Bridge:
     "The one crossing between the turn's thread and the client's event loop."
 
     def __init__(self,
-                 conn,                      # the ACP `Client` this agent is connected to
+                 conn,                      # the connected ACP `Client`
                  sid,                       # the session every call is about
-                 loop,                      # the loop the connection is served on
-                 timeout=DFLT_TIMEOUT):     # seconds to wait on a person, or on the editor
+                 loop,                      # the loop serving the connection
+                 timeout=DFLT_TIMEOUT):     # seconds to wait on a person or editor
         self.conn, self.sid, self.loop, self.timeout = conn, sid, loop, timeout
-        self.on_terminal = None    # called with a terminal id, so a tool call can show it
+        self.on_terminal = None
 
     def call(self, coro, timeout=None):
         "Block this thread on one round trip, and raise whatever the client raised."
         fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
         try: return fut.result(ifnone(timeout, self.timeout))
         except Exception:
-            # or the request sits in the connection's pending table for the rest of the session
+            # else the request stays pending in the connection
             fut.cancel()
             raise
 
@@ -90,18 +89,15 @@ class EditorHost(WorkspaceHost):
         e = self.editor
         try: p = self.check(path, reading=True)
         except Exception: return None
-        # an unsaved new file is not on disk; fall back rather than lose the turn
         try: return e.call(e.conn.read_text_file(session_id=e.sid, path=str(p))).content
         except Exception: return super().read(path)
 
     def text_at(self, path):
-        # a notebook is read as its cell sources, which only the base host knows how to do
         if str(path).endswith('.ipynb') or not self._ok('read'): return super().text_at(path)
         got = self.read(path)
         return super().text_at(path) if got is None else got
 
     def write(self, path, text):
-        # no fallback, unlike `read`: a write the editor refused must be reported, not routed around
         if not self._ok('write'): return super().write(path, text)
         e, p = self.editor, self.check(path)
         e.call(e.conn.write_text_file(session_id=e.sid, path=str(p), content=str(text)))
@@ -109,21 +105,20 @@ class EditorHost(WorkspaceHost):
 
     def run_cmd(self, command, cwd=None, timeout=120):
         cmd = str(command or '').strip()
-        # `tools_for` asks "can you run commands?" with an empty one, and must not spawn anything
+        # `tools_for` probes with an empty command
         if not cmd: return 0, ''
         if not self._ok('run'): return super().run_cmd(command, cwd=cwd, timeout=timeout)
         opened = []
         try: return self._in_editor(cmd, cwd, timeout, opened)
         except Exception as e:
-            # falling back once the terminal exists would run the command a second time
+            # a fallback now would run the command twice
             if opened: return 1, f'the editor terminal failed after starting the command ({e!r})'
             return super().run_cmd(command, cwd=cwd, timeout=timeout)
 
     def _in_editor(self, cmd, cwd, timeout, opened):
-        "Run it in the editor's terminal, so the person watches it live and keeps the scrollback."
+        "Run `cmd` in the editor's terminal, where the person can watch it."
         e, c = self.editor, self.editor.conn
         where = str(self.check(cwd)) if cwd else str(self.roots[0])
-        # a shell, not the bare string: `run_cmd` promises pipes and redirects work
         t = e.call(c.create_terminal(session_id=e.sid, command=SHELL, args=['-c', cmd], cwd=where))
         tid = t.terminal_id
         opened.append(tid)
@@ -140,9 +135,8 @@ class EditorHost(WorkspaceHost):
 # %% ../nbs/16_acp.ipynb #fbddbe89
 def mk_agent(roots, model=None, approve='ask', web=True, vault=False, pii=PII_OFF, pii_ner=False,
              timeout=DFLT_TIMEOUT, **kw):
-    "An `EditorHost` over `roots` and a gated `Agent` on it, without the terminal frontend's imports."
+    "An `EditorHost` over `roots` and a gated `Agent` on it."
     approvals = Approvals(mode=approve, timeout=timeout)
-    # read_outside stays off: an editor never names a path outside the folders it opened
     host = EditorHost(list(roots), approvals=approvals, web=web, vault=vault,
                       pii=pii, pii_ner=pii_ner, read_outside=False)
     approvals.host = host
@@ -152,20 +146,19 @@ def mk_agent(roots, model=None, approve='ask', web=True, vault=False, pii=PII_OF
 
 # %% ../nbs/16_acp.ipynb #910a58db
 def _res(b):
-    "An embedded resource as text, whichever half of the union it is."
+    "An embedded resource as text."
     r = getattr(b, 'resource', None)
     if (t := getattr(r, 'text', None)) is not None:
         return f'<file uri="{getattr(r, "uri", "")}">\n{t}\n</file>'
     return f'[binary resource {getattr(r, "uri", "")} ({getattr(r, "mimeType", "?")})]'
 
 def blocks(prompt, spec=None):
-    "ACP content blocks as one message: `(text, media)`, media being what `spec` can be sent."
+    "ACP content blocks as `(text, media)`, keeping the media `spec` accepts."
     text, media = [], []
     for b in prompt:
         kind = getattr(b, 'type', '')
         if kind == 'text': text.append(b.text)
         elif kind in ('image', 'audio'):
-            # accepts errs toward yes, so this drops only what it knows cannot be sent
             if spec is None or accepts(spec, kind): media.append(base64.b64decode(b.data))
             else: text.append(f'[{kind} dropped: {b.mime_type} -- this model does not accept {kind}]')
         elif kind == 'resource': text.append(_res(b))
@@ -181,11 +174,9 @@ class Session:
         self.seen, self.cancelled, self.gated, self.shell = set(), False, {}, ''
         self.agent, self.host = ifnone(mk, mk_agent)(roots, model=model, approve='ask',
                                                      timeout=timeout, on_activity=self._act, **kw)
-        # the harness's own session id, so `session/load` can name a conversation and mean it
         self.sid = sid or self.agent.session_id
         self.br = Bridge(conn, self.sid, loop, timeout)
         self.br.on_terminal = self._terminal
-        # nothing listening means writes are refused, so this registration is what enables them
         self.unhook = self.agent.approvals.listen(self._ask)
         self.agent.on_plan = self._plan
 
@@ -207,9 +198,8 @@ class Session:
 
     def _act(self, a):
         k = self._key(a.tool, a.args)
-        if a.parent_action_id and k not in self.gated: return   # a sub-agent's call; the editor shows the delegate call it belongs to, unless it asked the editor first
+        if a.parent_action_id and k not in self.gated: return
         d = a.dict()
-        # reuse the gated call's id so the dialog and the tool call stay one thing in the editor
         tid = self.gated.get(k, d['id'])
         if d['tool'] == 'run_shell': self.shell = '' if d['done'] else tid
         where = [ToolCallLocation(path=p)] if (p := d['args'].get('path')) else None
@@ -225,7 +215,6 @@ class Session:
             self._send(acp.update_tool_call(tid, status='completed' if d['ok'] else 'failed',
                                             content=body))
         elif tid == d['id']:
-            # not gated, so `_permit` never sent the diff. `a.args` rather than the clipped copy
             if (diff := self._body(d['tool'], a.args, '')) is not None:
                 self._send(acp.update_tool_call(tid, content=diff))
 
@@ -234,13 +223,13 @@ class Session:
                                     for t in plan.todos]))
 
     def _body(self, tool, args, preview):
-        "A write the editor can render as a diff where the new text is known or can be replayed; else the preview. Reads the host: call it on the turn's thread."
+        "A write as an editor diff when replayable, else the preview; call on the turn's thread."
         path = (args or {}).get('path', '')
         if path and (texts := self._texts(tool, path, args)) is not None: return [acp.tool_diff_content(path, texts[1], texts[0])]
         return [acp.tool_content(acp.text_block(preview))] if preview else None
 
     def _texts(self, tool, path, args):
-        "`(before, after)` for an edit replayed over the host's text without writing: `create_file` is its text, `replace_text` and `edit_cell` apply their `edits`; None when it cannot be replayed."
+        "`(before, after)` for an edit replayed without writing, or None."
         try:
             if tool == 'create_file': return self.host.text_at(path) or None, str(args.get('text', ''))
             if tool == 'replace_text' and (before := self.host.read(path)) is not None: return before, apply_edits(before, edits(args.get('edits')))
@@ -252,13 +241,12 @@ class Session:
 
     def _ask(self, a):
         "On the turn's thread, inside `Approvals.request`, before it waits."
-        # the diff reads the host here: inside `_permit`, on the editor's loop, an `EditorHost` read would call back into that loop and wait on itself
+        # on the editor's loop an `EditorHost` read would deadlock
         body = self._body(a.tool, a.args, a.preview)
         try: ok, note, always = self.br.call(self._permit(a, body))
         except Exception as e: ok, note, always = False, f'the editor did not answer ({e!r})', False
-        # the editor's option is labelled 'every write this session': scope it to file/notebook edits, never to shell
         answered = self.agent.approvals.answer(a.id, ok, note, session=always, scope='edits')
-        # a refused or cancelled call never fires `_act`, so close and drop the entry here
+        # a refused or cancelled call never fires `_act`
         if not ok or answered is None:
             self._send(acp.update_tool_call(a.id, status='failed'))
             self.gated.pop(self._key(a.tool, a.args), None)
@@ -273,13 +261,13 @@ class Session:
         tc = ToolCallUpdate(tool_call_id=a.id, title=a.summary or a.tool,
                             kind=TOOL.get(a.tool, 'other'), raw_input=a.args, content=body)
         r = await self.conn.request_permission(session_id=self.sid, tool_call=tc, options=OPTIONS)
-        # the option id, not the discriminator: `exclude_defaults` can drop `outcome`, and only an allow carries an id
+        # `exclude_defaults` can drop `outcome`, so read the option id
         oid = getattr(r.outcome, 'option_id', '') or ''
         if not oid: return False, 'the editor cancelled the request', False
         return oid.startswith('allow'), f'{oid} in the editor', oid == 'allow_always'
 
     def run(self, text, media=()):
-        "The turn, on a worker thread. Chunks go back over the loop as they arrive."
+        "Run the turn on a worker thread, streaming chunks over the loop."
         got = []
         for c in (self.agent.stream_with(text, image=list(media)) if media else self.agent.stream(text)):
             got.append(c)
@@ -287,7 +275,7 @@ class Session:
         return ''.join(got)
 
     def commands(self):
-        # the SDK's own helper: it sets the discriminator, without which the union will not serialise
+        # the helper sets the discriminator the union needs
         c = self.agent.commands
         return update_available_commands(AvailableCommand(name=n, description=f'/{n}')
                                          for n in (c() if callable(c) else c))
@@ -299,7 +287,7 @@ class Session:
 
 # %% ../nbs/16_acp.ipynb #22bff311
 class AcpAgent(acp.Agent):
-    "Ramabana behind the Agent Client Protocol. One agent per session, rooted where the editor says."
+    "Ramabana behind the Agent Client Protocol, one agent per session."
 
     def __init__(self, model=None, roots=('.',), mk=None, timeout=DFLT_TIMEOUT, **kw):
         self.model, self.roots, self.mk, self.kw = model, list(roots), mk, kw
@@ -330,22 +318,19 @@ class AcpAgent(acp.Agent):
         return s
 
     async def new_session(self, cwd, additional_directories=None, mcp_servers=None, **kw):
-        # `mcp_servers` is ignored: this agent brings its own tools, not the editor's
         return NewSessionResponse(session_id=(await self._open(cwd, additional_directories)).sid)
 
     async def load_session(self, cwd, session_id, mcp_servers=None, additional_directories=None, **kw):
-        "Resume the named conversation and replay it, so what the terminal started the editor continues."
+        "Resume and replay the named conversation."
         if (s := self.sessions.get(session_id)) is None:
             s = await self._open(cwd, additional_directories, session_id)
             try: picked = s.agent.resume_session(session_id)
             except Exception as e:
-                # never fall back to 'latest': it would hand over whichever conversation ran last
                 self.sessions.pop(s.sid, None)
                 s.close()
                 raise acp.RequestError.resource_not_found(f'no saved session {session_id} ({e})')
             got = picked['id']
         else: got = s.agent.session_id
-        # only this conversation, and only the turns the model also replays back
         for turn in [t for t in s.agent.history if t.get('session') == got
                      and t.get('state', 'complete') in REPLAYED]:
             if turn.get('prompt'):
@@ -361,7 +346,7 @@ class AcpAgent(acp.Agent):
         if not text and not media: return PromptResponse(stop_reason='end_turn')
         s.gated = {}
         if text.startswith('/') and not media:
-            # off the loop: /compact calls a model, and a command may reach the approval gate
+            # off the loop: a command may call a model or the gate
             out = await asyncio.to_thread(s.agent.command, text) or f'unknown command {text.split()[0]}'
             await self.conn.session_update(session_id, acp.update_agent_message_text(out))
             return PromptResponse(stop_reason='end_turn')
@@ -379,13 +364,12 @@ class AcpAgent(acp.Agent):
 # %% ../nbs/16_acp.ipynb #2a12348f
 async def serve(agent=None):
     "Speak ACP on stdio until the editor closes it."
-    # stdout is the protocol; after the streams take it, redirect prints to stderr so they cannot corrupt a frame
+    # after the streams take stdout, prints go to stderr
     reader, writer = await acp.stdio_streams()
     sys.stdout = sys.stderr
     a = ifnone(agent, AcpAgent())
     try: await acp.run_agent(a, input_stream=writer, output_stream=reader)
     finally:
-        # the editor closing does not stop a worker-thread turn; cancel, then release the backends
         for s in list(a.sessions.values()):
             try: s.agent.cancel()
             except Exception: pass
@@ -394,15 +378,15 @@ async def serve(agent=None):
 
 @call_parse
 def main(
-    root: str = '.',        # folders to open when the editor names none, comma separated
-    model: str = None,      # the turn model. Omit for the routing default
-    web: bool = True,       # let the web tools reach the network through fossick
-    vault: bool = False,    # keep what is read in a vishalakshi vault, for the next session
-    pii: str = PII_OFF,     # off | redact | refuse for what vault retrieval hands the model
+    root: str = '.',        # comma-separated folders if the editor names none
+    model: str = None,      # turn model; omit for the routing default
+    web: bool = True,       # let web tools reach the network via fossick
+    vault: bool = False,    # keep reads in a vishalakshi vault
+    pii: str = PII_OFF,     # off | redact | refuse PII from the vault
     pii_ner: bool = False,  # --pii also gates titled names, not only patterns
     cfg: str = None,        # config dir, for skills, extensions and history
 ):
-    "Serve Ramabana over the Agent Client Protocol, the way an editor launches an agent."
+    "Serve Ramabana over the Agent Client Protocol for an editor."
     from pathlib import Path
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     asyncio.run(serve(AcpAgent(model=model, roots=roots, web=web, vault=vault, pii=pii, pii_ner=pii_ner,

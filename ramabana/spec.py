@@ -18,11 +18,11 @@ from .core import AgentError, agent_err
 from shalya.host import LocalHost
 
 # %% ../nbs/10_spec.ipynb #spec06
-MAX_OPS = 400          # larger than this is a catalogue, not a working surface
+MAX_OPS = 400          # rows per `api_ops` page
 class SpecError(AgentError): "A specification could not be read, or an operation could not be called."
 
 def parse_spec(text, why=''):
-    "A spec document as a dict, whether it is JSON or YAML."
+    "A spec document as a dict, from JSON or YAML."
     text = str(text or '')
     if text.lstrip()[:1] == '<':
         raise SpecError(f'{why or "that address"} served a web page, not a specification. '
@@ -53,13 +53,13 @@ def raw_url(s):
     return str(s or '')
 
 def load_spec(src, timeout=30):
-    "A spec from a URL, a path, or an already-parsed dict, routed on what `src` is. JSON or YAML."
+    "Load a JSON or YAML spec from a URL, a path, or a parsed dict."
     if isinstance(src, dict): return src
     s = str(src or '').strip()
     if not s: raise SpecError('a spec url, path or dict is required')
     if urlparse(s).scheme in ('http', 'https'):
         s = raw_url(s)
-        from fossick import get_page   # carries headers a bare client lacks; httpx.get fails behind some TLS proxies
+        from fossick import get_page   # httpx.get fails behind some TLS proxies
         try: r = get_page(s, timeout=timeout)
         except Exception as e: raise SpecError(f'could not read the spec at {s}: {agent_err(e)}') from e
         if r.status != 200: raise SpecError(f'{s} answered {r.status}')
@@ -75,11 +75,11 @@ def norm_paths(spec):
     return {**spec, 'paths': {**extra, **(spec.get('paths') or {})}}
 
 def spec_ops(spec):
-    "Every operation in `spec` as `OpSpec` records, whatever flavour of spec it is."
+    "Every operation in `spec` as `OpSpec` records, whatever its flavour."
     return parse_ops(spec).ops[:MAX_OPS]
 
 def op_row(op):
-    "One operation as the shape a person or a model reads, signed by `fastcore.apisurface`."
+    "One operation as a readable row, signed by `fastcore.apisurface`."
     from fastcore.apisurface import mk_sig, sanitized_params
     try: sig = str(mk_sig(op, sanitized_params(_op_params(op)), op.param_defaults))
     except Exception: sig = '(...)'
@@ -88,7 +88,7 @@ def op_row(op):
                 required=list(op.required_params or []), docs_url=op.docs_url or '')
 
 def _op_params(op):
-    "Every parameter name an operation takes, in the order the signature wants them."
+    "Every parameter name an operation takes, in signature order."
     return [*(op.route_params or []), *(op.query_params or []),
             *(op.body_params or []), *(op.file_params or [])]
 
@@ -114,11 +114,11 @@ class SpecHost(LocalHost):
     @delegates(LocalHost.__init__)
     def __init__(self,
                  roots=('.',),          # the folders the agent is confined to
-                 specs=None,            # name -> parsed spec, for a host that starts loaded
-                 headers=None,          # sent with every API call, whichever spec it is
-                 creds=None,            # name -> headers, sent only with calls to that spec
+                 specs=None,            # name -> parsed spec, preloaded
+                 headers=None,          # sent with every API call
+                 creds=None,            # name -> headers, sent only to that spec
                  timeout=60.0,          # per-call timeout, in seconds
-                 max_ops=MAX_OPS,       # rows one `api_ops` answers with; 0 for every one
+                 max_ops=MAX_OPS,       # rows per `api_ops` page; 0 for all
                  **kwargs):             # forwarded to `LocalHost`
         super().__init__(roots, **kwargs)
         self.specs, self.headers, self.timeout = dict(specs or {}), dict(headers or {}), timeout
@@ -126,7 +126,7 @@ class SpecHost(LocalHost):
         self.max_ops = max_ops
         self._clients = {}
         self.spec_info = {}
-        self.without = self.without - {'api'}   # this class answers the api group itself
+        self.without = self.without - {'api'}
 
     def api_load(self, src, name=''):
         "Read a spec and remember it under `name` (default: its title, else the host)."
@@ -191,7 +191,7 @@ class SpecHost(LocalHost):
         return {k: sorted(v) for k, v in self._creds.items()}
 
     def _client(self, key, parsed):
-        "One client per spec, built with that spec's own credentials over the host's headers."
+        "One client per spec, with that spec's credentials over the host's headers."
         if key not in self._clients:
             from fastspec.oapi import OpenAPIClient
             self._clients[key] = OpenAPIClient(parsed, timeout=self.timeout, sync=True,
@@ -209,7 +209,7 @@ class SpecHost(LocalHost):
         except Exception as e: raise SpecError(f'{operation} failed: {agent_err(e)}') from e
 
 def _in_groups(client, operation):
-    "The operation on whichever group holds it, for a client that files its ops by path segment."
+    "The operation from whichever group holds it, for ops grouped by path segment."
     for attr in dir(client):
         if attr.startswith('_'): continue
         try: fn = getattr(getattr(client, attr), operation, None)
@@ -223,7 +223,7 @@ def _head(s):
     return s[:1].upper() + s[1:]
 
 def op_heading(r):
-    "`POST /widgets/{id}`, unique per operation and readable without the spec beside you."
+    "`POST /widgets/{id}`: unique per operation, readable without the spec."
     return f"{str(r.get('verb') or 'GET').upper()} {r.get('path') or r.get('name') or ''}".strip()
 
 def op_markdown(r):
@@ -236,7 +236,7 @@ def op_markdown(r):
     return '\n'.join(lines)
 
 def spec_markdown(host, name=''):
-    "A loaded specification as markdown, one `##` per group and one `###` per operation; returns `(title, markdown)`."
+    "Render a loaded spec as markdown, `##` per group, `###` per op: `(title, md)`."
     info = dict(getattr(host, 'spec_info', {}).get(name) or {})
     rows = sorted(host.api_ops(name=name, limit=0), key=lambda r: (r.get('group') or '', r.get('name') or ''))
     title = info.get('title') or _head(name) or 'API'

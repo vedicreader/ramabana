@@ -21,7 +21,7 @@ from .spec import SpecHost
 # %% ../nbs/07_vault.ipynb #8d87918f
 DFLT_VAULT = None         # Vault(None) -> ~/.vishalakshi/vault.db, same as the CLI
 MEM_SECTIONS = 6          # operative sections a memory search returns
-TOC_DEPTH = 2             # heading levels of a document's tree worth showing at once
+TOC_DEPTH = 2             # heading levels shown at once
 
 
 def safe_shelf(name=None, dflt='store'):
@@ -30,7 +30,7 @@ def safe_shelf(name=None, dflt='store'):
 
 # %% ../nbs/07_vault.ipynb #d2ba7a3a
 def _trim(node, depth=TOC_DEPTH):
-    "One heading tree, cut to `depth` levels: a whole tree is a document, not an index entry."
+    "One heading tree, cut to `depth` levels."
     if not isinstance(node, dict): return node
     out = {k: node.get(k) for k in ('id', 'title', 'pages') if node.get(k) is not None}
     kids = node.get('children') or []
@@ -40,12 +40,12 @@ def _trim(node, depth=TOC_DEPTH):
 
 
 def _sect(s):
-    "One retrieved section, cut to what a model needs: what it says, where it is, how to read it."
+    "One retrieved section cut to its text, its location and how to read it."
     return {k: s[k] for k in ('node_id', 'doc_id', 'title', 'breadcrumb', 'text', 'pii', 'age', 'stale') if k in s}
 
 
 def _fed_hit(h):
-    "A federated row as a `Hit`; its `symbol` is `mod_name` for repo hits, `node_id` for prose."
+    "A federated row as a `Hit`: `symbol` is `mod_name` (repo) or `node_id` (prose)."
     where = str(h.get('where') or h.get('ref') or '')
     path, _, num = where.rpartition(':')
     if h.get('source') == 'prose': return Hit(where, 1, str(h.get('ref') or ''), str(h.get('text') or '')[:200])
@@ -58,15 +58,15 @@ class VaultHost(LocalHost):
     @delegates(LocalHost.__init__)
     def __init__(self,
                  roots=('.',),          # the folders the agent is confined to
-                 vault=DFLT_VAULT,      # a `Vault`, a path to one, or None for ~/.vishalakshi/vault.db
-                 shelf=None,            # the shelf writes land on. None -> the vault's main store
-                 federate=True,         # fuse vault prose into `search_code` alongside kosha and ripgrep
-                 remember_reads=True,   # file what `read_url` fetches. The next session has it
-                 warm=True,             # open the vault in the background at construction
-                 mk_chat=None,          # build the vault's chats with this. None -> vishalakshi's own
-                 graph_chat=None,       # the chat the entity graph is built on. None -> vishalakshi's local default, never `mk_chat`
-                 pii=None,              # `off|redact|refuse` for what retrieval returns, or a callable for one
-                 pii_ner=None,          # gate on titled names too. A callable, like `pii`, is read per call
+                 vault=DFLT_VAULT,      # a `Vault`, a path, or None for the default
+                 shelf=None,            # shelf writes land on; None -> main store
+                 federate=True,         # fuse vault prose into `search_code`
+                 remember_reads=True,   # file what `read_url` fetches
+                 warm=True,             # open the vault in the background
+                 mk_chat=None,          # builds the vault's chats; None -> vishalakshi's
+                 graph_chat=None,       # entity graph's chat; None -> local default
+                 pii=None,              # `off|redact|refuse`, or a callable
+                 pii_ner=None,          # gate titled names too; callable read per call
                  **kwargs):             # forwarded to `LocalHost`
         super().__init__(roots, **kwargs)
         self.mk_chat, self.graph_chat, self.pii, self.pii_ner = mk_chat, graph_chat, pii, pii_ner
@@ -103,7 +103,7 @@ class VaultHost(LocalHost):
         return self._open()
 
     def _policy(self):
-        "`(pii, pii_ner)` for this call, read now not at construction; a raising callable falls back to `off`."
+        "`(pii, pii_ner)` for this call; a raising callable falls back to `off`."
         def val(x):
             try: return x() if callable(x) else x
             except Exception: return None
@@ -124,7 +124,7 @@ class VaultHost(LocalHost):
             def run():
                 root = self.vault
                 v = self._worker_vault()
-                # never the lent `mk_chat`: that may be a hosted model, and every chunk here is private material
+                # never the lent `mk_chat`: it may be hosted
                 try: v.connect(chat=self.graph_chat)
                 except Exception as e: self.note(f'could not rebuild the memory graph: {agent_err(e)}')
                 finally:
@@ -146,7 +146,7 @@ class VaultHost(LocalHost):
 
     def memory_tree(self, document=''):
         "Return the memory heading tree, optionally narrowed by title or document id."
-        # every node is titled by the opening of its section, so the tree carries section text
+        # node titles carry section text, so gate them
         pii, ner = self._policy()
         toc, d = self.vault.toc(pii=pii, pii_ner=ner), str(document).strip().lower()
         if d: toc = [t for t in toc if d in str(t.get('title', '')).lower() or d == t.get('doc_id')]
@@ -198,7 +198,7 @@ class VaultHost(LocalHost):
         v, q = self.vault, str(query)
         pii, ner = self._policy()
         r = v.web(q, n=5)
-        self.connect()            # the graph is what `related` walks. Rebuild after the batch, off the turn
+        self.connect()
         c = v.context(q, sections=MEM_SECTIONS, related=4, pii=pii, pii_ner=ner)
         head = f'searched the web for {q!r}; filed {len(r.added)} of {r.n_found} sources in the vault'
         return '\n\n'.join([head] + [f"## {s['breadcrumb']}\n\n{s['text']}" for s in c.results])
@@ -236,7 +236,7 @@ class WorkspaceHost(VaultHost, SpecHost):
     "One workspace host configured with optional memory and API providers."
     def __init__(self,
                  roots=('.',),
-                 vault=False,             # False, True for the default vault, a path, or a Vault
+                 vault=False,             # False, True (default vault), a path, or a Vault
                  spec=False,              # whether Ramabana's API provider is available
                  pii=None,
                  pii_ner=None,

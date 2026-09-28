@@ -53,7 +53,7 @@ from . import __version__
 
 # %% ../nbs/05_cli.ipynb #05b4d036
 def _patch_teleprint_frame():
-    "Give the compositor an after-frame hook, for chrome that is not text. Returns whether the patch was needed."
+    "Add a compositor after-frame hook; True if the patch was needed."
     if hasattr(Compositor, 'on_frame'): return False
     inner = Compositor._frame
     @functools.wraps(inner)
@@ -66,7 +66,7 @@ def _patch_teleprint_frame():
 FRAME_PATCHED = _patch_teleprint_frame()
 
 def _patch_teleprint_ink():
-    "Stop a fold re-inking the transcript. Returns whether the patch was needed."
+    "Stop a fold re-inking the transcript; True if the patch was needed."
     if 'self._ws = ws' not in inspect.getsource(Compositor._frame): return False
     inner = Compositor._frame
     @functools.wraps(inner)
@@ -83,16 +83,15 @@ INK_PATCHED = _patch_teleprint_ink()
 KITTY_ON, KITTY_OFF = '\x1b[>1u', '\x1b[<u'
 KEYS_ON, KEYS_OFF = KITTY_ON + '\x1b[>4;1m', KITTY_OFF + '\x1b[>4;0m'
 EXT_NAMES = {13: 'enter', 9: 'tab', 27: 'escape', 127: 'backspace', 32: ' '}
-#: kitty's keypad keys, 57399-57426, as the legacy bytes spell them. KP_BEGIN (57427) has no legacy name
+#: kitty keypad keys; KP_BEGIN (57427) has no legacy name
 EXT_NAMES.update(zip(range(57399, 57427), [*'0123456789./*-+', 'enter', '=', ',', 'left', 'right', 'up', 'down',
                                             'pageup', 'pagedown', 'home', 'end', 'insert', 'delete']))
-#: ctrl+i, ctrl+j, ctrl+m: what their legacy bytes meant
 EXT_CTRL = {105: 'tab', 106: 'enter', 109: 'enter'}
 _KITTY_RE = re.compile(rb'\A\x1b\[(\d+)(?::\d*)*(?:;(\d*)(?::(\d+))?)?(?:;[\d:]*)?u')
 _MOK_RE = re.compile(rb'\A\x1b\[27;(\d+);(\d+)~')
 
 def ext_key(code, mods=1, event=1):
-    "The `Key` a kitty or modifyOtherKeys report means, or None for a release or a key with no name."
+    "The `Key` for a kitty or modifyOtherKeys report, or None."
     m = (mods - 1) & ~0xc0
     if event == 3 or m > 7: return None
     if m == 4 and code in EXT_CTRL: return Key(EXT_CTRL[code])
@@ -103,7 +102,7 @@ def ext_key(code, mods=1, event=1):
     return Key(_mod('space' if name == ' ' else name, m + 1))
 
 def _patch_teleprint_keys():
-    "Decode kitty `CSI u` and modifyOtherKeys `CSI 27;m;c ~` reports. Returns whether the patch was needed."
+    "Decode kitty and modifyOtherKeys reports; True if the patch was needed."
     if Parser().feed(b'\x1b[13;2u'): return False
     inner = Parser._csi
     @functools.wraps(inner)
@@ -117,11 +116,11 @@ def _patch_teleprint_keys():
 KEYS_PATCHED = _patch_teleprint_keys()
 
 def ext_keys_ok(tty):
-    "Whether `tty` is a real terminal at both ends, the only kind to ask for extended keys."
+    "Whether `tty` is a real terminal at both ends."
     return hasattr(tty, 'fd') and os.isatty(tty.fd) and sys.stdout.isatty()
 
 def _patch_teleprint_modes():
-    "Hold extended keys exactly while the compositor holds a real terminal. Returns whether the patch was needed."
+    "Hold extended keys while the compositor holds a real terminal; True if patched."
     if hasattr(Compositor, 'ext_keys'): return False
     C, T = Compositor, TranscriptView
     start, stop, release, reanchor, fatal, signals, dispatch = (C.start, C.stop, C.release, C.reanchor,
@@ -186,8 +185,6 @@ LIGHT = {
     'red': '#9a443b', 'green': '#3f6d4d', 'yellow': '#87611c',
     'blue': '#246275', 'aqua': '#3e6660', 'orange': '#8a5b2b',
 }
-#: GitHub Dark Default, darkened to near-black for the terminal window. The default palette: the
-#: code themes were built against it, so reply prose and its code agree.
 GITHUB_DARK = {
     'bg0': '#0a0c10', 'bg1': '#11151c', 'bg2': '#1c2128',
     'fg0': '#e6edf3', 'fg1': '#c9d1d9', 'gray': '#8b949e',
@@ -197,8 +194,6 @@ GITHUB_DARK = {
 
 THEMES = {'github-dark': GITHUB_DARK, 'dark': DARK, 'light': LIGHT}
 
-#: More schemes a Ghostty-family terminal ships, mapped onto the twelve semantic keys above. Set
-#: the terminal to the same-name scheme to match. Adapted from `claude/ramabana-ascii-art-themes`.
 THEMES.update({
     'gruvbox': {
         'bg0': '#282828', 'bg1': '#3c3836', 'bg2': '#504945',
@@ -268,8 +263,7 @@ THEMES.update({
     },
 })
 
-#: One pygments style per palette, for code inside a reply. Only styles pygments ships, so
-#: `code_theme` falls back for an unknown name instead of raising.
+#: pygments-shipped styles only; an unknown style would raise
 CODE_THEMES = {'github-dark': 'github-dark', 'dark': 'github-dark', 'light': 'friendly',
                'gruvbox': 'gruvbox-dark', 'gruvbox-light': 'gruvbox-light', 'nord': 'nord',
                'dracula': 'dracula', 'solarized': 'solarized-dark',
@@ -278,7 +272,7 @@ CODE_THEMES = {'github-dark': 'github-dark', 'dark': 'github-dark', 'light': 'fr
                'latte': 'friendly'}
 
 KAKU = DARK
-GRUVBOX = GITHUB_DARK  # compatibility name for extensions. Updated by set_theme
+GRUVBOX = GITHUB_DARK  # legacy name extensions import; `set_theme` updates it
 ACTIVE_THEME = 'github-dark'
 
 def code_theme(name=None):
@@ -286,11 +280,11 @@ def code_theme(name=None):
     return CODE_THEMES.get(name or ACTIVE_THEME, 'github-dark')
 
 def code_bg(palette=None):
-    "What a code block sits on: `bg1` per palette, so it stays visible on a light theme too."
+    "The code block background: the palette's `bg1`."
     return (palette or GRUVBOX)['bg1']
 
 def set_theme(name='github-dark'):
-    "Select the active semantic palette. `auto` safely falls back to the default in a terminal."
+    "Select the active palette; `auto` means the default."
     global ACTIVE_THEME, GRUVBOX, MARKDOWN_THEME, GUTTERS
     name = str(name or 'github-dark').lower()
     if name == 'auto': name = 'github-dark'
@@ -331,40 +325,39 @@ ACT_EVERY = 0.05
 FOLD_STEP = 1
 STREAM_EVERY = 0.05
 ACT_TAIL = 3
-PANE_EVERY = 0.2  # seconds between writes of the pane's `now.json`
-FLASH_FOR = 2.0   # seconds a flash above the prompt stays up before it clears itself
+PANE_EVERY = 0.2  # seconds between `now.json` writes
+FLASH_FOR = 2.0   # seconds a flash stays up
 MAX_GROUP_ROWS = 8
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
                     'join', 'kernels', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
 
-HELP = """normal  enter send, or mid-turn steer it · shift+enter queue for after the turn · shift+tab cycle approvals · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
+HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · shift+tab cycle approvals · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
 transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
 edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
 media   drop or paste a path to attach · @path in a prompt · /attach PATH · /detach [N] · ctrl+v or /paste clipboard image
 memory  #note TEXT keeps a line for later sessions · /SKILL ARGS runs a skill or a <cfg>/commands/*.md file ($1..$n, $ARGUMENTS, @path) as a prompt
-copy    select with the mouse as in any scrollback · /copy the last reply · /copy turn for all of it · ctrl+r then y for any block
-approve y approve · n ⏎ refuse · n: REASON ⏎ refuse with a reason · a approve all · ctrl+y approve with a note · A always allow this · anything else shows the question again
+copy    select with the mouse · /copy the last reply · /copy turn all of it · ctrl+r then y any block
+approve y approve · n ⏎ refuse · n: REASON ⏎ refuse with a reason · a approve all · ctrl+y approve with a note · A always allow this · anything else re-asks
           shift+tab cycles ask, edits, auto · ctrl+g one step stricter · /approve off|ask|edits|auto sets any
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
-extra   /root · /root add PATH to open another folder · /pane opens what the agent and its sub-agents are doing in a tmux split · /pane off · /theme · /mouse to click blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
-subagent /subagents shows whether delegated work may write · /subagents on|off changes it for this session
+extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
+subagent /subagents shows whether delegated work may write · /subagents on|off sets it for this session
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
 
-#: `[ ]` pending, `[▸]` active, `[x]` done, `[-]` cancelled. See `agent.TODO_MARK`.
 _TODO_RE = re.compile(r'^(\[[ x▸\-]\])\s+(`[^`]*`)?\s*(.*)$')
 
 def plan_text(md):
-    "The plan checklist as themed `Text`: one colour for the marks, another for the step text. `GRUVBOX` is read per call, so `/theme` restyles a painted plan."
+    "The plan checklist as themed `Text`, reading `GRUVBOX` per call."
     out = Text()
     for i, line in enumerate(md.splitlines()):
         if i: out.append('\n')
         m = _TODO_RE.match(line)
-        if m is None:                                  # the `**title**  ·  n/m done` header
+        if m is None:
             title, sep, count = line.replace('**', '').partition('  ·  ')
             out.append(title, style=f"bold {GRUVBOX['yellow']}")
             if sep: out.append(f'  ·  {count}', style=GRUVBOX['gray'])
@@ -405,7 +398,7 @@ WORK
   In tmux: set -g extended-keys on (and extended-keys-format csi-u).
   /pane shows the turn and its sub-agents; /pane off closes it.
   --max-tool-calls auto|N  --max-steps auto|N  /tool-budget  /steps
-  --profile auto|small|full  the tool set and briefing the model is given
+  --profile auto|small|full  the model's tool set and briefing
 FILES AND API
   drop or paste media, write @path, or /attach PATH; /detach drops it.
   --spec enables api_load, api_ops, and api_call.
@@ -426,7 +419,7 @@ def key_card(text):
     return out
 
 def guide_text(text):
-    "The guide, with its section headers picked out and the commands in the key colour."
+    "The guide with its headers and commands styled."
     out = Text()
     for line in text.splitlines():
         if line and not line[0].isspace():
@@ -448,7 +441,7 @@ MEDIA = {
     '.flac': ('audio', 'audio/flac'), '.aac':  ('audio', 'audio/aac'),
 }
 
-from .tools import MAX_MEDIA, MAX_ATTACH   # one limit for a terminal attachment and a delegated picture
+from .tools import MAX_MEDIA, MAX_ATTACH
 _all_ = ['MAX_MEDIA', 'MAX_ATTACH']
 CLIP_IMAGE = (('pngpaste', '-'),
               ('wl-paste', '--type', 'image/png'),
@@ -479,24 +472,22 @@ def is_media(p):
     except OSError: return False
 
 def media_paths(text):
-    "Every media file a paste names, or nothing when the paste is anything else."
+    "Every media file a paste names, or `[]` when it is anything else."
     raw = str(text).strip().strip('[]').strip()
     if not raw: return []
     whole = media_path(raw)
-    if is_media(whole): return [whole]        # one drop whose filename contains spaces
+    if is_media(whole): return [whole]
     try: toks = shlex.split(raw)
     except ValueError: return []
     paths = [media_path(t) for t in toks]
     return paths if paths and all(is_media(p) for p in paths) else []
 
-#: `@path`, the file reference every other harness spells the same way.
 ATTACH_REF = re.compile(r'(?<!\S)@(\S+)')
 
-#: Punctuation a `@path` can pick up from the sentence it sits in, never from a filename.
 TRAILING = '?!,;:.)]}\'"'
 
 def attach_refs(text):
-    "Media named `@path` inside a typed prompt. Trailing sentence punctuation comes off until what is left names a file."
+    "Media named `@path` in a prompt, trailing punctuation stripped."
     out = []
     for m in ATTACH_REF.finditer(str(text or '')):
         tok = m.group(1)
@@ -510,7 +501,7 @@ def attach_refs(text):
     return out
 
 def clipboard_png():
-    "A picture on the system clipboard as PNG bytes, or None when there is not one."
+    "The clipboard picture as PNG bytes, or None."
     for cmd in CLIP_IMAGE:
         if shutil.which(cmd[0]) is None: continue
         try: out = subprocess.run(cmd, capture_output=True, timeout=5).stdout
@@ -519,7 +510,7 @@ def clipboard_png():
     return None
 
 class Attachment:
-    "One media file riding along with the next prompt. The bytes are read once, when attached, so a later change to the file cannot alter what is sent."
+    "One media file for the next prompt, its bytes read once when attached."
     def __init__(self, path):
         self.path = Path(path).expanduser().resolve()
         self.kind, self.mime = MEDIA[self.path.suffix.lower()]
@@ -533,7 +524,7 @@ class Attachment:
     def __repr__(self): return f'Attachment({self.kind} {self.label()})'
 
 def sendable(atts, spec=None):
-    "The attachment kinds `spec`'s model can be sent. Pictures always. Sound where it can hear."
+    "The attachment kinds `spec`'s model accepts: images always, audio if it hears."
     kinds = {'image'}
     if spec is None or accepts(spec, 'audio'): kinds.add('audio')
     return kinds
@@ -556,27 +547,23 @@ def media_note(atts, spec=None):
     return f'\n\n<attachments>\n{rows}\n</attachments>{note}'
 
 # %% ../nbs/05_cli.ipynb #e6190af7
-#: Terminals that speak kitty's graphics protocol, by what they put in the environment.
 KITTY_ENV = ('KITTY_WINDOW_ID', 'GHOSTTY_RESOURCES_DIR')
 KITTY_TERM = ('kitty', 'kaku', 'ghostty', 'wezterm')        # substrings of $TERM
 KITTY_PROGRAM = ('WezTerm', 'Kaku', 'ghostty', 'kitty')     # exact $TERM_PROGRAM
 
 def kitty_graphics():
-    "Does this terminal speak the kitty graphics protocol?"
+    "Whether this terminal speaks the kitty graphics protocol."
     if (forced := env('KITTY')) is not None:
         return str(forced).strip().lower() not in ('0', 'false', 'no', '')
     if any(os.environ.get(k) for k in KITTY_ENV): return True
     term, prog = os.environ.get('TERM', '').lower(), os.environ.get('TERM_PROGRAM', '')
     return any(t in term for t in KITTY_TERM) or prog in KITTY_PROGRAM
 
-#: The box a picture is drawn in, the cell aspect, and how many one turn may draw. Small and few
-#: on purpose: a tall block makes the transcript hard to scroll, and a placement taller than the
-#: window can never show all its rows.
 MAX_IMG_COLS = 24
 MAX_IMG_ROWS = 12
 CELL_ASPECT = 2.1
 MAX_IMG_DRAW = 2
-#: Rows a picture leaves the chrome around it: the tail, the path under it, the call above.
+#: rows kept for the chrome around a picture
 IMG_CHROME = 10
 
 def png_size(path):
@@ -588,7 +575,7 @@ def png_size(path):
     return (w, h) if w and h else None
 
 def img_cells(path, cols, rows=MAX_IMG_ROWS):
-    "Cell width and height for `path` inside a `cols` by `rows` box, keeping aspect. Both bounds cap it, so a tall screenshot cannot fill the transcript."
+    "Cell width and height for `path` in a `cols` by `rows` box, keeping aspect."
     if not (wh := png_size(path)): return None
     w, h = wh
     c = max(1, min(cols, MAX_IMG_COLS))
@@ -610,7 +597,7 @@ class Picture:
     def __repr__(self): return f'Picture({self.path.name} {self.cols}x{self.rows})'
 
     def send(self):
-        "The escape that hands the terminal the bytes, chunked as the protocol requires, drawing nothing."
+        "The escape sending the bytes in protocol chunks, drawing nothing."
         try: data = b64encode(self.path.read_bytes())
         except OSError: return ''
         out, head = [], f'a=t,f=100,i={self.id},q=2'
@@ -621,11 +608,11 @@ class Picture:
         return ''.join(out)
 
     def place(self):
-        "The escape that draws it at the cursor. `C=1`: the cursor stays where the frame parked it."
+        "The escape drawing it at the cursor; `C=1` leaves the cursor put."
         return f'\x1b_Ga=p,i={self.id},p=1,c={self.cols},r={self.rows},C=1,q=2\x1b\\'
 
     def clear(self):
-        "The escape that takes the drawing off the screen, keeping the bytes for the next frame."
+        "The escape erasing the drawing, keeping the bytes."
         return f'\x1b_Ga=d,d=i,i={self.id},p=1,q=2\x1b\\'
 
     def gap(self):
@@ -638,15 +625,15 @@ def picture(path, cols=MAX_IMG_COLS, rows=MAX_IMG_ROWS):
     return p if (p := Picture(path, cols, rows)) else None
 
 def draw_png(path, cols=MAX_IMG_COLS):
-    "Send and place `path` at the cursor in one go, or `''`. For a caller with no frames to hook."
+    "Send and place `path` at the cursor, or `''`, for callers without frames."
     return (p.send() + p.place()) if (p := picture(path, cols)) is not None else ''
 
 def media_line(path):
-    "What the transcript says about a saved picture: under the drawing, or in place of it."
+    "The transcript line for a saved picture."
     return str(path) if kitty_graphics() else f'saved  {path}'
 
 # %% ../nbs/05_cli.ipynb #2a893877
-MAX_FILE_ATTACH = 120_000  # characters. Enough source to be useful without consuming a whole turn
+MAX_FILE_ATTACH = 120_000  # characters
 def file_refs(text):
     "Relative paths named as `@path` in a prompt, with sentence punctuation removed."
     out = []
@@ -675,11 +662,11 @@ def file_note(atts):
 # %% ../nbs/05_cli.ipynb #07ecef35
 @dataclass
 class Option:
-    "One choice on the options row: the key that picks it, what it says, and what it asks for."
-    key: str                # the letter that picks it directly
+    "One choice on the options row: key, label, note and prompt suffix."
+    key: str                # the letter that picks it
     label: str              # one word, in the column
-    note: str = ''          # what choosing it means, in a few more
-    suffix: str = ''        # appended to the prompt. `None` drops the prompt instead
+    note: str = ''          # what choosing it means
+    suffix: str = ''        # appended to the prompt; `None` drops it
 
 REFACTOR = (
     Option('a', 'apply', 'edit the files, then run the project’s checks',
@@ -699,7 +686,7 @@ MENUS = ((('refactor', 'restructure', 'reorganise', 'reorganize', 'rewrite this'
 
 
 def options_for(text):
-    "`(title, options)` for a prompt worth asking *how* about, or None for one that is not."
+    "`(title, options)` for a prompt worth asking *how* about, or None."
     p = str(text or '').lower()
     return next(((title, opts) for words, title, opts in MENUS if any(w in p for w in words)), None)
 
@@ -737,10 +724,10 @@ async def run_turn(ui, prompt):
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
     ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
     ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
-    ui._plan_blk = None        # a new turn prints the plan once more, then rewrites that one
+    ui._plan_blk = None
     ui._turn_at, ui._turn_from = time.monotonic(), next(reversed(ui.comp.blocks), 0)
     atts, ui.attachments = list(ui.attachments), []
-    ui.drawn = 0               # `MAX_IMG_DRAW` is per turn: the rest of a batch is listed
+    ui.drawn = 0
     spec = ui.agent.model
     ask, media = prompt + media_note(atts, spec), media_parts(atts, spec)
     def pump():
@@ -765,9 +752,9 @@ async def run_turn(ui, prompt):
     finally:
         ui.turn = None
         ui.write_now(force=True)
-        ui.flush_stream()          # the throttle may still owe the last chunk a render
-        ui._seg_blk = None         # the answer is final: no later chunk grows it
-        ui.show_media(ui.agent.resp_media)   # the tools' own pictures were drawn as they landed
+        ui.flush_stream()
+        ui._seg_blk = None
+        ui.show_media(ui.agent.resp_media)
         for p in ui.agent.problems: ui.say(Text(p), 'error')
         ui.agent.clear_problems()
         if (ch := ui.agent.changed_line()): ui.say(Text(ch), 'note', fold=None)
@@ -787,53 +774,53 @@ class Ui:
         self.comp, self.agent, self.loop = comp, agent, loop
         comp.console.push_theme(MARKDOWN_THEME)
         self.buf = Buffer()
-        self.ask = None            # the `Ask` waiting on an answer, or None
-        self._asked_at = 0.0       # when it was last shown, for `nudge`
-        self.turn = None           # the running turn's task, or None
-        self._queued = None        # a line typed during a turn, waiting for it to end
-        self._queued_prompt = None # its text, when it is a prompt: further lines join it
-        self._prompt = None        # the text the coroutine `submit` just built was made from
-        self._flash = None         # (text, when it expires): what happened, not what is pending
-        self._queued_echo = []     # what a queued line printed, held for when it runs
-        self._hold = False         # shift+enter: a line typed mid-turn waits for the turn rather than steering it
-        self.pane, self._pane_at = None, None   # the tmux pane drawing `now.json`, or None, and the `now.json` it draws
-        self._now_at, self._now_busy, self._now_dirty = 0.0, False, False   # the last `now.json` write, whether it caught the agent busy, and whether the throttle dropped one since
-        self._echoed = []          # (block, body, kind, kw) for the line just typed
-        self.acts = {}             # act id -> its block, for calls that have one of their own
-        self.by_id = {}            # act id -> the `Act`, while it may still need redrawing
-        self.kids = {}             # delegate act id -> the calls its sub-agent has made
+        self.ask = None
+        self._asked_at = 0.0
+        self.turn = None
+        self._queued = None
+        self._queued_prompt = None
+        self._prompt = None
+        self._flash = None
+        self._queued_echo = []
+        self._hold = False
+        self.pane, self._pane_at = None, None
+        self._now_at, self._now_busy, self._now_dirty = 0.0, False, False
+        self._echoed = []
+        self.acts = {}
+        self.by_id = {}
+        self.kids = {}
         self.hint = ''
-        self.mode = 'agent'        # 'python' once `enter_python` has a kernel
-        self.kernel = None         # the owner's `pyrepl.Kernel`, or None
+        self.mode = 'agent'
+        self.kernel = None
         self.attached = ''
-        self.agent_bridge = None    # this session's bridge for the Dhrishti agent proxy
+        self.agent_bridge = None
         self.proxy_url = ''
         from ramabana.runtime import TokenLogger
         TokenLogger.sink = self._usage_line
-        self._join_ask = ''        # the session /join asked about. The same one again means yes
-        self._suggesting = False   # one completion in flight at a time
-        self.desc = []             # 'name -> type' for the live names among the candidates
-        self.attachments = []      # `Attachment`s the next prompt carries
-        self.pics = {}             # block id -> the `Picture` drawn over its rows
-        self.drawn = 0             # pictures drawn this turn, against `MAX_IMG_DRAW`
-        self.frame = 0             # animated status frame. Advanced only while a turn runs
-        self._reply = ''           # every word this turn has said, for the notebook log and `/copy`
-        self._seg = ''             # the current prose segment: the text of one step of the timeline
-        self._seg_blk = None       # the block that segment grows in, or None between segments
-        self._painted_at = 0.0     # when that segment last re-rendered, for `STREAM_EVERY`
-        self._acted_at = 0.0       # when the tool pane last repainted, for `ACT_EVERY`
-        self._held = set()         # blocks the reader folded or opened by hand
-        self._turn_at = 0.0        # when the running turn began, for the working footer's clock
-        self._turn_from = 0        # the block id the running turn started at, for `turn_blocks`
-        self._rendered = ''        # the segment text last actually rendered, so a flush is never wasted
-        self._plan_blk = None      # the turn's one plan block, updated in place. `on_plan` fires
-        self._touched = 0.0        # when the transcript view last rebuilt, for `touch`
+        self._join_ask = ''
+        self._suggesting = False
+        self.desc = []
+        self.attachments = []
+        self.pics = {}
+        self.drawn = 0
+        self.frame = 0
+        self._reply = ''
+        self._seg = ''
+        self._seg_blk = None
+        self._painted_at = 0.0
+        self._acted_at = 0.0
+        self._held = set()
+        self._turn_at = 0.0
+        self._turn_from = 0
+        self._rendered = ''
+        self._plan_blk = None
+        self._touched = 0.0
         self.history, self.history_at, self.draft = [], 0, ''
-        self.menu = None            # the open `ChoiceMenu`, or None
-        self.menu_prompt = ''       # the line it is asking about
-        self.complete = None        # slash-command `CompletionMenu`, or None
-        self.show_plan = bool(agent.plan)  # plan tooltip above the tail
-        self.mouse = False         # whether the main screen takes the mouse. `/mouse` toggles it
+        self.menu = None
+        self.menu_prompt = ''
+        self.complete = None
+        self.show_plan = bool(agent.plan)
+        self.mouse = False
         self.bell, self._key_at = True, time.monotonic()
         self._stop_at, self._stop_count, self._stop_run = 0., 0, ''
         self.transcript = TranscriptView(comp, self.tail)
@@ -844,10 +831,10 @@ class Ui:
         self._compact_hook = getattr(agent.compactor, 'on_compact', None)
         agent.compactor.on_compact = self._on_compact
         if agent.approvals is not None: agent.approvals.listen(self.on_ask, self.on_answer)
-        comp.on_frame = self.place_pics    # a picture is not text: it is put back after every frame
+        comp.on_frame = self.place_pics
 
     def _post(self, fn, *a):
-        "Run `fn` on the loop thread, or now when there is no loop (a test, or startup)."
+        "Run `fn` on the loop thread, or now without a loop."
         if self.loop is None: return fn(*a)
         self.loop.call_soon_threadsafe(fn, *a)
 
@@ -862,7 +849,7 @@ class Ui:
         return held.result(timeout)
 
     def _usage_line(self, text):
-        "Where `TokenLogger` writes. It fires on the turn thread, so it goes through `_post`."
+        "The `TokenLogger` sink, posted from the turn thread."
         self._post(lambda: self.note(text))
 
     def _on_compact(self, text):
@@ -877,31 +864,24 @@ class Ui:
         if self.loop is not None: self.loop.call_later(1.5, self.paint)
 
 
-    #: The name in double-ruled letterforms, one row and eight cells wide, the same width as the
-    #: plain text, so the status bar behind it does not move.
     WORDMARK = 'ℝ𝔸𝕄𝔸𝔹𝔸ℕ𝔸'
 
     SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 
-    #: A fixed track with an arrow travelling along it. The track is drawn quiet and the arrow in
-    #: the state's own colour, so the two read apart without a box around either.
     TRACK = '·'
     BOW_FRAMES = ('»═▸·····', '·»═▸····', '···»═▸··', '·····»═▸')
-    #: Compacting closes on the middle of the same track: the window is pulled together.
     COMPACT_BOW = '··▸··◂··'
 
-    #: Which frame each tick shows. The arrow starts slow and gains, since one frame per tick read
-    #: as a metronome.
     BOW_CYCLE = (0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 3)
 
     def bow_text(self, busy=False, style=None):
-        "The art as spans: the track quiet, whatever is travelling on it in the caller's colour."
+        "The art as spans: the track quiet, the arrow in `style`."
         out, frame = Text(), self.bow(busy)
         for ch in frame: out.append(ch, style=GRUVBOX['gray'] if ch == self.TRACK else style)
         return out
 
     def bow(self, busy=False):
-        "The bow at this tick of the animation: drawn and loosed while busy, at rest otherwise."
+        "The bow frame for this tick: moving while busy, at rest otherwise."
         if self._compact_until > time.monotonic(): return self.COMPACT_BOW
         if not busy: return self.BOW_FRAMES[0]
         return self.BOW_FRAMES[self.BOW_CYCLE[self.frame % len(self.BOW_CYCLE)]]
@@ -933,24 +913,23 @@ class Ui:
         return [b for b in self.comp.blocks.values() if b.id >= self._turn_from and not b.committed]
 
     def drillable(self):
-        "The foldable entries of the turn on screen, newest first: what alt+1..9 reaches. The numbers live in the footer, not the gutter."
+        "The turn's foldable entries, newest first: what alt+1..9 reaches."
         return [b for b in reversed(self.turn_blocks())
                 if b.tag in ('step', 'tool') and b.height > 1][:9]
 
     def drill(self, n):
-        "Toggle the `n`th newest foldable entry, counting from 1. False when there is no such entry."
+        "Toggle the `n`th newest foldable entry; False if there is none."
         self.flush_stream()
         blocks = self.drillable()
         if not 1 <= n <= len(blocks): return False
         blk = blocks[n - 1]
         self.comp.toggle(blk)
-        self._held.add(blk.id)      # the reader has decided about this one; stop re-deciding
+        self._held.add(blk.id)
         self.touch(now=True)
         return True
 
     def working(self):
-        "Where the model is at: the last few calls, then one line of totals. Only while a turn runs."
-        # In the tail, so it never scrolls; tail rows never ink, so none of it reaches the transcript.
+        "The working footer while a turn runs: the last few calls and a totals line."
         if self.turn is None and not self.agent.busy: return []
         acts = self.agent.activity.since()
         nums = {b.id: i + 1 for i, b in enumerate(self.drillable())}
@@ -972,16 +951,16 @@ class Ui:
         return rows
 
     async def animate(self):
-        "Repaint the live tail while a turn is running. The transcript remains untouched."
+        "Repaint the live tail while a turn runs."
         while True:
             await asyncio.sleep(0.1)
             if self.ask is not None: self.nudge()
             if self.turn is not None:
                 self.frame += 1
-                self.flush_stream()   # a model that stalls mid-prose must not leave its last words unseen
+                self.flush_stream()
                 self.paint()
             if self.turn is not None or self._now_busy or self._now_dirty: self.write_now()
-            if self.pane is not None and _now_file(self.agent) != self._pane_at: self.open_pane()   # `/resume` moved `now.json`
+            if self.pane is not None and _now_file(self.agent) != self._pane_at: self.open_pane()
 
     def write_now(self, force=False):
         "Write `now.json` for the pane, at most every `PANE_EVERY` seconds unless `force`."
@@ -1008,13 +987,13 @@ class Ui:
         return Text('▌ ', style=f"bold {GRUVBOX['blue']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
 
     def _prefixed(self, text):
-        "`text` with whatever precedes it on screen, which is what `tail` measures against."
+        "`text` with what precedes it on screen, as `tail` measures it."
         if self.ask is not None: return self.ASKING + text
         if self.mode == 'python': return self.PY_LABEL + text.replace('\n', '\n' + self.CONT)
         return '▌ ' + text
 
     def _suggest_soon(self):
-        "Ask the kernel what the token could be, as a slash line lists while you type."
+        "Start a kernel completion for the token being typed."
         if self.mode != 'python' or self.kernel is None or self._suggesting: return
         if self.turn is not None or self.ask is not None: return
         tok = re.split(r'[^\w.]', self.buf.text[:self.buf.cursor])[-1]
@@ -1034,13 +1013,13 @@ class Ui:
         return []
 
     def paint(self):
-        "Repaint the live tail, and the browsing view when it is the surface on screen."
+        "Repaint the live tail, and the browsing view when it is up."
         rows, cursor = self.tail()
         self.comp.set_tail(*rows, cursor=cursor, over=self.overlay())
         if self.transcript.active: self.transcript.draw()
 
     def touch(self, now=False):
-        "New or changed blocks: a following transcript view tracks them, as `less +F` would."
+        "Let a following transcript view track new blocks, like `less +F`."
         if now: self.flush_stream()
         if not self.transcript.active: return
         t = time.monotonic()
@@ -1050,7 +1029,7 @@ class Ui:
 
 
     def say(self, body, kind='reply', fold=FOLD, source=None, pad=False):
-        "Print one block. Strings stay literal. Explicit Rich renderables keep their styling."
+        "Print one block; strings stay literal, Rich renderables keep their style."
         if source is None:
             if isinstance(body, str): source = body
             elif isinstance(body, Text): source = body.plain
@@ -1067,26 +1046,26 @@ class Ui:
         return blk
 
     def note(self, text, kind='note'):
-        "Print one unfolded `kind` block and stay on this side of the model. Always None."
+        "Print one unfolded `kind` block; returns None."
         self.say(Text(text), kind, fold=None)
         return None
 
     def fold_work(self):
-        "Open every step and call of the turn on screen, or shut them all again; returns which it did."
+        "Open or shut every step and call of the turn; True when shut."
         self.flush_stream()
         work = [b for b in self.turn_blocks() if b.tag in ('step', 'tool') and b.height > 1]
         if not work: return False
         shut = not all(b.collapsed for b in work)
         for b in work:
             b.collapsed = shut
-            self._held.add(b.id)    # ctrl+o is a decision too
+            self._held.add(b.id)
             self.comp._dirty(b)
         self.comp._frame()
         self.touch(now=True)
         return shut
 
     def on_act(self, act):
-        "Called twice per tool call, from the model's thread: once running, once finished."
+        "Post a tool call's change from the model's thread: running, then done."
         self._post(self._act, act)
 
     def _act_style(self, act):
@@ -1101,39 +1080,38 @@ class Ui:
         return act.ok                          
 
     def _echo(self, body, kind='user', **kw):
-        "Print what was typed, and keep it retractable until the turn it belongs to starts."
+        "Print what was typed, retractable until its turn starts."
         blk = self.say(body, kind, **kw)
         self._echoed.append((blk, body, kind, kw))
         return blk
 
     def _retract(self):
-        "Take the typed entry back off the screen: the turn it belongs to has not started."
+        "Remove the typed entry before its turn starts."
         held, self._echoed = self._echoed, []
         for blk, *_ in held: self.comp.remove_block(blk)
         return held
 
     def _replay(self, held):
-        "Print a retracted entry again, where the turn it belongs to actually starts."
+        "Print retracted entries again where their turn starts."
         for _, body, kind, kw in held: self._echo(body, kind, **kw)
 
     def _turn(self, prompt):
-        "A turn over `prompt`, remembering the text so a line queued behind it can join it."
+        "A turn over `prompt`, remembered so a queued line can join it."
         self._prompt = prompt
         return run_turn(self, prompt)
 
     def start_turn(self, coro, prompt=None):
-        "Spawn a turn, or hold it until the running one ends. Says whether it started now."
+        "Spawn a turn, or queue it behind the running one; True if it started."
         prompt, self._prompt = (self._prompt if prompt is None else prompt), None
         if self._turn_over(): self.turn = None
         if self.turn is not None:
             if self._queued is not None:
-                # two prompts waiting are one turn: dropping the second loses what was typed
                 if prompt is None or self._queued_prompt is None:
                     coro.close()
-                    self._retract()   # it will never run, so the transcript must not claim it did
+                    self._retract()
                     self.note('something is already waiting · ctrl+c clears it and stops this turn')
                     return False
-                coro.close(); self._queued.close()   # neither ran; one turn carries both lines
+                coro.close(); self._queued.close()
                 self._queued_prompt += '\n\n' + prompt
                 self._queued = run_turn(self, self._queued_prompt)
                 self._queued_echo += self._retract()
@@ -1143,30 +1121,30 @@ class Ui:
             self.note('queued · it runs when this turn ends · ctrl+c stops and clears it')
             return False
         self.turn = self.comp.spawn(coro, name='turn')
-        self._echoed = []   # it is running: the entry stands
+        self._echoed = []
         self.turn.add_done_callback(lambda _t: self._next_queued())
         return True
 
     def steer(self, line):
-        "Send `line` into the running turn, read after its current call. False when no turn of ours is listening, or the line has files: they only travel with a turn."
+        "Send `line` into the running turn; False if none listens or it has files."
         if self.turn is None or self.attachments or file_refs(line) or not self.agent.steer(line): return False
         self._retract()
         self._echo(Text('↪ ' + line), 'user', pad=True)
-        self._echoed = []   # its turn is already running: the entry stands
+        self._echoed = []
         self.flash('sent · read after the current call')
         return True
 
     def _turn_over(self):
-        "Whether the turn in flight has finished. Anything without `done()` counts as still running."
+        "Whether the turn in flight is done; objects without `done()` never are."
         return self.turn is not None and getattr(self.turn, 'done', bool)()
 
     def _next_queued(self):
-        "Run what was waiting once the turn it was typed during has ended: steering it never read, joined with a queued line."
+        "After the turn ends, run unread steering joined with any queued line."
         if self._turn_over(): self.turn = None
-        # another turn already has the surface; its own ending drains this
+        # the running turn drains this when it ends
         if self.turn is not None: return
         if (left := '\n\n'.join(self.agent.leftovers())):
-            if self._queued is not None and self._queued_prompt is None:   # a queued command is not a prompt to join: it runs after
+            if self._queued is not None and self._queued_prompt is None:
                 self.start_turn(run_turn(self, left), prompt=left)
                 return self.paint()
             if self._queued is not None: self._queued.close(); left += '\n\n' + self._queued_prompt
@@ -1174,7 +1152,7 @@ class Ui:
         if self._queued is None: return
         held, hp, echo = self._queued, self._queued_prompt, self._queued_echo
         self._queued, self._queued_prompt, self._queued_echo = None, None, []
-        self._replay(echo)   # the entry belongs where the turn starts, not where it was typed
+        self._replay(echo)
         try:
             if self.start_turn(held, prompt=hp): self.flash('queued message sent')
         except Exception as e:
@@ -1183,10 +1161,9 @@ class Ui:
         self.paint()
 
     def drop_queued(self):
-        "Forget a waiting line and any steering the turn has not read. Ctrl-C means stop what is happening, and they were part of that."
+        "Forget a waiting line and any unread steering."
         unread = self.agent.leftovers()
         if self._queued is None and not unread: return False
-        # its entry left the screen when it was queued: nothing to un-draw, only to forget
         if self._queued is not None: self._queued.close()
         self._queued, self._queued_prompt, self._queued_echo = None, None, []
         self.note('the waiting message was cleared')
@@ -1217,7 +1194,7 @@ class Ui:
             self.paint()
 
     def _nest(self, act):
-        "A sub-agent's call, folded into the delegate that asked for it rather than printed beside it."
+        "Fold a sub-agent's call into the delegate that asked for it."
         kids = self.kids.setdefault(act.parent_action_id, [])
         if not any(k.id == act.id for k in kids): kids.append(act)
         self._paint_group(act.parent_action_id)
@@ -1225,8 +1202,8 @@ class Ui:
         return self.paint()
 
     def _paint_group(self, pid):
-        "Redraw a delegate and everything its sub-agent has done so far, as one foldable block."
-        if pid not in self.by_id: return   # its parent has been pruned; nothing left to redraw into
+        "Redraw a delegate and its sub-agent's calls as one foldable block."
+        if pid not in self.by_id: return
         act, blk, kids = self.by_id[pid], self.acts[pid], self.kids.get(pid, [])
         head = Text(act.line(), style=self._act_style(act))
         if kids: head.append(f'  · {len(kids)} call{"" if len(kids) == 1 else "s"}', style=GRUVBOX['gray'])
@@ -1237,12 +1214,12 @@ class Ui:
         if act.detail: body.append(Text(act.detail, style=GRUVBOX['gray']))
         src = '\n'.join([act.line()] + ['   ' + k.line() for k in kids] + ([act.detail] if act.detail else []))
         self.comp.set_body(blk, *body, source=src)
-        blk.collapsed = self._folded(act, blk)   # unfolded while it runs: you watch the sub-agent work
+        blk.collapsed = self._folded(act, blk)
         self.comp.refresh_block(blk)
 
 
     def on_ask(self, ask):
-        "A write is waiting on a person. Print what it would do, and take over the input line."
+        "Show a waiting write and take over the input line."
         self._post(self._ask, ask)
 
     def _ask(self, ask):
@@ -1259,14 +1236,14 @@ class Ui:
         self.paint()
 
     def answer(self, ok, session=False, note=None):
-        "Answer the pending request; the note is `note`, else whatever has been typed. A refusal's reason reaches the model, which can change approach."
+        "Answer the pending request with `note`, else the typed line."
         if self.ask is None: return None
         note, self.buf.text = ifnone(note, self.buf.text.strip()), ''
         return self.agent.approvals.answer(self.ask.id, ok, note, session=session)
 
 
     def attach(self, path):
-        "Attach one media file to the next prompt, or say why it cannot be attached."
+        "Attach one media file to the next prompt, or say why not."
         p = media_path(path)
         if p is None: return 'nothing to attach'
         if p.is_dir(): return f'cannot attach {p.name}: it is a folder'
@@ -1281,7 +1258,7 @@ class Ui:
         return f'attached {a.kind} {a.label()}'
 
     def detach(self, which=''):
-        "Drop one attachment by 1-based index or name, or all of them when nothing is named."
+        "Drop one attachment by 1-based index or name, or all of them."
         if not self.attachments: return 'nothing is attached'
         if not which:
             n, self.attachments = len(self.attachments), []
@@ -1294,7 +1271,7 @@ class Ui:
         return f'dropped {hit.name}'
 
     def attach_clipboard(self):
-        "Attach a picture sitting on the system clipboard, by way of a temporary file."
+        "Attach the clipboard picture via a temporary file."
         png = clipboard_png()
         if png is None:
             if not any(shutil.which(c[0]) for c in CLIP_IMAGE):
@@ -1306,7 +1283,7 @@ class Ui:
         return self.attach(name)
 
     def attach_row(self):
-        "The chips above the prompt: what the next message will carry, or None when nothing will."
+        "The attachment chips above the prompt, or None."
         if not self.attachments: return None
         row = Text(' ')
         for i, a in enumerate(self.attachments):
@@ -1316,7 +1293,7 @@ class Ui:
         return row
 
     def flash(self, text, secs=FLASH_FOR):
-        "Say one thing above the prompt and let it clear itself. For what just happened."
+        "Show a self-clearing line above the prompt."
         self._flash = (text, time.monotonic() + secs)
 
     def flash_row(self):
@@ -1328,7 +1305,7 @@ class Ui:
         return Text(' \u2713 ' + self._flash[0], style=GRUVBOX['green'])
 
     def queued_row(self):
-        "The message waiting for this turn to end. Seeing it beats being told about it."
+        "The row showing the message waiting for this turn to end."
         if self._queued is None: return None
         what = ' '.join((self._queued_prompt or '').split()) or 'a command'
         row = Text(' \u23f3 queued  ', style=GRUVBOX['yellow'])
@@ -1337,7 +1314,7 @@ class Ui:
         return row
 
     def copy_last(self, tag='reply'):
-        "Put the newest `tag` block on the system clipboard with OSC 52, from the prompt."
+        "Copy the newest `tag` block to the system clipboard with OSC 52."
         tag = (tag or 'reply').strip() or 'reply'
         if tag == 'turn':
             if not self._reply: return 'no turn to copy'
@@ -1351,12 +1328,12 @@ class Ui:
 
 
     def on_plan(self, plan):
-        "Repaint when the model (or a slash command) mutates the checklist."
+        "Repaint when the checklist changes."
         self.show_plan = bool(plan)
         self._post(self._paint_plan, plan)
 
     def _paint_plan(self, plan):
-        "Keep one plan block for the turn and rewrite it"
+        "Keep one plan block for the turn and rewrite it."
         if not plan: return
         md = plan.md()
         if (blk := self._plan_blk) is None:
@@ -1383,14 +1360,14 @@ class Ui:
         self.complete = CompletionMenu(self.buf, hits, start=0, show=8)
 
     def guide(self):
-        "The walkthrough behind `/guide`. A subclass adds its own surface to it."
+        "The `/guide` text; subclasses extend it."
         return GUIDE
 
     def submit(self):
         "Handle the typed line. Returns a coroutine for a turn, `'quit'`, or None when handled here."
         src, line = self.buf.text, self.buf.text.strip()
         self.complete, self.desc = None, []
-        self._echoed = []   # this keystroke's echo, retractable until its turn starts
+        self._echoed = []
         self.buf.clear()
         if not line: return None
         if line in ('/agent_proxy', '/agent-proxy'): return self.enable_agent_proxy()
@@ -1400,19 +1377,19 @@ class Ui:
             return self.note('agent mode' if self.kernel is not None else 'agent mode; no kernel is running')
         if line in ('/vars', '/v'):
             try: return self.note(self.agent.host.list_vars() or '(nothing bound yet)')
-            except Exception as e: return self.note(agent_err(e), 'error')   # not every host has a session
+            except Exception as e: return self.note(agent_err(e), 'error')
         if (parts := line.split())[0] in ('/promote', '/adopt'):
             if len(parts) != 2: return self.note('usage: /promote NAME')
             return self._promote(parts[1])
         if self.mode == 'python' and not line.startswith('/'):
             from ramabana.pyrepl import hl
-            # the raw buffer, not the stripped line. An indented paste keeps its first row
+            # raw buffer: an indented paste keeps its first row
             self._echo(hl(src), 'user', source=src)
             return self.run_code(src)
         if not line.startswith('/') and (opts := options_for(line)) is not None:
             self.menu_prompt, self.menu = line, ChoiceMenu(*opts)
             return None
-        self._echo(Text(line), 'user', pad=True)   # one blank row: a session reads as turns
+        self._echo(Text(line), 'user', pad=True)
         if line in ('/quit', '/exit', '/q'): return 'quit'
         if line == '/kernels':
             from ramabana.pyrepl import sessions
@@ -1449,7 +1426,7 @@ class Ui:
             if name in ('/plan', '/todo', '/todos'): self.show_plan = bool(self.agent.plan)
             return None
         if not self._hold and self.steer(line): return None
-        got = [self.attach(p) for p in attach_refs(line)]   # `@path` in a prompt attaches it
+        got = [self.attach(p) for p in attach_refs(line)]
         if got: self.note('\n'.join(got))
         return self._turn(line)
 
@@ -1459,7 +1436,7 @@ class Ui:
         if self.mode == 'python' and self.ask is None and not self.buf.text.lstrip().startswith('/'):
             if (k.name == 'tab' and self.complete is None and self.turn is None
                     and self.buf.text): return self.complete_python()
-            if k.name == 'shift+enter' and self.menu is None:   # a newline, never a submit: the code may be half written
+            if k.name == 'shift+enter' and self.menu is None:
                 self.buf.insert('\n')
                 return self.paint()
             if (k.name == 'enter' and self.menu is None and self.buf.text.strip()
@@ -1504,21 +1481,19 @@ class Ui:
             return self.paint()
         if self.ask is not None:
             bare = not self.buf.text.strip()
-            if bare and k.name in ('y', 'Y'):     self.answer(True)   # `n` is a line, so `n: reason` can be typed
+            if bare and k.name in ('y', 'Y'):     self.answer(True)
             elif bare and k.name == 'A' and self.always_allow(): pass
             elif bare and k.name in ('a', 'A'):   self.answer(True, session=True)
-            elif k.name == 'enter':                                 # a typed line answers only when it is one
+            elif k.name == 'enter':
                 if (ans := parse_answer(self.buf.text)) is None: self.buf.clear(); self.reask(NOT_ANSWER)
                 else: self.answer(ans[0], note=ans[1])
-            elif k.name == 'ctrl+y':              self.answer(True)    # ...unless approved with it as guidance
-            elif k.name == 'ctrl+c':              self.answer(False)     # stopping the turn refuses what it was waiting on
+            elif k.name == 'ctrl+y':              self.answer(True)
+            elif k.name == 'ctrl+c':              self.answer(False)
             else: self.buf.handle(k)
             return self.paint()
         if k.name == 'ctrl+d' and not self.buf.text: return 'quit'
         if k.name == 'ctrl+c':
             self.buf.clear()
-            # One implementation of stopping, in `stop`: this branch and the `on_key` that wraps it
-            # each grew their own, and the seal that keeps late text below the note reached only one.
             if self.turn is not None: return self.stop()
             return self.paint()
         if k.name in ('enter', 'shift+enter', 'alt+enter'):
@@ -1556,7 +1531,7 @@ class Ui:
         return Text(text)
 
     def flush_stream(self):
-        "Render the open segment now, whatever `STREAM_EVERY` would have said. Every boundary calls it."
+        "Render the open segment now, ignoring `STREAM_EVERY`."
         if self._seg_blk is None or not self._seg or self._seg == self._rendered: return
         self.comp.set_body(self._seg_blk, self.reply(self._seg), source=self._seg)
         self.comp.refresh_block(self._seg_blk)
@@ -1564,7 +1539,7 @@ class Ui:
         self.touch()
 
     def stream(self, blk, chunk):
-        "Grow one segment of the turn's timeline, opening a block where a call ended the last one."
+        "Grow the current segment, opening a block after a call ended the last."
         if blk is None: self._seg_blk = None
         if self._seg_blk is None: self._seg = ''
         self._seg += chunk
@@ -1573,18 +1548,18 @@ class Ui:
             self._seg_blk = self.say(self.reply(self._seg), 'reply', fold=None, source=self._seg)
             self._rendered, self._painted_at = self._seg, time.monotonic()
         else:
-            self._seg_blk.source = self._seg    # cheap, and it is what `y` and `/copy` read
+            self._seg_blk.source = self._seg
             if time.monotonic() - self._painted_at >= STREAM_EVERY: self.flush_stream()
         return self._seg_blk
 
 # %% ../nbs/05_cli.ipynb #7f8df93c
-BELL_IDLE = 5   # seconds without a keystroke before a turn's end or an approval rings
-REASK_EVERY = 120   # seconds a question may wait before it rings and is shown again
+BELL_IDLE = 5   # idle seconds before the bell rings
+REASK_EVERY = 120   # seconds before a waiting question re-asks
 YES, NO = ('y', 'yes', 'approve'), ('n', 'no', 'refuse', 'deny')   # no `ok`: too easy to type by accident
 NOT_ANSWER = 'not an answer · y approves · n refuses · n: REASON refuses with a reason · a approves all this session'
 
 def parse_answer(text):
-    "`(ok, note)` for a typed answer to an approval -- `y`, `n`, `n: reason` -- or None when the line is not one."
+    "`(ok, note)` for a typed approval answer (`y`, `n`, `n: reason`), or None."
     word, _, note = text.strip().partition(':')
     if (w := word.strip().lower()) in YES: return True, note.strip()
     if w in NO: return False, note.strip()
@@ -1592,7 +1567,7 @@ def parse_answer(text):
 
 @patch
 def reask(self:Ui, body=''):
-    "Show the pending question, with `body` under it, ring, and start the wait for `nudge` again. The typed line stays."
+    "Show the pending question with `body`, ring, and restart the `nudge` wait."
     self._asked_at = time.monotonic()
     title = Text(self.ask.summary, style=f"bold {GRUVBOX['yellow']}")
     self.say(title + (Text('\n\n') + Text(body, style=GRUVBOX['fg1']) if body else Text('')), 'ask', fold=None)
@@ -1601,11 +1576,11 @@ def reask(self:Ui, body=''):
 
 @patch
 def nudge(self:Ui):
-    "Every `REASK_EVERY` seconds a waiting question rings, and repeats itself unless a line is being typed. True when it did."
+    "Ring and re-show a question after `REASK_EVERY` seconds; True if re-shown."
     now = time.monotonic()
     if self.ask is None or now - self._asked_at < REASK_EVERY: return False
     self._asked_at = now
-    if self.buf.text or now - self._key_at < BELL_IDLE:   # a half-typed reason is never taken away
+    if self.buf.text or now - self._key_at < BELL_IDLE:
         self.ring()
         return False
     self.reask(f'still waiting · {int(now - self.ask.asked)}s')
@@ -1617,12 +1592,12 @@ def ask_pattern(ask):
 
 @patch
 def ring(self:Ui):
-    "Ring the terminal bell, when it is on and nobody has typed for `BELL_IDLE` seconds."
+    "Ring the bell if on and nobody typed for `BELL_IDLE` seconds."
     if self.bell and time.monotonic() - self._key_at > BELL_IDLE: self.comp.tty.write('\a')
 
 @patch
 def always_allow(self:Ui):
-    "Keep the pending request's pattern as always allowed and approve it. False when nothing is pending."
+    "Always allow the pending request's pattern and approve it; False if none."
     if self.agent.approvals is None or self.ask is None: return False
     self.note(self.agent.approvals.always(self.ask.tool, ask_pattern(self.ask)))
     self.answer(True)
@@ -1637,13 +1612,13 @@ def note_memory(self:Ui, text):
 # %% ../nbs/05_cli.ipynb #64a54061
 @patch
 def show_pic(self:Ui, path):
-    "Draw one saved picture where the terminal can, and name its path either way."
+    "Draw one saved picture where possible, and name its path."
     pic = picture(path, self.comp.cols - 2, self.comp.rows - IMG_CHROME)
     if pic is not None and self.drawn < MAX_IMG_DRAW and (esc := pic.send()):
-        self.comp.tty.write(esc)                    # the bytes go off-band; the block is blank rows
+        self.comp.tty.write(esc)
         self.pics[self.say(pic.gap(), 'media', fold=None, source=str(path)).id] = pic
         self.drawn += 1
-        self.place_pics()                           # the frame `say` just drew did not know about it
+        self.place_pics()                           # `say`'s frame predates this picture
     return self.say(Text(media_line(path)), 'note')
 
 @patch
@@ -1658,7 +1633,7 @@ def show_media(self:Ui, media, session=''):
 
 @patch
 def on_media(self:Ui, paths):
-    "A tool wrote pictures: show them now, mid-turn. Fires on the model's thread."
+    "Show pictures a tool wrote, mid-turn, from the model's thread."
     self._post(self._show_pics, list(paths))
 
 @patch
@@ -1668,12 +1643,12 @@ def _show_pics(self:Ui, paths):
 
 @patch
 def place_pics(self:Ui):
-    "Put every picture back where its block now sits. Runs at the end of every frame."
+    "Put every picture back where its block sits, after each frame."
     if not self.pics or self.comp.paused: return
     comp, out = self.comp, []
     for bid, pic in list(self.pics.items()):
         if bid not in getattr(comp, '_spans', {}):
-            self.pics.pop(bid)          # gone from the document: a rewind, or the epoch that held it
+            self.pics.pop(bid)
             continue
         ys = [y for y, e in enumerate(comp._screen) if e and e[0] == bid]
         show = len(ys) == pic.rows
@@ -1695,7 +1670,7 @@ def approve_mode(self:Ui, want=''):
 
 @patch
 def tighten_approve(self:Ui):
-    "One step stricter, and never the other way. That is what makes it safe to bind to a key."
+    "Make approvals one step stricter, never looser."
     a = self.agent.approvals
     if a is None: return 'this session runs without approvals'
     i = APPROVE_MODES.index(a.mode) if a.mode in APPROVE_MODES else 1
@@ -1704,7 +1679,7 @@ def tighten_approve(self:Ui):
 
 @patch
 def cycle_approve(self:Ui):
-    "shift+tab: ask, edits, auto and round again. From off it comes back in at ask."
+    "Cycle ask, edits, auto; from off, go to ask."
     a = self.agent.approvals
     if a is None: return 'this session runs without approvals'
     ring = APPROVE_MODES[1:]
@@ -1723,10 +1698,10 @@ def chip(self:Ui):
 # %% ../nbs/05_cli.ipynb #280bb985
 @patch
 def model_row(self:Ui):
-    "What the next turn will run on, in the row under the bar. Read from the routing table, not `agent.note`, so `/model` mid-turn shows where the next turn goes."
+    "The row under the bar: the next turn's model, from the routing table."
     try: note = model_note(self.agent.model)
     except Exception as e: note = agent_err(e)
-    if (p := getattr(self.agent, 'profile', '')): note += f' · {p} profile'   # which briefing the next turn gets
+    if (p := getattr(self.agent, 'profile', '')): note += f' · {p} profile'
     row = Text(' ')
     if (c := self.chip()) is not None: row.append_text(c).append('  ')
     return row.append(note, style=GRUVBOX['gray'])
@@ -1738,7 +1713,7 @@ def tail(self:Ui):
     if self.hint: rows.append(Text(' ' + self.hint, style=GRUVBOX['gray']))
     chips = self.attach_row()
     if chips is not None: rows.append(chips)
-    rows += self.working()     # then what is waiting, so both sit right above what you type
+    rows += self.working()
     for r in (self.queued_row(), self.flash_row()):
         if r is not None: rows.append(r)
     rows.append(self.prompt())
@@ -1775,20 +1750,20 @@ _core_on_key = Ui.on_key
 
 @patch
 def enter_transcript(self:Ui):
-    "Open the browsing view, borrowing the mouse for exactly as long as it is up."
-    self.flush_stream()   # it renders bodies, so a throttled segment must land before it reads them
+    "Open the browsing view, borrowing the mouse while it is up."
+    self.flush_stream()   # flush first: the view renders block bodies
     self.comp.tty.write(MOUSE_ON)
     self.transcript.enter()
 
 @patch
 def leave_transcript(self:Ui):
-    "Close the browsing view and give the mouse back, unless `/mouse` says it is this surface's."
+    "Close the browsing view and return the mouse unless `/mouse` is on."
     self.transcript.leave()
     if not self.mouse: self.comp.tty.write(MOUSE_OFF)
 
 @patch
 def set_mouse(self:Ui, want=''):
-    "Take the mouse on the main screen, or give it back to the terminal. Off by default."
+    "Take or release the mouse on the main screen; off by default."
     want = (want or '').strip().lower()
     if want not in ('', 'on', 'off', 'toggle', 'yes', 'no'): return 'usage: /mouse [on|off]'
     self.mouse = not self.mouse if want in ('', 'toggle') else want in ('on', 'yes')
@@ -1798,7 +1773,7 @@ def set_mouse(self:Ui, want=''):
 
 @patch
 def on_mouse(self:Ui, ev):
-    "Who owns the mouse: the browsing view while it is up, this surface only when `/mouse` says so."
+    "Route a mouse event to the browsing view, or here when `/mouse` is on."
     if self.transcript.active: return self.transcript.on_mouse(ev)
     if not self.mouse: return True
     if ev.press and ev.btn == 64:
@@ -1808,7 +1783,7 @@ def on_mouse(self:Ui, ev):
 
 @patch
 def on_key(self:Ui, k):
-    "Give transcript navigation priority. Keep prompt recall on Ctrl-P/Ctrl-N."
+    "Give transcript navigation priority; Ctrl-P/Ctrl-N recall prompts."
     view = self.transcript
     if view.active:
         if view.on_key(k): return None
@@ -1852,17 +1827,15 @@ class ThemedCode(CodeBlock):
                      background_color=code_bg(), word_wrap=True, padding=(0, 1))
 
 class Reply(Markdown):
-    "Rich's `Markdown` with our code block, registered here rather than on Rich's own class."
+    "Rich's `Markdown` with our code block."
     elements = {**Markdown.elements, 'code_block': ThemedCode, 'fence': ThemedCode}
 
-#: A line that opens a structured block rather than continuing a paragraph: a heading, a quote, a
-#: list item, a table row, a fence, a rule, or indented code.
 BLOCK_START = re.compile(r'( {4,}|\t|\s*(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|\||```|~~~|-{3,}$|={3,}$))')
 
 def _prose(line): return bool(line.strip()) and not BLOCK_START.match(line)
 
 def compact_md(text):
-    "Markdown with the blank row between two ordinary paragraphs turned into a hard break."
+    "Markdown with blank rows between plain paragraphs made hard breaks."
     lines, out, fence, prose_block = str(text).split('\n'), [], '', False
     for i, line in enumerate(lines):
         mark = line.strip()[:3]
@@ -1871,7 +1844,7 @@ def compact_md(text):
             prose_block = False; out.append(line); continue
         if fence: out.append(line); continue
         if line.strip():
-            if not out or not out[-1].strip(): prose_block = _prose(line)   # a block opens here
+            if not out or not out[-1].strip(): prose_block = _prose(line)
             out.append(line); continue
         nxt = next((l for l in lines[i + 1:] if l.strip()), '')
         if prose_block and out and out[-1].strip() and _prose(nxt):
@@ -1882,34 +1855,33 @@ def compact_md(text):
 
 @patch
 def reply(self:Ui, text):
-    "A model reply as Markdown: this palette's code theme, on its background, prose compacted."
+    "A model reply as Markdown in this palette, prose compacted."
     return Reply(compact_md(text), code_theme=code_theme(), style=GRUVBOX['fg1'])
 
 # %% ../nbs/05_cli.ipynb #pymode01
 PYREPL_MODULES = ('jupyter_client', 'dhrishti')
-#: the module names above, spelled the way pip installs them
 PYREPL_PKGS = {'jupyter_client': 'jupyter-client'}
 
 @patch
 def log_cell(self:Ui, source, outputs=None, cell_type='code'):
     "Write one cell to the session notebook, when the host keeps one."
-    log = getattr(getattr(self.agent.host, 'kernel', None), 'log_cell', None)   # only a Dhrishti kernel has one
+    log = getattr(getattr(self.agent.host, 'kernel', None), 'log_cell', None)
     if log is not None: log(source, outputs, cell_type)
 
 @patch
 def use_host(self:Ui, host):
     "Move the agent onto `host`, re-briefing the running turn backend with its tools."
     self.agent.host = host
-    if self.agent.approvals is not None: self.agent.approvals.host = host   # `create_file` previews through it
+    if self.agent.approvals is not None: self.agent.approvals.host = host
     self.agent.refresh()
 
 @patch
 async def enter_python(self:Ui):
-    "Take the line for Python, starting the kernel the first time and pointing the agent at its overlay."
+    "Take the line for Python, starting the kernel once and pointing the agent at it."
     try:
         if self.kernel is None:
             if self.attached:
-                self.attached = ''   # leaving it: their kernel keeps running, we just stop pointing at it
+                self.attached = ''
                 self.note('left the attached session; starting a kernel of your own')
             if missing := [m for m in PYREPL_MODULES if find_spec(m) is None]:
                 return self.note(f"python mode needs {' and '.join(missing)}: pip install {' '.join(PYREPL_PKGS.get(m, m) for m in missing)}", 'error')
@@ -1919,7 +1891,6 @@ async def enter_python(self:Ui):
             except Exception as e:
                 self.kernel = None
                 return self.note(f'no kernel: {agent_err(e)}', 'error')
-            # the host the agent already has, given a kernel. Nothing is copied, so nothing is lost
             self.use_host(use_kernel(self.agent.host, self.kernel.base))
         self.mode = 'python'
         return self.note('python mode · /agent hands the line back')
@@ -1930,13 +1901,13 @@ async def enter_python(self:Ui):
 #| export
 @patch
 def proxy_label(self:Ui):
-    "A name for this session's agent that will not collide in a kernel shared with another."
+    "A kernel-unique name for this session's agent."
     sid = re.sub(r'\W+', '_', str(getattr(self.agent, 'session_id', '') or '')).strip('_')
     return sid[-16:] or 'local'
 
 @patch
 async def enable_agent_proxy(self:Ui):
-    "Bind this session's agent where Python can reach it: the prompt and the agent's own layer."
+    "Bind this session's agent at the Python prompt and in the agent's layer."
     await self.enter_python()
     if self.kernel is None: return None
     from ramabana.pyrepl import AgentBridge, agent_proxy_code, inject_agent_proxy, output_text
@@ -1958,7 +1929,7 @@ async def enable_agent_proxy(self:Ui):
 
 @patch
 async def attach_session(self:Ui, name):
-    "Point the agent's Python at a dhrishti session someone else owns. We start nothing and own no prompt."
+    "Point the agent's Python at someone else's dhrishti session."
     from ramabana.pyrepl import find_session, use_kernel
     base = find_session(name)
     self.use_host(use_kernel(self.agent.host, base))
@@ -1979,7 +1950,7 @@ async def run_code(self:Ui, code):
 
 @patch
 def on_output(self:Ui, output):
-    "One nbformat output in the block that means it, as the cell produces it."
+    "Print one nbformat output as the block it means."
     from ramabana.pyrepl import _text
     kind = output.get('output_type')
     if kind == 'stream':
@@ -1995,7 +1966,7 @@ def on_output(self:Ui, output):
 
 @patch
 async def _complete(self:Ui, insert):
-    "List what the kernel would complete; `insert` is tab so typing must not rewrite the buffer."
+    "List the kernel's completions; only `insert` (tab) may edit the buffer."
     from ramabana.pyrepl import annotate
     identity = (self.buf.text, self.buf.cursor)   # typing is not gated during the awaits
     def stale(): return (self.buf.text, self.buf.cursor) != identity
@@ -2004,7 +1975,7 @@ async def _complete(self:Ui, insert):
         if not stale(): self.complete, self.desc = None, []
         return
     m = CompletionMenu(self.buf, list(matches), start=start, show=8)
-    if insert and m.insert_common(): identity = (self.buf.text, self.buf.cursor)   # ours, not theirs
+    if insert and m.insert_common(): identity = (self.buf.text, self.buf.cursor)
     if insert and len(matches) == 1: return
     self.complete, self.desc = m, []
     self.paint()
@@ -2022,18 +1993,18 @@ async def complete_python(self:Ui):
 
 @patch
 async def _suggest(self:Ui):
-    "The same list, kicked off by typing. Never touches the buffer and never owns `turn`."
+    "Kernel completions triggered by typing; never touches the buffer or `turn`."
     try: await self._complete(insert=False)
-    except Exception: self.complete, self.desc = None, []   # a dead kernel must not kill a keystroke
+    except Exception: self.complete, self.desc = None, []
     finally:
         self._suggesting = False
         self.paint()
 
 @patch
 async def _promote(self:Ui, name):
-    "Adopt one agent variable, off the loop thread: the owner-token call can take a minute."
+    "Adopt one agent variable, off the loop thread."
     from ramabana.pyrepl import promote
-    if self.attached:   # their token, their namespace, their surface to adopt from
+    if self.attached:
         return self.note(f'{self.attached} belongs to whoever started it, so promoting is theirs to '
                          'do. The agent works in its own layer here and cannot write into the kernel.')
     self.say(Text(await asyncio.to_thread(promote, self.kernel.base if self.kernel else '', name)),
@@ -2044,7 +2015,7 @@ async def _promote(self:Ui, name):
 # %% ../nbs/05_cli.ipynb #d16f206f
 @patch
 def _close_seg(self:Ui):
-    "Drop the prose the model said on its way to a call: the trace of the call replaces it. A turn's answer is what `/copy`, `y` and the notebook log want, not the narration above it."
+    "Drop the narration before a call; the call's trace replaces it."
     blk = self._seg_blk
     if blk is None: return
     self.flush_stream()
@@ -2082,43 +2053,43 @@ from .vault import WorkspaceHost
 
 
 def mk_host(roots=('.',),
-            approvals=None,          # an `Approvals` for the host to put writes in front of
+            approvals=None,          # gates writes on this host
             web=True,                # wire the web tools to fossick
-            vault=False,             # keep what is read in a vishalakshi vault, for the next session
-            spec=False,              # let the agent read an API specification and call it
-            read_outside=False,      # let the read-only tools name any path on this machine
-            pii=PII_OFF,             # off | redact | refuse for what vault retrieval returns
-            pii_ner=False,           # gate on titled names too, not only on patterns
-            **kwargs):               # forwarded to the host: `index`, `warm`, `vault=<path>`
-    "The provider-configured workspace host shared by the terminal, MCP and ACP."
+            vault=False,             # keep reads in a vishalakshi vault
+            spec=False,              # let the agent read and call an API spec
+            read_outside=False,      # read-only tools may name any path
+            pii=PII_OFF,             # off | redact | refuse PII from the vault
+            pii_ner=False,           # gate titled names too, not only patterns
+            **kwargs):               # to the host: `index`, `warm`, `vault=<path>`
+    "The workspace host shared by the terminal, MCP and ACP."
     return WorkspaceHost(roots, approvals=approvals, web=web, vault=vault, spec=spec,
                          read_outside=read_outside, pii=pii, pii_ner=pii_ner, **kwargs)
 
 
 def mk_agent(roots=('.',),
              model=None,
-             approve='ask',           # ask | edits | auto | off | none (gate nothing at all)
+             approve='ask',           # ask | edits | auto | off | none (no gate)
              web=True,                # wire the web tools to fossick
-             vault=False,             # keep what is read in a vishalakshi vault, for the next session
-             spec=False,              # let the agent load OpenAPI/Azure/GCP specifications
-             read_outside=False,      # let the read-only tools name any path on this machine
-             pii=PII_OFF,             # off | redact | refuse for what vault retrieval returns
-             pii_ner=False,           # gate on titled names too, not only on patterns
-             host_kw=None,            # forwarded to `mk_host`: `index`, `warm`, `vault=<path>`
+             vault=False,             # keep reads in a vishalakshi vault
+             spec=False,              # let the agent load OpenAPI/Azure/GCP specs
+             read_outside=False,      # read-only tools may name any path
+             pii=PII_OFF,             # off | redact | refuse PII from the vault
+             pii_ner=False,           # gate titled names too, not only patterns
+             host_kw=None,            # to `mk_host`: `index`, `warm`, `vault=<path>`
              **kw):                   # forwarded to `Agent`
-    "A host over the named folders and an `Agent` over that, gated the way `approve` says."
-    approvals = None if approve == 'none' else Approvals(mode=approve, timeout=None,   # a person is at this one: wait for as long as it takes
+    "A host over `roots` and an `Agent` on it, gated as `approve` says."
+    approvals = None if approve == 'none' else Approvals(mode=approve, timeout=None,
                                                          rules_path=cfg/'approvals.json' if (cfg := kw.get('cfg')) else None)
     host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec,
                    read_outside=read_outside, pii=pii, pii_ner=pii_ner, **(host_kw or {}))
-    if approvals is not None: approvals.host = host   # the gate previews `create_file` via the host
+    if approvals is not None: approvals.host = host
     agent = Agent(host, model=model, approvals=approvals, **kw)
-    agent.lend_model()   # or a `--vault` session loads a second runtime for vishalakshi
+    agent.lend_model()   # else `--vault` loads a second runtime
     return agent, host
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
 async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto'):
-    "The tty loop: one terminal, one event loop, one place that owns the keyboard."
+    "The tty loop: one terminal, one event loop, one keyboard owner."
     tty = RealTty()
     tty.write('\x1b[?2004h')
     done = asyncio.Event()
@@ -2169,12 +2140,12 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
 
 # %% ../nbs/05_cli.ipynb #b6d74293
 def headless_prompt(prompt):
-    "The one-shot prompt: the argument, or stdin when the argument is `-` or nothing was typed into a pipe."
+    "The one-shot prompt: the argument, or stdin for `-` or an empty piped run."
     if prompt == '-' or (not prompt and not sys.stdin.isatty()): return sys.stdin.read().strip()
     return prompt
 
 def ask_once(agent, prompt, as_json=False):
-    "One turn with no terminal at all, for a pipe or a script. Returns the exit code."
+    "Run one turn without a terminal and return the exit code."
     from dataclasses import asdict
     reply = agent.ask(prompt)
     ok, problems = agent.ready, list(agent.problems)
@@ -2193,34 +2164,34 @@ PANE_MODES = ('auto', 'on', 'off')
 
 @call_parse(pos=['prompt'])
 def main(
-    prompt: str = '',                    # one turn and exit. Omit for the interactive session
-    root: str = '.',                     # folders it may read and write, comma separated: .,~/notes,/srv/app
-    model: str = None,                   # the turn model. The routing default when omitted
-    approve: str = 'ask',                # ask | edits | auto | off | none (gate nothing at all)
-    web: bool = True,                    # --no-web takes the network away from the web tools (fossick)
-    read_outside: bool = False,          # widen reads to any path. Writing still needs the folder in --root
-    subagent_writes: bool = False,       # let delegated sub-agents write, run commands and run Python too
-    vault: bool = False,                 # vishalakshi vault for what is read. Not offered in python mode
-    pii: str = PII_OFF,                  # off | redact | refuse for what vault retrieval hands the model
-    pii_ner: bool = False,               # --pii also gates titled names, not only patterns
+    prompt: str = '',                    # one turn and exit; omit for interactive
+    root: str = '.',                     # comma-separated folders: .,~/notes,/srv/app
+    model: str = None,                   # turn model; omit for the routing default
+    approve: str = 'ask',                # ask | edits | auto | off | none (no gate)
+    web: bool = True,                    # --no-web takes the web tools offline
+    read_outside: bool = False,          # reads reach any path; writes need --root
+    subagent_writes: bool = False,       # let sub-agents write, run commands and Python
+    vault: bool = False,                 # vishalakshi vault for reads; not in python mode
+    pii: str = PII_OFF,                  # off | redact | refuse PII from the vault
+    pii_ner: bool = False,               # --pii also gates titled names
     spec: bool = False,                  # enable OpenAPI, Azure and Google Discovery tools
     theme: str = 'auto',                 # auto | dark | light terminal palette
     max_tool_calls: str = 'auto',        # auto | 20..400 tool calls per turn
     max_steps: str = 'auto',             # auto | 8..80 model/tool-loop steps per turn
-    cfg: str = '~/.config/ramabana',     # config dir, for skills, extensions and resumable history
+    cfg: str = '~/.config/ramabana',     # config dir: skills, extensions, resumable history
     resume: str = '',                    # saved session id/prefix, or 'latest'
     python: bool = False,                # start in python mode, on a kernel of your own
     attach: str = '',                    # join a live session; --kernels lists them
-    agent_proxy: bool = False,           # expose a restricted usage/callback proxy in this session's PyREPL
+    agent_proxy: bool = False,           # expose a restricted agent proxy in PyREPL
     kernels: bool = False,               # list live sessions and exit
-    json: bool = False,                  # with a prompt: print reply, usage, changes, activity, problems and session as JSON
-    bell: bool = True,                   # --no-bell keeps the terminal quiet when a turn ends or an approval waits
-    tmux: str = 'auto',                  # auto | on | off: read sibling panes and run background commands in panes
-    pane: str = 'auto',                  # auto | on | off: the `now` pane of what the agent and its sub-agents are doing. auto opens it inside tmux
-    warm: bool = False,                  # seed the chat with dhrona's example rounds even in the small profile, which starts cold
-    no_warm: bool = False,               # start with an empty chat instead of dhrona's example rounds
-    optin: str = '',                     # shalya's opt-in tool groups, comma separated: exhash,research,author
-    profile: str = 'auto',               # auto | small | full: small briefs a local or ≤32k model with fourteen tools and one screen
+    json: bool = False,                  # with a prompt: print the full result as JSON
+    bell: bool = True,                   # --no-bell silences turn-end and approval bells
+    tmux: str = 'auto',                  # auto | on | off: read and run in tmux panes
+    pane: str = 'auto',                  # auto | on | off: the `now` pane; auto in tmux
+    warm: bool = False,                  # seed example rounds even in the small profile
+    no_warm: bool = False,               # start without dhrona's example rounds
+    optin: str = '',                     # opt-in tool groups: exhash,research,author
+    profile: str = 'auto',               # auto | small | full: small suits ≤32k local models
 ):
     "Run Ramabana as a terminal agent or Python prompt. Name every folder it may work on: --root .,~/notes"
     if kernels:
@@ -2394,7 +2365,7 @@ def open_root(self:Ui, path=''):
 _submit_theme = Ui.submit
 @patch
 def submit(self:Ui):
-    "Handle the UI-owned `/theme`, `/root` and `/pane` commands before ordinary terminal commands."
+    "Handle `/theme`, `/root` and `/pane` before other commands."
     line = self.buf.text.strip()
     if line == '/pane' or line.startswith('/pane '):
         self.buf.clear()
@@ -2419,8 +2390,8 @@ def stop(self:Ui):
     if self._stop_count >= 3:return 'quit'
     cleared = self.drop_queued()
     if self.turn is not None:
-        self.flush_stream()   # keep what it managed to say...
-        self._seg_blk = None  # ...but nothing later may grow it from above the note
+        self.flush_stream()
+        self._seg_blk = None
     run = self.agent.run(self._stop_run) if self._stop_run else self.agent.run()
     if run is None:
         self._stop_count, self._stop_run = 0, ''
@@ -2463,7 +2434,7 @@ def _tmux_pane(host):
     except Exception: return None
 
 def _alive(pane):
-    "Whether `pane` still draws: ctrl+c in the viewer ends it without telling us, and `remain-on-exit` keeps it dead."
+    "Whether `pane` still draws, not ended or kept dead by `remain-on-exit`."
     try: return not pane.refresh().dead
     except Exception: return False
 
@@ -2482,7 +2453,7 @@ def open_pane(self:Ui, arg=''):
     if (p := _now_file(self.agent)) is None: return self.note('the pane reads <cfg>/runs, and this session has no --cfg', 'error')
     if self.pane is not None and self._pane_at == p and _alive(self.pane):
         return self.note(f'the pane is already open in {self.pane.id} · /pane off closes it')
-    self.close_pane()   # one whose viewer left, or that draws the session `/resume` left
+    self.close_pane()
     self.write_now(force=True)
     cmd = pane_cmd(p)
     if (me := _tmux_pane(self.agent.host)) is None:
@@ -2497,11 +2468,11 @@ def close_pane(self:Ui):
     "Kill the `now` pane: what was closed, or '' when none was open."
     if (p := self.pane) is None: return ''
     self.pane, alive = None, _alive(p)
-    try: p.kill()   # a dead pane `remain-on-exit` kept still holds its half of the window
+    try: p.kill()
     except Exception: pass
     return f'closed the pane {p.id}' if alive else f'the pane {p.id} was already closed'
 
 @patch
 def start_pane(self:Ui, mode='auto'):
-    "The session's first pane: `on` tries and says why not, `auto` opens it only inside tmux with a runs dir, `off` never."
+    "Open the first pane: `on` always tries, `auto` only in tmux with a runs dir."
     if mode == 'on' or (mode == 'auto' and _now_file(self.agent) and _tmux_pane(self.agent.host)): self.open_pane()

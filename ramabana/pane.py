@@ -1,4 +1,4 @@
-"""What the main agent and each sub-agent are doing right now, written to a file and drawn in a tmux split beside the chat.
+"""What the main agent and each sub-agent are doing now, written to a file and drawn in a tmux split beside the chat.
 
 Docs: https://vedicreader.github.io/ramabana/pane.html.md"""
 

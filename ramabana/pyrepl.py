@@ -83,7 +83,7 @@ class Kernel:
 
     async def _bootstrap(self):
         root = self.cwd/'.ramabana'/'pyrepl'
-        # '<project>-pyrepl-<pid>', sanitised because --attach is where a human types it
+        # '<project>-pyrepl-<pid>', sanitised for typing at --attach
         proj = re.sub(r'[^a-z0-9]+', '-', (self.cwd.name or 'ramabana').lower()).strip('-') or 'ramabana'
         source = (
             'def _ramabana_bootstrap():\n'
@@ -178,7 +178,7 @@ class Kernel:
             try: self.kc.stop_channels()
             except Exception: pass
         if self.km and self.km.has_kernel:
-            # a dhrishti kernel may never agree to `now=False`. The ask has a deadline
+            # a dhrishti kernel may never agree to `now=False`
             try: await asyncio.wait_for(self.km.shutdown_kernel(now=False), timeout)
             except Exception:
                 try: await self.km.shutdown_kernel(now=True)
@@ -196,7 +196,7 @@ def _api(base, path, params=None, timeout=60):
         return json.loads(response.read())
 
 class Dhrishti:
-    "A Dhrishti overlay as a kernel `LocalHost` can hold. Four calls and two facts."
+    "A Dhrishti overlay as a kernel a `LocalHost` can hold."
 
     scopes, kind = ('isolated', 'overlay'), 'ipykernel'
 
@@ -208,7 +208,7 @@ class Dhrishti:
         self.agent_log = Path(log) if log else None   # None, not `Path('')`, which is truthy
 
     def run(self, code):
-        return self.inspect(code, 'overlay')   # always the overlay. Scope is model-settable
+        return self.inspect(code, 'overlay')   # always the overlay: scope is model-settable
 
     def inspect(self, code, scope='isolated'):
         if scope not in self.scopes: return f'this kernel only honours {self.scopes}'
@@ -229,7 +229,7 @@ class Dhrishti:
 
     def log_cell(self, source, outputs=None, cell_type='code'):
         "Append a human Python or model markdown turn to Dhrishti's session notebook."
-        # read/append/write per cell: the owner's kernel writes this file too
+        # read/append/write per cell: the kernel writes it too
         if self.agent_log is None: return
         from fastcore.nbio import read_nb, write_nb, new_nb, mk_cell
         self.agent_log.parent.mkdir(parents=True, exist_ok=True)
@@ -248,7 +248,7 @@ class Dhrishti:
         for group in result.get('groups', []):
             for node in group.get('nodes', []):
                 if name := node.get('name'):
-                    value = node.get('value')   # falsy is still a value. Only a missing key is not
+                    value = node.get('value')   # falsy is still a value
                     out[name] = str(value if value is not None else (node.get('type') or ''))
         return out
 
@@ -260,7 +260,7 @@ def use_kernel(host, base):
 
 
 class DhrishtiHost(LocalHost):
-    "A `LocalHost` that starts on a Dhrishti overlay. Kept for callers that build one directly."
+    "A `LocalHost` that starts on a Dhrishti overlay, for callers that build one directly."
     @delegates(LocalHost.__init__)
     def __init__(self, roots, base, **kwargs):
         super().__init__(roots, kernel=Dhrishti(base), **kwargs)
@@ -275,31 +275,28 @@ class DhrishtiHost(LocalHost):
 # %% ../nbs/11_pyrepl.ipynb #619771e3
 def annotate(matches, described):
     "Candidate names with their type and shape where the session knows one."
-    # exact names only: `df.copy` is a method on a binding, not a binding
     return [f'{m} -> {described[m]}' if m in described else m for m in matches]
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0901
 def _ambiguous(attach, cands):
-    "Error text for a name that matches more than one live session. List them, do not pick."
+    "Error text listing every live session a name matches, without picking one."
     rows = '; '.join(f"{e.get('name')} (cwd={e.get('cwd')}, port={e.get('port')})" for e in cands)
     return f'{attach!r} matches more than one live dhrishti session, refusing to guess which: {rows}'
 
 def find_session(attach):
-    "The base URL of a live Dhrishti session named `attach`, or `attach` itself if it is a URL."
+    "Base URL of the live Dhrishti session named `attach`, or `attach` if it is a URL."
     attach = str(attach).strip()
     if '://' in attach: return attach
-    from dhrishti.serving import active   # the registry, not `serve_in_kernel`, which would re-serve
+    from dhrishti.serving import active   # not `serve_in_kernel`, which would re-serve
     entries = active()
     exact = [e for e in entries if e.get('name') == attach]
     if len(exact) > 1: raise RuntimeError(_ambiguous(attach, exact))
     hit = exact[0] if exact else None
-    # a name that is not an exact match is tried as a project prefix, anchored at '-pyrepl-'
     if hit is None and attach:
         prefixed = [e for e in entries if str(e.get('name') or '').startswith(attach + '-pyrepl-')]
         if len(prefixed) > 1: raise RuntimeError(_ambiguous(attach, prefixed))
         hit = prefixed[0] if prefixed else None
     if hit is None and attach:
-        # The whole basename, not a substring. 'leela' does not also match 'old-leela-backup'.
         by_cwd = [e for e in entries if Path(str(e.get('cwd') or '')).name == attach]
         if len(by_cwd) > 1: raise RuntimeError(_ambiguous(attach, by_cwd))
         hit = by_cwd[0] if by_cwd else None
@@ -318,7 +315,6 @@ def sessions():
     dupes = {n for n, *_ in rows if sum(1 for m, *_ in rows if m == n) > 1}
     out = []
     for name, cwd, port, base in sorted(rows):
-        # a name shared by two live sessions cannot resolve. Show what does
         out.append(f'{base if name in dupes else name:<34} {cwd}  :{port}')
     return '\n'.join(out)
 
@@ -329,7 +325,7 @@ def hl(src):
     if not src: return Text('')
     try:
         from rich.syntax import Syntax
-        # `highlight` appends a newline. It is built for whole files
+        # `highlight` appends a newline
         out = Syntax(src, 'python', theme='gruvbox-dark').highlight(src)
         while out.plain.endswith('\n'): out.right_crop(1)
         return out if out.plain == src else Text(src)
@@ -337,18 +333,18 @@ def hl(src):
 
 # %% ../nbs/11_pyrepl.ipynb #51d25204
 def _compile_state(src, symbol):
-    "`compile_command` as a (state, message) pair rather than three shapes of answer."
+    "`compile_command` as a `(state, message)` pair."
     try:
         code = codeop.compile_command(str(src), '<pyrepl>', symbol)
         return ('complete' if code is not None else 'incomplete'), ''
     except SyntaxError as e: return 'invalid', f'{e.msg} (line {e.lineno})'
-    except Exception as e: return 'complete', agent_err(e)   # not ours to judge. Let the kernel say
+    except Exception as e: return 'complete', agent_err(e)
 
 def _judge(src):
     "The prompt's verdict on `src`, and what objected when it was rejected."
-    state, note = _compile_state(src, 'single')   # `'single'` is the question a REPL asks
+    state, note = _compile_state(src, 'single')
     if state != 'invalid': return state, note
-    return _compile_state(src, 'exec')            # ...but it also rejects two valid statements
+    return _compile_state(src, 'exec')            # 'single' rejects two valid statements
 
 def code_state(src):
     "Whether `src` is a finished statement, an unfinished one, or one that cannot compile."
@@ -371,7 +367,7 @@ def promote(base, name):
 
 # %% ../nbs/11_pyrepl.ipynb #11a10f63
 class AgentBridge:
-    "An in-kernel control surface for an agent: joining the kernel is joining the agent, so there is no second check."
+    "An in-kernel control surface for an agent; joining the kernel is joining the agent."
     FIELDS = ('model', 'input', 'output', 'total', 'cached', 'cache_write', 'reasoning', 'cost', 'turns')
 
     def __init__(self, agent, dispatch=None):
@@ -432,14 +428,14 @@ class AgentBridge:
         return f'http://127.0.0.1:{self.server.server_port}'
 
     async def close(self):
-        "Closing an unstarted or half-started bridge is not an error."
+        "Close the bridge, even if unstarted or half-started."
         if self.server is None: return
         self.server.shutdown()
         if self.thread is not None: self.thread.join()
         self.server.server_close()
         self.server = self.thread = None
 
-#: Defined once and rebound per agent, so a second session in the same namespace does not redefine the class.
+#: defined once, rebound per agent
 PROXY_CLASS = """import json as _json, urllib.parse as _parse, urllib.request as _req
 
 class AgentProxy:
@@ -465,7 +461,7 @@ class AgentProxy:
 """
 
 def agent_proxy_code(url, token, label='local'):
-    "Source that binds an agent proxy: `ramabana_agent` is the last session, `ramabana_agents` holds all by label."
+    "Source binding `ramabana_agent` (last session) and `ramabana_agents` (all, by label)."
     return PROXY_CLASS + (
         '\ntry: ramabana_agents\nexcept NameError: ramabana_agents = {}\n'
         f'ramabana_agent = AgentProxy({url!r}, {token!r}, {label!r})\n'

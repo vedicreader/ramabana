@@ -27,15 +27,15 @@ SCRIPTED = ModelSpec('scripted', 'scripted', 'scripted/model', ctx=8000)
 # %% ../nbs/04_testing.ipynb #2ce479ad
 @implemented
 class MemHost(NullHost, CodeHost, ShellHost):
-    "A host whose folders live in a dict. The file tools can be driven without touching disk."
+    "A host whose folders live in a dict, so the file tools never touch disk."
 
-    writes = True    # unlike the `NullHost` it inherits from, `write` really writes
+    writes = True    # `write` really writes
 
     def __init__(self, files=None, root='/proj', commands=None):
         super().__init__([root])
         self.files, self.root = dict(files or {}), root
         self.ran, self.cmds = [], []
-        # `{command: (exit_code, output)}`. Anything not scripted exits 0 with no output
+        # `{command: (exit_code, output)}`; unscripted exits 0
         self.commands = dict(commands or {})
 
     def run_cmd(self, command, cwd=None, timeout=120):
@@ -77,22 +77,22 @@ class MemHost(NullHost, CodeHost, ShellHost):
 
 # %% ../nbs/04_testing.ipynb #d107b5da
 class FullHost(LocalHost):
-    "Every host capability in process over a temporary folder, using local state, never the network."
+    "Every host capability in process over a temporary folder, never the network."
 
     def __init__(self, files=None, pages=None, root=None, terminal='', **kw):
         import tempfile
         root = Path(root) if root else Path(tempfile.mkdtemp())/'proj'
         root.mkdir(parents=True, exist_ok=True)
         super().__init__([root], web=False, index=False, **kw)
-        # ask needs a model, api needs a spec, watch needs a real vault; every other group is answered below
+        # ask, api and watch need a model, a spec and a vault
         self.without = frozenset({'ask', 'api', 'watch'})
         self.root = self.check('.')
         for path, text in (files or {}).items(): self.write(path, text)
-        #: url -> markdown, the entire web this host knows about
+        #: url -> markdown, the host's whole web
         self.pages = dict(pages or {})
         self.transcript = [x for x in str(terminal).splitlines() if x]
         self.remembered = {}      # doc_id -> (title, url, markdown)
-        self.notes = []           # everything `note` was told, for a test to assert on
+        self.notes = []           # everything `note` was told
 
 
     def web_search(self, query, n=20):
@@ -122,7 +122,7 @@ class FullHost(LocalHost):
     def research_note(self): return f'{len(self.pages)} page(s) in this host'
 
     def _sections(self, text):
-        "A markdown document split at its headings, which is the unit memory recalls."
+        "A markdown document split at its headings, the unit memory recalls."
         out, head, body = [], '', []
         for line in str(text).splitlines():
             if line.startswith('#'):
@@ -191,7 +191,7 @@ class FullHost(LocalHost):
 
 # %% ../nbs/04_testing.ipynb #83abeaab
 class FakeBackend(Backend):
-    "A backend over a scripted list of replies. A turn can be driven with no model at all."
+    "A backend over a scripted list of replies, for turns with no model."
 
     kind = 'fake'
 
@@ -203,7 +203,7 @@ class FakeBackend(Backend):
     def _start(self): return self
     def _close(self): pass
     def cancel(self):
-        # this double is its own chat. The inherited `cancel` would call itself
+        # the inherited `cancel` would call itself
         self.cancelled = True
         return True
 
@@ -220,7 +220,7 @@ class FakeBackend(Backend):
     def count_tokens(self, text): return max(1, (len(str(text or '')) + 3) // 4)
     def _oneshot(self, prompt, sp, max_tokens): return f'ONESHOT:{prompt[:40]}'
     def _usage(self):
-        # cumulative, the way a real chat's counters are: `Backend.send` assigns rather than adds
+        # cumulative: `Backend.send` assigns rather than adds
         n = max(1, len(self.sent))
         return Usage(model=self.spec.model_id, input=10*n, output=5*n, total=15*n, turns=n)
 
@@ -231,15 +231,15 @@ class FakeBackend(Backend):
         self.hist_ = [{'role': 'user', 'content': summary}] + list(keep)
 
     def spawn(self, sp='', tools=(), **kw):
-        # `**kw` through, as the real `spawn` does: a test needs to see the approval gate
+        # pass `**kw` through, as the real `spawn` does
         s = FakeBackend(self.spec, replies=['sub answer'], sp=sp, tools=tools, shared=True, **kw)
         self.spawned.append(s)
         return s
 
 # %% ../nbs/04_testing.ipynb #10360a7c
 def fake_agent(host=None, replies=(), **kw):
-    "An `Agent` whose every job routes to one `FakeBackend`, `SPEC` included. Returns `(agent, backend)`."
-    # the fake `SPEC` is a 1k window on a runtime nobody hosts, which `auto` would brief small; the suite tests the full path
+    "Return `(agent, backend)`, every job (`SPEC` included) routed to one `FakeBackend`."
+    # `auto` would brief the 1k `SPEC` small
     a = Agent(host or MemHost({'/proj/a.py': 'def a(): pass\n'}), extensions=False, **{'profile': 'full', **kw})
     be = FakeBackend(SPEC, replies=replies)
     if 'model' not in kw and 'routing' not in kw:
@@ -250,7 +250,7 @@ def fake_agent(host=None, replies=(), **kw):
     return a, be
 
 # %% ../nbs/04_testing.ipynb #recorded01
-#: recorded answers live in a diskcache beside the package, found from any run folder (a cell has no __file__).
+#: diskcache of recorded answers, beside the package
 CHATS = Path(ramabana.__file__).parent.parent/'chatcache'
 
 
@@ -264,7 +264,7 @@ def recorded(path=None, record=None):
 
 # %% ../nbs/04_testing.ipynb #nomodel01
 def no_model(model=None, **kw):
-    "A quiet chat for a host under test (its `graph_chat`, or a `mk_chat`): every answer is an empty JSON object, so a graph build finds nothing and loads nothing."
+    "A quiet `graph_chat` or `mk_chat` for tests: every answer is `{}`, so nothing loads."
     class _Quiet:
         def oneshot(self, prompt, sp='', **kw): return '{}'
         def __call__(self, prompt, **kw): return {'role': 'assistant', 'content': '{}'}
@@ -289,7 +289,7 @@ class MutteringBackend(Backend):
     def _usage(self): return Usage(model=self.spec.model_id)
 
     def _mutter(self):
-        "What `RishiBackend._native` does for real: keep what the engine said, and report it."
+        "What `RishiBackend._native` does: keep what the engine said and report it."
         self.last_native = GEMMA.strip()
         self.problem(f'{self.spec.name}: {GEMMA.strip()}')
 
@@ -307,18 +307,18 @@ class MutteringBackend(Backend):
 
 # %% ../nbs/04_testing.ipynb #51f402c1
 class Step:
-    "One thing a scripted model does: call a tool. Through the real tool list. Or say something."
+    "One scripted model action: call a tool through the real tool list, or say something."
 
     def __init__(self, text='', tool=None, pause=0.0):
         self.text, self.tool, self.pause = text, tool, pause
 
 
 class ScriptedBackend(Backend):
-    "Plays a list of `Step`s, streaming its words one at a time. `token_delay` is what a screenshot needs."
+    "Play a list of `Step`s, streaming words one at a time every `token_delay`."
 
     kind = 'scripted'
 
-    #: what a spawned sub-agent answers, keyed by a question substring, so a fan-out is not one call in a wig
+    #: sub-agent answers, keyed by question substring
     SUB_ANSWERS = {'import': 'three files: backend.py, models.py, fastllm_hitl.py',
                    'compaction': 'chat.py:compact(), fired from _prepare() at the threshold',
                    'shape': 'df is (200, 2); `keep` is an int'}

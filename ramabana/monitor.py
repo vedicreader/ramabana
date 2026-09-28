@@ -1,5 +1,4 @@
-"""A folder somebody else is changing, looked at between turns, and the standing review that
-fires when it moves.
+"""Folder watches checked between turns, with a standing review that runs when files change.
 
 Docs: https://vedicreader.github.io/ramabana/monitor.html.md"""
 
@@ -28,15 +27,15 @@ __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_S
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
 SNAP_MAX_FILES = 2000
-SNAP_MAX_BYTES = 400_000     # per file. Past this a snapshot keeps the size, so a change still shows
-REVIEW_MAX_CHARS = 24_000    # of change report one review prompt carries
-REVIEW_MAX_STEPS = 12        # tool calls a reviewing sub-agent gets
-PENDING_MAX = 20             # reviews held for the next turn before the oldest is dropped
-DFLT_SETTLE = '20s'          # least time between two reviews of one folder
+SNAP_MAX_BYTES = 400_000     # per file; larger files keep only their size
+REVIEW_MAX_CHARS = 24_000    # of change report per review prompt
+REVIEW_MAX_STEPS = 12        # tool calls per review
+PENDING_MAX = 20             # queued reviews; the oldest is dropped
+DFLT_SETTLE = '20s'          # least time between reviews of one folder
 
 
 def secs(every):
-    "Seconds from `'30s'`, `'5m'`, `'1h'`, or a number. One parser for the family, never our own."
+    "Seconds from `'30s'`, `'5m'`, `'1h'`, or a number."
     try: from pobblebonk.core import secs as _secs
     except ImportError: from vishalakshi.acquire import secs as _secs
     return _secs(every)
@@ -60,11 +59,11 @@ def files_under(host, folder, pattern=''):
 
 
 def snapshot(host, folder, pattern=''):
-    "`{path: text}` for every watched file as it is now: one look, to compare against the next."
+    "`{path: text}` for every watched file as it is now."
     out = {}
     for p in files_under(host, folder, pattern):
         t = host.text_at(p)
-        if t is None: continue                    
+        if t is None: continue
         out[str(p)] = t if len(t) <= SNAP_MAX_BYTES else f'({len(t)} bytes, too large to diff)'
     return out
 
@@ -93,12 +92,12 @@ def _counts(diff):
 
 
 def _rel(path, root=None):
-    "`path` relative to the watched folder, or whole when it is not under one."
+    "`path` relative to the watched folder, or whole when outside it."
     p = Path(path)
     if root is None: return p.as_posix()
     try: rel = p.relative_to(root).as_posix()
     except ValueError: return p.as_posix()
-    return p.name if rel == '.' else rel      # a watch on one file: the folder *is* the file
+    return p.name if rel == '.' else rel
 
 
 def summarise(changes):
@@ -126,16 +125,16 @@ REVIEW_SP = """You review changes in a watched folder. Follow the user's instruc
 - The user sees only your report, so identify each change clearly."""
 
 def review_prompt(instructions, changes, folder=''):
-    "The one self-contained question a reviewing sub-agent gets: the standing brief, then what moved."
+    "The question a reviewer gets: the instructions, then the changes."
     where = f' under {folder}' if folder else ''
     return f'{instructions}\n\nThese files changed{where}:\n\n{changes}'
 
 def _attr(s):
-    "One value, safe to sit inside a double-quoted tag attribute."
+    "`s` made safe inside a double-quoted tag attribute."
     return str(s).replace('"', "'")
 
 def review_notice(recs, mx=REVIEW_MAX_CHARS):
-    "The reviews that arrived since the last turn, as the block a prompt carries."
+    "Reviews since the last turn, as a prompt block."
     if not recs: return ''
     out = [f'<folder-review folder="{_attr(r["folder"])}" files="{r["files"]}" status="{_attr(r["status"])}">\n'
            f'{r["summary"]}\n\n{r["review"] or r["error"] or r["changes"] or "(nothing)"}\n</folder-review>'
@@ -144,44 +143,44 @@ def review_notice(recs, mx=REVIEW_MAX_CHARS):
 
 # %% ../nbs/17_monitor.ipynb #82ac9e45
 class FolderWatch:
-    "One monitored folder: what to look at, what to ask when it moves, and how it last looked."
+    "One monitored folder: its target, instructions and last snapshot."
 
     def __init__(self,
-                 folder,               # the folder, or one file, to watch. Inside the open roots
-                 instructions,         # the standing brief the reviewer gets, verbatim
-                 pattern='',           # globs to limit it to. Empty watches everything readable
-                 settle=DFLT_SETTLE,   # least time between two reviews, so one burst is one review
+                 folder,               # folder or file to watch, inside the roots
+                 instructions,         # the reviewer's brief, verbatim
+                 pattern='',           # globs to limit it to; empty for all
+                 settle=DFLT_SETTLE,   # least time between two reviews
                  note=''):             # why it is being watched
         self.id = f'fw_{uuid.uuid4().hex[:8]}'
         self.folder, self.instructions = str(folder), str(instructions)
         self.pattern, self.note = str(pattern or ''), str(note or '')
         self.settle = secs(settle)
-        self.snap = {}          # the last look. `Monitors.add` takes the first
-        self.reviewed = None    # monotonic clock of the last review. The settle window runs from it
+        self.snap = {}
+        self.reviewed = None
         self.reviews, self.last_status = 0, ''
-        self.vaulted = False    # mirrored from a vault row by `Monitors.sync`, which also drops it when the row goes
+        self.vaulted = False
 
     def __repr__(self): return f'FolderWatch({self.id} {self.folder} {len(self.snap)} files)'
 
 # %% ../nbs/17_monitor.ipynb #fb13c644
 class Monitors:
-    "This session's watched folders and reviews; `check` runs in the background, `drain` hands them to the next turn."
+    "Folder watches and reviews: `check` looks, `drain` hands reviews to the next turn."
 
     def __init__(self,
                  host,
-                 get_backend=None,   # callable -> the backend a review runs on, or None for no review
-                 get_tools=None,     # callable -> the tools a reviewer may read the repo with
-                 on_review=None,     # callable(record), for a frontend, per completed review
-                 log_dir=None):      # callable -> where review transcripts and `monitors.log` go, or None
+                 get_backend=None,   # callable -> review backend, or None
+                 get_tools=None,     # callable -> the reviewer's read tools
+                 on_review=None,     # callable(record) per completed review
+                 log_dir=None):      # callable -> folder for transcripts and logs
         self.host, self.get_backend, self.get_tools = host, get_backend, get_tools
         self.on_review, self.log_dir, self.runs = on_review, log_dir, {}
-        self.watches, self._unwatchable = {}, set()   # vault rows that could not be snapshotted are noted once
-        self.pending = deque(maxlen=PENDING_MAX)   # reviews no turn has carried yet
-        self.lock = threading.Lock()               # guards `watches` and `pending`
+        self.watches, self._unwatchable = {}, set()
+        self.pending = deque(maxlen=PENDING_MAX)
+        self.lock = threading.Lock()  # guards `watches` and `pending`
         self.checking = threading.Lock()
 
     def add(self, folder, instructions, pattern='', settle=DFLT_SETTLE, note=''):
-        "Start watching `folder`. The first look is taken now, so only later changes are reviewed."
+        "Start watching `folder`, taking its baseline now."
         if not str(instructions or '').strip(): raise AgentError('a folder watch needs instructions: they are all the reviewer gets')
         w = FolderWatch(folder, instructions, pattern, settle, note)
         w.snap = snapshot(self.host, w.folder, w.pattern)
@@ -189,22 +188,22 @@ class Monitors:
         return w
 
     def remove(self, watch_id):
-        "Stop watching one folder. Reviews already filed stay where they were filed."
+        "Stop watching one folder."
         with self.lock: return self.watches.pop(str(watch_id), None) is not None
 
     def all(self):
-        "Every watch, in the order they were opened."
+        "Every watch, in opening order."
         with self.lock: return list(self.watches.values())
 
     def drain(self):
-        "Every review no turn has carried yet, oldest first, taken off the queue once."
+        "Take every queued review off the queue, oldest first."
         with self.lock:
             out = list(self.pending)
             self.pending.clear()
         return out
     @property
     def log(self):
-        "`monitors.log`, one JSON record per completed review, or None without a log folder."
+        "The `monitors.log` path, or None without a log folder."
         d = self.log_dir() if self.log_dir is not None else None
         return None if d is None else Path(d)/'monitors.log'
 
@@ -213,9 +212,9 @@ class Monitors:
 @patch
 def check(self: Monitors,
           force=False,   # look even inside a watch's settle window
-          block=True     # wait for a check already running, rather than answering `None`
+          block=True     # wait for a running check, not return `None`
 ):
-    "One record per changed folder; `None` if another pass owns the check and `block` is off, `[]` if nothing changed."
+    "One record per changed folder, or `None` if another check runs and `block` is off."
     if not self.checking.acquire(blocking=block): return None
     try:
         self.sync()
@@ -232,7 +231,7 @@ def check(self: Monitors,
 
 @patch
 def _check(self: Monitors, w, force=False):
-    "One folder: look, compare, and review when it moved. `None` when nothing did."
+    "Snapshot one folder and review it if it changed; `None` otherwise."
     now = time.monotonic()
     if not force and w.reviewed is not None and now - w.reviewed < w.settle: return None
     after = snapshot(self.host, w.folder, w.pattern)
@@ -244,7 +243,7 @@ def _check(self: Monitors, w, force=False):
 
 @patch
 def _review(self: Monitors, w, chg):
-    "Run `w`'s standing instructions over what moved, as a read-only sub-agent."
+    "Review `w`'s changes with a read-only sub-agent."
     text = report(chg, w.folder)
     kw = dict(changes=text, files=len(chg), summary=summarise(chg))
     b = self.get_backend() if self.get_backend is not None else None
@@ -266,7 +265,7 @@ def _review(self: Monitors, w, chg):
 
 @patch
 def _record(self: Monitors, w, status, **kw):
-    "One completed check: queued for the next turn, filed in memory, and returned."
+    "Queue, log, file and return one completed check."
     rec = dict(watch_id=w.id, folder=w.folder, status=status, when=time.time(), files=0,
                summary='', review='', changes='', error='', run_id='') | dict(kw)
     with self.lock: self.pending.append(rec)
@@ -282,20 +281,20 @@ def _record(self: Monitors, w, status, **kw):
 
 @patch
 def _file(self: Monitors, rec):
-    "Tell the user out of band, and file the review in durable memory under one key per watch, so the latest replaces the last."
+    "Note the review to the user and file it in memory, one key per watch."
     line = f"{Path(rec['folder']).name}: {rec['summary'] or rec['status']}"
     try: self.host.note(f'folder review -- {line}')
     except Exception: pass
     if not rec['review']: return
     try: self.host.remember(rec['review'], title=f'folder review: {line}', tags=['folder-review'], key=f'folder-review:{rec["watch_id"]}')
-    except Exception: pass      # no memory on this host. The review still reaches the next turn
+    except Exception: pass
 
 # %% ../nbs/17_monitor.ipynb #e838671d
 @patch
 def sync(self: Monitors):
-    "Mirror the host's folder watches: a new vault row becomes a watch whose first look is now; a row gone from the vault drops its watch."
+    "Mirror the host's folder watches: add new vault rows, drop removed ones."
     try: rows = [r for r in (self.host.watches() or ()) if (r.get('kind') or r.get('action')) == 'folder']
-    except Exception: return []          # a host without a watches table has nothing to mirror
+    except Exception: return []
     seen, new = set(), []
     for r in rows:
         wid = str(r['id']); seen.add(wid)
@@ -312,49 +311,48 @@ def sync(self: Monitors):
     return new
 
 # %% ../nbs/17_monitor.ipynb #b10df102
-POB_READER = 'ramabana'   #: the notes-stream reader a session drains under
-TICKS = {}                #: schedule name -> what a beat runs for it. `ramabana-tick` registers these
+POB_READER = 'ramabana'   #: notes reader a session drains
+TICKS = {}                #: schedule name -> beat callback
 
 def on_tick(name):
-    "Register the callback a fire of `name` runs, for whichever process the beat starts."
+    "Register the callback a fire of schedule `name` runs."
     def _f(fn):
         TICKS[str(name)] = fn
         return fn
     return _f
 
 def _pob_home():
-    "Where the beat keeps its launcher, its log and the database. pobblebonk's answer, or its default."
+    "pobblebonk's home folder for launcher, log and database."
     try: from pobblebonk.heartbeat import HOME
     except ImportError: return Path.home()/'.pobblebonk'
     return Path(HOME)
 
-#: One knob, read once. Both halves ask `pob_path`, so neither can open a file the other does not
 POB_HOME = _pob_home()
 
 def pob_path(): return Path(POB_HOME).expanduser()/'pob.db'
 
 def pob(path=None):
-    "The database the beat and this session share. None when pobblebonk is not installed."
-    # `Pob(None)` makes a temporary database the beat would never find again, so always name one
+    "The database the beat and this session share, or None without pobblebonk."
+    # `Pob(None)` opens a throwaway temp database
     try: from pobblebonk.core import Pob
     except ImportError: return None
     return Pob(str(path or pob_path()))
 
 def beat_notes(db, reader=POB_READER, limit=20):
-    "What the beat left that `reader` has not read. Empty for no beat, and never raises into a turn."
+    "Beat notes `reader` has not read; empty on no beat or any error."
     if db is None: return []
     try: got = db.drain(str(reader), limit)
     except Exception: return []
     return [f"{n['title']}: {n['body']}" if n.get('body') else str(n['title']) for n in got]
 
 def beat_notice(notes, mx=REVIEW_MAX_CHARS):
-    "What the beat left since this session last looked, as the block a prompt carries."
+    "Beat notes since the last look, as a prompt block."
     if not notes: return ''
     return '\n\n<beat>\n' + clip('\n'.join(notes), mx) + '\n</beat>'
 
 
 # %% ../nbs/17_monitor.ipynb #18ac0628
-BEAT_TAG = 'ramabana'   #: names this package's launcher, its log and the scheduled job
+BEAT_TAG = 'ramabana'   #: names the launcher, log and job
 
 def heartbeat():
     "pobblebonk's scheduler seam, or None when it is not installed."
@@ -367,7 +365,7 @@ def tick(db: str = '',         # the shared database; pobblebonk's own by defaul
          quiet: bool = False,  # say nothing on success
          install: bool = False,# schedule this command instead of running one beat
          uninstall: bool = False,  # stop the scheduled beat
-         every: int = 60):     # seconds between beats, when installing. Whole minutes
+         every: int = 60):     # seconds between installed beats, whole minutes
     "One beat: run the schedules that are due and leave what they found as notes."
     if install or uninstall:
         hb = heartbeat()

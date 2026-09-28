@@ -15,13 +15,13 @@ from shalya import clip, err, summary, writes
 from shalya.core import one_line as _1
 
 # %% ../nbs/08_shop.ipynb #aa16daf7
-MAX_PRODUCTS = 24        # products listed back per search. A supermarket page holds far more
+MAX_PRODUCTS = 24        # products listed per search
 SHOP_PORT = 9223         # fossick's persistent debug Chrome
 SHOP_TOUT = 180
 
 
 class CartError(AgentError):
-    "A cart action could not be carried out: no such product, no add control, nothing matched."
+    "A cart action failed: no such product, no add control, nothing matched."
     pass
 
 
@@ -29,15 +29,15 @@ class Cart:
     "One shopping session: find things, put them in, read the trolley back."
 
     def open(self, url):
-        "Point the session at a store. Returns the url actually landed on."
+        "Point the session at a store and return the url it landed on."
         raise NotImplementedError
 
     def find(self, query, limit=MAX_PRODUCTS):
-        "Search the current store. Returns `[{i, title, price, url}]`. `i` is what `add` takes."
+        "Search the current store for `[{i, title, price, url}]`; `add` takes `i`."
         raise NotImplementedError
 
     def add(self, item, qty=1, variant=None):
-        "Add `item` (an `i` from `find`, or a title) and verify that the item appears in the cart. Returns `{ok, item, ...}`."
+        "Add `item` (a `find` index or a title), check the cart, return `{ok, item, ...}`."
         raise NotImplementedError
 
     def lines(self):
@@ -50,12 +50,12 @@ class Cart:
 
     @property
     def where(self):
-        "The url the session is currently on."
+        "The url the session is on."
         raise NotImplementedError
 
 # %% ../nbs/08_shop.ipynb #c5569e86
 class FossickCart(Cart):
-    "Real Chrome trolley via `fossick.shop`. Session opens on first use and is reused."
+    "Real Chrome trolley via `fossick.shop`, opened on first use and reused."
 
     def __init__(self, port=SHOP_PORT, tout=SHOP_TOUT, headless=None):
         store_attr()
@@ -100,7 +100,7 @@ CATALOGUE = {
 
 
 class FakeCart(Cart):
-    "A cart with a fixed catalogue and no browser: what the tests and the docs shop at."
+    "A browserless cart with a fixed catalogue, for tests and docs."
 
     def __init__(self, catalogue=None, url='https://www.coles.com.au'):
         self.catalogue = dict(catalogue or CATALOGUE)
@@ -165,7 +165,7 @@ class FakeCart(Cart):
 
 # %% ../nbs/08_shop.ipynb #d7cea0d5
 def cart_tools(cart):
-    "The trolley, as tools. `cart_add` and `cart_remove` are in `WRITE_TOOLS`: they spend money."
+    "The trolley as tools; `cart_add` and `cart_remove` are in `WRITE_TOOLS`."
 
     @summary(lambda a: 'List stores')
     def cart_stores() -> str:

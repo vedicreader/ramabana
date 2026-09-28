@@ -44,16 +44,16 @@ from .runtime import Run, current_run, run_context
 from fastcore.docments import frontmatter
 from shalya.core import WRITE_TOOLS as _TOOL_WRITES
 _cmds, _edits, _apply_edits, _diff = cmds, edits, apply_edits, diff_text
-#: the trolley is an extension, not a host group, so shalya cannot name its writes
+#: plus the cart's writes, which shalya cannot name
 WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove'}
 
 # %% ../nbs/02_tools.ipynb #694f6d5d
-#: shalya's names, re-exported so `from ramabana.tools import *` still finds them; every entry resolves on `shalya` itself.
+#: shalya's names, re-exported for `from ramabana.tools import *`
 _all_ = ['API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes',
          'attempt', 'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
 
 def __getattr__(name):
-    "Resolve the deprecated Shalya compatibility surface without mirroring it into this module."
+    "Resolve the deprecated Shalya compatibility surface without mirroring it here."
     if name in _all_: return getattr(_shalya, name)
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
@@ -61,8 +61,8 @@ def __getattr__(name):
 # %% ../nbs/02_tools.ipynb #1ec6c57a
 @implemented
 class NullHost(Host):
-    "A host with nothing behind it. The reference implementation of 'this host cannot'."
-    writes = False   # so `file_tools` withholds the editors instead of handing over three that raise
+    "A host with nothing behind it: the reference 'this host cannot'."
+    writes = False   # `file_tools` then withholds the editors
     def __init__(self, roots=()): self._roots = [str(r) for r in roots]
     @property
     def roots(self): return self._roots
@@ -77,12 +77,12 @@ class NullHost(Host):
 
 @patch
 def delete(self:LocalHost, path):
-    "Remove one file inside the roots (what `/rewind` does to a file the turn created); one already gone is not an error."
+    "Remove one file inside the roots; one already gone is not an error."
     self.check(path).unlink(missing_ok=True)
 
 @patch
 def exists(self:LocalHost, path):
-    "Whether `path` is a file inside the roots; one outside them, or missing, is not (an undecodable file is)."
+    "Whether `path` is a file inside the roots (an undecodable file counts)."
     try: return self.check(path).exists()
     except Exception: return False
 
@@ -94,7 +94,7 @@ def draws_itself(spec):
     return bool(c is not None and 'image' in getattr(c, 'tools', ()))
 
 def _from_responses(raw):
-    "Generated pictures out of a Responses reply, read by the same `rishi` code a turn uses."
+    "Generated pictures from a Responses reply, read by the `rishi` code a turn uses."
     from rishi.remote import gen_media
     return gen_media(raw)
 
@@ -107,14 +107,14 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
 
 # %% ../nbs/02_tools.ipynb #de2cd1e8
 def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None, optin=()):
-    "Every tool the host and its extensions support; groups from `Host.provides`, `drop` to exclude some, `optin` to add shalya's opt-in groups."
-    # `generate_image` saves what it draws, so a host that cannot write does not get it either.
+    "Tools the host (by `Host.provides`) and extensions support; `drop` removes, `optin` adds."
+    # `generate_image` saves files, so it needs a writable host
     image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
              if image_available() and host.writes and 'image' not in set(drop or ()) else None)
     return _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image, optin=optin)
 
 def small_tool(f):
-    "Mark an extension tool as one the small profile offers too. Unmarked registry tools stay out of a small catalog."
+    "Mark an extension tool for the small profile, whose catalog omits unmarked tools."
     f.small = True
     return f
 
@@ -160,7 +160,7 @@ class ToolCatalog:
 # %% ../nbs/02_tools.ipynb #e3b29ea1
 SUB_MAX_STEPS = 12
 
-#: the half both briefings share; the two below are the ones that swap
+#: the half both briefings share
 SUB_SP_HEAD = """You are a research sub-agent in a Python IDE. Answer the delegated question only.
 - Use tools as needed. Report findings with file paths and line numbers.
 - State plainly when you find nothing. Do not guess.
@@ -184,7 +184,7 @@ def sub_briefing(writes=False):
     "The sub-agent standing instructions: the shared half, then the read-only or the write half."
     return f'{SUB_SP_HEAD}\n' + (SUB_WRITE_SP if writes else SUB_READ_SP)
 
-#: what a sub-agent is never handed: delegation (no recursion) and the watches (a review that opens a watch would multiply)
+#: never handed to a sub-agent: delegation and watches
 NO_SUB = frozenset({'delegate_search', 'delegate_async', 'delegate_result', 'delegate_cancel', 'watch', 'cancel_watch'})
 
 # %% ../nbs/02_tools.ipynb #9424aadf
@@ -199,12 +199,12 @@ def _delegate_result(text):
 
 # %% ../nbs/02_tools.ipynb #0818dbdb
 def sub_sp(sp=SUB_SP, skills=()):
-    "A sub-agent's briefing: its standing instructions, then the bodies of the skills its task named."
+    "A sub-agent's briefing: standing instructions, then the bodies of skills its task named."
     if not skills: return sp
     return sp + '\n\n' + '\n\n'.join(f'## {s.name}\n\n{s.text()}' for s in skills)
 
 def _stopped(run):
-    "A stopped delegation answers in text: a dict would reach the model as its own repr."
+    "A stopped delegation's answer as text, not a dict."
     return f'The delegated question was stopped ({run.state}) before it answered.'
 
 def bad_json(e, span=120):
@@ -216,12 +216,12 @@ def bad_json(e, span=120):
     return f'\nit stopped here: {lead}{doc[max(0, pos - span):pos + span]}{tail}'
 
 def _model_refused(sub, reply):
-    "Whether what came back is the sub-agent's backend reporting its own failure, not an answer."
+    "Whether the reply is the sub-agent's backend reporting its own failure."
     problems = getattr(sub, 'problems', None) or []
     return bool(problems) and str(reply or '').strip() == str(problems[-1]).strip()
 
 def _inboxed(f, run, heard=None):
-    "The tool, with any message the user sent the run appended to its result and handed to `heard`. `run` may be a callable that finds it, or None."
+    "The tool, with any user message for `run` appended to its result and passed to `heard`."
     @functools.wraps(f)
     def call(*a, **kw):
         out, r = f(*a, **kw), run() if callable(run) else run
@@ -242,12 +242,12 @@ except ImportError:   # shalya 0.1.0 has no `image_targets`; drop this once 0.1.
     def image_targets(path, n=1): return [str(Path(path) if i == 0 else Path(path).with_stem(f'{Path(path).stem}-{i+1}')) for i in range(max(1, int(n)))]
 
 def write_targets(name, args):
-    "The paths a call writes where it names them: every picture a `PATH_WRITES` call saves, else its `path`."
+    "Paths a call writes where it names them: saved pictures for `PATH_WRITES`, else `path`."
     args = args or {}
     if not (p := args.get('path')): return []
     if name not in PATH_WRITES: return [p]
     try: n = max(1, min(int(args.get('n') or 1), 4))
-    except (TypeError, ValueError): n = 1   # the tool refuses it; the first name is still the one it names
+    except (TypeError, ValueError): n = 1   # the tool refuses it
     return image_targets(p, n)
 
 def _no_path(f):
@@ -260,9 +260,9 @@ def _no_path(f):
 
 def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skills=(),
              writes=False,      # hand over WRITE_TOOLS as well
-             approve=None,      # the gate those writes answer to, which `spawn` inherits none of
+             approve=None,      # the gate those writes answer to
              run=None,          # a pre-registered child run
-             images=()):        # picture bytes sent with the question, which the sub-agent sees
+             images=()):        # picture bytes sent with the question
     "Ask `question` in a throwaway conversation on `backend`'s engine. Returns the answer text."
     sub = None
     run = run or Run(f'run_{uuid.uuid4().hex[:12]}', 'child', str(question), backend.spec.name, current_run())
@@ -297,7 +297,7 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
 # %% ../nbs/02_tools.ipynb #fe517832
 def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS, n_workers=4,
                   skills=(), writes=False, approve=None, parent=None, images=()):
-    "Ask several questions. Register every child before starting serial or parallel workers."
+    "Ask several questions, registering every child before any worker starts."
     qs = L(questions)
     if not qs: return L()
     parent = parent or current_run()
@@ -310,7 +310,7 @@ def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS
     items = list(zip(qs, runs))
     workers = 1 if writes or getattr(backend.spec, 'local', False) else min(n_workers, len(qs))
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers))
-    futures = [ex.submit(contextvars.copy_context().run, run, item) for item in items]   # each worker nests under the caller's delegate call
+    futures = [ex.submit(contextvars.copy_context().run, run, item) for item in items]   # nest under the caller's delegate call
     try:
         while True:
             if all(f.done() for f in futures):break
@@ -344,7 +344,7 @@ class Background:
         self.runs, self.answers, self.seen = {}, {}, set()
 
     def _live(self, run):
-        "Whether `run` should still reach a model. Closing or cancelling stops it, and says so."
+        "Whether `run` should still reach a model; closing or cancelling stops it."
         with self.lock: ok = self.open
         if ok and not run.cancelled: return True
         if not run.terminal: run.finish('cancelled')
@@ -359,7 +359,7 @@ class Background:
                 self.seen.discard(old)
 
     def start(self, fn, run):
-        "Register `run`, then work `fn(run)` on a daemon thread. The id names a registered run."
+        "Register `run`, then work `fn(run)` on a daemon thread; return its id."
         with self.lock:
             if not self.open: raise AgentError('nothing new starts while the session is closing')
             self.runs[run.id] = run
@@ -376,7 +376,7 @@ class Background:
         return run.id
 
     def status(self, run_id=''):
-        "Rows for every registered run, or for one. A miss is text saying so, not an empty list."
+        "Rows for every registered run, or one; a miss returns text, not an empty list."
         with self.lock: runs = dict(self.runs)
         if not run_id: return [r.dict() for r in runs.values()]
         r = runs.get(str(run_id))
@@ -393,7 +393,7 @@ class Background:
         return f'{run_id} is {run.state}; ask again later'
 
     def cancel(self, run_id):
-        "Stop one run. Its answer becomes the stopped notice the next `result` reads."
+        "Stop one run; its answer becomes the stopped notice."
         with self.lock: run = self.runs.get(str(run_id))
         if run is None: return f'no delegation named {run_id!r} was started here'
         if run.terminal: return f'{run_id} had already finished ({run.state})'
@@ -401,7 +401,7 @@ class Background:
         return f'{run_id} is stopping'
 
     def close(self):
-        "Refuse new work and cancel what is running. Queued runs stop rather than reaching a model."
+        "Refuse new work and cancel what runs; queued runs never reach a model."
         with self.lock: self.open, runs = False, list(self.runs.values())
         for r in runs: r.request_cancel()
         return len(runs)
@@ -421,11 +421,11 @@ def named_skills(get_skills, names):
                  f"{', '.join(s.name for s in every) or 'none'}]")
 
 
-MAX_MEDIA = 20 << 20   #: bytes of one attached picture or sound, from the terminal or in a delegation
+MAX_MEDIA = 20 << 20   #: max bytes of one attached picture or sound
 MAX_ATTACH = 8         #: attachments one message carries
 
 def picture_mime(head):
-    "The MIME of a PNG, JPEG, GIF or WebP from its first bytes, else None; the file's name plays no part."
+    "The MIME of a PNG, JPEG, GIF or WebP from its first bytes, else None."
     head = bytes(head or b'')
     if head[:4] == b'RIFF' and head[8:12] == b'WEBP': return 'image/webp'
     sigs = ((b'\x89PNG\r\n\x1a\n', 'image/png'), (b'\xff\xd8\xff', 'image/jpeg'), (b'GIF87a', 'image/gif'), (b'GIF89a', 'image/gif'))
@@ -449,7 +449,7 @@ def read_pictures(host, paths):
 def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=None,
                    get_writes=None,     # the session's sub-agent write toggle, read per call
                    get_approve=None,    # the gate those writes answer to
-                   background=None,     # the register async delegations live in; one is made if None
+                   background=None,     # async delegation register; made if None
                    get_log_dir=None,    # callable -> the folder run transcripts go in, or None
                    get_pictures=None):  # callable paths -> `(bytes, err)`; see `read_pictures`
     "The delegation tools, routed to the configured sub-agent backend. Arguments are callables, read per call."
@@ -458,7 +458,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
 
     def _questions(qs):
-        "The non-empty question texts: a list, or the JSON text of one; any other string is exactly one question."
+        "Non-empty question texts from a list or its JSON text; any other string is one question."
         if isinstance(qs, str) and qs.strip().startswith('['):
             try: qs = json.loads(qs)
             except Exception: pass

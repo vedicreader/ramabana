@@ -8,9 +8,9 @@
 <img src="media/rama-arrow.png" alt="rama's arrow" width="96" />
 </p>
 
-[`Agent`](https://vedicreader.github.io/ramabana/agent.html#agent) runs a model against the tools supplied by a host. A host defines the folders, network access, memory, and approval gate available to the model. The terminal, MCP server, and Agent Client Protocol server use the same agent and tool contracts.
+[`Agent`](https://vedicreader.github.io/ramabana/agent.html#agent) runs a model against the tools a host supplies. A host defines the folders, network access, memory, and approval gate the model gets. The terminal, MCP server, and Agent Client Protocol server share the same agent and tool contracts.
 
-Start with one folder. Ramabana can write only inside the folders named by `--root`. Read access also stays inside those folders. `--read-outside` widens read access to the machine.
+Start with one folder. Ramabana writes only inside the folders `--root` names, and reads stay inside them too. `--read-outside` lets reads reach the whole machine.
 
 <p align="center">
 
@@ -19,21 +19,20 @@ Start with one folder. Ramabana can write only inside the folders named by `--ro
 
 ## Install
 
-Ramabana needs Python 3.12 or newer. Everything it imports is a dependency, and the terminal is
-the one extra:
+Ramabana needs Python 3.12 or newer. Everything it imports is a dependency. The terminal is the one extra:
 
 ``` sh
 pip install ramabana           # the agent, the hosts, the tools, and every server below
 pip install 'ramabana[cli]'    # and the terminal session
 ```
 
-| command | what it is |
-|----|----|
-| `ramabana` | the terminal session, on teleprint. The one that needs `[cli]` |
-| `ramabana-mcp` | the MCP server |
-| `ramabana-acp` | the Agent Client Protocol server an editor launches |
-| `ramabana --python` | the Python prompt, on dhrishti |
-| `ramabana-tick` | the scheduled beat, on pobblebonk |
+| command             | what it is                                          |
+|---------------------|-----------------------------------------------------|
+| `ramabana`          | the terminal session, on teleprint. Needs `[cli]`   |
+| `ramabana-mcp`      | the MCP server                                      |
+| `ramabana-acp`      | the Agent Client Protocol server an editor launches |
+| `ramabana --python` | the Python prompt, on dhrishti                      |
+| `ramabana-tick`     | the scheduled beat, on pobblebonk                   |
 
 ## Point it at a model
 
@@ -58,7 +57,9 @@ export RAMABANA_MODEL=sonnet    # the same choice in every session
 
 `/models` lists what this machine can reach and marks the one running. `/model NAME` changes model without ending the session. `/model` alone prints the routing summary.
 
-Short jobs route away from the turn model. Completions, classification and other one-shot work run on `gemma-e4b`, and delegated sub-agents run on `gpt-4.1`. Everything else runs on the turn model. `$RAMABANA_MODEL_<JOB>` overrides one job, where `<JOB>` is `ONESHOT`, `INLINE`, `COMPLETION`, `CLASSIFY`, `SUMMARY` or `SUBAGENT`. The turn model has `$RAMABANA_MODEL` and takes no `_TURN` variable. `/model JOB NAME` sets one job inside a session:
+Short jobs route away from the turn model. Completions, classification and other one-shot work run on `gemma-e4b`. Delegated sub-agents run on `gpt-4.1`. Everything else runs on the turn model.
+
+`$RAMABANA_MODEL_<JOB>` overrides one job. `<JOB>` is `ONESHOT`, `INLINE`, `COMPLETION`, `CLASSIFY`, `SUMMARY` or `SUBAGENT`. The turn model uses `$RAMABANA_MODEL` and has no `_TURN` variable. `/model JOB NAME` sets one job inside a session:
 
 ``` sh
 export RAMABANA_MODEL_SUBAGENT=gpt-5.6-luna
@@ -70,7 +71,7 @@ export RAMABANA_MODEL_SUBAGENT=gpt-5.6-luna
 ramabana --root .
 ```
 
-That opens the current folder, asks before every write, and runs on the routing default model. Type a task and press enter. `/help` prints the key card, `/guide` prints the longer tour, `ctrl+c` stops a running turn, and `ctrl+d` quits.
+This opens the current folder, asks before every write, and runs on the default model. Type a task and press enter. `/help` prints the key card and `/guide` the longer tour. `ctrl+c` stops a running turn and `ctrl+d` quits.
 
 Pass a prompt instead and Ramabana runs one turn, prints the answer on stdout, and exits:
 
@@ -79,7 +80,7 @@ ramabana --root . 'Find where request timeouts are configured.'
 ramabana --root . 'Summarise the open TODOs' > todos.md
 ```
 
-The one-turn form prints each problem on stderr, and exits 1 when the turn model was not up. That makes it usable from a script or a git hook.
+The one-turn form prints each problem on stderr and exits 1 when the turn model was not up, so a script or a git hook can use it.
 
 ## The terminal, option by option
 
@@ -87,19 +88,19 @@ The one-turn form prints each problem on stderr, and exits 1 when the turn model
 |----|----|----|
 | `--root A,B` | `.` | the folders it may read and write, comma separated |
 | `--model NAME` | routing default | the model this session’s turns run on |
-| `--approve MODE` | `ask` | `ask`, `edits`, `auto`, `off` or `none`; `edits` lets file and notebook edits through and asks for the rest |
+| `--approve MODE` | `ask` | `ask`, `edits`, `auto`, `off` or `none`. `edits` lets file and notebook edits through and asks for the rest |
 | `--no-web` | web on | takes the network away from the web tools |
 | `--read-outside` | off | reads may name any path. Writes stay inside `--root` |
 | `--subagent-writes` | off | delegated sub-agents may write, run commands and run Python |
-| `--vault` | off | keeps what is read in a vishalakshi vault |
+| `--vault` | off | keeps what the agent reads in a vishalakshi vault |
 | `--pii MODE` | `off` | `redact` or `refuse` for what the vault hands back |
 | `--pii-ner` | off | `--pii` gates titled names too, not only patterns |
 | `--spec` | off | adds `api_load`, `api_ops` and `api_call` |
 | `--theme NAME` | `auto` | the terminal palette |
 | `--max-tool-calls N` | `auto` | 20 to 400 tool calls per turn |
-| `--max-steps N` | `auto` | 8 to 80 model and tool loop steps per turn |
+| `--max-steps N` | `auto` | 8 to 80 steps per turn, each a model call and its tools |
 | `--cfg DIR` | `~/.config/ramabana` | skills, extensions, history and plans |
-| `--resume ID` | none | reopen a saved session, by id, by prefix, or `latest` |
+| `--resume ID` | none | reopen a saved session by id, by prefix, or `latest` |
 | `--python` | off | start in Python mode, on a kernel of your own |
 | `--attach NAME` | none | join a live Python session |
 | `--agent-proxy` | off | expose this session’s agent inside its Python prompt |
@@ -109,14 +110,14 @@ The one-turn form prints each problem on stderr, and exits 1 when the turn model
 | `--tmux MODE` | `auto` | `on` or `off`: read the sibling panes and run background commands in panes |
 | `--pane MODE` | `auto` | `on` or `off`: the now pane at startup. `auto` opens it only inside tmux |
 | `--optin A,B` | none | extra tool groups: `exhash` (the hash-addressed `edit_file`), `research`, `author`, `legacy` |
-| `--warm` / `--no-warm` | on for `full`, off for `small` | seed the chat with a few of dhrona’s example rounds (`uv add "ramabana[dhrona]"`), or start empty. The small profile starts cold because a small model copies an example’s paths literally; `--warm` seeds it with one round |
-| `--profile P` | `auto` | `small` offers fourteen tools and a one-screen briefing, `full` everything; `auto` briefs a local model, or one with a window at or under 32k, small. `/model` shows which is active. The small profile also leaves out extension tools unless they are marked with [`ramabana.tools.small_tool`](https://vedicreader.github.io/ramabana/tools.html#small_tool) |
+| `--warm` / `--no-warm` | on for `full`, off for `small` | seed the chat with a few of dhrona’s example rounds (`uv add "ramabana[dhrona]"`), or start empty. `small` starts cold since a small model copies an example’s paths literally. `--warm` gives it one round |
+| `--profile P` | `auto` | `small` offers fourteen tools and a one-screen briefing. `full` offers everything. `auto` picks `small` for a local model or a window of 32k or less. `/model` shows the active one. `small` leaves out extension tools not marked with [`ramabana.tools.small_tool`](https://vedicreader.github.io/ramabana/tools.html#small_tool) |
 
 `--theme` takes `auto`, `github-dark`, `dark`, `light`, `gruvbox`, `gruvbox-light`, `nord`, `tokyonight`, `catppuccin`, `latte`, `everforest`, `dracula`, `kanagawa`, `solarized` or `solarized-light`. `auto` is `github-dark`. Set your terminal to the scheme of the same name and the two agree. `/theme NAME` switches mid-session and repaints what is already on screen.
 
 ## Inside a session
 
-Type `/` and press tab to complete a command. The list is what this session has, extensions included.
+Type `/` and press tab to complete a command. The list holds this session’s commands, extensions included.
 
 | command | what it does |
 |----|----|
@@ -128,13 +129,13 @@ Type `/` and press tab to complete a command. The list is what this session has,
 | `/tool-budget [auto\|20..400]`, `/steps [auto\|8..80]` | the per-turn budgets, and what the last turn used |
 | `/approve [off\|ask\|edits\|auto]`, `/subagents [on\|off]` | who may write, and whether delegates may |
 | `/commit [MESSAGE]`, `/pr [TITLE]` | a commit or pull request drafted from the diff, behind approval |
-| `/rewind [TURN] [files\|chat\|both]`, `/branches`, `/branch NAME` | undo a turn’s files (edits restored, git writes undone, files it created removed while unchanged since) or chat, and the conversation branches |
+| `/rewind [TURN] [files\|chat\|both]`, `/branches`, `/branch NAME` | undo a turn’s files or chat, and the conversation branches. Undo restores edits, undoes git writes, and removes created files still unchanged |
 | `/watch [RUN\|monitors]`, `/unwatch`, `/tell RUN TEXT` | a tmux pane on a run’s transcript, and a message to a running sub-agent |
 | `/pane`, `/pane off` | the now pane in a tmux split, and closing it |
-| `/NAME ARGS`, `#note TEXT` | a skill, or a `<cfg>/commands/NAME.md` (a repo’s `.agents/commands/` once `project_extensions` is opted in) with `$ARGUMENTS`, `$1..$n` and `@path` filled as a turn; a line for the next session’s memory |
+| `/NAME ARGS`, `#note TEXT` | run a skill, or `<cfg>/commands/NAME.md` as a turn with `$ARGUMENTS`, `$1..$n` and `@path` filled in. A repo’s `.agents/commands/` counts once `project_extensions` is opted in. `#note` saves a line to the next session’s memory |
 | `/root [add PATH]`, `/theme [NAME]`, `/mouse` | the open folders, the palette, and clicking blocks |
 | `/attach PATH`, `/detach [N]`, `/paste`, `/copy [turn]` | files and images in, text out |
-| `/skills`, `/skill NAME`, `/tools`, `/extensions`, `/reload` | what this session loaded, and re-reading it |
+| `/skills`, `/skill NAME`, `/tools`, `/extensions`, `/reload` | what this session loaded, and loading it again |
 | `/python`, `/agent`, `/vars`, `/promote NAME` | the Python prompt and its namespace |
 | `/kernels`, `/join NAME`, `/agent_proxy` | live Python sessions |
 | `/stop [ID]`, `/runs [all]` | the runs in flight |
@@ -144,35 +145,51 @@ The keys:
 
 | key | what it does |
 |----|----|
-| `enter` | send. Mid-turn it steers: the running turn reads the line after its current tool call. A line with an `@path`, or sent while something is attached, waits for the next turn instead. `tab` completes a `/command` or an `@path` |
+| `enter` | send. Mid-turn it steers: the running turn gets the line after its current tool call. A line with an `@path`, or sent with an attachment, waits for the next turn. `tab` completes a `/command` or an `@path` |
 | `shift+enter` | mid-turn, queue the line as the next turn. Inside tmux, add `set -g extended-keys on` to `~/.tmux.conf`, and `set -g extended-keys-format csi-u` on tmux 3.5 or later |
-| `shift+tab` | cycle approvals: `ask`, `edits`, `auto`, and round again. The mode sits at the left of the row under the bar |
+| `shift+tab` | cycle approvals through `ask`, `edits` and `auto`. The mode shows at the left of the row under the bar |
 | `ctrl+t` | show or hide the plan |
 | `ctrl+p`, `ctrl+n` | walk the prompts you have sent |
 | `up`, `down`, `ctrl+r` | browse the transcript. `pgup`, `pgdn`, `/?` to search, `y` to copy a block, `esc` to leave |
 | `ctrl+o` | fold or open all the working of a turn |
 | `alt+1` to `alt+9` | open one entry of it |
-| `ctrl+g` | ask for approval one step more strictly |
+| `ctrl+g` | make approvals one step stricter |
 | `ctrl+v` | attach an image from the clipboard |
-| `ctrl+c` | stop the turn, and drop what was queued or sent and not yet read. Again terminates it, a third time quits |
+| `ctrl+c` | stop the turn and drop queued lines and any steering the turn has not taken yet. A second press terminates it, a third quits |
 | `ctrl+d` | quit |
 
-A turn reads top to bottom: `┆` narration, `│` a tool call, then the answer. Drop a path on the terminal, write `@path` in a prompt, or use `/attach PATH` to send a file or an image with the prompt.
+A turn reads top to bottom: `┆` narration, `│` a tool call, then the answer. To send a file or an image with the prompt, drop its path on the terminal, write `@path` in the prompt, or use `/attach PATH`.
 
 ## Approvals
 
-Write tools are gated, and `--approve` chooses how.
+An approval gate guards the write tools. `--approve` sets its mode.
 
-| mode   | what happens                                      |
-|--------|---------------------------------------------------|
-| `ask`  | every write waits for you. The default            |
-| `auto` | writes run unattended for the rest of the process |
-| `off`  | writes are refused                                |
-| `none` | no gate exists at all                             |
+| mode    | what happens                                      |
+|---------|---------------------------------------------------|
+| `ask`   | every write waits for you. The default            |
+| `edits` | file and notebook edits run; other writes wait    |
+| `auto`  | writes run unattended for the rest of the process |
+| `off`   | the gate refuses every write                      |
+| `none`  | no gate at all                                    |
 
-At a prompt, `y` approves, `n` refuses, `a` approves everything for the rest of the session, and `ctrl+y` approves with a note. Typing a reason and pressing enter refuses with that reason. `shift+tab` cycles `ask`, `edits`, `auto` and back to `ask`, and from `off` comes back in at `ask`. `ctrl+g` moves one step stricter, from `auto` to `ask` to `off`, and never the other way. `/approve MODE` moves in either direction and answers whatever was already waiting.
+At an approval prompt:
 
-The gated tools are the ones with an effect: `replace_text`, `create_file`, `edit_cell`, `add_cell`, `run_python`, `run_shell`, `run_shell_bg`, `memory_forget`, `create_skill`, `cancel_watch`, `add_root`, `cart_add`, `cart_remove`, the git writes `git_commit`, `git_checkout`, `git_stash` and `git_remote`, and `edit_file` when `--optin exhash` offers it. Git goes through those tools: `run_shell` refuses `git commit|push|pull|fetch|stash|switch|checkout` and names the tool, and every git write is snapshotted so `/rewind` can undo it. The same gated call three times running, whatever the mode, is put to you as a question rather than run or refused again.
+- `y` approves.
+- `n` refuses.
+- `a` approves everything for the rest of the session.
+- `ctrl+y` approves with a note.
+- A typed reason and enter refuses with that reason.
+
+`shift+tab` cycles `ask`, `edits`, `auto` and back to `ask`. From `off` it comes back in at `ask`. `ctrl+g` moves one step stricter, from `auto` to `ask` to `off`, and never the other way. `/approve MODE` moves in either direction and answers any prompt already waiting.
+
+The gate covers every tool with an effect:
+
+- files: `replace_text`, `create_file`, `edit_cell`, `add_cell`, and `edit_file` when `--optin exhash` offers it
+- code: `run_python`, `run_shell`, `run_shell_bg`
+- git: `git_commit`, `git_checkout`, `git_stash`, `git_remote`
+- the rest: `memory_forget`, `create_skill`, `cancel_watch`, `add_root`, `cart_add`, `cart_remove`
+
+Git goes through those tools. `run_shell` refuses `git commit|push|pull|fetch|stash|switch|checkout` and names the tool to use. Ramabana snapshots every git write so `/rewind` can undo it. When the same gated call comes three times running, Ramabana asks you rather than run or refuse it again, whatever the mode.
 
 ## The folders it can touch
 
@@ -182,27 +199,40 @@ The gated tools are the ones with an effect: `replace_text`, `create_file`, `edi
 ramabana --root .,~/notes,/srv/app
 ```
 
-Writes reach those folders and nowhere else. Reads start out in the same folders. `--read-outside` widens reads to any path on the machine and leaves writes where they were. `/root` prints what is open, and `/root add PATH` opens another folder mid-session for reading and writing.
+Writes reach those folders and nowhere else. Reads start out in the same folders. `--read-outside` widens reads to any path on the machine and leaves writes where they were. `/root` prints the open folders, and `/root add PATH` opens another mid-session for reading and writing.
 
-Delegated sub-agents are read-only: they report what they found and change nothing. `--subagent-writes`, or `/subagents on`, lets them write, run commands and run Python behind this session’s approvals. `delegate_async(writes=True)` is refused until then, and the briefing says so.
+Delegated sub-agents only look: they report what they found and change nothing. `--subagent-writes`, or `/subagents on`, lets them write, run commands and run Python behind this session’s approvals. Until then Ramabana refuses `delegate_async(writes=True)`, and the briefing says so.
 
-Every run keeps a transcript under `<cfg>/runs/<session>/`. Inside tmux, `/watch RUN` opens a pane tailing it, `/watch monitors` tails the folder reviews, and `/tell RUN TEXT` hands a running sub-agent a message it reads with its next tool result. `read_terminal` reads the sibling panes, and `run_shell_bg` runs in a pane of its own.
+Every run keeps a transcript under `<cfg>/runs/<session>/`. Inside tmux:
 
-`/pane` opens the now pane in a split on the right: the turn, the call it is on, and each sub-agent run with its own calls. The split needs tmux 3.1 or later, and `--pane on` opens it at startup. Outside tmux, or with `--tmux off`, `/pane` prints the `ramabana-pane` command to run in another terminal instead.
+- `/watch RUN` opens a pane that tails the transcript.
+- `/watch monitors` tails the folder reviews.
+- `/tell RUN TEXT` sends a running sub-agent a message. It gets the message with its next tool result.
+- `read_terminal` reads the sibling panes.
+- `run_shell_bg` runs in a pane of its own.
+
+`/pane` opens the now pane in a split on the right. It shows the turn, the call it is on, and each sub-agent run with its own calls. The split needs tmux 3.1 or later, and `--pane on` opens it at startup. Outside tmux, or with `--tmux off`, `/pane` prints the `ramabana-pane` command to run in another terminal instead.
 
 ## Budgets, cost and history
 
-A turn runs until the model stops calling tools. `--max-tool-calls` caps the calls and `--max-steps` caps the model and tool loop steps. Both take `auto` or a number, 20 to 400 calls and 8 to 80 steps. `/tool-budget` and `/steps` change them mid-session and print what the last turn ran under.
+A turn runs until the model stops calling tools. `--max-tool-calls` caps the tool calls. `--max-steps` caps the steps, each one model call and the tools it runs. Both take `auto` or a number: 20 to 400 calls, 8 to 80 steps. `/tool-budget` and `/steps` change them mid-session and print what the last turn ran under.
 
-`/cost` prints the tokens in and out, the cached share, the reasoning tokens, and the spend when the backend reports one. `/compact` summarises the history so far and carries on with the shorter context. `/compact NOTE` tells the compactor what to keep.
+`/cost` prints:
 
-Every session with a completed turn is saved under `--cfg`, which defaults to `~/.config/ramabana`. `/sessions` lists them with their turn counts and models, and `/resume ID` reopens one from a full id or a unique prefix. From the shell:
+- the tokens in and out
+- the cached share
+- the reasoning tokens
+- the spend, when the backend reports one
+
+`/compact` summarises the history so far and carries on with the shorter context. `/compact NOTE` tells the compactor what to keep.
+
+Ramabana saves every session with a completed turn under `--cfg`, which defaults to `~/.config/ramabana`. `/sessions` lists them with their turn counts and models. `/resume ID` reopens one from a full id or a unique prefix. From the shell:
 
 ``` sh
 ramabana --root . --resume latest
 ```
 
-A resumed session brings back its history and its plan. It prints on stderr any other folder that session had open. `/root add PATH` opens those again.
+A resumed session brings back its history and its plan. It prints on stderr any other folder that session had open, and `/root add PATH` opens it again.
 
 ## Python mode
 
@@ -212,17 +242,17 @@ A resumed session brings back its history and its plan. It prints on stderr any 
 ramabana --root . --python
 ```
 
-Enter runs code that compiles, tab completes names, and `ctrl+c` interrupts the cell. `/agent` hands the line back to the model and `/python` takes it again. The agent reads your namespace and writes only to its own overlay. `/vars` shows what is in the namespace, and `/promote NAME` moves one of the agent’s values into it.
+Enter runs code that compiles, tab completes identifiers, and `ctrl+c` interrupts the cell. `/agent` hands the line back to the model and `/python` takes it again. The agent reads your namespace and writes only to its own overlay. `/vars` shows what is in the namespace, and `/promote NAME` moves one of the agent’s values into it.
 
-A live session is shareable. `ramabana --kernels` lists the ones running, `--attach NAME` joins one from another terminal, and `/join NAME` joins one from inside a session. `--agent-proxy` binds this session’s agent where the Python prompt can reach it, behind a restricted usage and callback proxy.
+Other terminals can share a live session. `ramabana --kernels` lists the ones running, `--attach NAME` joins one from another terminal, and `/join NAME` joins one from inside a session. `--agent-proxy` binds this session’s agent where the Python prompt can reach it, behind a proxy that restricts usage and callbacks.
 
 ## Memory, API specifications and a beat
 
-`--vault` keeps what the agent reads in a [vishalakshi](https://github.com/vedicreader/vishalakshi) vault, for the next session to retrieve. `--pii redact` masks personal data on the way back out of the vault, and `--pii refuse` refuses the retrieval instead. `--pii-ner` extends either mode to titled names rather than patterns alone. Either mode needs `--vault`, and without it the command exits 2 rather than ignoring the flag. A `--python`, `--attach` or `--agent-proxy` session has no vault-backed host. `--vault` is refused there.
+`--vault` keeps what the agent reads in a [vishalakshi](https://github.com/vedicreader/vishalakshi) vault, for the next session to retrieve. `--pii redact` masks personal data on the way back out of the vault. `--pii refuse` refuses the retrieval instead. `--pii-ner` extends either mode to titled names, not only patterns. Either mode needs `--vault`. Without it the command exits 2 rather than ignore the flag. A `--python`, `--attach` or `--agent-proxy` session has no vault-backed host, so it refuses `--vault`.
 
-`--spec` adds `api_load`, `api_ops` and `api_call`. Point `api_load` at an OpenAPI, Azure or Google Discovery document and the operations described in it become callable.
+`--spec` adds `api_load`, `api_ops` and `api_call`. Point `api_load` at an OpenAPI, Azure or Google Discovery document and the agent can call the operations it describes.
 
-`ramabana-tick` runs the schedules that are due and leaves what they found as notes for the next session to read. It schedules itself through cron, launchd or `schtasks`. A beat fires when no session is open:
+`ramabana-tick` runs the due schedules and leaves their findings as notes for the next session. It schedules itself through cron, launchd or `schtasks`. A beat fires when no session is open:
 
 ``` sh
 ramabana-tick --install --every 300    # a beat every five minutes
@@ -232,9 +262,21 @@ ramabana-tick --uninstall
 
 ## Skills and extensions
 
-A skill is markdown the agent reads when the work calls for it. Ramabana looks in `<cfg>/skills`, then `~/.agents/skills`, then `.leela/skills` and `.agents/skills` under each open folder, and a later directory wins the name. The layout is one directory per skill holding a `SKILL.md`. Four skills ship in the package: `coding_patterns`, `theory`, `write_prose` and `write_docs`. `/skills` lists what this session found, and `/skill NAME` prints one.
+A skill is markdown the agent reads when the work calls for it. Ramabana looks for skills in these folders, in order:
 
-An extension is a Python file in `<cfg>/extensions` with a `setup(reg)` function. It can add a tool, add a slash command, register a skill, hook the turn, and replace the approval policy:
+- `<cfg>/skills`
+- `~/.agents/skills`
+- `.leela/skills` and `.agents/skills` under each open folder
+
+When two skills share a name, the later folder wins. Each skill is a folder holding a `SKILL.md`. Four skills ship in the package: `coding_patterns`, `theory`, `write_prose` and `write_docs`. `/skills` lists what this session found, and `/skill NAME` prints one.
+
+An extension is a Python file in `<cfg>/extensions` with a `setup(reg)` function. It can:
+
+- add a tool
+- add a slash command
+- register a skill
+- hook the turn
+- replace the approval policy
 
 ``` python
 def setup(reg):
@@ -247,7 +289,7 @@ def setup(reg):
     reg.on('after_tool', lambda agent, name, out: print(name, file=open('/tmp/tools.log', 'a')))
 ```
 
-The hook events are `before_turn(agent, prompt)`, `after_turn(agent, text)`, `before_tool(agent, name, args)`, `after_tool(agent, name, out)`, `compact(agent, text)` and `approval`. `reg.approval(fn)` replaces the approval policy, and the last registration wins. `/extensions` prints one line per extension, loaded or why not, and `/reload` re-reads skills, extensions and tools after an edit.
+The hook events are `before_turn(agent, prompt)`, `after_turn(agent, text)`, `before_tool(agent, name, args)`, `after_tool(agent, name, out)`, `compact(agent, text)` and `approval`. `reg.approval(fn)` replaces the approval policy, and the last registration wins. `/extensions` prints one line per extension: loaded, or why not. `/reload` loads skills, extensions and tools again after an edit.
 
 ## Serve the tools to another assistant
 
@@ -257,7 +299,7 @@ The hook events are `before_turn(agent, prompt)`, `after_turn(agent, text)`, `be
 ramabana-mcp --root .
 ```
 
-The server is read-only by default, because the client cannot reach this process’s approval gate. `--write` mounts the write tools too. `--model NAME` adds one further tool, `ask`, which runs a whole Ramabana turn and returns only its answer. It also builds the agent, and the mounted tools are then the very objects a turn gets, recording into the same activity log. Skills are served as resources rather than tools, an index and one per skill. A client lists them and fetches the one it needs.
+By default the server mounts only the read tools, because the client cannot reach this process’s approval gate. `--write` mounts the write tools too. `--model NAME` adds one further tool, `ask`, which runs a whole Ramabana turn and returns only its answer. `--model` also builds the agent. The mounted tools are then the same objects a turn gets, and they record into the same activity log. The server offers skills as resources rather than tools: an index, plus one per skill. A client lists them and fetches the one it needs.
 
 | option | default | what it does |
 |----|----|----|
@@ -270,7 +312,7 @@ The server is read-only by default, because the client cannot reach this process
 | `--transport NAME` | `stdio` | `stdio`, `sse` or `streamable-http` |
 | `--cfg DIR` | none | skills and extensions, with `--model` |
 
-A model-less server still discovers skills from the served folders and from `~/.agents/skills`. `--cfg` and the extensions under it are read only when `--model` builds the agent.
+A model-less server still finds skills in the served folders and in `~/.agents/skills`. The server loads `--cfg` and its extensions only when `--model` builds the agent.
 
 A client that launches its own servers takes the command:
 
@@ -280,9 +322,9 @@ A client that launches its own servers takes the command:
 
 ## Run it inside an editor
 
-`ramabana-acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com/). An editor launches it and drives it against the editor’s own files and its own terminal:
+`ramabana-acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com/). An editor launches it and drives it against the editor’s own files and terminal.
 
-Zed reads agents from `agent_servers` in `settings.json`:
+Zed takes agents from `agent_servers` in `settings.json`:
 
 ``` json
 {"agent_servers": {"Ramabana": {"command": "ramabana-acp", "args": ["--root", "."]}}}
@@ -333,7 +375,7 @@ The toolset itself is [shalya](https://github.com/vedicreader/shalya), the git p
 
 ## Develop Ramabana
 
-The notebooks are the source. Every module under `ramabana/` is generated, and so is this page.
+The notebooks are the source. nbdev generates every module under `ramabana/`, and this page too.
 
 ``` sh
 uv sync --all-extras --group dev

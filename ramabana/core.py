@@ -22,30 +22,29 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
 from fastcore.all import Path, atomic_save
 from shalya.host import HostError
-import urai, rishi.core   # rishi registers its backends with urai on import
+import urai, rishi.core   # registers rishi's backends with urai
 from .models import CATALOG, claude_ids, claude_aliases, provider_models
 from dataclasses import dataclass, field
 
 # %% ../nbs/00_core.ipynb #2049138c
 ENV_PREFIX, ENV_FALLBACK = 'RAMABANA_', 'LEELA_'
 
-#: alias not subclass, so `except AgentError` still catches what a host refuses.
 AgentError = HostError
-class BranchChanged(AgentError): "A branch moved while a person was deciding what to do to it, so nothing was written."
+class BranchChanged(AgentError): "A branch moved while a person decided on it, so nothing was written."
 
 def agent_err(e):
-    "A caught exception for a user-facing harness surface."
+    "Render a caught exception for a user-facing surface, keeping its type."
     return f'{type(e).__name__}: {e}'
 
 def use_env_prefix(prefix, fallback=None):
-    "Name the environment variables this application reads, most specific first. `use_env_prefix('LEELA_', 'RAMABANA_')`"
+    "Set the env var prefixes this application reads, most specific first."
     global ENV_PREFIX, ENV_FALLBACK
     ENV_PREFIX = prefix if prefix.endswith('_') else prefix + '_'
     if fallback is not None: ENV_FALLBACK = fallback if fallback.endswith('_') else fallback + '_'
     return ENV_PREFIX, ENV_FALLBACK
 
 def env(name, dflt=None):
-    "`$<prefix><name>`, then `$<fallback><name>`, then `dflt`. See `use_env_prefix`."
+    "Read `$<prefix><name>`, then `$<fallback><name>`, else `dflt`."
     return os.environ.get(ENV_PREFIX+name) or os.environ.get(ENV_FALLBACK+name) or dflt
 
 # %% ../nbs/00_core.ipynb #9df3b26a
@@ -57,12 +56,12 @@ LLAMA = {'llama-qwen-0.6b': 'Qwen/Qwen3-0.6B-GGUF','llama-qwen-1.7b': 'Qwen/Qwen
 GPT = {name: f'openai/{name}' for name in ('gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano','gpt-5.4', 'gpt-5.4-mini', 'gpt-5.6', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra')}
 GPT.update({name: f'codex/{name}' for name in ('gpt-5.3-codex-spark', 'gpt-5.5')})
 CLOUD = {**GPT, 'gpt': GPT['gpt-5.6-terra'],'gpt-mini': GPT['gpt-5.6-luna'], 'gpt-sol': GPT['gpt-5.6-sol']}
-CLAUDE_MODELS = claude_ids()                    #: views of `ramabana.models.CATALOG['claude']`; kept under these names for callers
+CLAUDE_MODELS = claude_ids()
 CLAUDE_ALIASES = {**{mid: mid for mid in CLAUDE_MODELS}, **claude_aliases()}
 CLAUDE = {f'claude/{name}': mid for name, mid in CLAUDE_ALIASES.items()}
 DFLT_AGENT_CTX = 128_000
 CLAUDE_CTX = {'claude-opus': 200_000, 'claude-sonnet': 200_000}
-RUNTIME_NAMES = tuple(urai.RUNTIMES)   #: what rishi registered, in inference order; `urai.RUNTIMES` holds the records
+RUNTIME_NAMES = tuple(urai.RUNTIMES)
 AGENTS = ('claude',)
 HOSTED = ('remote', 'copilot', *AGENTS)
 COPILOT_UNAVAILABLE = ('copilot runtime is unavailable; sign in to Copilot in an editor or run `python -c "from rishi.copilot import copilot_login; copilot_login()"`')
@@ -80,16 +79,14 @@ PII_MODES = (PII_OFF, 'redact', 'refuse')
 
 # %% ../nbs/00_core.ipynb #68d2ad3a
 def claude_ctx(model_id):
-    "What a Claude Code model holds, or `DFLT_AGENT_CTX` when its window is not known here."
+    "A Claude Code model's context window, else `DFLT_AGENT_CTX`."
     mid = str(model_id or '')
     return next((c for p, c in CLAUDE_CTX.items() if mid.startswith(p)), DFLT_AGENT_CTX)
 
 # %% ../nbs/00_core.ipynb #07efd167
-PROBE_TTL = 90                                  #: seconds an answer about this machine stays fresh
-PROBE_DIR = Path('~/.config/ramabana/probes')   #: where an answer is kept between runs
-#: The last answer from each probe. Process-wide, because what it holds is the machine's.
+PROBE_TTL = 90                                  #: seconds
+PROBE_DIR = Path('~/.config/ramabana/probes')
 _PROBED, _probe_lock = {}, threading.Lock()
-#: Bumped when answers are dropped, so a probe crossing that moment discards its stale answer.
 _probe_gen = 0
 
 def probe_path(key, dir=None):
@@ -97,7 +94,7 @@ def probe_path(key, dir=None):
     return Path(dir or PROBE_DIR).expanduser()/f"{re.sub(r'[^A-Za-z0-9_.-]', '_', str(key))}.json"
 
 def _read_probe(key, dir):
-    "The answer a previous run left, or None. A malformed one is simply not there."
+    "The answer a previous run left, or None if missing or malformed."
     try: return json.loads(probe_path(key, dir).read_text())['value']
     except Exception: return None
 
@@ -105,21 +102,20 @@ def _write_probe(key, value, dir):
     p = probe_path(key, dir)
     try:
         with atomic_save(p, 'w') as f: f.write(json.dumps({'at': time.time(), 'value': value}))
-    except Exception: pass          # a probe that cannot be kept is still an answer
+    except Exception: pass
 
 def _keep(key, value, gen, dir, disk):
-    "Write an answer in, unless it was gathered about a machine `forget_probes` has since dropped."
-    # under the lock with the checked generation: an in-flight refresh outside it recreates the file forget_probes just removed
+    "Store an answer, unless `forget_probes` ran since it was gathered."
+    # under the lock, or an in-flight refresh recreates a file `forget_probes` removed
     with _probe_lock:
         if gen != _probe_gen: return
         _PROBED[key] = {'at': time.time(), 'value': value, 'busy': False}
         if disk: _write_probe(key, value, dir)
 
 def probed(key, fn, ttl=PROBE_TTL, dir=None, disk=True):
-    "`fn()`'s last answer, with a stale one refreshed behind whoever asked."
+    "`fn()`'s last answer, refreshing a stale one in the background."
     with _probe_lock: row, gen = _PROBED.get(key), _probe_gen
     if row is None and disk and (kept := _read_probe(key, dir)) is not None:
-        # `at: 0` so the refresh below fires: what a previous run saw is a starting point, not news.
         row = {'at': 0.0, 'value': kept, 'busy': False}
         with _probe_lock:
             if gen == _probe_gen: _PROBED[key] = row
@@ -137,7 +133,7 @@ def probed(key, fn, ttl=PROBE_TTL, dir=None, disk=True):
     return row['value']
 
 def forget_probes(disk=False, dir=None):
-    "Drop every cached answer, so the next ask is a fresh one."
+    "Drop every cached answer, and with `disk` its file too."
     global _probe_gen
     with _probe_lock:
         keys, _probe_gen, _ = list(_PROBED), _probe_gen+1, _PROBED.clear()
@@ -147,7 +143,6 @@ def forget_probes(disk=False, dir=None):
             except Exception: pass
 
 # %% ../nbs/00_core.ipynb #de745a4a
-#: The harness runtimes and what reaching one needs, so an unavailable one can say more than "no".
 HARNESS = {'claude': ('rishi.claude', 'claude_bin'), 'copilot': ('rishi.copilot', 'copilot_oauth')}
 
 def _harness_detail(mod, binary):
@@ -166,7 +161,7 @@ def _claude_available(): return _harness_available(*HARNESS['claude'])
 
 # %% ../nbs/00_core.ipynb #ae0f2158
 def _copilot_available():
-    "Whether Copilot is reachable: the GitHub OAuth token and the editor config, and no network call."
+    "Whether Copilot is reachable, from its OAuth token and editor config, offline."
     return _harness_available(*HARNESS['copilot'])
 
 # %% ../nbs/00_core.ipynb #3613bae4
@@ -175,7 +170,7 @@ def runtime_remedy(runtime):
     return RUNTIME_REMEDY.get(runtime, f'install the backend with `pip install rishi[{runtime}]`')
 
 def runtime_detail(runtime):
-    "Why a harness runtime cannot be reached, or `''` when it can. `runtime_available` only says yes or no."
+    "Why a harness runtime cannot be reached, or `''` when it can."
     mod, binary = HARNESS.get(runtime) or (None, None)
     return _harness_detail(mod, binary) if mod else ''
 
@@ -208,7 +203,7 @@ def _json_has(path, *keys):
     except Exception: return False
 
 def _claude_login():
-    "Only status metadata. Credentials never leave Claude Code or enter Leela."
+    "Whether Claude Code is logged in, from status metadata only."
     if not shutil.which('claude'): return False
     try:
         p = subprocess.run(['claude', 'auth', 'status', '--json'], capture_output=True, text=True, timeout=3)
@@ -241,11 +236,11 @@ def copilot_catalog(ttl=300):
     return probed('copilot-catalog', _copilot_catalog, ttl=ttl, disk=False)
 
 def _copilot_chat_models():
-    "Chat ids this Copilot plan can reach. Per-plan and it moves. It is asked for, never tabled."
+    "Chat ids this Copilot plan can reach, queried rather than tabled."
     return [i for i, m in copilot_catalog().items() if (m.get('capabilities') or {}).get('type') == 'chat']
 
 def available_models(include_legacy=False):
-    "Models selectable here. Specialized older generations appear only when requested."
+    "Models selectable here, with older generations only when `include_legacy`."
     rows = []
     for runtime, models in (('litert', LOCAL), ('mlx', MLX), ('llama', LLAMA)):
         if not runtime_available(runtime): continue
@@ -253,7 +248,7 @@ def available_models(include_legacy=False):
     if runtime_available('ollama'):
         try:
             from rishi.ollama import OllamaClient
-            for m in OllamaClient().models():          # names, not rows
+            for m in OllamaClient().models():
                 rows.append({'value': f'ollama/{m}', 'label': m, 'provider': 'ollama', 'source': 'on device via the ollama daemon'})
         except Exception: pass
     if runtime_available('claude'):
@@ -274,7 +269,7 @@ def available_models(include_legacy=False):
 # %% ../nbs/00_core.ipynb #70d7dfa3
 DFLT_LOCAL = 'gemma-e4b'
 completer = DFLT_LOCAL
-cheap = completer          # back-compat alias
+cheap = completer
 
 DEFAULT_POLICY = {'turn': None, 'oneshot': completer, 'inline': None, 'completion': None, 'classify': None, 'summary': None, 'subagent': 'gpt-4.1'}
 _LOCAL_CTX = {'gemma-e2b': 16_384, 'gemma-e4b': 16_384, 'gemma-12b': 16_384, 'qwen-4b': 32_768, 'mini-coder-4b': 32_768, 'ornith-9b': 32_768, 'llama-qwen-0.6b': 32_768, 'llama-qwen-1.7b': 32_768, 'llama-qwen-4b': 32_768}
@@ -283,7 +278,7 @@ DFLT_LOCAL_CTX = 32_768
 
 @functools.lru_cache(maxsize=64)
 def local_window(runtime, model_id):
-    "What a local model was trained for, from its own config. 0 when it will not say."
+    "A local model's trained context window from its own config, else 0."
     try:
         if runtime == 'ollama':
             from rishi.ollama import OllamaClient
@@ -311,7 +306,7 @@ def local_ctx(name, dflt=DFLT_LOCAL_CTX):
 
 # %% ../nbs/00_core.ipynb #64093121
 class ModelSpec(urai.ModelSpec):
-    "urai's `ModelSpec`, keeping ramabana's `backend` and `config` names as views of `runtime` and `opts`."
+    "urai's `ModelSpec`, with `backend` and `config` as views of `runtime` and `opts`."
     @property
     def backend(self): return self.runtime
     @property
@@ -326,7 +321,7 @@ def _copilot_ctx(model_id):
     return _cloud_ctx(model_id)
 
 def _cloud_ctx(model_id):
-    "Context window and a note for a cloud model, from fastllm's tables. Silent about failure."
+    "Context window and a note for a cloud model, from fastllm's tables."
     try:
         from fastllm.types import get_model_info
         v, _, m = model_id.partition('/')
@@ -360,7 +355,7 @@ def resolve(name, default_local=DFLT_LOCAL):
             return ModelSpec(name, backend, mid, ctx, note, config)
         ctx, note = _cloud_ctx(mid)
         return ModelSpec(name, backend, mid, ctx, note, config)
-    if re.match(r'^(?:claude-|(?:opus|sonnet|haiku|fable)-\d)', name):    # an id the tables have moved past; Claude Code decides
+    if re.match(r'^(?:claude-|(?:opus|sonnet|haiku|fable)-\d)', name):    # an untabled Claude id; Claude Code decides
         if not runtime_available('claude'): raise RuntimeError(f'claude runtime is unavailable; {runtime_remedy("claude")}')
         mid = name if name.startswith('claude-') else f'claude-{name}'
         return ModelSpec(name, 'claude', mid, claude_ctx(mid))
@@ -408,8 +403,8 @@ def model_note(spec):
     return out + (f' · {spec.note}' if spec.note else '')
 
 # %% ../nbs/00_core.ipynb #4e529923
-SMALL_CTX = 24_000       # at or below this window, a model is briefed frugally
-TOOL_MAX_FLOOR = 1500    # chars. Below this a file view stops being a file view
+SMALL_CTX = 24_000
+TOOL_MAX_FLOOR = 1500    # chars
 FRUGAL_DROP = ('memory', 'web')
 TAGS_SCHEMA_TOKENS = 3300
 
@@ -422,7 +417,7 @@ class Budget:
     note: str = ''           # why, for a status bar
 
 def budget_for(spec, tool_max, channel='native'):
-    "Tool context sized to the model's window in `spec`, else `tool_max`. Never grows it."
+    "A `Budget` sized to `spec`'s window, never above `tool_max`."
     ctx = getattr(spec, 'ctx', 0) or 0
     if ctx > 0 and channel == 'tags': ctx = max(1, ctx - TAGS_SCHEMA_TOKENS)
     if ctx <= 0 or ctx > SMALL_CTX: return Budget(tool_max=tool_max, note='full briefing')
@@ -431,13 +426,12 @@ def budget_for(spec, tool_max, channel='native'):
 
 # %% ../nbs/00_core.ipynb #baf2dbfe
 PROFILES = ('auto', 'small', 'full')
-SMALL_PROFILE_CTX = 32_000   # at or below this window, `auto` briefs a model with the small profile
-#: the small profile's whole tool set: read, edit, search, run, and the three git calls a coding turn needs
+SMALL_PROFILE_CTX = 32_000
 SMALL_TOOLS = ('view_file', 'replace_text', 'create_file', 'ls', 'grep', 'search_code', 'run_shell', 'run_python',
                'git_status', 'git_diff', 'git_commit', 'notebook_cells', 'view_cell', 'edit_cell')
 
 def profile_for(spec, profile='auto'):
-    "How `spec` is briefed: `auto` is `small` for a local runtime or a window at or under `SMALL_PROFILE_CTX`, else `full`. An unknown window is not small."
+    "Resolve `profile` for `spec`: `auto` is `small` for a local or small-window model."
     if profile not in PROFILES: raise ValueError(f'profile must be one of {", ".join(PROFILES)}, not {profile!r}')
     if profile != 'auto': return profile
     ctx = getattr(spec, 'ctx', 0) or 0
@@ -466,16 +460,16 @@ def unregister_model(name):
     CUSTOM.pop(name, None); MODELS.pop(name, None); _LOCAL_CTX.pop(name, None)
 
 # %% ../nbs/00_core.ipynb #17dbd05c
-#: remote-runtime settings an alias may carry; never a secret (`api_key_env` names the env var).
+#: never a secret: `api_key_env` names the env var
 API_KEYS = ('base_url', 'api_key_env', 'vendor_name', 'api_name')
-MODEL_ALIASES = Path('~/.config/ramabana/models.json')   #: where aliases are kept by default
+MODEL_ALIASES = Path('~/.config/ramabana/models.json')
 
 def alias_path(path=None):
     "The file one application keeps its model aliases in."
     return Path(path or MODEL_ALIASES).expanduser()
 
 def saved_models(path=None):
-    "The alias rows on disk. A missing or malformed file is an empty list, never an error."
+    "The alias rows on disk, or `[]` if the file is missing or malformed."
     try: rows = json.loads(alias_path(path).read_text())
     except Exception: return []
     return rows if isinstance(rows, list) else []
@@ -485,7 +479,7 @@ def _write_aliases(rows, path=None):
     with atomic_save(p, 'w') as f: f.write(json.dumps(rows, indent=2)+'\n')
 
 def load_models(path=None):
-    "Register every saved alias and return the rows that took. A row that no longer resolves is skipped."
+    "Register every saved alias that still resolves, and return those rows."
     out = []
     for row in saved_models(path):
         try:
@@ -521,16 +515,16 @@ def delete_model(name, path=None):
 
 # %% ../nbs/00_core.ipynb #1e5cd7ee
 TOOL_CHANNELS = ('native', 'tags')
-_forced_tags = {}   # model_id -> why its wire tool channel is closed on this machine
+_forced_tags = {}
 
 def force_tags(model_id, why=''):
-    "Record that this model's tools cannot travel on the wire here. Later turns stop trying."
+    "Record that this model's tools cannot travel on the wire here."
     why = why or 'the wire tool channel was refused'
     _forced_tags[str(model_id)] = why
     return why
 
 def forget_forced_tags():
-    "Forget what was learned about wire channels. A fixed configuration is tried again."
+    "Forget which models were forced onto tags, so the wire is tried again."
     _forced_tags.clear()
 
 def tool_channel(spec, chat=None):
@@ -558,14 +552,14 @@ class Routing:
         self._cache, self.notes = {}, {}
 
     def name_for(self, job='turn'):
-        """The model name `job` runs on: its own policy, then `oneshot` if it is a cheap job, then `turn`."""
+        "The model name for `job`: its policy, then `oneshot` for a cheap job, then `turn`."
         if job == 'turn': return self.turn
         if (n := self.policy.get(job)): return n
         if job in ONESHOT_JOBS and (n := self.policy.get('oneshot')): return n
         return self.turn
 
     def _resolve(self, name):
-        "One resolution, cached: reading fastllm's tables for a cloud model is not free."
+        "Resolve `name`, cached."
         if name not in self._cache: self._cache[name] = resolve(name, self.default_local)
         return self._cache[name]
 
@@ -579,7 +573,7 @@ class Routing:
         return out
 
     def spec(self, job='turn', fallback=True):
-        """The resolved `ModelSpec` for `job`, on another model when its own is not installed here."""
+        "The `ModelSpec` for `job`, on another model when its own is not installed."
         n = self.name_for(job)
         try: return self._resolve(n)
         except Exception as e:
@@ -592,7 +586,7 @@ class Routing:
             raise
 
     def set(self, name, job='turn'):
-        "Point `job` at `name`, validating it first so a typo fails here rather than mid-turn."
+        "Validate `name`, then point `job` at it."
         spec = resolve(name, self.default_local)
         if job == 'turn': self.turn = name
         else: self.policy[job] = name
@@ -600,16 +594,16 @@ class Routing:
         return spec
 
     def backends(self):
-        "The distinct backend/model pairs this policy needs. An engine is built once and shared."
+        "The distinct backend/model pairs this policy needs."
         out = set()
         for j in JOBS:
             try: s = self.spec(j)
-            except Exception: continue      # a job with nowhere to run needs no engine built
+            except Exception: continue
             out.add((s.backend, s.model_id))
         return out
 
     def summary(self):
-        "The whole policy in one block, for `/model` with no argument, including anything that moved."
+        "The whole policy in one block, with any fallbacks, for a bare `/model`."
         rows = []
         for j in JOBS:
             try: row = model_note(self.spec(j))
