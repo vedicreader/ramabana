@@ -8,10 +8,10 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP', 'SUB_SP', 'NO_SUB', 'PATH_WRITES',
            'ASYNC_MAX', 'ASYNC_KEEP', 'MAX_MEDIA', 'MAX_ATTACH', 'NullHost', 'draws_itself', 'image_tools', 'tools_for',
            'small_tool', 'ToolEntry', 'ToolCatalog', 'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'path_write',
-           'delegate', 'delegate_many', 'Background', 'named_skills', 'picture_mime', 'read_pictures', 'subagent_tools',
-           'parse_plan_items', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS',
-           'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL',
-           'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
+           'write_targets', 'delegate', 'delegate_many', 'Background', 'named_skills', 'picture_mime', 'read_pictures',
+           'subagent_tools', 'parse_plan_items', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES',
+           'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API',
+           'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
            'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX',
            'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools',
            'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err',
@@ -234,6 +234,19 @@ PATH_WRITES = frozenset({'generate_image'})   #: acting tools that become writes
 def path_write(name, args):
     "Whether this call writes where it names: an acting tool from `PATH_WRITES` given a `path`."
     return name in PATH_WRITES and bool((args or {}).get('path'))
+
+try: from shalya.tools import image_targets
+except ImportError:   # shalya 0.1.0 has no `image_targets`; drop this once 0.1.1 is the floor
+    def image_targets(path, n=1): return [str(Path(path) if i == 0 else Path(path).with_stem(f'{Path(path).stem}-{i+1}')) for i in range(max(1, int(n)))]
+
+def write_targets(name, args):
+    "The paths a call writes where it names them: every picture a `PATH_WRITES` call saves, else its `path`."
+    args = args or {}
+    if not (p := args.get('path')): return []
+    if name not in PATH_WRITES: return [p]
+    try: n = max(1, min(int(args.get('n') or 1), 4))
+    except (TypeError, ValueError): n = 1   # the tool refuses it; the first name is still the one it names
+    return image_targets(p, n)
 
 def _no_path(f):
     "`f` for a read-only sub-agent: the call runs, a `path` is refused."

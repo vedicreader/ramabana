@@ -33,7 +33,7 @@ from shalya.tools import OPTIN, group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write)
+                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets)
 from .monitor import Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -242,6 +242,7 @@ def _fmt_cmds(commands):
 def preview_for(name, args, host=None):
     "What this call would actually do, as text a person can read in a couple of seconds."
     p = args.get('path', '')
+    if path_write(name, args): return (f"saves {', '.join(write_targets(name, args))}\n\n{args.get('prompt', '')}")[:MAX_PREVIEW]
     if name == 'edit_file':   return f'{p}\n\n{_fmt_cmds(args.get("commands", ""))}'[:MAX_PREVIEW]
     if name == 'edit_cell':
         cid = args.get('cell_id', '?')
@@ -1219,7 +1220,7 @@ def git_shell_denial(command, tools=None):
 @patch
 def _record(self:Agent, f):
     "Wrap one tool so its call is logged and its damage is measurable; its `read_only` copy too."
-    if getattr(f, '_recorded', False): return f
+    if getattr(f, '_recorded', None) == (self, f): return f   # this agent's own wrapper, not one `wraps` copied the mark onto
     name = getattr(f, '__name__', '?')
 
     @functools.wraps(f)   # both backends build the tool schema from the real signature
@@ -1244,11 +1245,12 @@ def _record(self:Agent, f):
         if denied:
             self.activity.finish(act, denied, ok=False)
             return err(denied)
-        fresh = None      # a path this call is the first to touch: dropped again if the call never ran
+        fresh = []        # paths this call is the first to touch: dropped again if the call never ran
         if writing:   # first touch only: later edits are part of one change
-            if (p := args.get('path')):
-                if p not in self.before:
-                    fresh, was = p, self.host.text_at(p)
+            if (ps := write_targets(name, args)):
+                for p in ps:
+                    if p in self.before: continue
+                    fresh.append(p); was = self.host.text_at(p)
                     self.before[p] = was or ''
                     if not self.host.exists(p): self.new.add(p)
                     elif was is None: self.binary.add(p)
@@ -1268,12 +1270,13 @@ def _record(self:Agent, f):
             if shelled: self.settle_tree()
         for r in self.registry.fire('after_tool', self, name, out):
             if isinstance(r, str): out = r
-        if fresh is not None and failed(out): self.before.pop(fresh, None); self.new.discard(fresh); self.binary.discard(fresh)   # refused or failed: not a change
+        if failed(out):   # refused or failed: not a change
+            for p in fresh: self.before.pop(p, None); self.new.discard(p); self.binary.discard(p)
         if name in GIT_WRITE_TOOLS and not failed(out): self._keep_undo(name, out)
         self.activity.finish(act, out, ok=not failed(out))   # one spelling of failure, in one place
         if run is not None: run.write(f"< {name} {'ok' if not failed(out) else 'ERR'} {_1(out, 200)}")
         return out
-    wrapper._recorded = True
+    wrapper._recorded = (self, wrapper)
     # `wraps` copied `f.read_only`; a read-only view swaps that copy in, so it is recorded as well
     if (ro := getattr(f, 'read_only', None)) is not None: wrapper.read_only = self._record(ro)
     return wrapper
@@ -3131,13 +3134,14 @@ _agent_record = Agent._record
 
 @patch
 def _record(self:Agent, f):
-    if getattr(f, '_recorded', False): return f   # `wraps` carries the mark over from the inner wrapper
+    if getattr(f, '_recorded', None) == (self, f): return f
     wrapped = _agent_record(self, f)
     @functools.wraps(wrapped)
     def call(*a, **kw):
         run = current_run()
         if run is not None and run.cancelled:return 'Run cancelled; this tool call was not started.'
         return wrapped(*a, **kw)
+    call._recorded = (self, call)   # `wraps` copied the inner wrapper's mark; this one is the tool now
     return call
 
 # %% ../nbs/03_agent.ipynb #50e37dec
