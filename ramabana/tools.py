@@ -8,19 +8,19 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP', 'SUB_SP', 'NO_SUB', 'ASYNC_MAX',
            'ASYNC_KEEP', 'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'small_tool', 'ToolEntry',
            'ToolCatalog', 'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'delegate', 'delegate_many', 'Background',
-           'named_skills', 'subagent_tools', 'parse_plan_items', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS',
-           'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host',
-           'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE',
-           'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API',
-           'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model',
-           'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text',
-           'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available',
-           'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line',
-           'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost',
-           'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools',
-           'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools',
-           'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools', 'research_tools', 'author_tools',
-           'legacy_tools']
+           'named_skills', 'read_pictures', 'subagent_tools', 'parse_plan_items', 'API_VENDORS', 'Capability', 'DENY',
+           'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit',
+           'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API',
+           'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS',
+           'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill',
+           'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied',
+           'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools',
+           'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise',
+           'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost',
+           'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for',
+           'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index',
+           'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools', 'research_tools',
+           'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, functools, json, re, threading, time, uuid
@@ -36,8 +36,8 @@ from shalya import (MAX_TOOL_CHARS, Host, HostError, NO_ROOTS, implemented, imag
                     acts, summary, cmds, edits, apply_edits, diff_text)
 from shalya.core import one_line as _1
 from shalya.host import LocalHost, _fuse
-from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for
-from .core import AgentError, agent_err, spec_caps
+from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for, mime_for
+from .core import AgentError, agent_err, spec_caps, accepts
 from .runtime import Run, current_run, run_context
 
 # %% ../nbs/02_tools.ipynb #e0ca9981
@@ -232,7 +232,8 @@ def _inboxed(f, run):
 def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skills=(),
              writes=False,      # hand over WRITE_TOOLS as well
              approve=None,      # the gate those writes answer to, which `spawn` inherits none of
-             run=None):         # a pre-registered child run
+             run=None,          # a pre-registered child run
+             images=()):        # picture bytes sent with the question, which the sub-agent sees
     "Ask `question` in a throwaway conversation on `backend`'s engine. Returns the answer text."
     sub = None
     run = run or Run(f'run_{uuid.uuid4().hex[:12]}', 'child', str(question), backend.spec.name, current_run())
@@ -244,7 +245,7 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
                 tools=[_inboxed(t, run) for t in read_only(tools, max_calls=max_steps * 4, writes=writes, block=NO_SUB)], **kw)
         if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
         if not run.attach(sub): return _stopped(run)
-        with run_context(run): reply = sub.send(question, run=run)
+        with run_context(run): reply = sub.send([*images, question] if images else question, run=run)
         while not run.cancelled and (msgs := run.drain_inbox()):
             with run_context(run): reply = sub.send('\n'.join(msgs), run=run)
         run.write(f'answer: {reply}')
@@ -265,7 +266,7 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
 
 # %% ../nbs/02_tools.ipynb #fe517832
 def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS, n_workers=4,
-                  skills=(), writes=False, approve=None, parent=None):
+                  skills=(), writes=False, approve=None, parent=None, images=()):
     "Ask several questions. Register every child before starting serial or parallel workers."
     qs = L(questions)
     if not qs: return L()
@@ -275,7 +276,7 @@ def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS
     def run(item):
         q, child = item
         if child.cancelled:return _stopped(child)
-        return delegate(backend, q, tools, sp, max_steps, skills, writes, approve, child)
+        return delegate(backend, q, tools, sp, max_steps, skills, writes, approve, child, images)
     items = list(zip(qs, runs))
     workers = 1 if writes or getattr(backend.spec, 'local', False) else min(n_workers, len(qs))
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers))
@@ -390,11 +391,23 @@ def named_skills(get_skills, names):
                  f"{', '.join(s.name for s in every) or 'none'}]")
 
 
+def read_pictures(host, paths):
+    "`(bytes, '')` for pictures inside the host's roots, or `([], err)` for the first one refused."
+    out = []
+    for s in ([paths] if isinstance(paths, str) else paths or []):
+        try: p = host.check(s, must_exist=True, reading=True)
+        except Exception as e: return [], err(f'cannot use {s}', e)
+        if not mime_for(p).startswith('image/'): return [], err(f'not a picture: {p}')
+        out.append(p.read_bytes())
+    return out, ''
+
+
 def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=None,
                    get_writes=None,     # the session's sub-agent write toggle, read per call
                    get_approve=None,    # the gate those writes answer to
                    background=None,     # the register async delegations live in; one is made if None
-                   get_log_dir=None):   # callable -> the folder run transcripts go in, or None
+                   get_log_dir=None,    # callable -> the folder run transcripts go in, or None
+                   get_pictures=None):  # callable paths -> `(bytes, err)`; see `read_pictures`
     "The delegation tools, routed to the configured sub-agent backend. Arguments are callables, read per call."
     bg = ifnone(background, Background())
     def _writes(): return bool(get_writes()) if get_writes is not None else False
@@ -407,33 +420,52 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
             except Exception: pass
         return [str(q).strip() for q in (qs if isinstance(qs, (list, tuple)) else [qs]) if str(q).strip()]
 
+    def _pictures(b, paths):
+        "`(bytes, note, '')` for the pictures a delegation names, or `([], '', err)`."
+        if not paths: return [], '', ''
+        if get_pictures is None: return [], '', err('this session cannot read pictures for a sub-agent')
+        if not accepts(b.spec, 'image'): return [], '', err(f'{b.spec.name} cannot be sent pictures')
+        pics, refused = get_pictures(paths)
+        names = [paths] if isinstance(paths, str) else list(paths)
+        return pics, f"\n\n[pictures attached, in order: {', '.join(map(str, names))}]", refused
+
     @acts
     @summary(lambda a: (lambda qs: f'Delegate: {_1(qs[0], 120)}' if len(qs) == 1 else f'Delegate {len(qs)} questions: {_1("; ".join(qs), 100)}')(_questions(a.get('questions', []))))
-    def delegate_search(questions: list[str], skills: str = '', cloud_model: str = '') -> str:
+    def delegate_search(questions: list[str], skills: str = '',
+                        cloud_model: str = '',   # empty runs the configured sub-agent model
+                        images: list[str] = [],  # pictures in the open folders each sub-agent sees with its question
+                        ) -> str:
         "Delegate self-contained questions to sub-agents and return only their conclusions: one question runs one sub-agent, several run concurrently."
         qs = _questions(questions)
         if not qs: return 'no questions given'
         b = get_cloud_backend(cloud_model) if cloud_model and get_cloud_backend is not None else get_backend()
-        if b is None: return f"no model is available to delegate to{f' ({cloud_model})' if cloud_model else ''}"
+        if b is None: return (f'no model is available to delegate to ({cloud_model}); leave `cloud_model` empty to use the sub-agent model'
+                              if cloud_model else 'no model is available to delegate to')
+        pics, seen, refused = _pictures(b, images)
+        if refused: return refused
         sk, note = named_skills(get_skills, skills)
         if len(qs) == 1:
-            return clip(delegate(b, qs[0], get_tools(), skills=sk, writes=_writes(), approve=_approve()), MAX_TOOL_CHARS) + note
-        answers = delegate_many(b, qs, get_tools(), skills=sk, writes=_writes(), approve=_approve())
+            return clip(delegate(b, qs[0] + seen, get_tools(), skills=sk, writes=_writes(), approve=_approve(), images=pics), MAX_TOOL_CHARS) + note
+        answers = delegate_many(b, [q + seen for q in qs], get_tools(), skills=sk, writes=_writes(), approve=_approve(), images=pics)
         return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2) + note
 
     @acts
     @summary(lambda a: f'Delegate in the background: {_1(a.get("question"), 110)}')
-    def delegate_async(question: str, skills: str = '', writes: bool = False) -> str:
+    def delegate_async(question: str, skills: str = '', writes: bool = False,
+                       images: list[str] = [],  # pictures in the open folders the sub-agent sees with its question
+                       ) -> str:
         "Start a background sub-agent and return its run id for `delegate_result`; `writes=True` is refused while sub-agents are read-only."
         b = get_backend()
         if b is None: return 'no model is available to delegate to'
         if writes and not _writes():
             return err('sub-agents are read-only this session; ask the user for `/subagents on` or delegate read-only')
+        pics, seen, refused = _pictures(b, images)
+        if refused: return refused
         sk, note = named_skills(get_skills, skills)
         rid, d = f'run_{uuid.uuid4().hex[:12]}', get_log_dir() if get_log_dir is not None else None
         child = Run(rid, 'background', str(question), b.spec.name, log=None if d is None else Path(d)/f'{rid}.log')
-        try: rid = bg.start(lambda r: delegate(b, question, get_tools(), skills=sk, writes=writes,
-                       approve=_approve() if writes else None, run=r), child)
+        try: rid = bg.start(lambda r: delegate(b, question + seen, get_tools(), skills=sk, writes=writes,
+                       approve=_approve() if writes else None, run=r, images=pics), child)
         except Exception as e: return err('could not start the delegation', e)
         asked = 'with write tools' if writes else 'read-only'
         return f'started {rid} ({asked}). Collect it with delegate_result({rid!r}).' + note

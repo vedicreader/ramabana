@@ -33,7 +33,7 @@ from shalya.tools import OPTIN, group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool)
+                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures)
 from .monitor import Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -1148,7 +1148,10 @@ def _be_or_none(self:Agent, job='turn'):
 def _cloud_backend_or_none(self:Agent, model):
     "A started remote backend for one delegated fan-out, without changing routing."
     try:
-        spec = self.routing._resolve(str(model))
+        try: spec = self.routing._resolve(str(model))
+        except KeyError:   # `gpt-6-sol` for the sub-agent's own `openai/gpt-6-sol`
+            sub = str(self.routing.name_for('subagent') or '')
+            return self._be_or_none('subagent') if str(model) == sub.split('/', 1)[-1] else None
         if spec.local: return None
         key = (spec.backend, spec.model_id)
         if key not in self._backends: self._backends[key] = make_backend(spec)
@@ -1332,7 +1335,8 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
                                         lambda: self.skills, self._cloud_backend_or_none,
                                         lambda: self.subagent_writes,
                                         lambda: self.approvals.gate if self.approvals is not None else None,
-                                        background=self.background, get_log_dir=lambda: self.runs_dir)
+                                        background=self.background, get_log_dir=lambda: self.runs_dir,
+                                        get_pictures=lambda ps: read_pictures(self.host, ps))
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
                           drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
