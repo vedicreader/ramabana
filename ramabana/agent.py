@@ -1218,7 +1218,8 @@ def git_shell_denial(command, tools=None):
 # %% ../nbs/03_agent.ipynb #62782197
 @patch
 def _record(self:Agent, f):
-    "Wrap one tool so its call is logged and its damage is measurable."
+    "Wrap one tool so its call is logged and its damage is measurable; its `read_only` copy too."
+    if getattr(f, '_recorded', False): return f
     name = getattr(f, '__name__', '?')
 
     @functools.wraps(f)   # both backends build the tool schema from the real signature
@@ -1272,6 +1273,9 @@ def _record(self:Agent, f):
         self.activity.finish(act, out, ok=not failed(out))   # one spelling of failure, in one place
         if run is not None: run.write(f"< {name} {'ok' if not failed(out) else 'ERR'} {_1(out, 200)}")
         return out
+    wrapper._recorded = True
+    # `wraps` copied `f.read_only`; a read-only view swaps that copy in, so it is recorded as well
+    if (ro := getattr(f, 'read_only', None)) is not None: wrapper.read_only = self._record(ro)
     return wrapper
 
 
@@ -3127,6 +3131,7 @@ _agent_record = Agent._record
 
 @patch
 def _record(self:Agent, f):
+    if getattr(f, '_recorded', False): return f   # `wraps` carries the mark over from the inner wrapper
     wrapped = _agent_record(self, f)
     @functools.wraps(wrapped)
     def call(*a, **kw):
