@@ -23,7 +23,7 @@ dependencies = [
     "gheasy>=0.0.10",
     "exhash>=0.4.9",
     "fastcore>=2.1.16",
-    "rishi>=0.1.38",   # Claude transcripts refiled as tags text, so a resumed session keeps using tools
+    "rishi>=0.1.39",   # chats sharing a LiteRT engine take turns (engine_lock); a second chat on the same thread raises EngineBusy instead of hanging
     "fossick>=0.1.17",
     "koshas>=0.1.9",   # `rows` hands `code_row` the hit, so the federated repo leg works
     "litesearch>=0.1.35",
@@ -78,7 +78,7 @@ path = "ramabana/__init__.py"
 [dependency-groups]
 dev = [
     "ramabana[cli]",
-    "rishi[all]>=0.1.38",
+    "rishi[all]>=0.1.39",
     "nbdev>=3.3.11",
     "notebook>=7.6.1",
     "pytest>=8.0.0",
