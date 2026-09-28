@@ -114,12 +114,11 @@ class Act:
                 'args': {k: _arg(v) for k, v in (self.args or {}).items()}}
 
 
-ARG_TEXT = 2000   #: chars kept of a string inside a list or dict argument (an edit's text), newlines intact
+ARG_TEXT = 2000   #: chars kept of a string argument, top-level or inside a list or dict, newlines intact
 
 
-def _arg(v, n=300):
-    "One argument as it is persisted: a top-level string on one clipped line, every other shape kept as JSON with its strings clipped to `ARG_TEXT`."
-    if isinstance(v, str): return _1(v, n)
+def _arg(v):
+    "One argument as it is persisted: JSON shapes kept, every string clipped to `ARG_TEXT` with its newlines."
     if v is None or isinstance(v, (bool, int, float)): return v
     def deep(x):
         if isinstance(x, str): return x if len(x) <= ARG_TEXT else x[:ARG_TEXT] + '…'
@@ -141,7 +140,7 @@ def _resumed_acts(acts):
     rows = []
     for a in acts or ():
         if not isinstance(a, dict) or not a.get('tool'): continue
-        args = ', '.join(f'{k}={v}' for k, v in (a.get('args') or {}).items())
+        args = ', '.join(f'{k}={_1(v, 300) if isinstance(v, str) else v}' for k, v in (a.get('args') or {}).items())
         row = f"- {a['tool']}({args})" + ('' if a.get('ok', True) else '  [failed]')
         if a.get('detail'): row += '\n' + _indent(_clip(a['detail'], RESUME_DETAIL))
         rows.append(row)
