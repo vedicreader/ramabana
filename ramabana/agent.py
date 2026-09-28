@@ -9,11 +9,11 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES',
            'OUTPUT_CONTRACT', 'SMALL_RULES', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK',
-           'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'REPLAYED',
-           'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
-           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
-           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
-           'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives',
+           'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WARM_ROUNDS', 'WARM_SMALL_CHARS',
+           'WARM_OFF_SMALL', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK', 'COMPLETE_SP',
+           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
+           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
+           'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives',
            'project_context', 'work_rules', 'system_prompt', 'small_system_prompt', 'Todo', 'Plan', 'plan_tools',
            'Agent', 'git_shell_denial', 'note_tools', 'Completer']
 
@@ -1009,7 +1009,7 @@ class Agent:
                  instruction_style='ramabana', # 'ramabana' | 'aai' compatibility profile
                  optin=(),                  # shalya's opt-in tool groups: 'exhash', 'research', 'author', 'legacy'
                  profile='auto',            # auto | small | full: `small` briefs a local or ≤32k model with fourteen tools and one screen
-                 warm=True):                # seed a fresh session with dhrona's example rounds, when dhrona is installed
+                 warm=None):                # seed a fresh session with dhrona's example rounds: None = on for the full profile, off for small; True/False force it
         self.host, self.cfg, self.inline_skills = host, cfg, inline_skills
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
         if profile not in PROFILES: raise ValueError(f'profile must be one of {", ".join(PROFILES)}, not {profile!r}')
@@ -1057,7 +1057,7 @@ class Agent:
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self._watch_found, self._watch_lock = [], threading.Lock()   # poll results no turn has carried yet
         self.git_undo = {}       # turn id -> the git writes it made, each with gheasy's `undo` token, for /rewind
-        self.warm, self._warmed, self.warm_report = bool(warm), False, {'used': [], 'skipped': []}
+        self.warm_choice, self._warmed, self.warm_report = warm, False, {'used': [], 'skipped': []}   # `warm` resolves the choice against the profile
         self.on_warm = None      # frontend hook: callable(warm_report) once a fresh session is seeded
         self._monitor_thread = None
         # the folders something *else* is changing. Reviews run on the sub-agent model, read-only
@@ -1888,11 +1888,22 @@ def watch_notice(self:Agent):
 # %% ../nbs/03_agent.ipynb #45435c30
 WARM_ROUNDS = 3   #: accepted dhrona rounds a fresh session is seeded with; each is a few hundred tokens
 WARM_SMALL_CHARS = 2500   #: the one round a small profile is seeded with must fit in this many characters, window or not
+WARM_OFF_SMALL = 'warm start off (small profile: a small model copies an example’s paths literally) — --warm to enable'
+
+@patch(as_prop=True)
+def warm(self:Agent):
+    "Whether a fresh session is seeded: the explicit choice, else on for the full profile and off for the small one."
+    return self.profile != 'small' if self.warm_choice is None else bool(self.warm_choice)
 
 @patch
 def warm_start(self:Agent):
     "Seed a fresh chat with dhrona's accepted rounds whose calls bind to the tools on offer; a resumed, small-window or opted-out session gets none."
-    if not self.warm or self._warmed: return []
+    if self._warmed: return []
+    if not self.warm:
+        if self.warm_choice is None and self.profile == 'small' and not self._warmed:
+            self._warmed, self.warm_report = True, {'used': [], 'skipped': [], 'note': WARM_OFF_SMALL}
+            self.host.note(WARM_OFF_SMALL)
+        return []
     b = self._be('turn')
     small = self.profile == 'small'   # one worked example is worth more to a small model than the window gate saves
     if b.hist or b._resume_hist or not (self.budget.inline or small): return []   # an empty pending restore (`set_model` before turn 1) is still fresh

@@ -2044,7 +2044,8 @@ def main(
     json: bool = False,                  # with a prompt: print reply, usage, changes, activity, problems and session as JSON
     bell: bool = True,                   # --no-bell keeps the terminal quiet when a turn ends or an approval waits
     tmux: str = 'auto',                  # auto | on | off: read sibling panes and run background commands in panes
-    warm: bool = True,                   # --no-warm starts with an empty chat instead of dhrona's example rounds
+    warm: bool = False,                  # seed the chat with dhrona's example rounds even in the small profile, which starts cold
+    no_warm: bool = False,               # start with an empty chat instead of dhrona's example rounds
     optin: str = '',                     # shalya's opt-in tool groups, comma separated: exhash,research,author
     profile: str = 'auto',               # auto | small | full: small briefs a local or ≤32k model with fourteen tools and one screen
 ):
@@ -2053,6 +2054,9 @@ def main(
         from ramabana.pyrepl import sessions
         print(sessions())
         return 0
+    if warm and no_warm:
+        print('--warm and --no-warm contradict each other; pass one', file=sys.stderr)
+        return 2
     prompt = headless_prompt(prompt)
     if prompt and approve == 'ask':
         print('one-shot runs have nobody to ask, so every write will be refused · pass --approve auto', file=sys.stderr)
@@ -2089,7 +2093,7 @@ def main(
                                read_outside=read_outside, subagent_writes=subagent_writes,
                                pii=pii, pii_ner=pii_ner, host_kw=dict(tmux=TMUX_MODES[tmux]),
                                max_tool_calls=max_tool_calls, max_steps=max_steps,
-                               warm=warm, optin=tuple(s.strip() for s in optin.split(',') if s.strip()), profile=profile,
+                               warm=True if warm else False if no_warm else None, optin=tuple(s.strip() for s in optin.split(',') if s.strip()), profile=profile,
                                cfg=Path(cfg).expanduser() if cfg else None)
     except KeyError as e:
         print(e.args[0] if e.args else e, file=sys.stderr)

@@ -98,9 +98,22 @@ def test_a_small_agent_gets_the_briefing_when_the_full_one_would_carry_a_plan(ho
 
 # -- warm start ---------------------------------------------------------------------------
 
-def test_a_small_profile_is_seeded_with_one_round_even_on_a_small_window(tmp_path):
+def test_a_small_profile_starts_cold_unless_asked(tmp_path):
+    "A small model copies an example's paths literally, so `warm=None` resolves to off for the small profile and on for the full one."
     pytest.importorskip('dhrona')
     a, be = fake_agent(cfg=tmp_path, replies=['ok'], profile='auto')
+    a.routing.spec = lambda job='turn', fallback=True: LOCAL
+    assert a.profile == 'small' and a.warm is False and a.warm_choice is None
+    a.ask('hello')
+    assert len(be.hist_) == 2 and a.warm_report['used'] == [] and 'small profile' in a.warm_report['note']
+    assert any('warm start off (small profile)' in n and '--warm' in n for n in a.host.notes) if hasattr(a.host, 'notes') else True
+    full, _ = fake_agent(cfg=tmp_path, replies=['ok'])
+    assert full.warm is True and fake_agent(warm=False)[0].warm is False and fake_agent(profile='small', warm=True)[0].warm is True
+
+
+def test_a_small_profile_asked_to_warm_gets_one_round_even_on_a_small_window(tmp_path):
+    pytest.importorskip('dhrona')
+    a, be = fake_agent(cfg=tmp_path, replies=['ok'], profile='auto', warm=True)
     a.routing.spec = lambda job='turn', fallback=True: LOCAL
     assert a.profile == 'small' and not a.budget.inline     # the gate that keeps seeds from a 16k window
     a.ask('hello')
@@ -116,7 +129,7 @@ def test_an_oversized_round_is_skipped_with_the_reason(tmp_path, monkeypatch):
     pytest.importorskip('dhrona')
     from ramabana import agent as agent_mod
     monkeypatch.setattr(agent_mod, 'WARM_SMALL_CHARS', 100)
-    a, be = fake_agent(cfg=tmp_path, replies=['ok'], profile='small')
+    a, be = fake_agent(cfg=tmp_path, replies=['ok'], profile='small', warm=True)
     a.ask('hello')
     assert a.warm_report['used'] == [] and len(be.hist_) == 2
     assert any('100' in r['reason'] and r['name'] == 'search-choice' for r in a.warm_report['skipped'])
@@ -126,6 +139,8 @@ def test_an_oversized_round_is_skipped_with_the_reason(tmp_path, monkeypatch):
 
 def test_the_cli_carries_the_flag(tmp_path):
     from ramabana import cli
-    assert inspect.signature(cli.main).parameters['profile'].default == 'auto'
+    ps = inspect.signature(cli.main).parameters
+    assert ps['profile'].default == 'auto' and ps['warm'].default is False and ps['no_warm'].default is False   # --warm / --no-warm; neither = auto
+    assert cli.main.__wrapped__('hi', warm=True, no_warm=True, root=str(tmp_path)) == 2   # the flags contradict
     a, _ = cli.mk_agent([str(tmp_path)], approve='none', web=False, warm=False, profile='small', host_kw=dict(index=False))
     assert a.profile == 'small' and names(a) <= set(SMALL_TOOLS)

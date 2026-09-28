@@ -4,7 +4,7 @@
 
 ## 0.2.3
 
-- Small-model profile: `--profile auto|small|full` / `Agent(profile=)`. `auto` briefs a local model, or one with a window at or under 32k, `small`: fourteen tools (`SMALL_TOOLS`), a ≤4k-character briefing (`SMALL_RULES`, no skill index, no plan or memory sections), one warm-start round even on a 16k window. `full` is unchanged from 0.2.2. `/model` and the status row say which is active. `gemma-12b` is tabled at a 16k window (its 32k KV cache did not fit a 36 GB Mac). Requires `rishi>=0.1.39` (chats sharing a LiteRT engine take turns).
+- Small-model profile: `--profile auto|small|full` / `Agent(profile=)`. `auto` briefs a local model, or one with a window at or under 32k, `small`: fourteen tools (`SMALL_TOOLS`), a ≤4k-character briefing (`SMALL_RULES`, no skill index, no plan or memory sections), and it starts cold: a small model copies an example's paths literally, so the warm start is off for the small profile unless `--warm` (or `Agent(warm=True)`) asks for it, and then it is one round under 2.5k characters even on a 16k window. `full` is unchanged from 0.2.2, warm start included. `/model` and the status row say which is active. `gemma-12b` is tabled at a 16k window (its 32k KV cache did not fit a 36 GB Mac). Requires `rishi>=0.1.39` (chats sharing a LiteRT engine take turns).
 
 ## 0.2.2
 

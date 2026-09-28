@@ -63,7 +63,7 @@ def test_changing_the_model_before_the_first_prompt_still_seeds(tmp_path, full, 
     def build(spec, **kw):
         made.append(FakeBackend(spec, replies=['ok'], **kw)); return made[-1]
     monkeypatch.setattr(agent_mod, 'make_backend', build)
-    a = Agent(MemHost({'/proj/a.py': 'x = 1\n'}), model='gemma-e2b', cfg=tmp_path, extensions=False, subagents=False)
+    a = Agent(MemHost({'/proj/a.py': 'x = 1\n'}), model='gemma-e2b', cfg=tmp_path, extensions=False, subagents=False, profile='full')   # the small profile starts cold
     a.set_model('gemma-12b')                                 # a lazy backend: nothing has started yet
     assert a.warm_start(), 'a fresh session, whatever model it starts on'   # a frontend may seed before the first prompt
     a.ask('hello')
@@ -98,6 +98,6 @@ def test_sub_agents_are_not_seeded(full):                    # Review Focus 3
 def test_the_cli_and_mk_agent_carry_the_switch(tmp_path):
     from ramabana import cli
     ps = inspect.signature(cli.main).parameters
-    assert ps['warm'].default is True and ps['optin'].default == ''
+    assert ps['warm'].default is False and ps['no_warm'].default is False and ps['optin'].default == ''   # neither flag = auto
     a, _ = cli.mk_agent([str(tmp_path)], approve='none', web=False, warm=False, optin=('exhash',), host_kw=dict(index=False))
     assert a.warm is False and a.optin == ('exhash',)
