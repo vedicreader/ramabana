@@ -40,7 +40,7 @@ from teleprint.compositor import Compositor
 from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
-from .core import PII_MODES, PII_OFF, accepts, agent_err, env, model_note
+from .core import PII_MODES, PII_OFF, PROFILES, accepts, agent_err, env, model_note
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, subject
 from datetime import datetime
@@ -300,6 +300,7 @@ READING A TURN
 WORK
   /plan  /todo  /sessions  /resume [ID|latest]  /model [NAME]
   --max-tool-calls auto|N  --max-steps auto|N  /tool-budget  /steps
+  --profile auto|small|full  the tool set and briefing the model is given
 FILES AND API
   drop or paste media, write @path, or /attach PATH; /detach drops it.
   --spec enables api_load, api_ops, and api_call.
@@ -1558,6 +1559,7 @@ def model_row(self:Ui):
     "What the next turn will run on, in the row under the bar. Read from the routing table, not `agent.note`, so `/model` mid-turn shows where the next turn goes."
     try: note = model_note(self.agent.model)
     except Exception as e: note = agent_err(e)
+    if (p := getattr(self.agent, 'profile', '')): note += f' · {p} profile'   # which briefing the next turn gets
     return Text(' ' + note, style=GRUVBOX['gray'])
 
 @patch
@@ -2044,6 +2046,7 @@ def main(
     tmux: str = 'auto',                  # auto | on | off: read sibling panes and run background commands in panes
     warm: bool = True,                   # --no-warm starts with an empty chat instead of dhrona's example rounds
     optin: str = '',                     # shalya's opt-in tool groups, comma separated: exhash,research,author
+    profile: str = 'auto',               # auto | small | full: small briefs a local or ≤32k model with fourteen tools and one screen
 ):
     "Run Ramabana as a terminal agent or Python prompt. Name every folder it may work on: --root .,~/notes"
     if kernels:
@@ -2068,6 +2071,9 @@ def main(
     if tmux not in TMUX_MODES:
         print(f"unknown --tmux {tmux!r}; choose one of {', '.join(TMUX_MODES)}", file=sys.stderr)
         return 2
+    if profile not in PROFILES:
+        print(f"unknown --profile {profile!r}; choose one of {', '.join(PROFILES)}", file=sys.stderr)
+        return 2
     if pii not in PII_MODES:
         print(f"unknown --pii {pii!r}; choose one of {', '.join(PII_MODES)}", file=sys.stderr)
         return 2
@@ -2083,7 +2089,7 @@ def main(
                                read_outside=read_outside, subagent_writes=subagent_writes,
                                pii=pii, pii_ner=pii_ner, host_kw=dict(tmux=TMUX_MODES[tmux]),
                                max_tool_calls=max_tool_calls, max_steps=max_steps,
-                               warm=warm, optin=tuple(s.strip() for s in optin.split(',') if s.strip()),
+                               warm=warm, optin=tuple(s.strip() for s in optin.split(',') if s.strip()), profile=profile,
                                cfg=Path(cfg).expanduser() if cfg else None)
     except KeyError as e:
         print(e.args[0] if e.args else e, file=sys.stderr)

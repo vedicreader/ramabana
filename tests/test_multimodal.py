@@ -719,7 +719,7 @@ def _drawing_turn(tmp_path, monkeypatch, cols=100, rows=40, turns=1):
         tty = EmuTty(cols, rows)
         comp = Compositor(tty); comp._register_signals = lambda: None
         await comp.start()
-        agent = Agent(MemHost({'/proj/a.py': 'x = 1\n'}), extensions=False, subagents=False)
+        agent = Agent(MemHost({'/proj/a.py': 'x = 1\n'}), extensions=False, subagents=False, profile='full')
         be = ScriptedBackend(steps=[Step(tool=('generate_image', {'prompt': 'a bottle'})),
                                     Step('Drawn. There it is.')], token_delay=0, tools=agent.tools)
         agent.routing.spec = lambda job='turn', fallback=True: be.spec

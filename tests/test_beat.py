@@ -81,11 +81,11 @@ def test_a_session_reads_the_beat_under_its_own_id_and_only_once(tmp_path, monke
     home.mkdir()
     monkeypatch.setattr(mo, 'POB_HOME', home)
     pob(home/'pob.db').note('watches', '1 fired')
-    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False)
+    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
     assert a.beat_drain() == ['watches: 1 fired']
     assert a.beat_drain() == [], 'the same session read the note twice'
 
-    b = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False)
+    b = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
     assert b.beat_drain() == ['watches: 1 fired'], 'a second session missed what the beat left'
     assert b.beat_drain() == []
 
@@ -93,7 +93,7 @@ def test_a_session_reads_the_beat_under_its_own_id_and_only_once(tmp_path, monke
 def test_a_session_with_no_beat_on_the_machine_reads_nothing(tmp_path, monkeypatch):
     import ramabana.monitor as mo
     monkeypatch.setattr(mo, 'POB_HOME', tmp_path/'nowhere')
-    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False)
+    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
     assert a.beat is None
     assert a.beat_drain() == []
 
@@ -105,7 +105,7 @@ def test_a_session_reads_under_a_name_that_carries_this_package_and_its_own_id(t
     home.mkdir()
     monkeypatch.setattr(mo, 'POB_HOME', home)
     pob(home/'pob.db').note('watches', 'x')
-    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False)
+    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
     a.beat_drain()
     assert a._beat_reader.startswith(f'{POB_READER}:')
     assert a.session_id in a._beat_reader
@@ -118,7 +118,7 @@ def test_the_reader_does_not_move_when_a_session_is_resumed(tmp_path, monkeypatc
     home.mkdir()
     monkeypatch.setattr(mo, 'POB_HOME', home)
     pob(home/'pob.db').note('watches', 'x')
-    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False)
+    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
     assert a.beat_drain() == ['watches: x']
     was = a._beat_reader
     a.session_id = 'some-other-session'

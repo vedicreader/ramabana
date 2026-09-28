@@ -205,7 +205,7 @@ def test_a_closing_session_refuses_what_was_waiting_and_everything_after():
 
 
 def test_closing_an_agent_stops_its_background_work_and_shuts_the_gate():
-    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False,
+    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full',
               approvals=Approvals(tools=WRITE_TOOLS, mode='ask'))
     a._backends[('fake', 'fake')] = FakeBackend()
     a.background.start(lambda r: 'done', Run('run_live', 'child', 'q'))
@@ -217,7 +217,7 @@ def test_closing_an_agent_stops_its_background_work_and_shuts_the_gate():
 def test_a_background_run_does_not_keep_the_session_busy():
     """A turn whose child is still live never goes idle, and `busy` blocks `/resume`, `/model` and
     the sub-agent write toggle. A background delegation is parentless for exactly this reason."""
-    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False)
+    a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
     be = FakeBackend()
     a._backends[('fake', 'fake')] = be
     gate = threading.Event()

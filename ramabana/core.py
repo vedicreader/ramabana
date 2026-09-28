@@ -9,13 +9,14 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'CLAUDE_MODELS', 'CLAUDE_ALIASES', 'CLAUDE', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
            'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'PROBE_TTL',
            'PROBE_DIR', 'HARNESS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES',
-           'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'API_KEYS', 'MODEL_ALIASES',
-           'TOOL_CHANNELS', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'probe_path', 'probed',
-           'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available', 'auth_status', 'copilot_catalog',
+           'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'PROFILES',
+           'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS', 'MODEL_ALIASES', 'TOOL_CHANNELS', 'BranchChanged',
+           'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'probe_path', 'probed', 'forget_probes',
+           'runtime_remedy', 'runtime_detail', 'runtime_available', 'auth_status', 'copilot_catalog',
            'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps',
-           'accepts', 'model_note', 'Budget', 'budget_for', 'register_model', 'unregister_model', 'alias_path',
-           'saved_models', 'load_models', 'save_model', 'delete_model', 'force_tags', 'forget_forced_tags',
-           'tool_channel', 'Routing']
+           'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for', 'register_model', 'unregister_model',
+           'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model', 'force_tags',
+           'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
@@ -276,7 +277,7 @@ completer = DFLT_LOCAL
 cheap = completer          # back-compat alias
 
 DEFAULT_POLICY = {'turn': None, 'oneshot': completer, 'inline': None, 'completion': None, 'classify': None, 'summary': None, 'subagent': 'gpt-4.1'}
-_LOCAL_CTX = {'gemma-e2b': 16_384, 'gemma-e4b': 16_384, 'gemma-12b': 32_000, 'qwen-4b': 32_768, 'mini-coder-4b': 32_768, 'ornith-9b': 32_768, 'llama-qwen-0.6b': 32_768, 'llama-qwen-1.7b': 32_768, 'llama-qwen-4b': 32_768}
+_LOCAL_CTX = {'gemma-e2b': 16_384, 'gemma-e4b': 16_384, 'gemma-12b': 16_384, 'qwen-4b': 32_768, 'mini-coder-4b': 32_768, 'ornith-9b': 32_768, 'llama-qwen-0.6b': 32_768, 'llama-qwen-1.7b': 32_768, 'llama-qwen-4b': 32_768}
 DFLT_LOCAL_CTX = 32_768
 
 
@@ -427,6 +428,21 @@ def budget_for(spec, tool_max, channel='native'):
     if ctx <= 0 or ctx > SMALL_CTX: return Budget(tool_max=tool_max, note='full briefing')
     mx = min(tool_max, max(TOOL_MAX_FLOOR, (ctx//16)*4))
     return Budget(FRUGAL_DROP, False, mx, f'{ctx//1000}k window: no inlined skills, no {"/".join(FRUGAL_DROP)} tools, tool results clipped to {mx} chars')
+
+# %% ../nbs/00_core.ipynb #baf2dbfe
+PROFILES = ('auto', 'small', 'full')
+SMALL_PROFILE_CTX = 32_000   # at or below this window, `auto` briefs a model with the small profile
+#: the small profile's whole tool set: read, edit, search, run, and the three git calls a coding turn needs
+SMALL_TOOLS = ('view_file', 'replace_text', 'create_file', 'ls', 'grep', 'search_code', 'run_shell', 'run_python',
+               'git_status', 'git_diff', 'git_commit', 'notebook_cells', 'view_cell', 'edit_cell')
+
+def profile_for(spec, profile='auto'):
+    "How `spec` is briefed: `auto` is `small` for a local runtime or a window at or under `SMALL_PROFILE_CTX`, else `full`. An unknown window is not small."
+    if profile not in PROFILES: raise ValueError(f'profile must be one of {", ".join(PROFILES)}, not {profile!r}')
+    if profile != 'auto': return profile
+    ctx = getattr(spec, 'ctx', 0) or 0
+    return 'small' if getattr(spec, 'local', False) or 0 < ctx <= SMALL_PROFILE_CTX else 'full'
+
 
 # %% ../nbs/00_core.ipynb #3e2adbad
 def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):

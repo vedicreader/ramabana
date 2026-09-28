@@ -239,7 +239,8 @@ class FakeBackend(Backend):
 # %% ../nbs/04_testing.ipynb #10360a7c
 def fake_agent(host=None, replies=(), **kw):
     "An `Agent` whose every job routes to one `FakeBackend`, `SPEC` included. Returns `(agent, backend)`."
-    a = Agent(host or MemHost({'/proj/a.py': 'def a(): pass\n'}), extensions=False, **kw)
+    # the fake `SPEC` is a 1k window on a runtime nobody hosts, which `auto` would brief small; the suite tests the full path
+    a = Agent(host or MemHost({'/proj/a.py': 'def a(): pass\n'}), extensions=False, **{'profile': 'full', **kw})
     be = FakeBackend(SPEC, replies=replies)
     if 'model' not in kw and 'routing' not in kw:
         a.routing.turn, a.routing.policy = SPEC.name, {}   # every job, not only `turn`

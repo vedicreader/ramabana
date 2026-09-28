@@ -109,6 +109,7 @@ The one-turn form prints each problem on stderr, and exits 1 when the turn model
 | `--tmux MODE` | `auto` | `on` or `off`: read the sibling panes and run background commands in panes |
 | `--optin A,B` | none | extra tool groups: `exhash` (the hash-addressed `edit_file`), `research`, `author`, `legacy` |
 | `--no-warm` | warm on | start with an empty chat instead of a few of dhrona’s example rounds (`uv add "ramabana[dhrona]"`) |
+| `--profile P` | `auto` | `small` offers fourteen tools and a one-screen briefing, `full` everything; `auto` briefs a local model, or one with a window at or under 32k, small. `/model` shows which is active |
 
 `--theme` takes `auto`, `github-dark`, `dark`, `light`, `gruvbox`, `gruvbox-light`, `nord`, `tokyonight`, `catppuccin`, `latte`, `everforest`, `dracula`, `kanagawa`, `solarized` or `solarized-light`. `auto` is `github-dark`. Set your terminal to the scheme of the same name and the two agree. `/theme NAME` switches mid-session and repaints what is already on screen.
 

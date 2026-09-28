@@ -8,13 +8,14 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES',
-           'OUTPUT_CONTRACT', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL',
-           'HISTORY_TURNS', 'WARM_ROUNDS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK',
-           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
-           'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key',
-           'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text',
-           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'Todo', 'Plan', 'plan_tools', 'Agent',
-           'git_shell_denial', 'note_tools', 'Completer']
+           'OUTPUT_CONTRACT', 'SMALL_RULES', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK',
+           'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'REPLAYED',
+           'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
+           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
+           'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives',
+           'project_context', 'work_rules', 'system_prompt', 'small_system_prompt', 'Todo', 'Plan', 'plan_tools',
+           'Agent', 'git_shell_denial', 'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -25,10 +26,10 @@ from fastcore.basics import first, patch
 from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
-from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, Routing, model_note, tool_channel
+from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
-from shalya.tools import group_of
+from shalya.tools import OPTIN, group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
@@ -708,10 +709,30 @@ OUTPUT_CONTRACT = ('\n\n<output-contract>Reply in plain sentences: no headings, 
                    'formatting habit carried in from another harness.</output-contract>')
 
 
-def work_rules(names=()):
+#: the small profile's rules: the same lessons as `RULES`, one line each, for the tools in `SMALL_TOOLS`
+SMALL_RULES = (
+    (None, 'Act on the user’s verb: “create”, “run”, “fix” want a result, not a plan. Use the tool that produces it, verify, then report what exists.'),
+    (None, 'Never claim a file changed or a command passed unless a tool result here says so.'),
+    (None, 'A tool result starting with ERROR: is a failure: read it and change the approach. Never repeat the same call unchanged.'),
+    ('search_code', '`search_code` finds code *like* the query, in this repo and every installed package.'),
+    ('grep', '`grep` finds every literal occurrence of an exact string: a symbol, an error message, an import.'),
+    ('view_file', 'Read with `view_file` before you edit. Copy paths exactly as listed; never shorten or reconstruct one.'),
+    ('replace_text', 'To change a file: `view_file`, then `replace_text` with `oldText` copied exactly from what you read. One call per file.'),
+    ('notebook_cells', 'Never use `view_file` or `replace_text` on an `.ipynb`: call `notebook_cells` on its exact path, then `view_cell` and `edit_cell` by cell id.'),
+    ('run_shell', 'Check your work with `run_shell`: run the project’s own tests after an edit. Only commands that exit on their own.'),
+    ('run_python', '`run_python` shares the user’s kernel: read anything, bind results to NEW names, never rebind theirs.'),
+    ('git_status', 'Git goes through `git_status`, `git_diff` and `git_commit`; `run_shell` refuses `git commit|push|pull|checkout`.'),
+    (None, 'Make the change the user asked for and no other. Never reformat or “improve” code you were not asked to touch.'),
+    (None, 'Writes may be put to the user for approval. A refusal comes back with their reason: change the approach, do not retry the same call.'),
+    (None, 'Write, edit and run only inside the folders above.'),
+    (None, 'Be concise, in plain sentences: no headings, bullets or bold in a reply, and a code fence holds code only.'),
+)
+
+
+def work_rules(names=(), rules=RULES):
     "The briefing's rules, keeping those whose tool is on the table. Empty `names` filters nothing."
     names = set(names or ())
-    return '\n'.join(f'- {text}' for tool, text in RULES if not names or tool is None or tool in names)
+    return '\n'.join(f'- {text}' for tool, text in rules if not names or tool is None or tool in names)
 
 
 def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=(), cfg=None):
@@ -745,6 +766,20 @@ How to work:
         if (s := find(skills, name)): sp += f'\n\n## {s.name}\n\n{s.text()}'
     sp += project_context(host, cfg=cfg)
     return sp + (f'\n\n{extra}' if extra else '')
+
+
+SMALL_CONTEXT_FILE = 2000   # chars of project instructions a small model is handed
+
+def small_system_prompt(host, tools=(), cfg=None):
+    "The small profile's briefing: where it is, one machine line, `SMALL_RULES` for the offered tools, the project's instructions clipped. No skill index (`read_skill` is not offered), no plan, no memory."
+    names = {getattr(t, '__name__', '') for t in tools or ()}
+    roots = '\n'.join(f'  {r}' for r in host.roots) or '  (no folder open)'
+    env = (getattr(host, 'environment', lambda: '')() or '').strip()
+    line = env.splitlines()[0].split('; inspect_python')[0] if env else ''   # the interpreters; `inspect_python` is not offered here
+    machine = f"\n\nOn this machine:\n{line}" if line else ''
+    return (f"You are Ramabana, a coding agent. Follow the user's latest explicit request. You are working in these folders:\n"
+            f"{roots}{machine}\n\nHow to work:\n{work_rules(names, SMALL_RULES)}" + project_context(host, mx=SMALL_CONTEXT_FILE, cfg=cfg))
+
 
 # %% ../nbs/03_agent.ipynb #8eff0a57
 CLAUDE_NOTES = """## Working as Claude
@@ -973,9 +1008,12 @@ class Agent:
                  verify='',                 # the project's check; empty reads `[tool.ramabana] verify`
                  instruction_style='ramabana', # 'ramabana' | 'aai' compatibility profile
                  optin=(),                  # shalya's opt-in tool groups: 'exhash', 'research', 'author', 'legacy'
+                 profile='auto',            # auto | small | full: `small` briefs a local or ≤32k model with fourteen tools and one screen
                  warm=True):                # seed a fresh session with dhrona's example rounds, when dhrona is installed
         self.host, self.cfg, self.inline_skills = host, cfg, inline_skills
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
+        if profile not in PROFILES: raise ValueError(f'profile must be one of {", ".join(PROFILES)}, not {profile!r}')
+        self.profile_choice = profile      # what was asked for; `profile` is what the turn model resolves it to
         self.instruction_style, self.optin = instruction_style, tuple([optin] if isinstance(optin, str) else optin)
         self.history_name = history_name
         self.session_id = f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")}'
@@ -1065,6 +1103,13 @@ def budget(self:Agent):
     "What the turn model can afford to be told. See `core.budget_for`."
     spec = self.spec_or_none()        # an unresolved name costs no tools and no channel
     return budget_for(spec, self.tool_max_len, tool_channel(spec))
+
+# %% ../nbs/03_agent.ipynb #6cd54ddc
+@patch(as_prop=True)
+def profile(self:Agent):
+    "`small` or `full`: how the turn model is briefed. See `core.profile_for`."
+    return profile_for(self.spec_or_none(), self.profile_choice)
+
 
 # %% ../nbs/03_agent.ipynb #c2f8f265
 @patch(as_prop=True)
@@ -1273,13 +1318,14 @@ def subagent_budget(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #6318c147
 @patch
-def _catalog_for(self:Agent, budget, full=True):
-    "Build one catalog per schema budget; foreground and sub-agents take policy views of it."
-    key = (budget.tool_max, tuple(budget.drop), bool(full))
+def _catalog_for(self:Agent, budget, full=True, profile='full'):
+    "Build one catalog per schema budget and profile; foreground and sub-agents take policy views of it."
+    small = profile == 'small'
+    key = (budget.tool_max, tuple(budget.drop), bool(full), small)
     if key not in self._catalogs:
-        extra = list(self.registry.tools)
-        if 'memory' not in self.host.provides: extra += note_tools(self.note_memory)
-        if full:
+        extra = [] if small else list(self.registry.tools)
+        if not small and 'memory' not in self.host.provides: extra += note_tools(self.note_memory)
+        if full and not small:
             if self.subagents:
                 extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
                                         lambda: self.skills, self._cloud_backend_or_none,
@@ -1288,7 +1334,9 @@ def _catalog_for(self:Agent, budget, full=True):
                                         background=self.background, get_log_dir=lambda: self.runs_dir)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
-                          drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
+                          drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=() if small else self.optin)
+        if small:   # the fourteen, then what the user opted in by name
+            built = [t for t in built if getattr(t, '__name__', '') in SMALL_TOOLS] + [t for name in self.optin for t in OPTIN[name](self.host, budget.tool_max)]
         self._catalogs[key] = ToolCatalog(built)
     return self._catalogs[key]
 
@@ -1339,7 +1387,7 @@ def background_notice(self:Agent):
 def tools(self:Agent):
     "Every tool the turn model can afford, built once and recorded. Rebuilt by `reload`."
     if self._tools is None:
-        view = self._catalog_for(self.budget)
+        view = self._catalog_for(self.budget, profile=self.profile)
         if self.readonly:
             view = view.read_only(self.readonly_calls, effects=False, block=NO_SUB)
         self._catalog_view = view
@@ -1357,6 +1405,7 @@ def tools(self:Agent):
 def system_prompt(self:Agent):
     if self._sp: return self._sp
     if self._tools is None: self.tools
+    if self.profile == 'small': return small_system_prompt(self.host, tools=self._plain, cfg=self.cfg)
     # a skill body is 3k tokens of a 12k budget, and `read_skill` still reaches it
     inline = inline_for(self.inline_skills if self.budget.inline else (), {getattr(t, '__name__', '') for t in self._plain})
     parts = []
@@ -1737,18 +1786,18 @@ def set_model(self:Agent, name, job='turn'):
     previous = self.routing.spec(job)
     old = (previous.backend, previous.model_id)
     history = self._backends[old].snapshot_hist() if job == 'turn' and old in self._backends else []
-    before = self.budget
+    before = (self.budget, self.profile)
     spec = self.routing.set(name, job)
     new = (spec.backend, spec.model_id)
     # tools and briefing are built from the turn model, not from its budget alone
-    if job == 'turn' and (self.budget != before or new != old): self._tools = None
+    if job == 'turn' and ((self.budget, self.profile) != before or new != old): self._tools = None
     if job == 'subagent': self._catalogs.clear(); self._views.clear()
     if job == 'turn' and new != old:
         self._be('turn').resume_hist(history)
     still_used = {(self.routing.spec(j).backend, self.routing.spec(j).model_id) for j in JOBS}
     if old not in still_used and old in self._backends:
         self._backends.pop(old).close()
-    self.note = f'{job} → {model_note(spec)}'
+    self.note = f'{job} → {model_note(spec)}' + (f' · {self.profile} profile' if job == 'turn' else '')
     return spec
 
 # %% ../nbs/03_agent.ipynb #942668d4
@@ -1838,21 +1887,25 @@ def watch_notice(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #45435c30
 WARM_ROUNDS = 3   #: accepted dhrona rounds a fresh session is seeded with; each is a few hundred tokens
+WARM_SMALL_CHARS = 2500   #: the one round a small profile is seeded with must fit in this many characters, window or not
 
 @patch
 def warm_start(self:Agent):
     "Seed a fresh chat with dhrona's accepted rounds whose calls bind to the tools on offer; a resumed, small-window or opted-out session gets none."
     if not self.warm or self._warmed: return []
     b = self._be('turn')
-    if b.hist or b._resume_hist or not self.budget.inline: return []   # an empty pending restore (`set_model` before turn 1) is still fresh
+    small = self.profile == 'small'   # one worked example is worth more to a small model than the window gate saves
+    if b.hist or b._resume_hist or not (self.budget.inline or small): return []   # an empty pending restore (`set_model` before turn 1) is still fresh
     self._warmed = True
     try: from dhrona.core import fit_rounds, round_msgs
     except ImportError:
         self.host.note('no warm start: dhrona is not installed (uv add "ramabana[dhrona]")'); return []
-    try: used, skipped = fit_rounds(self._plain, model=b.spec.name, limit=WARM_ROUNDS)
+    try: used, skipped = fit_rounds(self._plain, model=b.spec.name, limit=1 if small else WARM_ROUNDS)
     except Exception as e:
         self.warm_report = {'used': [], 'skipped': [], 'problem': agent_err(e)}
         self.host.note(f'no warm start: {agent_err(e)}'); return []
+    if small and used and (size := len(json.dumps(round_msgs(used[0])))) > WARM_SMALL_CHARS:
+        skipped.insert(0, (used.pop(), f'{size} chars is over the small profile limit of {WARM_SMALL_CHARS}'))
     self.warm_report = {'used': [{'name': r['meta'].get('name', ''), 'rank': r['meta'].get('rank', 50), 'model': r['meta'].get('model')} for r in used],
                         'skipped': [{'name': r['meta'].get('name', ''), 'reason': why} for r, why in skipped]}
     msgs = [m for r in used for m in round_msgs(r)]
@@ -2527,7 +2580,7 @@ def status(self:Agent):
     return {'ready': self.ready, 'busy': self.busy, 'note': self.note,
             'problems': self.problems,
             'model': self.model.name, 'model_note': model_note(self.model),
-            'budget': self.budget.note, 'tool_budget': self.tool_budget,
+            'budget': self.budget.note, 'profile': self.profile, 'tool_budget': self.tool_budget,
             'approve': getattr(self.approvals, 'mode', ''), 'step_budget': self.step_budget,
             'tool_calls': self._tool_calls_turn, 'tool_limit': self.max_tool_calls, 'step_limit': self.max_steps,   # a tool withheld for a small window is invisible otherwise
             'ntools': len(self.tools), 'nskills': len(self.skills),
@@ -2595,9 +2648,9 @@ def command(self:Agent, line):
     name, _, arg = line.partition(' ')
     arg = arg.strip()
     if name == 'model':
-        if not arg: return self.routing.summary()
+        if not arg: return f'{self.routing.summary()}\n{"briefing":11} {self.profile} profile' + ('' if self.profile_choice != 'auto' else ' (auto)')
         job, _, m = arg.partition(' ')
-        try: return f'{model_note(self.set_model(m or job, job if m else "turn"))}'
+        try: return f'{model_note(self.set_model(m or job, job if m else "turn"))} · {self.profile} profile'
         except Exception as e: return agent_err(e)
     if name == 'sessions':
         rows = self.sessions()
