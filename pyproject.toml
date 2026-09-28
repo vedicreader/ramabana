@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.1.0",   # native edits, ls, tools_for(optin=), git writes with undo
+    "shalya>=0.1.1",   # generate_image(images=, path=) with guarded destinations; picture checks by bytes; memory_search rows
     "uraiyadal>=0.0.8",   # a refused approval's reason (`Ask.reply`) reaches the model
     "gheasy>=0.0.10",
     "exhash>=0.4.9",
@@ -40,7 +40,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.0"]
+cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.1"]
 dhrona = [
     "dhrona>=0.1.4",
 ]

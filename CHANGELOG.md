@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.2.4
+
+- Sub-agents see pictures: `delegate_search`/`delegate_async(images=[...])` send pictures (inside the open folders, recognised by bytes, ≤ 8 × 20 MB; pictures × questions ≤ 8) to the sub-agent's model; refused for models that can't take images.
+- `generate_image(path=...)` is a write: approvals gate it like other writes (doom-loop guard included), `/rewind` tracks every picture it saves (all of `n`), read-only sub-agents can't pass a `path`. Needs shalya 0.1.1.
+- A bare sub-agent model name (`cloud_model="gpt-6-sol"`) resolves to the configured sub-agent model; an unknown name says so.
+- Activity keeps string arguments whole up to 2000 characters (dhrona rounds replay full calls); resumed context still shows one short line each.
+- Read-only tool copies are recorded like the rest; the recorded mark is per agent and wrapper.
+
 ## 0.2.3
 
 

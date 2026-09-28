@@ -3908,8 +3908,8 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rgapi", specifier = ">=0.1.19" },
     { name = "rishi", specifier = ">=0.1.39" },
-    { name = "shalya", specifier = ">=0.1.0" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.0" },
+    { name = "shalya", specifier = ">=0.1.1" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.1" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.1" },
     { name = "uraiyadal", specifier = ">=0.0.8" },
     { name = "vishalakshi", specifier = ">=0.1.17" },
@@ -4335,7 +4335,7 @@ wheels = [
 
 [[package]]
 name = "shalya"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dhrishti" },
@@ -4348,9 +4348,9 @@ dependencies = [
     { name = "litesearch" },
     { name = "vishalakshi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a8/51/54edb0e3f6390ced1622716312afb5478fee3f477d0cde08a8f3e7c90ad5/shalya-0.1.0.tar.gz", hash = "sha256:041e935085c36f4cbdc10f567a6c9b5fd5df4d8bf422bcafc4e088e98e96159f", size = 49968, upload-time = "2026-09-27T06:08:33.094Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/cb/38293da2a814b6ad4773784dea4d8bc3cda3377695ff0e814c9ffbcb61b5/shalya-0.1.1.tar.gz", hash = "sha256:e0468270640653a6b1cd50b8adf59c42069a1fbe967272a0eba695dba4e50765", size = 52168, upload-time = "2026-09-28T05:18:35.109Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/3a/fe7d3371890e0e91f0ad817a304ddf2cc2fa3eb024292236a7d16d890580/shalya-0.1.0-py3-none-any.whl", hash = "sha256:54e2f97cc91617523b7bd08de24b98f928dddf64d03434d305017b76c1bba622", size = 53476, upload-time = "2026-09-27T06:08:31.785Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/95/2f6cc4c207978baa454ece01648a81f8c3cc3e4d5a17bfe5bed1e0450c42/shalya-0.1.1-py3-none-any.whl", hash = "sha256:2fcdfbd5c622416c389a043d5ad841c9b6196a7124381b95d6f94d57f5b23a7e", size = 55690, upload-time = "2026-09-28T05:18:33.752Z" },
 ]
 
 [package.optional-dependencies]
