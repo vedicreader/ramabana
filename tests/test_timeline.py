@@ -15,6 +15,7 @@ from teleprint.compositor import Compositor
 from teleprint.keys import Key
 from teleprint.testing import EmuTty
 
+from ramabana import agent
 from ramabana.cli import ACT_TAIL, FOLD_STEP, GUTTERS, Ui
 from ramabana.testing import fake_agent
 
@@ -159,10 +160,11 @@ def test_the_footer_numbers_what_alt_digit_reaches(ui):
     assert ui.drill(len(newest) + 1) is False, 'a digit past the end must do nothing'
 
 
-def test_a_delegate_holds_its_sub_agents_calls_instead_of_scattering_them(ui):
+def test_a_delegate_holds_its_sub_agents_calls_instead_of_scattering_them(ui, monkeypatch):
     """Sub-agent calls used to land as siblings of the caller's own with nothing saying whose they
     were, which is most of why a delegating turn read as the same search over and over.
     """
+    monkeypatch.setattr(agent.time, 'time', lambda: 0.0)  # a slow xdist worker must not grow "(Ns)" into the row
     acts = ui.agent.activity
     parent = acts.start('delegate_search', {'questions': ['which files import fastllm?']})
     kids = [acts.start('search_code', {'query': q}, parent_action_id=parent.id)
