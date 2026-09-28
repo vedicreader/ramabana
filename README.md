@@ -26,6 +26,8 @@ pip install ramabana           # the agent, the hosts, the tools, and every serv
 pip install 'ramabana[cli]'    # and the terminal session
 ```
 
+For the terminal on its own, `uv tool install 'ramabana[cli]'`, then `ramabana`. The first interactive run starts inside a tmux server of ramabana’s own, so the now pane and shift+enter need no tmux setup. When tmux is missing, it offers the install command once. `ramabana --doctor` checks tmux, extended keys, the config and `ramabana-pane`. `--tmux off` or `RAMABANA_TMUX=off` keeps the session in the terminal you started it in.
+
 | command             | what it is                                          |
 |---------------------|-----------------------------------------------------|
 | `ramabana`          | the terminal session, on teleprint. Needs `[cli]`   |
@@ -107,8 +109,9 @@ The one-turn form prints each problem on stderr and exits 1 when the turn model 
 | `--kernels` | off | list live Python sessions and exit |
 | `--json` | off | with a prompt: reply, usage, changes, activity, problems and session as JSON |
 | `--no-bell` | bell on | no terminal bell when a turn ends or an approval waits |
-| `--tmux MODE` | `auto` | `on` or `off`: read the sibling panes and run background commands in panes |
+| `--tmux MODE` | `auto` | `on` or `off`: read the sibling panes and run background commands in panes. `off`, like `RAMABANA_TMUX=off`, also keeps the session out of ramabana’s own tmux |
 | `--pane MODE` | `auto` | `on` or `off`: the now pane at startup. `auto` opens it only inside tmux |
+| `--doctor` | off | check tmux and the now pane, offer to install tmux, and exit |
 | `--optin A,B` | none | extra tool groups: `exhash` (the hash-addressed `edit_file`), `research`, `author`, `legacy` |
 | `--warm` / `--no-warm` | on for `full`, off for `small` | seed the chat with a few of dhrona’s example rounds (`uv add "ramabana[dhrona]"`), or start empty. `small` starts cold since a small model copies an example’s paths literally. `--warm` gives it one round |
 | `--profile P` | `auto` | `small` offers fourteen tools and a one-screen briefing. `full` offers everything. `auto` picks `small` for a local model or a window of 32k or less. `/model` shows the active one. `small` leaves out extension tools not marked with [`ramabana.tools.small_tool`](https://vedicreader.github.io/ramabana/tools.html#small_tool) |
@@ -146,7 +149,7 @@ The keys:
 | key | what it does |
 |----|----|
 | `enter` | send. Mid-turn it steers: the running turn gets the line after its current tool call. A line with an `@path`, or sent with an attachment, waits for the next turn. `tab` completes a `/command` or an `@path` |
-| `shift+enter` | mid-turn, queue the line as the next turn. Inside tmux, add `set -g extended-keys on` to `~/.tmux.conf`, and `set -g extended-keys-format csi-u` on tmux 3.5 or later |
+| `shift+enter` | mid-turn, queue the line as the next turn. It needs tmux extended keys, which ramabana’s own tmux has. Inside your tmux, ramabana turns them on for that server when they are off |
 | `shift+tab` | cycle approvals through `ask`, `edits` and `auto`. The mode shows at the left of the row under the bar |
 | `ctrl+t` | show or hide the plan |
 | `ctrl+p`, `ctrl+n` | walk the prompts you have sent |
@@ -211,7 +214,7 @@ Every run keeps a transcript under `<cfg>/runs/<session>/`. Inside tmux:
 - `read_terminal` reads the sibling panes.
 - `run_shell_bg` runs in a pane of its own.
 
-`/pane` opens the now pane in a split on the right. It shows the turn, the call it is on, and each sub-agent run with its own calls. The split needs tmux 3.1 or later, and `--pane on` opens it at startup. Outside tmux, or with `--tmux off`, `/pane` prints the `ramabana-pane` command to run in another terminal instead.
+`/pane` opens the now pane in a split on the right. It shows the turn, the call it is on, and each sub-agent run with its own calls. The split needs tmux 3.1 or later, and `--pane on` opens it at startup. Without tmux, or with `--tmux off`, `/pane` prints the `ramabana-pane` command to run in another terminal instead.
 
 ## Budgets, cost and history
 
@@ -366,7 +369,7 @@ Start with the page for the contract you need:
 - [tools](02_tools.ipynb): hosts, tool construction, and delegation
 - [agent](03_agent.ipynb): turns, approvals, activity, plans, history, and branching
 - [testing](04_testing.ipynb): in-memory hosts and deterministic backends
-- [terminal](05_cli.ipynb), [MCP](06_mcp.ipynb), [PyREPL](11_pyrepl.ipynb), and [ACP](16_acp.ipynb): frontend adapters, and the [now pane](18_pane.ipynb) beside the terminal
+- [terminal](05_cli.ipynb), [MCP](06_mcp.ipynb), [PyREPL](11_pyrepl.ipynb), and [ACP](16_acp.ipynb): frontend adapters, the [now pane](18_pane.ipynb) beside the terminal, and the [first-run setup](19_setup.ipynb) that starts it in tmux
 - [vault](07_vault.ipynb), [API specifications](10_spec.ipynb), and [folder monitoring](17_monitor.ipynb): optional capabilities
 - [shop](08_shop.ipynb): product search tools
 - [coding patterns](09_coding_patterns.ipynb), [theory](13_theory.ipynb), [prose](14_write_prose.ipynb), and [documentation](15_write_docs.ipynb): bundled agent skills

@@ -47,6 +47,7 @@ from .core import PII_MODES, PII_OFF, PROFILES, accepts, agent_err, env, model_n
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, subject
 from .pane import write_snapshot
+from .setup import Setup
 from datetime import datetime
 from . import __version__
 
@@ -383,6 +384,7 @@ GUIDE = """START
   --theme auto|dark|light      choose the terminal palette
   --tmux auto|on|off           read and run commands in tmux panes
   --pane auto|on|off           the now pane; auto opens it in tmux
+  --doctor                     check tmux and the now pane
 MODES
   /python  /agent  /vars  /promote NAME
   Python enter runs complete code; tab completes; ctrl+c interrupts.
@@ -395,7 +397,7 @@ WORK
   /plan  /todo  /sessions  /resume [ID|latest]  /model [NAME]
   enter mid-turn steers the turn; shift+enter queues the next one.
   shift+tab cycles approvals: ask, edits, auto.
-  In tmux: set -g extended-keys on (and extended-keys-format csi-u).
+  Outside tmux it starts in its own; --tmux off stays out.
   /pane shows the turn and its sub-agents; /pane off closes it.
   --max-tool-calls auto|N  --max-steps auto|N  /tool-budget  /steps
   --profile auto|small|full  the model's tool set and briefing
@@ -2188,6 +2190,7 @@ def main(
     bell: bool = True,                   # --no-bell silences turn-end and approval bells
     tmux: str = 'auto',                  # auto | on | off: read and run in tmux panes
     pane: str = 'auto',                  # auto | on | off: the `now` pane; auto in tmux
+    doctor: bool = False,                # check tmux and the now pane, offer to install tmux, and exit
     warm: bool = False,                  # seed example rounds even in the small profile
     no_warm: bool = False,               # start without dhrona's example rounds
     optin: str = '',                     # opt-in tool groups: exhash,research,author
@@ -2198,6 +2201,7 @@ def main(
         from ramabana.pyrepl import sessions
         print(sessions())
         return 0
+    if doctor: return Setup(cfg).doctor()
     if warm and no_warm:
         print('--warm and --no-warm contradict each other; pass one', file=sys.stderr)
         return 2
@@ -2231,6 +2235,7 @@ def main(
     if pii != PII_OFF and not vault:
         print('--pii gates what a vault returns; add --vault', file=sys.stderr)
         return 2
+    Setup(cfg).launch(prompt, json, tmux)
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     try: set_theme(theme)
     except ValueError as e:
