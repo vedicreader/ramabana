@@ -16,10 +16,12 @@ class Box:
         self.calls.append(list(cmd))
         if cmd[1:] == ['-V']: return SimpleNamespace(returncode=0, stdout=self.version + '\n')
         if cmd[1:] == ['show', '-sv', 'extended-keys']: return SimpleNamespace(returncode=0 if self.ext else 1, stdout=f'{self.ext}\n')
+        if 'install' in cmd and isinstance(self.code, BaseException): raise self.code
         if 'install' in cmd and self.code == 0: self.have.add('tmux')
         return SimpleNamespace(returncode=self.code if 'install' in cmd else 0, stdout='')
     def ask(self, q):
         self.asked.append(q)
+        if isinstance(self.answer, BaseException): raise self.answer
         return self.answer
     def execvpe(self, *a): self.execd = a
 
@@ -44,7 +46,8 @@ def test_the_conf_turns_on_the_keys_its_tmux_knows_and_is_written_only_when_it_c
     assert 'extended-keys on' in new and 'extended-keys-format csi-u' in new
     assert 'extended-keys on' in mid and 'csi-u' not in mid
     assert 'extended-keys' not in old
-    for line in ('escape-time 10', 'mouse on', 'status off', 'remain-on-exit off', 'default-terminal', 'RGB'): assert line in old
+    for line in ('escape-time 10', 'mouse on', 'status off', 'remain-on-exit off', 'destroy-unattached on', 'default-terminal', 'RGB'):
+        assert line in old
     s, box = mk(tmp_path)
     p = s.conf()
     assert p == tmp_path/'cfg'/'tmux.conf' and p.read_text() == new
@@ -53,7 +56,7 @@ def test_the_conf_turns_on_the_keys_its_tmux_knows_and_is_written_only_when_it_c
     os.utime(p, (0, 0))
     s.conf()
     assert p.stat().st_mtime == 0
-    box.version = 'tmux 3.4'
+    s, box = mk(tmp_path, Box(version='tmux 3.4'))
     assert s.conf().read_text() == mid and p.stat().st_mtime > 0
 
 def test_the_relaunch_execs_tmux_on_its_own_server_with_the_same_args_cwd_and_a_wrapped_flag(tmp_path):
@@ -61,17 +64,14 @@ def test_the_relaunch_execs_tmux_on_its_own_server_with_the_same_args_cwd_and_a_
     s.launch()
     exe, argv, env = box.execd
     assert exe == '/bin/tmux'
-    assert argv[:5] == ['tmux', '-L', 'ramabana', '-f', str(tmp_path/'cfg'/'tmux.conf')]
-    i = argv.index('new-session')
-    assert argv[i-1] == ';' and argv[5:8] == ['set', '-g', 'update-environment']
-    assert set(argv[8].split()) == {'HOME', 'PATH', 'OPENAI_API_KEY', 'RAMABANA_WRAPPED'}
-    assert argv[i+1] == '-s' and argv[i+2].startswith('ramabana-') and argv[i+3:i+5] == ['-c', '/work']
-    assert argv[i+5:i+7] == ['sh', '-c'] and argv[-3:] == [script(tmp_path), '--model', 'x']
+    assert argv[:2] == ['tmux', '-L'] and argv[2].startswith('ramabana-') and argv[3:5] == ['-f', str(tmp_path/'cfg'/'tmux.conf')]
+    assert argv[5:10] == ['new-session', '-s', 'ramabana', '-c', '/work'] and 'update-environment' not in argv
+    assert argv[10:12] == ['sh', '-c'] and argv[-3:] == [script(tmp_path), '--model', 'x']
     assert env == {'HOME': '/h', 'PATH': '/bin', 'OPENAI_API_KEY': 'k', 'RAMABANA_WRAPPED': '1'}
-    assert (tmp_path/'cfg'/'tmux.conf').exists()
+    assert (tmp_path/'cfg'/'tmux.conf').exists() and [c[1:] for c in box.calls].count(['-V']) == 1
     s2, box2 = mk(tmp_path)
     s2.launch()
-    assert box2.execd[1][i+2] != argv[i+2]
+    assert box2.execd[1][2] != argv[2]
 
 def test_without_a_script_on_argv_the_relaunch_runs_this_python(tmp_path):
     import sys
@@ -134,13 +134,25 @@ def test_no_is_remembered_and_only_doctor_asks_again(tmp_path, capsys):
     assert box2.asked == [] and box2.execd is None
     assert s2.doctor() == 0 and len(box2.asked) == 1 and ['brew', 'install', 'tmux'] in box2.calls
 
-def test_a_failed_install_continues_without_tmux(tmp_path, capsys):
-    s, box = mk(tmp_path, Box(have={'brew'}, answer='y', code=1))
+@pytest.mark.parametrize('code', [1, KeyboardInterrupt()])
+def test_a_failed_or_interrupted_install_saves_nothing_and_continues_without_tmux(tmp_path, capsys, code):
+    s, box = mk(tmp_path, Box(have={'brew'}, answer='y', code=code))
     s.launch()
     assert ['brew', 'install', 'tmux'] in box.calls and box.execd is None and '--doctor' in capsys.readouterr().err
-    s2, box2 = mk(tmp_path, Box(have={'brew'}, answer='y', code=1))
+    assert not (tmp_path/'cfg'/'setup.json').exists()
+    s2, box2 = mk(tmp_path, Box(have={'brew'}, answer='y'))
     s2.launch()
-    assert box2.asked == []
+    assert len(box2.asked) == 1 and box2.execd is not None and s2._seen() == {'install_tmux': 'yes'}
+
+@pytest.mark.parametrize('stop', [KeyboardInterrupt(), EOFError()])
+def test_ctrl_c_at_the_prompt_saves_nothing_so_the_next_run_asks_again(tmp_path, capsys, stop):
+    s, box = mk(tmp_path, Box(have={'brew'}, answer=stop))
+    s.launch()
+    assert box.execd is None and ['brew', 'install', 'tmux'] not in box.calls and '--doctor' in capsys.readouterr().err
+    assert not (tmp_path/'cfg'/'setup.json').exists()
+    s2, box2 = mk(tmp_path, Box(have={'brew'}, answer='n'))
+    s2.launch()
+    assert len(box2.asked) == 1
 
 def test_inside_your_own_tmux_extended_keys_are_turned_on_only_when_off(tmp_path, capsys):
     inside = {'TMUX': '/tmp/tmux-1/default,1,0'}

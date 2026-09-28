@@ -26,6 +26,7 @@ set -s escape-time 10
 set -g mouse on
 set -g status off
 set -g remain-on-exit off
+set -g destroy-unattached on
 '''
 VERSIONED = {KEYS_MIN: "set -s extended-keys on\nset -as terminal-features ',*:extkeys'",
              (3, 5): 'set -s extended-keys-format csi-u'}
@@ -40,7 +41,7 @@ def tmux_conf(version):
 
 # %% ../nbs/19_setup.ipynb #579428a9
 HOLD = r'"$@" || { s=$?; printf "\nramabana exited with status %s · enter closes this\n" $s; read _; exit $s; }'
-WHY = {'none': 'no tmux, and no brew, apt-get or dnf to install it', 'no': 'no tmux', 'yes': 'tmux did not install'}
+WHY = {'none': 'no tmux, and no brew, apt-get or dnf to install it', 'no': 'no tmux', '': 'no tmux', 'failed': 'tmux did not install'}
 
 class Setup:
     "The tmux ramabana runs in: its config, the relaunch into it, the install offer, and `--doctor`."
@@ -53,6 +54,7 @@ class Setup:
         isatty=None,              # whether stdin and stdout are terminals
     ):
         store_attr('which,system,run,execvpe,ask')
+        self._about = None
         self.cfg, self.environ, self.argv = Path(cfg or '~/.config/ramabana').expanduser(), ifnone(environ, os.environ), ifnone(argv, sys.argv)
         self.cwd, self.isatty = cwd or os.getcwd(), isatty or (lambda: sys.stdin.isatty() and sys.stdout.isatty())
 
@@ -61,8 +63,9 @@ class Setup:
     def tmux(self): return self.which('tmux')
 
     def about(self):
-        "`tmux -V`, or '' without tmux."
-        return self.run([t, '-V'], capture_output=True, text=True).stdout.strip() if (t := self.tmux) else ''
+        "`tmux -V`, asked once, or '' without tmux."
+        if self._about is None and (t := self.tmux): self._about = self.run([t, '-V'], capture_output=True, text=True).stdout.strip()
+        return self._about or ''
 
     def version(self):
         "The `(major, minor)` of tmux, `(99, 0)` for an unnumbered build, or None without tmux."
@@ -81,11 +84,10 @@ class Setup:
         return [*me, *args]
 
     def wrap(self):
-        "The `execvpe` arguments that rerun `command` in a new session on ramabana's tmux server."
+        "The `execvpe` arguments that rerun `command` on a tmux server of its own."
         env = {**self.environ, core.ENV_PREFIX+'WRAPPED': '1'}
-        return self.tmux, ['tmux', '-L', SOCKET, '-f', str(self.conf()), 'set', '-g', 'update-environment', ' '.join(env), ';',
-                           'new-session', '-s', f'ramabana-{uuid.uuid4().hex[:8]}', '-c', self.cwd,
-                           'sh', '-c', HOLD, 'ramabana', *self.command()], env
+        return self.tmux, ['tmux', '-L', f'{SOCKET}-{uuid.uuid4().hex[:8]}', '-f', str(self.conf()), 'new-session', '-s', SOCKET,
+                           '-c', self.cwd, 'sh', '-c', HOLD, 'ramabana', *self.command()], env
 
     def launch(self,
         prompt='',     # a one-shot question stays in this terminal
@@ -112,22 +114,25 @@ def _seen(self:Setup):
     except (OSError, ValueError): return {}
 
 @patch
-def _yes(self:Setup, cmd):
-    try: return self.ask(f'ramabana opens its now pane in tmux, which is missing. Run `{shlex.join(cmd)}`? [y/N] ').strip().lower() in ('y', 'yes')
-    except (EOFError, KeyboardInterrupt): return False
+def _answer(self:Setup, cmd):
+    "'yes' or 'no' to the install, or '' when ctrl+c or end of input left it unanswered."
+    try: yes = self.ask(f'ramabana opens its now pane in tmux, which is missing. Run `{shlex.join(cmd)}`? [y/N] ').strip().lower() in ('y', 'yes')
+    except (EOFError, KeyboardInterrupt): return ''
+    return 'yes' if yes else 'no'
 
 @patch
 def _installed(self:Setup, cmd):
     try: return self.run(cmd).returncode == 0 and bool(self.tmux)
-    except OSError: return False
+    except (OSError, KeyboardInterrupt): return False
 
 @patch
 def offer_install(self:Setup, force=False):
     "Ask once, or again when `force`, to install tmux: True when tmux is there now."
     if not force and 'install_tmux' in self._seen(): return False
-    ans = 'none' if (cmd := self.installer()) is None else 'yes' if self._yes(cmd) else 'no'
-    (self.cfg/'setup.json').mk_write(json.dumps(self._seen() | {'install_tmux': ans}))
-    if ans == 'yes' and self._installed(cmd): return True
+    ans = 'none' if (cmd := self.installer()) is None else self._answer(cmd)
+    if ans == 'yes' and not self._installed(cmd): ans = 'failed'
+    if ans in ('none', 'no', 'yes'): (self.cfg/'setup.json').mk_write(json.dumps(self._seen() | {'install_tmux': ans}))
+    if ans == 'yes': return True
     print(f'{WHY[ans]}; continuing without tmux · ramabana --doctor shows how to get the now pane', file=sys.stderr)
     return False
 

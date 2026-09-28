@@ -26,7 +26,7 @@ pip install ramabana           # the agent, the hosts, the tools, and every serv
 pip install 'ramabana[cli]'    # and the terminal session
 ```
 
-For the terminal on its own, `uv tool install 'ramabana[cli]'`, then `ramabana`. The first interactive run starts inside a tmux server of ramabana’s own, so the now pane and shift+enter need no tmux setup. When tmux is missing, it offers the install command once. `ramabana --doctor` checks tmux, extended keys, the config and `ramabana-pane`. `--tmux off` or `RAMABANA_TMUX=off` keeps the session in the terminal you started it in.
+For the terminal on its own, `uv tool install 'ramabana[cli]'`, then `ramabana`. The first interactive run starts inside a tmux server of ramabana’s own, so the now pane and shift+enter need no tmux setup. When tmux is missing, it offers the install command once. `ramabana --doctor` checks tmux, extended keys, the config and `ramabana-pane`. `--tmux off` or `RAMABANA_TMUX=off` keeps the session in the terminal you started it in. Detaching or closing the window ends the session, and `--resume latest` reopens it.
 
 | command             | what it is                                          |
 |---------------------|-----------------------------------------------------|
