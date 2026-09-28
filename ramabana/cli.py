@@ -8,16 +8,16 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEMES', 'CODE_THEMES', 'KAKU', 'GRUVBOX',
            'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'NOTIFY_EVERY', 'FOLD_RUNNING',
            'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'FLASH_FOR', 'MAX_GROUP_ROWS', 'MOUSE_ON', 'MOUSE_OFF',
-           'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'MAX_MEDIA', 'MAX_ATTACH', 'CLIP_IMAGE',
-           'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS',
-           'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS',
-           'TMUX_MODES', 'code_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path',
-           'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
-           'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line',
-           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui',
-           'parse_answer', 'ask_pattern', 'ThemedCode', 'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain',
-           'headless_prompt', 'ask_once', 'main']
+           'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING',
+           'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW',
+           'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO',
+           'NOT_ANSWER', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'code_theme', 'code_bg',
+           'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
+           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size',
+           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
+           'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'parse_answer', 'ask_pattern', 'ThemedCode',
+           'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain', 'headless_prompt', 'ask_once', 'main', 'MAX_MEDIA',
+           'MAX_ATTACH']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -343,8 +343,8 @@ MEDIA = {
     '.flac': ('audio', 'audio/flac'), '.aac':  ('audio', 'audio/aac'),
 }
 
-MAX_MEDIA = 20 << 20
-MAX_ATTACH = 8
+from .tools import MAX_MEDIA, MAX_ATTACH   # one limit for a terminal attachment and a delegated picture
+_all_ = ['MAX_MEDIA', 'MAX_ATTACH']
 CLIP_IMAGE = (('pngpaste', '-'),
               ('wl-paste', '--type', 'image/png'),
               ('xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'))

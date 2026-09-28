@@ -33,7 +33,7 @@ from shalya.tools import OPTIN, group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures)
+                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write)
 from .monitor import Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -494,7 +494,7 @@ class Approvals:
     def decide(self, name, args, force=False, ask=None, loop=False):
         "The resolved `Ask` when nobody needs asking: not gated, `off`, a saved rule, `auto` or `edits`. None when a person must answer; `loop` (the `DOOM_LOOP`th repeat) keeps a saved allow, `auto` and `edits` from answering."
         a = self.ask(name, args) if ask is None else ask
-        if not force and name not in self.tools: return a.resolve(True)
+        if not force and name not in self.tools and not path_write(name, args): return a.resolve(True)
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
         if (v := self.rule_for(name, args)) == 'deny': return self._decided(a, False, 'denied by a saved rule')
         if loop: return None
@@ -525,7 +525,7 @@ class Approvals:
     def request(self, name, args, force=False, timeout=None):
         "Raise one request and wait for it. Returns the resolved `Ask`, whose `reply()` carries the reason."
         a = self.ask(name, args)
-        loop = (force or name in self.tools) and self._looping(name, args)
+        loop = (force or name in self.tools or path_write(name, args)) and self._looping(name, args)
         if loop: a.preview = f'the same call {_times(self._streak)} running -- allow it?\n\n{a.preview}'.strip()
         if (d := self.decide(name, args, force, ask=a, loop=loop)) is not None: return d
         # closing first: the more useful reason; `current` taken under the close lock, so an ask landing in the gap does not wait out its timeout
@@ -1150,7 +1150,7 @@ def _cloud_backend_or_none(self:Agent, model):
         try: spec = self.routing._resolve(str(model))
         except KeyError:   # `gpt-6-sol` for the sub-agent's own `openai/gpt-6-sol`
             sub = str(self.routing.name_for('subagent') or '')
-            return self._be_or_none('subagent') if str(model) == sub.split('/', 1)[-1] else None
+            return self._be_or_none('subagent') if str(model) == sub.rsplit('/', 1)[-1] else None
         if spec.local: return None
         key = (spec.backend, spec.model_id)
         if key not in self._backends: self._backends[key] = make_backend(spec)
@@ -1232,7 +1232,8 @@ def _record(self:Agent, f):
         for r in (self._deny_git_shell(name, args), *self.registry.fire('before_tool', self, name, args)):
             if isinstance(r, str): denied = denied or r
             elif isinstance(r, dict): a, kw, args, rewritten = (), dict(r), _named(f, (), dict(r)), True
-        if rewritten and is_write(f) and self.approvals is not None and not (ask := self.approvals.request(name, args)).answer:
+        writing = is_write(f) or path_write(name, args)   # a drawing saved where the call names is a write
+        if rewritten and writing and self.approvals is not None and not (ask := self.approvals.request(name, args)).answer:
             return err(ask.reply())   # already on the activity: the gate's recorder put it there
         self.calls.append((name, args))
         meta = self._action_meta(name, args)
@@ -1243,7 +1244,7 @@ def _record(self:Agent, f):
             self.activity.finish(act, denied, ok=False)
             return err(denied)
         fresh = None      # a path this call is the first to touch: dropped again if the call never ran
-        if is_write(f):   # first touch only: later edits are part of one change
+        if writing:   # first touch only: later edits are part of one change
             if (p := args.get('path')):
                 if p not in self.before:
                     fresh, was = p, self.host.text_at(p)
