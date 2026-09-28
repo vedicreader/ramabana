@@ -23,7 +23,7 @@ __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WR
            'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
-import concurrent.futures, functools, json, re, threading, time, uuid
+import concurrent.futures, contextvars, functools, json, re, threading, time, uuid
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -308,7 +308,7 @@ def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS
     items = list(zip(qs, runs))
     workers = 1 if writes or getattr(backend.spec, 'local', False) else min(n_workers, len(qs))
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers))
-    futures = [ex.submit(run, item) for item in items]
+    futures = [ex.submit(contextvars.copy_context().run, run, item) for item in items]   # each worker nests under the caller's delegate call
     try:
         while True:
             if all(f.done() for f in futures):break
@@ -370,7 +370,7 @@ class Background:
             self._answer(run.id, out)
             if not run.terminal: run.finish()
             if self.on_done: self.on_done(run, out)
-        threading.Thread(target=work, daemon=True, name=f'ramabana-bg-{run.id}').start()
+        threading.Thread(target=contextvars.copy_context().run, args=(work,), daemon=True, name=f'ramabana-bg-{run.id}').start()
         return run.id
 
     def status(self, run_id=''):

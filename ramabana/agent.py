@@ -18,7 +18,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'Agent', 'git_shell_denial', 'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
-import datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
+import contextvars, datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
 from glob import escape as glob_escape
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -77,6 +77,7 @@ class Act:
     revision: int = 0
     branch_id: str = 'main'
     parent_action_id: str = ''
+    run_id: str = ''          # the run whose model made this call: a sub-agent's, or the turn's
     state: str = 'running'
     kind: str = ''            # 'ask' for a refused approval; otherwise what the tool name says
 
@@ -107,7 +108,7 @@ class Act:
     def dict(self):
         return {'id': self.id, 'action_id': self.id, 'turn_id': self.turn_id,
                 'revision': self.revision, 'branch_id': self.branch_id,
-                'parent_action_id': self.parent_action_id, 'state': self.state,
+                'parent_action_id': self.parent_action_id, 'run_id': self.run_id, 'state': self.state,
                 'tool': self.tool, 'kind': self.kind, 'icon': self.icon,
                 'summary': self.summary, 'line': self.line(), 'detail': self.detail,
                 'ok': self.ok, 'done': self.done, 'secs': self.secs,
@@ -161,12 +162,12 @@ class Activity:
     def __len__(self): return len(self.acts)
 
     def start(self, tool, args, action_id='', turn_id='', revision=0, branch_id='main',
-              parent_action_id='', summary=None, kind=''):
+              parent_action_id='', summary=None, kind='', run_id=''):
         a = Act(tool=tool, args=dict(args or {}), kind=kind,
                 summary=summary if summary is not None else summarise(tool, args),
                 id=action_id or uuid.uuid4().hex[:12], turn_id=turn_id or self.turn_id,
                 revision=int(revision or 0), branch_id=branch_id or 'main',
-                parent_action_id=parent_action_id or '')
+                parent_action_id=parent_action_id or '', run_id=run_id or '')
         with self._lock:
             self.acts.append(a)
             if len(self.acts) > self.max_acts:
@@ -1034,7 +1035,7 @@ class Agent:
         self._sp = sp
         self.compactor = Compactor(auto=compact, strategy=compact_strategy, kernel_alive=kernel_alive, on_compact=on_compact)
         self.activity = Activity(on_change=on_activity)   # the live account of what it is doing
-        self._nested = threading.local()   # per thread: the delegate calls whose sub-agents are running
+        self._nested = contextvars.ContextVar('delegating', default=())   # per context, so a fan-out's workers inherit it
         self.plan = Plan()       # durable checklist for stop/start and sub-agent bites
         self.on_plan = None      # frontend hook: callable(plan) after every mutation
         self.on_media = None     # frontend hook: callable(paths) the moment a tool writes a picture
@@ -1257,7 +1258,7 @@ def _record(self:Agent, f):
                     elif was is None: self.binary.add(p)
             elif name == 'run_shell' or name in GIT_WRITE_TOOLS: self.snapshot_tree()
         nested = name in DELEGATE_TOOLS   # every call its sub-agent makes hangs off this one
-        if nested: self._delegating.append(act.id)
+        if nested: token = self._nested.set(self._delegating + (act.id,))
         shelled = (name == 'run_shell' or name in GIT_WRITE_TOOLS) and self._walked
         try: out = f(*a, **kw)
         except NotImplementedError as e:   # a raise ends the turn. A readable failure does not
@@ -1267,7 +1268,7 @@ def _record(self:Agent, f):
             self.activity.finish(act, agent_err(e), ok=False)
             raise
         finally:
-            if nested: self._delegating.pop()
+            if nested: self._nested.reset(token)
             if shelled: self.settle_tree()
         for r in self.registry.fire('after_tool', self, name, out):
             if isinstance(r, str): out = r
@@ -1339,7 +1340,7 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
         if not small and 'memory' not in self.host.provides: extra += note_tools(self.note_memory)
         if full and not small:
             if self.subagents:
-                extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_plain,
+                extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_tools,
                                         lambda: self.skills, self._cloud_backend_or_none,
                                         lambda: self.subagent_writes,
                                         lambda: self.approvals.gate if self.approvals is not None else None,
@@ -1375,6 +1376,11 @@ def _sub_plain(self:Agent):
     if key not in self._views: self._views[key] = source.map(self._record)
     return self._views[key].tools
 
+@patch
+def _sub_tools(self:Agent):
+    "`_sub_plain` for a delegation, recorded, so a read-only sub-agent's calls reach the activity too."
+    tools = self._sub_plain()
+    return tools if self.subagent_writes else [self._record(t) for t in tools]
 
 # %% ../nbs/03_agent.ipynb #76e57894
 @patch(as_prop=True)
@@ -1665,17 +1671,16 @@ def add_tool(self:Agent, f):
 # %% ../nbs/03_agent.ipynb #58e7f494
 @patch(as_prop=True)
 def _delegating(self:Agent):
-    "The delegate calls whose sub-agents are running on this thread, innermost last."
-    # per thread because `delegate_many` fans out over a threadpool; a stack wrong under concurrency is not worth the saving
-    if not hasattr(self._nested, 'stack'): self._nested.stack = []
-    return self._nested.stack
+    "The delegate calls whose sub-agents are running in this context, innermost last."
+    return self._nested.get()
 
 # %% ../nbs/03_agent.ipynb #1711a54d
 @patch
 def _action_meta(self:Agent, name, args):
     "Frontend-independent identity metadata for a call. Applications may override."
     return {'turn_id': self.current_turn_id, 'branch_id': self.current_branch_id,
-            'parent_action_id': self._delegating[-1] if self._delegating else ''}
+            'parent_action_id': self._delegating[-1] if self._delegating else '',
+            'run_id': r.id if (r := current_run()) is not None else ''}
 
 # %% ../nbs/03_agent.ipynb #d0d8ed90
 @patch

@@ -4,22 +4,22 @@ import json, time
 from rich.console import Console
 
 from ramabana.pane import now_snapshot, read_snapshot, render, write_snapshot
+from ramabana.runtime import current_run
 from ramabana.testing import ScriptedBackend, Step, fake_agent
 
 READ = ('view_file', {'path': '/proj/a.py'})
 ASK = ('delegate_search', {'questions': ['what does a.py define?']})
 
 
-def _delegating(a, seen):
-    "A turn backend whose sub-agents read a file, and snapshot the agent before they answer."
-    class Sub(ScriptedBackend):
-        def _run(self, msg):
-            yield from super()._run(msg)
-            seen.append(now_snapshot(a))
+def _delegating(a, seen, ask=ASK):
+    "A turn backend whose sub-agents read a file, snapshotting the agent while that read is still running."
+    def peek(agent, name, out):
+        if (r := current_run()) is not None and r.kind != 'root': seen.append(now_snapshot(a))
+    a.registry.on('after_tool', peek)
     class Root(ScriptedBackend):
         def spawn(self, sp='', tools=(), **kw):
-            return Sub(self.spec, steps=[Step(tool=READ), Step('a() is defined')], token_delay=0, tools=tools)
-    be = Root(steps=[Step(tool=READ), Step(tool=ASK), Step('done')], token_delay=0, tools=a.tools, sp=a.system_prompt())
+            return ScriptedBackend(self.spec, steps=[Step(tool=READ), Step('a() is defined')], token_delay=0, tools=tools)
+    be = Root(steps=[Step(tool=READ), Step(tool=ask), Step('done')], token_delay=0, tools=a.tools, sp=a.system_prompt())
     a._be = a._be_or_none = lambda job='turn': be
     return be
 
@@ -30,9 +30,8 @@ def _text(snap, width=40, now=None):
     return con.export_text()
 
 
-def test_a_snapshot_follows_a_delegating_turn_and_forgets_its_sub_agents_at_the_next():
+def test_a_snapshot_follows_a_read_only_sub_agent_and_forgets_it_at_the_next_turn():
     a, _ = fake_agent()
-    a.subagent_writes = True     # a read-only sub-agent's calls are never on the activity
     seen = []
     be = _delegating(a, seen)
     list(a.stream('go'))
@@ -41,8 +40,13 @@ def test_a_snapshot_follows_a_delegating_turn_and_forgets_its_sub_agents_at_the_
     assert mid['root']['steps'] == 2, 'the read and the delegate; the sub-agent read is not a root step'
     assert mid['root']['current'].startswith('Delegate')
     sub, = mid['subs']
-    assert sub['state'] == 'running' and sub['steps'] == 1 and sub['question'].startswith('what does a.py define?')
-    assert sub['id'] == a.run().children[0].id
+    child = a.run().children[0]
+    assert (sub['id'], sub['state'], sub['steps']) == (child.id, 'running', 1)
+    assert sub['current'] and sub['question'].startswith('what does a.py define?')
+    read, = [x for x in a.activity.since() if x.run_id == child.id]
+    delegate, = [x for x in a.activity.since() if x.tool == 'delegate_search']
+    assert read.parent_action_id == delegate.id, 'it still folds under the delegate call'
+    assert read.dict()['run_id'] == child.id
     json.dumps(mid)
 
     after = now_snapshot(a)
@@ -51,6 +55,29 @@ def test_a_snapshot_follows_a_delegating_turn_and_forgets_its_sub_agents_at_the_
     be.steps = [Step('ok')]
     list(a.stream('again'))
     assert now_snapshot(a)['subs'] == []
+
+
+def test_each_of_several_questions_is_its_own_sub_agent_and_none_of_their_calls_is_a_root_step():
+    a, _ = fake_agent()
+    _delegating(a, [], ('delegate_search', {'questions': ['what does a.py define?', 'who imports a.py?']}))
+    list(a.stream('go'))
+    snap = now_snapshot(a)
+    assert snap['root']['steps'] == 2
+    assert sorted(s['steps'] for s in snap['subs']) == [1, 1]
+    delegate, = [x for x in a.activity.since() if x.tool == 'delegate_search']
+    reads = [x for x in a.activity.since() if x.run_id in {s['id'] for s in snap['subs']}]
+    assert len(reads) == 2 and {x.parent_action_id for x in reads} == {delegate.id}
+
+
+def test_a_background_delegation_is_listed_while_it_runs_and_after_it_finishes():
+    a, _ = fake_agent()
+    _delegating(a, [], ('delegate_async', {'question': 'what does a.py define?'}))
+    list(a.stream('go'))
+    end = time.monotonic() + 5
+    while time.monotonic() < end and not all(r.terminal for r in a._side_runs()): time.sleep(.01)
+    sub, = now_snapshot(a)['subs']
+    assert sub['state'] == 'completed' and sub['steps'] == 1 and sub['question'].startswith('what does a.py')
+    assert now_snapshot(a)['root']['steps'] == 2
 
 
 def test_a_snapshot_is_written_whole_and_a_bad_file_reads_as_none(tmp_path):
