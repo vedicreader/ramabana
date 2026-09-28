@@ -53,6 +53,7 @@ ramabana = "ramabana.cli:main"
 ramabana-mcp = "ramabana.mcp:main"
 ramabana-acp = "ramabana.racp:main"
 ramabana-tick = "ramabana.monitor:tick"
+ramabana-pane = "ramabana.pane:main"
 
 [project.entry-points.nbdev]
 ramabana = "ramabana._modidx:d"
