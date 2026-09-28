@@ -694,7 +694,7 @@ class Ui:
         self._queued_echo = []     # what a queued line printed, held for when it runs
         self._hold = False         # alt+enter: a line typed mid-turn waits for the turn rather than steering it
         self.pane = None           # the tmux pane drawing `now.json`, or None
-        self._now_at, self._now_busy = 0.0, False   # the last `now.json` write, and whether it caught the agent busy
+        self._now_at, self._now_busy, self._now_dirty = 0.0, False, False   # the last `now.json` write, whether it caught the agent busy, and whether the throttle dropped one since
         self._echoed = []          # (block, body, kind, kw) for the line just typed
         self.acts = {}             # act id -> its block, for calls that have one of their own
         self.by_id = {}            # act id -> the `Act`, while it may still need redrawing
@@ -878,14 +878,16 @@ class Ui:
                 self.frame += 1
                 self.flush_stream()   # a model that stalls mid-prose must not leave its last words unseen
                 self.paint()
-            if self.turn is not None or self._now_busy: self.write_now()
+            if self.turn is not None or self._now_busy or self._now_dirty: self.write_now()
 
     def write_now(self, force=False):
         "Write `now.json` for the pane, at most every `PANE_EVERY` seconds unless `force`."
         if (p := _now_file(self.agent)) is None: return
         t = time.monotonic()
-        if not force and t - self._now_at < PANE_EVERY: return
-        self._now_at = t
+        if not force and t - self._now_at < PANE_EVERY:
+            self._now_dirty = True
+            return
+        self._now_at, self._now_dirty = t, False
         try: write_snapshot(self.agent, p)
         except OSError: return
         self._now_busy = self.agent.busy
@@ -2331,6 +2333,11 @@ def _tmux_pane(host):
     try: return getattr(host, 'tmux_pane', None)
     except Exception: return None
 
+def _alive(pane):
+    "Whether tmux still has `pane`: ctrl+c in the viewer ends it without telling us."
+    try: return bool(pane.refresh())
+    except Exception: return False
+
 _act_now = Ui._act
 @patch
 def _act(self:Ui, act):
@@ -2344,10 +2351,13 @@ def open_pane(self:Ui, arg=''):
     if arg == 'off': return self.note(self.close_pane() or 'no pane is open')
     if arg: return self.note('usage: /pane [off]', 'error')
     if (p := _now_file(self.agent)) is None: return self.note('the pane reads <cfg>/runs, and this session has no --cfg', 'error')
+    if self.pane is not None and not _alive(self.pane): self.pane = None
     if self.pane is not None: return self.note(f'the pane is already open in {self.pane.id} · /pane off closes it')
     self.write_now(force=True)
     cmd = pane_cmd(p)
-    if (me := _tmux_pane(self.agent.host)) is None: return self.note(f'no tmux here; in another terminal run: {cmd}')
+    if (me := _tmux_pane(self.agent.host)) is None:
+        why = 'tmux is turned off (--tmux off)' if getattr(self.agent.host, '_tmux', None) is False else 'no tmux here'
+        return self.note(f'{why}; in another terminal run: {cmd}')
     try: self.pane = me.split('right', cmd, size='35%')
     except Exception as e: return self.note(f'the pane did not open ({agent_err(e)}); in another terminal run: {cmd}', 'error')
     return self.note(f'the pane is open in {self.pane.id} · /pane off closes it')
@@ -2357,6 +2367,7 @@ def close_pane(self:Ui):
     "Kill the `now` pane: what was closed, or '' when none was open."
     if (p := self.pane) is None: return ''
     self.pane = None
+    if not _alive(p): return f'the pane {p.id} was already closed'
     try: p.kill()
     except Exception: pass
     return f'closed the pane {p.id}'

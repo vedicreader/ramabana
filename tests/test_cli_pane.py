@@ -25,8 +25,11 @@ def ui(tmp_path):
     tty.close()
 
 class Pane:
-    def __init__(self, id): self.id, self.killed = id, False
+    def __init__(self, id): self.id, self.killed, self.alive = id, False, True
     def kill(self): self.killed = True
+    def refresh(self):
+        if not self.alive: raise RuntimeError(f"can't find {self.id}")
+        return self
 
 class Me:
     "This session's tmux pane: it records the splits it is asked for."
@@ -90,6 +93,39 @@ def test_pane_opens_once_in_a_right_split_and_off_kills_it(ui):
     assert 'no pane' in _said(ui)
     _submit(ui, '/pane')
     assert len(me.splits) == 2 and ui.pane is me.made[1], 'it opens again after off'
+
+
+def test_a_pane_its_viewer_left_is_forgotten_and_opened_again(ui):
+    "Ctrl+c in the viewer ends the pane without the Ui hearing of it."
+    me = ui.agent.host.tmux_pane = Me()
+    _submit(ui, '/pane')
+    me.made[0].alive = False
+    _submit(ui, '/pane')
+    assert len(me.splits) == 2 and ui.pane is me.made[1], 'a dead pane is not "already open"'
+    me.made[1].alive = False
+    _submit(ui, '/pane off')
+    assert ui.pane is None and not me.made[1].killed and 'already closed' in _said(ui)
+
+
+def test_a_change_the_throttle_dropped_while_idle_is_flushed_by_the_next_tick(ui, monkeypatch):
+    wrote = []
+    monkeypatch.setattr(cli, 'write_snapshot', lambda agent, path: wrote.append(path))
+    ui.write_now(force=True)
+    ui.agent.activity.start('read_file', {'path': 'a.py'})
+    assert len(wrote) == 1 and ui.turn is None, 'inside the window: dropped'
+    ui._now_at -= cli.PANE_EVERY
+    async def tick():
+        task = asyncio.ensure_future(ui.animate())
+        await asyncio.sleep(.25)
+        task.cancel()
+    asyncio.run(tick())
+    assert len(wrote) == 2, 'the next tick writes what was dropped, with no turn running'
+
+
+def test_with_tmux_turned_off_pane_says_so(ui):
+    ui.agent.host._tmux = False
+    _submit(ui, '/pane')
+    assert '--tmux off' in _said(ui) and 'another terminal' in _said(ui)
 
 
 def test_outside_tmux_pane_prints_the_command_to_run(ui):
