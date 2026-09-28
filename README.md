@@ -145,7 +145,8 @@ The keys:
 | key | what it does |
 |----|----|
 | `enter` | send. Mid-turn it steers: the running turn reads the line after its current tool call. A line with an `@path`, or sent while something is attached, waits for the next turn instead. `tab` completes a `/command` or an `@path` |
-| `alt+enter` | mid-turn, queue the line as the next turn. On macOS, set the terminal’s Option key to send Meta |
+| `shift+enter` | mid-turn, queue the line as the next turn. Inside tmux, add `set -g extended-keys on` to `~/.tmux.conf`, and `set -g extended-keys-format csi-u` on tmux 3.5 or later |
+| `shift+tab` | cycle approvals: `ask`, `edits`, `auto`, and round again. The mode sits at the left of the row under the bar |
 | `ctrl+t` | show or hide the plan |
 | `ctrl+p`, `ctrl+n` | walk the prompts you have sent |
 | `up`, `down`, `ctrl+r` | browse the transcript. `pgup`, `pgdn`, `/?` to search, `y` to copy a block, `esc` to leave |
@@ -169,7 +170,7 @@ Write tools are gated, and `--approve` chooses how.
 | `off`  | writes are refused                                |
 | `none` | no gate exists at all                             |
 
-At a prompt, `y` approves, `n` refuses, `a` approves everything for the rest of the session, and `ctrl+y` approves with a note. Typing a reason and pressing enter refuses with that reason. `ctrl+g` moves one step stricter, from `auto` to `ask` to `off`, and never the other way. `/approve MODE` moves in either direction and answers whatever was already waiting.
+At a prompt, `y` approves, `n` refuses, `a` approves everything for the rest of the session, and `ctrl+y` approves with a note. Typing a reason and pressing enter refuses with that reason. `shift+tab` cycles `ask`, `edits`, `auto` and back to `ask`, and from `off` comes back in at `ask`. `ctrl+g` moves one step stricter, from `auto` to `ask` to `off`, and never the other way. `/approve MODE` moves in either direction and answers whatever was already waiting.
 
 The gated tools are the ones with an effect: `replace_text`, `create_file`, `edit_cell`, `add_cell`, `run_python`, `run_shell`, `run_shell_bg`, `memory_forget`, `create_skill`, `cancel_watch`, `add_root`, `cart_add`, `cart_remove`, the git writes `git_commit`, `git_checkout`, `git_stash` and `git_remote`, and `edit_file` when `--optin exhash` offers it. Git goes through those tools: `run_shell` refuses `git commit|push|pull|fetch|stash|switch|checkout` and names the tool, and every git write is snapshotted so `/rewind` can undo it. The same gated call three times running, whatever the mode, is put to you as a question rather than run or refused again.
 
