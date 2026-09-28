@@ -33,7 +33,7 @@ from shalya.tools import OPTIN, group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS)
+                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool)
 from .monitor import Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -721,7 +721,7 @@ SMALL_RULES = (
     ('notebook_cells', 'Never use `view_file` or `replace_text` on an `.ipynb`: call `notebook_cells` on its exact path, then `view_cell` and `edit_cell` by cell id.'),
     ('run_shell', 'Check your work with `run_shell`: run the project’s own tests after an edit. Only commands that exit on their own.'),
     ('run_python', '`run_python` shares the user’s kernel: read anything, bind results to NEW names, never rebind theirs.'),
-    ('git_status', 'Git goes through `git_status`, `git_diff` and `git_commit`; `run_shell` refuses `git commit|push|pull|checkout`.'),
+    ('git_status', 'Git goes through `git_status`, `git_diff` and `git_commit`; `run_shell` refuses `git commit`.'),
     (None, 'Make the change the user asked for and no other. Never reformat or “improve” code you were not asked to touch.'),
     (None, 'Writes may be put to the user for approval. A refusal comes back with their reason: change the approach, do not retry the same call.'),
     (None, 'Write, edit and run only inside the folders above.'),
@@ -1015,6 +1015,7 @@ class Agent:
         if profile not in PROFILES: raise ValueError(f'profile must be one of {", ".join(PROFILES)}, not {profile!r}')
         self.profile_choice = profile      # what was asked for; `profile` is what the turn model resolves it to
         self.instruction_style, self.optin = instruction_style, tuple([optin] if isinstance(optin, str) else optin)
+        if (bad := set(self.optin) - set(OPTIN)): raise ValueError(f'unknown optin {sorted(bad)}; one of {", ".join(OPTIN)}')
         self.history_name = history_name
         self.session_id = f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")}'
         self.turn_seq, self.current_turn_id = 0, ''
@@ -1323,7 +1324,7 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
     small = profile == 'small'
     key = (budget.tool_max, tuple(budget.drop), bool(full), small)
     if key not in self._catalogs:
-        extra = [] if small else list(self.registry.tools)
+        extra = [t for t in self.registry.tools if not small or getattr(t, 'small', False)]   # `small_tool` marks an extension tool the small profile offers
         if not small and 'memory' not in self.host.provides: extra += note_tools(self.note_memory)
         if full and not small:
             if self.subagents:
@@ -1334,9 +1335,10 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
                                         background=self.background, get_log_dir=lambda: self.runs_dir)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
-                          drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=() if small else self.optin)
-        if small:   # the fourteen, then what the user opted in by name
-            built = [t for t in built if getattr(t, '__name__', '') in SMALL_TOOLS] + [t for name in self.optin for t in OPTIN[name](self.host, budget.tool_max)]
+                          drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
+        if small:   # the fourteen, the opt-in groups the user named, and the marked extension tools; all built by the one path above
+            keep = set(SMALL_TOOLS) | {getattr(t, '__name__', '') for t in extra} | {getattr(t, '__name__', '') for name in self.optin for t in OPTIN[name](self.host, budget.tool_max)}
+            built = [t for t in built if getattr(t, '__name__', '') in keep]
         self._catalogs[key] = ToolCatalog(built)
     return self._catalogs[key]
 
@@ -1768,6 +1770,9 @@ def start(self:Agent):
         return None
     # from the backend that is running, not from the routing table
     self.note = f'{model_note(b.spec)} · {len(self.tools)} tools'
+    if self.profile == 'small' and self.profile_choice == 'auto' and not getattr(self, '_profile_noted', False):   # once: why the tool list is short
+        self._profile_noted = True
+        self.host.note(f"small profile: {b.spec.name} is {'local' if b.spec.local else '≤32k'} — {len(self.tools)} tools, warm start {'on' if self.warm else 'off'}; --profile full for everything")
     return b
 
 # %% ../nbs/03_agent.ipynb #ab4e5dfb

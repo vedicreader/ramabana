@@ -6,8 +6,8 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 
 # %% auto #0
 __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP', 'SUB_SP', 'NO_SUB', 'ASYNC_MAX',
-           'ASYNC_KEEP', 'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'ToolEntry', 'ToolCatalog',
-           'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'delegate', 'delegate_many', 'Background',
+           'ASYNC_KEEP', 'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'small_tool', 'ToolEntry',
+           'ToolCatalog', 'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'delegate', 'delegate_many', 'Background',
            'named_skills', 'subagent_tools', 'parse_plan_items', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS',
            'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host',
            'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE',
@@ -112,6 +112,11 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_s
     image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
              if image_available() and host.writes and 'image' not in set(drop or ()) else None)
     return _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image, optin=optin)
+
+def small_tool(f):
+    "Mark an extension tool as one the small profile offers too. Unmarked registry tools stay out of a small catalog."
+    f.small = True
+    return f
 
 @dataclass(frozen=True)
 class ToolEntry:

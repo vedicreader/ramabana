@@ -8,9 +8,10 @@ import json
 
 import pytest
 
-from ramabana.agent import WARM_SMALL_CHARS, Agent
+from ramabana.agent import GIT_SHELL, WARM_SMALL_CHARS, Agent, git_shell_denial
 from ramabana.core import PROFILES, SMALL_PROFILE_CTX, SMALL_TOOLS, ModelSpec, profile_for
 from ramabana.testing import FullHost, fake_agent
+from ramabana.tools import small_tool
 
 LOCAL = ModelSpec('gemma-e4b', 'litert', 'litert-community/gemma-4-E4B-it-litert-lm', 16_384)
 BIG = ModelSpec('sonnet', 'remote', 'claude-sonnet-4-5', 200_000)
@@ -144,3 +145,55 @@ def test_the_cli_carries_the_flag(tmp_path):
     assert cli.main.__wrapped__('hi', warm=True, no_warm=True, root=str(tmp_path)) == 2   # the flags contradict
     a, _ = cli.mk_agent([str(tmp_path)], approve='none', web=False, warm=False, profile='small', host_kw=dict(index=False))
     assert a.profile == 'small' and names(a) <= set(SMALL_TOOLS)
+
+
+# -- fix round 1 ----------------------------------------------------------------------------
+
+def test_the_small_briefings_git_claim_matches_what_run_shell_refuses(host):
+    "Only `git_commit` is offered, so `git_shell_denial` refuses only `git commit`; the rule must not promise more."
+    sp = mk(host, LOCAL).system_prompt()
+    assert 'refuses `git commit`' in sp and 'push' not in sp and 'checkout' not in sp and 'stash' not in sp
+    for sub, tool in GIT_SHELL.items():
+        refused = bool(git_shell_denial(f'git {sub} x', tools=set(SMALL_TOOLS)))
+        assert refused == (tool in SMALL_TOOLS), (sub, tool)
+    assert git_shell_denial('git commit -m x', tools=set(SMALL_TOOLS)) and not git_shell_denial('git push', tools=set(SMALL_TOOLS))
+
+
+def test_a_registry_tool_marked_small_reaches_the_small_catalog(host):
+    "An embedder's own tools (a steering refusal, a canvas) stay reachable when they say so; the rest stay out; the full catalog is unchanged."
+    @small_tool
+    def user_steering(reason: str) -> str:
+        "Refuse and say why."
+        return reason
+    def canvas_show(path: str) -> str:
+        "Show a canvas."
+        return path
+    assert user_steering.small is True and not getattr(canvas_show, 'small', False)
+    a = mk(host, LOCAL); a.registry.tool(user_steering); a.registry.tool(canvas_show)
+    assert names(a) == set(SMALL_TOOLS) | {'user_steering'}
+    b = mk(host, BIG); b.registry.tool(user_steering); b.registry.tool(canvas_show)
+    assert {'user_steering', 'canvas_show'} <= names(b) and len(names(b)) == len(names(mk(host, BIG))) + 2
+
+
+def test_optin_names_are_checked_at_construction(host):
+    with pytest.raises(ValueError, match='nope'): Agent(host, extensions=False, optin=('nope',))
+    with pytest.raises(ValueError, match='exhash'): Agent(host, extensions=False, optin='nope')
+    assert mk(host, LOCAL, optin='exhash').optin == ('exhash',)
+
+
+def test_auto_small_says_so_once_at_start_up(host):
+    "The start-up line names the model and the reason, so a short tool list is not a mystery. Once; never when the profile was asked for."
+    from ramabana.testing import FakeBackend
+    def agent(**kw):
+        a, be = fake_agent(host, replies=['ok'], **kw)
+        a.routing.spec = lambda job='turn', fallback=True: LOCAL
+        be.spec = LOCAL
+        return a
+    a = agent(profile='auto'); a.start(); a.start()
+    lines = [n for n in host.notes if n.startswith('small profile:')]
+    assert len(lines) == 1 and 'gemma-e4b is local' in lines[0] and '14 tools' in lines[0] and 'warm start off' in lines[0] and '--profile full' in lines[0]
+    host.notes.clear()
+    b = agent(); b.start()
+    assert not [n for n in host.notes if n.startswith('small profile:')]                 # full says nothing
+    c = agent(profile='small'); c.start()
+    assert not [n for n in c.host.notes if n.startswith('small profile:')]                 # asked for explicitly: nothing to explain
