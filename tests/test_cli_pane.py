@@ -1,0 +1,149 @@
+"The `now` pane: the Ui keeps `<runs_dir>/now.json` fresh, and `/pane` opens a tmux split that draws it."
+import asyncio, os, shlex
+
+import pytest
+from teleprint.compositor import Compositor
+from teleprint.testing import EmuTty
+
+import ramabana.cli as cli
+from ramabana.cli import Ui, amain, main
+from ramabana.pane import read_snapshot
+from ramabana.testing import fake_agent
+
+
+def _ui(cfg):
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty)
+    comp._register_signals = lambda: None
+    asyncio.run(comp.start())
+    return Ui(comp, fake_agent(cfg=cfg)[0]), tty
+
+@pytest.fixture
+def ui(tmp_path):
+    u, tty = _ui(tmp_path)
+    yield u
+    tty.close()
+
+class Pane:
+    def __init__(self, id): self.id, self.killed = id, False
+    def kill(self): self.killed = True
+
+class Me:
+    "This session's tmux pane: it records the splits it is asked for."
+    def __init__(self): self.splits, self.made = [], []
+    def split(self, where='right', cmd=None, size=None, **kw):
+        self.splits.append((where, cmd, size))
+        self.made.append(Pane(f'%{40 + len(self.made)}'))
+        return self.made[-1]
+
+def _said(u): return ' '.join(u.transcript.block_text(b) for b in u.comp.blocks.values())
+
+def _submit(u, line):
+    u.buf.text = line
+    return u.submit()
+
+
+def test_the_snapshot_is_throttled_while_calls_change_and_written_idle_when_the_turn_ends(ui, monkeypatch):
+    wrote = []
+    real = cli.write_snapshot
+    monkeypatch.setattr(cli, 'write_snapshot', lambda agent, path: (wrote.append(path), real(agent, path)))
+    act = ui.agent.activity.start('read_file', {'path': 'a.py'})
+    ui.agent.activity.finish(act, 'ok')
+    assert len(wrote) == 1, 'two changes inside 0.2s are one write'
+    assert wrote[0] == ui.agent.runs_dir/'now.json'
+    ui._now_at -= cli.PANE_EVERY
+    ui.agent.activity.start('grep', {'pattern': 'x'})
+    assert len(wrote) == 2, 'a change after the window writes again'
+
+    async def turn(): return await cli.run_turn(ui, 'hello')
+    asyncio.run(turn())
+    assert len(wrote) >= 3, 'the turn ending writes even inside the window'
+    snap = read_snapshot(wrote[-1])
+    assert snap['busy'] is False and snap['root']['state'] != 'running', 'and what it writes is idle'
+
+
+def test_nothing_is_written_without_a_runs_dir(monkeypatch):
+    u, tty = _ui(None)
+    wrote = []
+    monkeypatch.setattr(cli, 'write_snapshot', lambda agent, path: wrote.append(path))
+    u.agent.activity.start('read_file', {'path': 'a.py'})
+    u.write_now(force=True)
+    assert wrote == [] and u.agent.runs_dir is None
+    u.agent.host.tmux_pane = Me()
+    _submit(u, '/pane')
+    assert u.pane is None and u.agent.host.tmux_pane.splits == [] and 'runs' in _said(u)
+    tty.close()
+
+
+def test_pane_opens_once_in_a_right_split_and_off_kills_it(ui):
+    me = ui.agent.host.tmux_pane = Me()
+    assert _submit(ui, '/pane') is None
+    path = ui.agent.runs_dir/'now.json'
+    assert me.splits == [('right', cli.pane_cmd(path), '35%')], 'tmux split-window -h -l 35%'
+    assert shlex.split(cli.pane_cmd(path))[-1] == str(path)
+    assert ui.pane is me.made[0] and read_snapshot(path) is not None, 'the id is kept and the file is there to draw'
+    _submit(ui, '/pane')
+    assert len(me.splits) == 1 and 'already open' in _said(ui)
+    _submit(ui, '/pane off')
+    assert me.made[0].killed and ui.pane is None
+    _submit(ui, '/pane off')
+    assert 'no pane' in _said(ui)
+    _submit(ui, '/pane')
+    assert len(me.splits) == 2 and ui.pane is me.made[1], 'it opens again after off'
+
+
+def test_outside_tmux_pane_prints_the_command_to_run(ui):
+    _submit(ui, '/pane')
+    assert ui.pane is None and 'another terminal' in _said(ui)
+    assert str(ui.agent.runs_dir/'now.json') in _said(ui)
+
+
+def test_the_pane_command_runs_the_viewer():
+    cmd = shlex.split(cli.pane_cmd('/tmp/now.json'))
+    assert cmd[-1] == '/tmp/now.json'
+    assert os.path.basename(cmd[0]) == 'ramabana-pane' or cmd[1:3] == ['-m', 'ramabana.pane']
+
+
+def test_pane_modes_at_startup(ui):
+    ui.start_pane('auto')
+    assert ui.pane is None and 'tmux' not in _said(ui), 'auto outside tmux stays quiet'
+    ui.start_pane('on')
+    assert ui.pane is None and 'another terminal' in _said(ui), 'on outside tmux says why not'
+    me = ui.agent.host.tmux_pane = Me()
+    ui.start_pane('off')
+    assert me.splits == []
+    ui.start_pane('auto')
+    assert len(me.splits) == 1 and ui.pane is me.made[0]
+
+
+def test_an_unknown_pane_flag_is_refused(capsys):
+    assert main(prompt='hi', pane='sideways') == 2
+    assert '--pane' in capsys.readouterr().err
+    assert 'pane' in cli.SURFACE_COMMANDS and '/pane' in cli.HELP
+
+
+class PipeTty(EmuTty):
+    "An emulated terminal with a real fd, so `amain` can wait on its keys."
+    def __init__(self, *a):
+        super().__init__(*a)
+        self.fd, self.w = os.pipe()
+        os.set_blocking(self.fd, False)
+    def read(self, timeout=None):
+        try: more = os.read(self.fd, 4096)
+        except BlockingIOError: more = b''
+        return super().read() + more
+
+
+def test_the_session_opens_the_pane_in_tmux_and_quitting_closes_it(tmp_path, monkeypatch):
+    tty = PipeTty(80, 24)
+    monkeypatch.setattr(cli, 'RealTty', lambda: tty)
+    monkeypatch.setattr(Compositor, '_register_signals', lambda self: None)
+    agent = fake_agent(cfg=tmp_path)[0]
+    me = agent.host.tmux_pane = Me()
+    async def go():
+        loop = asyncio.get_running_loop()
+        loop.call_later(.5, os.write, tty.w, b'\x04')
+        await asyncio.wait_for(amain(agent, pane='auto'), 10)
+    asyncio.run(go())
+    assert len(me.made) == 1 and me.made[0].killed, 'auto opened it inside tmux; ctrl+d took it down with the session'
+    tty.close()

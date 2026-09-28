@@ -7,17 +7,17 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 # %% auto #0
 __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEMES', 'CODE_THEMES', 'KAKU', 'GRUVBOX',
            'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'NOTIFY_EVERY', 'FOLD_RUNNING',
-           'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'FLASH_FOR', 'MAX_GROUP_ROWS', 'MOUSE_ON', 'MOUSE_OFF',
-           'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING',
-           'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW',
-           'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO',
-           'NOT_ANSWER', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'code_theme', 'code_bg',
-           'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
-           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size',
-           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
-           'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'parse_answer', 'ask_pattern', 'ThemedCode',
-           'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain', 'headless_prompt', 'ask_once', 'main', 'MAX_MEDIA',
-           'MAX_ATTACH']
+           'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS',
+           'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'CLIP_IMAGE',
+           'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS',
+           'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
+           'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS',
+           'TMUX_MODES', 'PANE_MODES', 'code_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text',
+           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
+           'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn',
+           'Ui', 'parse_answer', 'ask_pattern', 'ThemedCode', 'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain',
+           'headless_prompt', 'ask_once', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, subprocess, sys, tempfile, threading, time
@@ -43,6 +43,7 @@ from teleprint.widgets import CompletionMenu, Tooltip
 from .core import PII_MODES, PII_OFF, PROFILES, accepts, agent_err, env, model_note
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, subject
+from .pane import write_snapshot
 from datetime import datetime
 from . import __version__
 
@@ -233,11 +234,12 @@ ACT_EVERY = 0.05
 FOLD_STEP = 1
 STREAM_EVERY = 0.05
 ACT_TAIL = 3
+PANE_EVERY = 0.2  # seconds between writes of the pane's `now.json`
 FLASH_FOR = 2.0   # seconds a flash above the prompt stays up before it clears itself
 MAX_GROUP_ROWS = 8
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
-                    'join', 'kernels', 'mouse', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
+                    'join', 'kernels', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
 
 HELP = """normal  enter send, or mid-turn steer it · alt+enter queue for after the turn · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
@@ -251,7 +253,7 @@ approve y approve · n ⏎ refuse · n: REASON ⏎ refuse with a reason · a app
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
-extra   /root · /root add PATH to open another folder · /theme · /mouse to click blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
+extra   /root · /root add PATH to open another folder · /pane opens what the agent and its sub-agents are doing in a tmux split · /pane off · /theme · /mouse to click blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
 subagent /subagents shows whether delegated work may write · /subagents on|off changes it for this session
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
@@ -659,6 +661,7 @@ async def run_turn(ui, prompt):
             blk = ui.stream(blk, chunk)
     finally:
         ui.turn = None
+        ui.write_now(force=True)
         ui.flush_stream()          # the throttle may still owe the last chunk a render
         ui._seg_blk = None         # the answer is final: no later chunk grows it
         ui.show_media(ui.agent.resp_media)   # the tools' own pictures were drawn as they landed
@@ -672,6 +675,8 @@ async def run_turn(ui, prompt):
     return blk
 
 # %% ../nbs/05_cli.ipynb #2874a64d
+def _now_file(agent): return None if (d := agent.runs_dir) is None else d/'now.json'
+
 class Ui:
     "The terminal surface: a transcript of blocks, a status bar, and one line to type in."
 
@@ -688,6 +693,8 @@ class Ui:
         self._flash = None         # (text, when it expires): what happened, not what is pending
         self._queued_echo = []     # what a queued line printed, held for when it runs
         self._hold = False         # alt+enter: a line typed mid-turn waits for the turn rather than steering it
+        self.pane = None           # the tmux pane drawing `now.json`, or None
+        self._now_at, self._now_busy = 0.0, False   # the last `now.json` write, and whether it caught the agent busy
         self._echoed = []          # (block, body, kind, kw) for the line just typed
         self.acts = {}             # act id -> its block, for calls that have one of their own
         self.by_id = {}            # act id -> the `Act`, while it may still need redrawing
@@ -871,6 +878,17 @@ class Ui:
                 self.frame += 1
                 self.flush_stream()   # a model that stalls mid-prose must not leave its last words unseen
                 self.paint()
+            if self.turn is not None or self._now_busy: self.write_now()
+
+    def write_now(self, force=False):
+        "Write `now.json` for the pane, at most every `PANE_EVERY` seconds unless `force`."
+        if (p := _now_file(self.agent)) is None: return
+        t = time.monotonic()
+        if not force and t - self._now_at < PANE_EVERY: return
+        self._now_at = t
+        try: write_snapshot(self.agent, p)
+        except OSError: return
+        self._now_busy = self.agent.busy
 
     ASKING, PY_LABEL, CONT = 'approve? [y/n/a · n: reason] ', 'python › ', '...      '
 
@@ -1968,7 +1986,7 @@ def mk_agent(roots=('.',),
     return agent, host
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
-async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True):
+async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto'):
     "The tty loop: one terminal, one event loop, one place that owns the keyboard."
     tty = RealTty()
     tty.write('\x1b[?2004h')
@@ -1999,6 +2017,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         elif python or agent_proxy:
             await ui.enter_python()
             if agent_proxy: await ui.enable_agent_proxy()
+        ui.start_pane(pane)
         ui.paint()
         loop = asyncio.get_running_loop()
         loop.add_reader(tty.fd, lambda: comp.on_bytes(tty.read(timeout=0)))
@@ -2010,6 +2029,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
             loop.remove_reader(tty.fd)
             comp.stop()
     finally:
+        if ui is not None: ui.close_pane()
         tty.write('\x1b[?2004l' + MOUSE_OFF + '\r\n')
         tty.restore()
         agent.close()
@@ -2038,6 +2058,7 @@ def ask_once(agent, prompt, as_json=False):
 
 # %% ../nbs/05_cli.ipynb #ce629efa
 TMUX_MODES = {'auto': None, 'on': True, 'off': False}
+PANE_MODES = ('auto', 'on', 'off')
 
 @call_parse(pos=['prompt'])
 def main(
@@ -2064,6 +2085,7 @@ def main(
     json: bool = False,                  # with a prompt: print reply, usage, changes, activity, problems and session as JSON
     bell: bool = True,                   # --no-bell keeps the terminal quiet when a turn ends or an approval waits
     tmux: str = 'auto',                  # auto | on | off: read sibling panes and run background commands in panes
+    pane: str = 'auto',                  # auto | on | off: the `now` pane of what the agent and its sub-agents are doing. auto opens it inside tmux
     warm: bool = False,                  # seed the chat with dhrona's example rounds even in the small profile, which starts cold
     no_warm: bool = False,               # start with an empty chat instead of dhrona's example rounds
     optin: str = '',                     # shalya's opt-in tool groups, comma separated: exhash,research,author
@@ -2094,6 +2116,9 @@ def main(
             return 2
     if tmux not in TMUX_MODES:
         print(f"unknown --tmux {tmux!r}; choose one of {', '.join(TMUX_MODES)}", file=sys.stderr)
+        return 2
+    if pane not in PANE_MODES:
+        print(f"unknown --pane {pane!r}; choose one of {', '.join(PANE_MODES)}", file=sys.stderr)
         return 2
     if profile not in PROFILES:
         print(f"unknown --profile {profile!r}; choose one of {', '.join(PROFILES)}", file=sys.stderr)
@@ -2132,7 +2157,7 @@ def main(
         print(f'no model available: {agent.note}', file=sys.stderr)
     if prompt: return sys.exit(ask_once(agent, prompt, as_json=json))
     hint = f"{', '.join(host.roots)} · /python · /help"
-    try: asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell))
+    try: asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane))
     except KeyboardInterrupt: pass
 
 # %% ../nbs/05_cli.ipynb #240c918c
@@ -2238,8 +2263,11 @@ def open_root(self:Ui, path=''):
 _submit_theme = Ui.submit
 @patch
 def submit(self:Ui):
-    "Handle the UI-owned `/theme` and `/root` commands before ordinary terminal commands."
+    "Handle the UI-owned `/theme`, `/root` and `/pane` commands before ordinary terminal commands."
     line = self.buf.text.strip()
+    if line == '/pane' or line.startswith('/pane '):
+        self.buf.clear()
+        return self.open_pane(line[len('/pane'):].strip())
     if line == '/root' or line.startswith('/root '):
         self.buf.clear()
         return self.open_root(line[len('/root'):].strip())
@@ -2291,3 +2319,49 @@ def on_key(self:Ui, k):
         return self.stop()
     return _ui_on_key(self, k)
 
+
+# %% ../nbs/05_cli.ipynb #8c13dc8a
+def pane_cmd(path):
+    "The shell line that draws the `now` pane for `path`."
+    exe = shutil.which('ramabana-pane')
+    return shlex.join([exe, str(path)] if exe else [sys.executable, '-m', 'ramabana.pane', str(path)])
+
+def _tmux_pane(host):
+    "The tmux pane `host` runs in, or None outside tmux or with `--tmux off`."
+    try: return getattr(host, 'tmux_pane', None)
+    except Exception: return None
+
+_act_now = Ui._act
+@patch
+def _act(self:Ui, act):
+    out = _act_now(self, act)
+    self.write_now()
+    return out
+
+@patch
+def open_pane(self:Ui, arg=''):
+    "`/pane` opens the `now` pane in a tmux split on the right; `/pane off` closes it."
+    if arg == 'off': return self.note(self.close_pane() or 'no pane is open')
+    if arg: return self.note('usage: /pane [off]', 'error')
+    if (p := _now_file(self.agent)) is None: return self.note('the pane reads <cfg>/runs, and this session has no --cfg', 'error')
+    if self.pane is not None: return self.note(f'the pane is already open in {self.pane.id} · /pane off closes it')
+    self.write_now(force=True)
+    cmd = pane_cmd(p)
+    if (me := _tmux_pane(self.agent.host)) is None: return self.note(f'no tmux here; in another terminal run: {cmd}')
+    try: self.pane = me.split('right', cmd, size='35%')
+    except Exception as e: return self.note(f'the pane did not open ({agent_err(e)}); in another terminal run: {cmd}', 'error')
+    return self.note(f'the pane is open in {self.pane.id} · /pane off closes it')
+
+@patch
+def close_pane(self:Ui):
+    "Kill the `now` pane: what was closed, or '' when none was open."
+    if (p := self.pane) is None: return ''
+    self.pane = None
+    try: p.kill()
+    except Exception: pass
+    return f'closed the pane {p.id}'
+
+@patch
+def start_pane(self:Ui, mode='auto'):
+    "The session's first pane: `on` tries and says why not, `auto` opens it only inside tmux with a runs dir, `off` never."
+    if mode == 'on' or (mode == 'auto' and _now_file(self.agent) and _tmux_pane(self.agent.host)): self.open_pane()
