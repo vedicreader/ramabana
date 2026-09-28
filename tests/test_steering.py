@@ -137,11 +137,14 @@ def _type(u, text, key='enter'):
 async def _slow(): await asyncio.sleep(.05)
 
 
-def test_enter_mid_turn_steers_the_running_root(ui):
+def test_enter_mid_turn_steers_the_running_root(ui, monkeypatch):
+    # a flash expires by the clock, and a cold worker's first paint can outlast `FLASH_FOR`
+    monkeypatch.setattr(Ui.flash, '__defaults__', (60,))
     async def go():
         ui.start_turn(_slow())
         run = ui.agent._new_run('q')
         assert _type(ui, 'also check the tests') is None
+        assert ui._flash[0] == 'sent · read after the current call'
         assert run.inbox == ['also check the tests'], 'told, not queued'
         assert ui._queued is None and not [r for r in _rows(ui) if '⏳' in r]
         assert '↪ also check the tests' in _said(ui), 'echoed, marked as steering'
