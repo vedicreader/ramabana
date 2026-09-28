@@ -140,7 +140,7 @@ def _resumed_acts(acts):
     "Persisted tool calls as text, for a context rebuilt from the log rather than a snapshot."
     rows = []
     for a in acts or ():
-        if not isinstance(a, dict) or not a.get('tool'): continue
+        if not isinstance(a, dict) or not a.get('tool') or a.get('parent_action_id'): continue   # a sub-agent's call was its model's, not this one's
         args = ', '.join(f'{k}={_1(v, 300) if isinstance(v, str) else v}' for k, v in (a.get('args') or {}).items())
         row = f"- {a['tool']}({args})" + ('' if a.get('ok', True) else '  [failed]')
         if a.get('detail'): row += '\n' + _indent(_clip(a['detail'], RESUME_DETAIL))
@@ -192,6 +192,10 @@ class Activity:
         self._mark = len(self.acts)
         if turn_id: self.turn_id = str(turn_id)
         return self._mark
+
+    def window(self):
+        "Every act and the turn mark, read together."
+        with self._lock: return list(self.acts), self._mark
 
     def since(self, mark=None):
         return self.acts[(self._mark if mark is None else mark):]
@@ -1228,10 +1232,11 @@ def _record(self:Agent, f):
     @functools.wraps(f)   # both backends build the tool schema from the real signature
     def wrapper(*a, **kw):
         args = _named(f, a, kw)
-        self._tool_calls_turn += 1
-        if self.max_tool_calls is not None and self._tool_calls_turn > self.max_tool_calls:
-            return ('Tool-call budget exhausted for this turn. Stop calling tools and '
-                    'summarise the evidence and unfinished work now.')
+        if getattr(current_run(), 'kind', 'root') == 'root':   # a sub-agent's calls are capped by `read_only`, not the turn's budget
+            self._tool_calls_turn += 1
+            if self.max_tool_calls is not None and self._tool_calls_turn > self.max_tool_calls:
+                return ('Tool-call budget exhausted for this turn. Stop calling tools and '
+                        'summarise the evidence and unfinished work now.')
         denied, rewritten = None, False
         for r in (self._deny_git_shell(name, args), *self.registry.fire('before_tool', self, name, args)):
             if isinstance(r, str): denied = denied or r
@@ -1240,10 +1245,7 @@ def _record(self:Agent, f):
         if rewritten and writing and self.approvals is not None and not (ask := self.approvals.request(name, args)).answer:
             return err(ask.reply())   # already on the activity: the gate's recorder put it there
         self.calls.append((name, args))
-        meta = self._action_meta(name, args)
-        act = self.activity.start(name, args, summary=summarise(f, args), **meta)
-        run = current_run()
-        if run is not None: run.write(f'> {act.summary}')
+        act = self._open_act(f, name, args)
         if denied:
             self.activity.finish(act, denied, ok=False)
             return err(denied)
@@ -1275,12 +1277,40 @@ def _record(self:Agent, f):
         if failed(out):   # refused or failed: not a change
             for p in fresh: self.before.pop(p, None); self.new.discard(p); self.binary.discard(p)
         if name in GIT_WRITE_TOOLS and not failed(out): self._keep_undo(name, out)
-        self.activity.finish(act, out, ok=not failed(out))   # one spelling of failure, in one place
-        if run is not None: run.write(f"< {name} {'ok' if not failed(out) else 'ERR'} {_1(out, 200)}")
-        return out
+        return self._close_act(act, out)
     wrapper._recorded = (self, wrapper)
     # `wraps` copied `f.read_only`; a read-only view swaps that copy in, so it is recorded as well
     if (ro := getattr(f, 'read_only', None)) is not None: wrapper.read_only = self._record(ro)
+    return wrapper
+
+
+@patch
+def _open_act(self:Agent, f, name, args):
+    "Start the act for one call, and note it in the transcript of the run making it."
+    act = self.activity.start(name, args, summary=summarise(f, args), **self._action_meta(name, args))
+    if (run := current_run()) is not None: run.write(f'> {act.summary}')
+    return act
+
+@patch
+def _close_act(self:Agent, act, out):
+    "Finish `act` with `out`, which it returns. One spelling of failure, in one place."
+    self.activity.finish(act, out, ok=not failed(out))
+    if (run := current_run()) is not None: run.write(f"< {act.tool} {'ok' if not failed(out) else 'ERR'} {_1(out, 200)}")
+    return out
+
+@patch
+def _observe(self:Agent, f):
+    "Wrap a read-only sub-agent tool so its call is on the activity, for display only: no hooks, gate or budget."
+    name = getattr(f, '__name__', '?')
+    @functools.wraps(f)
+    def wrapper(*a, **kw):
+        act = self._open_act(f, name, _named(f, a, kw))
+        try: out = f(*a, **kw)
+        except Exception as e:
+            self.activity.finish(act, agent_err(e), ok=False)
+            raise
+        return self._close_act(act, out)
+    if (ro := getattr(f, 'read_only', None)) is not None: wrapper.read_only = self._observe(ro)
     return wrapper
 
 
@@ -1378,9 +1408,9 @@ def _sub_plain(self:Agent):
 
 @patch
 def _sub_tools(self:Agent):
-    "`_sub_plain` for a delegation, recorded, so a read-only sub-agent's calls reach the activity too."
+    "`_sub_plain` for a delegation, so a read-only sub-agent's calls reach the activity too."
     tools = self._sub_plain()
-    return tools if self.subagent_writes else [self._record(t) for t in tools]
+    return tools if self.subagent_writes else [self._observe(t) for t in tools]
 
 # %% ../nbs/03_agent.ipynb #76e57894
 @patch(as_prop=True)

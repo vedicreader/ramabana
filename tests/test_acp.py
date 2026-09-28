@@ -542,3 +542,26 @@ def test_a_gated_edit_reaches_the_editor_as_the_diff_it_would_make(tmp_path):
     assert third, 'an edit that cannot be replayed still shows the preview'
     assert reads and all(t != shown[0][0] for t in reads), 'the host is read on the turn thread, not the editor loop'
     s.close()
+
+
+def test_a_sub_agent_call_is_not_its_own_tool_call_in_the_editor(tmp_path):
+    "The editor already shows the delegate call; its sub-agent's reads are that call's, not new ones."
+    from ramabana.racp import Session
+    sent = []
+
+    class Conn:
+        async def session_update(self, session_id, update, **kw): sent.append(update)
+
+    async def go():
+        s = Session([str(tmp_path)], Conn(), asyncio.get_running_loop(), timeout=10, cfg=tmp_path/'.cfg')
+        acts = s.agent.activity
+        parent = acts.start('delegate_search', {'questions': ['q']})
+        kid = acts.start('view_file', {'path': 'a.py'}, parent_action_id=parent.id, run_id='run_x')
+        acts.finish(kid, 'def a(): pass'); acts.finish(parent, 'answer')
+        await asyncio.sleep(.2)
+        return s, parent
+
+    s, parent = asyncio.run(asyncio.wait_for(go(), 60))
+    ids = {getattr(u, 'tool_call_id', None) for u in sent} - {None}
+    assert ids == {parent.id}, ids
+    s.close()

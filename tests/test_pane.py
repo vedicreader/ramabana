@@ -11,15 +11,15 @@ READ = ('view_file', {'path': '/proj/a.py'})
 ASK = ('delegate_search', {'questions': ['what does a.py define?']})
 
 
-def _delegating(a, seen, ask=ASK):
-    "A turn backend whose sub-agents read a file, snapshotting the agent while that read is still running."
-    def peek(agent, name, out):
-        if (r := current_run()) is not None and r.kind != 'root': seen.append(now_snapshot(a))
-    a.registry.on('after_tool', peek)
+def _delegating(a, seen, ask=ASK, reads=1, after=()):
+    "A turn backend whose sub-agents read a file, snapshotting the agent the moment a sub-agent read starts."
+    def peek(act):
+        if act.run_id and not act.done and current_run().kind != 'root': seen.append(now_snapshot(a))
+    a.activity.on_change = peek
     class Root(ScriptedBackend):
         def spawn(self, sp='', tools=(), **kw):
-            return ScriptedBackend(self.spec, steps=[Step(tool=READ), Step('a() is defined')], token_delay=0, tools=tools)
-    be = Root(steps=[Step(tool=READ), Step(tool=ask), Step('done')], token_delay=0, tools=a.tools, sp=a.system_prompt())
+            return ScriptedBackend(self.spec, steps=[Step(tool=READ)] * reads + [Step('a() is defined')], token_delay=0, tools=tools)
+    be = Root(steps=[Step(tool=READ), Step(tool=ask), *after, Step('done')], token_delay=0, tools=a.tools, sp=a.system_prompt())
     a._be = a._be_or_none = lambda job='turn': be
     return be
 
@@ -35,7 +35,7 @@ def test_a_snapshot_follows_a_read_only_sub_agent_and_forgets_it_at_the_next_tur
     seen = []
     be = _delegating(a, seen)
     list(a.stream('go'))
-    mid, = seen
+    mid = seen[0]
     assert mid['busy'] and mid['root']['state'] == 'running'
     assert mid['root']['steps'] == 2, 'the read and the delegate; the sub-agent read is not a root step'
     assert mid['root']['current'].startswith('Delegate')
@@ -109,3 +109,25 @@ def test_render_draws_idle_busy_and_finished_sub_agents():
     assert 'Delegate 2 questions' in out and 'Search code: fastllm' in out
     assert '▶ run_aaa' in out and '✓ run_bbb' in out and '✗ run_ccc' in out
     assert all(len(l) <= 40 for l in out.splitlines()), 'long lines are cut, not wrapped'
+
+
+def test_sub_agent_calls_spend_neither_the_root_budget_nor_its_hooks():
+    for writes in (False, True):
+        a, _ = fake_agent(max_tool_calls=20)
+        a.subagent_writes, hooked = writes, []
+        a.registry.on('before_tool', lambda agent, name, args: hooked.append(current_run().kind))
+        be = _delegating(a, [], ('delegate_search', {'questions': ['what does a.py define?', 'who imports it?', 'is it tested?']}),
+                         reads=8, after=[Step(tool=READ)])
+        list(a.stream('go'))
+        results = [m['content'] for m in be.hist_ if m['role'] == 'tool']
+        assert 'def a' in results[-1], f'24 sub-agent reads refused the root its last read (writes={writes})'
+        assert set(hooked) == ({'root', 'child'} if writes else {'root'}), 'read-only sub-agent calls are for display only'
+
+
+def test_a_resumed_turn_replays_only_the_root_calls():
+    from ramabana.agent import _resumed_acts
+    a, _ = fake_agent()
+    _delegating(a, [])
+    list(a.stream('go'))
+    out = _resumed_acts(a.history[-1]['activity'])
+    assert out.count('view_file(') == 1 and 'delegate_search(' in out

@@ -206,6 +206,7 @@ class Session:
         if self.shell: self._send(acp.update_tool_call(self.shell, content=[acp.tool_terminal_ref(tid)]))
 
     def _act(self, a):
+        if a.parent_action_id: return   # a sub-agent's call; the editor shows the delegate call it belongs to
         d = a.dict()
         k = self._key(d['tool'], d['args'])
         # reuse the gated call's id so the dialog and the tool call stay one thing in the editor
