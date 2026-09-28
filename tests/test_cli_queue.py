@@ -1,9 +1,10 @@
-"A line typed while a turn is running: held, shown as held, and run when the turn ends."
+"A line queued during a turn (alt+enter, or Enter with no root run to steer): held, shown as held, and run when the turn ends."
 
 import asyncio
 import pytest
 from fastcore.basics import first
 from teleprint.compositor import Compositor
+from teleprint.keys import Key
 from teleprint.testing import EmuTty
 
 from ramabana.cli import Ui
@@ -119,7 +120,7 @@ def test_the_message_typed_during_a_turn_actually_runs_when_it_ends():
         # both lines before yielding to the loop, so the first turn is certainly still in flight:
         # the fake agent answers instantly and a sleep here raced it
         ui.buf.insert('one'); assert ui.start_turn(ui.submit()) is True
-        ui.buf.insert('two'); assert ui.start_turn(ui.submit()) is False, 'held, not started'
+        ui.buf.insert('two'); assert ui.start_turn(ui.on_key(Key('alt+enter'))) is False, 'held, not started'
         assert ui._queued is not None
         for _ in range(80):
             await asyncio.sleep(.05)

@@ -33,7 +33,7 @@ from shalya.tools import OPTIN, group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets)
+                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed)
 from .monitor import Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -1018,6 +1018,7 @@ class Agent:
         if (bad := set(self.optin) - set(OPTIN)): raise ValueError(f'unknown optin {sorted(bad)}; one of {", ".join(OPTIN)}')
         self.history_name = history_name
         self.session_id = f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")}'
+        self.inbox_key = uuid.uuid4().hex[:8]   # every root run's key: the briefing that names it is cached for the session
         self.turn_seq, self.current_turn_id = 0, ''
         self.current_branch_id, self.checkpoints, self._branch_hist = 'main', {}, {}
         self.routing = routing or Routing(turn=model)
@@ -1407,7 +1408,8 @@ def tools(self:Agent):
         if self.approvals is not None:
             self.approvals.tools = self.approvals.tools | view.writes
             self.approvals.prune()
-        self._tools = view.map(self._record).tools
+        root = lambda: r if (r := current_run()) is self.run() else None   # a sub-agent's call leaves the root's inbox alone
+        self._tools = view.map(lambda f: _inboxed(self._record(f), root)).tools
     return self._tools
 
 
@@ -1416,9 +1418,10 @@ def tools(self:Agent):
 # %% ../nbs/03_agent.ipynb #f37435ce
 @patch
 def system_prompt(self:Agent):
-    if self._sp: return self._sp
+    note = inbox_note(self.inbox_key)
+    if self._sp: return self._sp + note
     if self._tools is None: self.tools
-    if self.profile == 'small': return small_system_prompt(self.host, tools=self._plain, cfg=self.cfg)
+    if self.profile == 'small': return small_system_prompt(self.host, tools=self._plain, cfg=self.cfg) + note
     # a skill body is 3k tokens of a 12k budget, and `read_skill` still reaches it
     inline = inline_for(self.inline_skills if self.budget.inline else (), {getattr(t, '__name__', '') for t in self._plain})
     parts = []
@@ -1432,7 +1435,7 @@ def system_prompt(self:Agent):
         parts.append('## Current plan\n\n' + self.plan.md() +
                      '\n\nWork the active todo; mark it done when finished; after a stop, '
                      'resume from the active item rather than rewriting the plan.')
-    return system_prompt(self.host, self.skills, inline, tools=self._plain, extra='\n\n'.join(parts), cfg=self.cfg)
+    return system_prompt(self.host, self.skills, inline, tools=self._plain, extra='\n\n'.join(parts), cfg=self.cfg) + note
 
 # %% ../nbs/03_agent.ipynb #bf85c66d
 MEMORY_CHARS = 4000
@@ -2774,6 +2777,7 @@ def _new_run(self:Agent, prompt):
         if current is not None and not current.terminal: raise RuntimeError('the assistant is already running')
         rid, d = f'run_{uuid.uuid4().hex[:12]}', self.runs_dir
         r = Run(rid, question=str(prompt), model=self.model.name, grace=self.cancel_grace, log=None if d is None else d/f'{rid}.log')
+        r.key = self.inbox_key
         r.write(f'question: {prompt}')
         self._runs[r.id], self._foreground = r, r.id
         for old in list(self._runs)[:-100]: self._runs.pop(old, None)
@@ -2912,6 +2916,19 @@ def tell(self:Agent, run_id, text=''):
     if not text.strip(): return 'nothing to say'
     r.tell(text)
     return f'told {run_id}'
+
+@patch
+def steer(self:Agent, text):
+    "Send `text` into the running root turn; it reads it after its next tool call. '' when no turn is listening."
+    r = self.run()
+    if r is None or r.terminal or r.cancelled or not text.strip(): return ''
+    r.tell(text)
+    return f'told {r.id}'
+
+@patch
+def leftovers(self:Agent):
+    "What the root turn was sent and never read, taken once: the next turn's to carry, or a stop's to drop."
+    return [] if (r := self.run()) is None else r.drain_inbox()
 
 def _tail(log): return f'tail -n 200 -f {shlex.quote(str(log))}'
 

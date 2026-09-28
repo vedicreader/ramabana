@@ -239,7 +239,7 @@ MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
                     'join', 'kernels', 'mouse', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
 
-HELP = """normal  enter send · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
+HELP = """normal  enter send, or mid-turn steer it · alt+enter queue for after the turn · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
 transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
 edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
@@ -687,6 +687,7 @@ class Ui:
         self._prompt = None        # the text the coroutine `submit` just built was made from
         self._flash = None         # (text, when it expires): what happened, not what is pending
         self._queued_echo = []     # what a queued line printed, held for when it runs
+        self._hold = False         # alt+enter: a line typed mid-turn waits for the turn rather than steering it
         self._echoed = []          # (block, body, kind, kw) for the line just typed
         self.acts = {}             # act id -> its block, for calls that have one of their own
         self.by_id = {}            # act id -> the `Act`, while it may still need redrawing
@@ -1023,16 +1024,31 @@ class Ui:
         self.turn.add_done_callback(lambda _t: self._next_queued())
         return True
 
+    def steer(self, line):
+        "Send `line` into the running turn, read after its current call. False when no turn of ours is listening."
+        if self.turn is None or not self.agent.steer(line): return False
+        self._retract()
+        self._echo(Text('↪ ' + line), 'user', pad=True)
+        self._echoed = []   # its turn is already running: the entry stands
+        self.flash('sent · read after the current call')
+        return True
+
     def _turn_over(self):
         "Whether the turn in flight has finished. Anything without `done()` counts as still running."
         return self.turn is not None and getattr(self.turn, 'done', bool)()
 
     def _next_queued(self):
-        "Run the line that was waiting, once the turn it was typed during has ended."
-        if self._queued is None: return
+        "Run what was waiting once the turn it was typed during has ended: steering it never read, joined with a queued line."
         if self._turn_over(): self.turn = None
         # another turn already has the surface; its own ending drains this
         if self.turn is not None: return
+        if (left := '\n\n'.join(self.agent.leftovers())):
+            if self._queued is not None and self._queued_prompt is None:   # a queued command is not a prompt to join: it runs after
+                self.start_turn(run_turn(self, left), prompt=left)
+                return self.paint()
+            if self._queued is not None: self._queued.close(); left += '\n\n' + self._queued_prompt
+            self._queued, self._queued_prompt = run_turn(self, left), left
+        if self._queued is None: return
         held, hp, echo = self._queued, self._queued_prompt, self._queued_echo
         self._queued, self._queued_prompt, self._queued_echo = None, None, []
         self._replay(echo)   # the entry belongs where the turn starts, not where it was typed
@@ -1044,10 +1060,11 @@ class Ui:
         self.paint()
 
     def drop_queued(self):
-        "Forget a waiting line. Ctrl-C means stop what is happening, and it was part of that."
-        if self._queued is None: return False
+        "Forget a waiting line and any steering the turn has not read. Ctrl-C means stop what is happening, and they were part of that."
+        unread = self.agent.leftovers()
+        if self._queued is None and not unread: return False
         # its entry left the screen when it was queued: nothing to un-draw, only to forget
-        self._queued.close()
+        if self._queued is not None: self._queued.close()
         self._queued, self._queued_prompt, self._queued_echo = None, None, []
         self.note('the waiting message was cleared')
         return True
@@ -1308,6 +1325,7 @@ class Ui:
                      kind, fold=None, source=out)
             if name in ('/plan', '/todo', '/todos'): self.show_plan = bool(self.agent.plan)
             return None
+        if not self._hold and self.steer(line): return None
         got = [self.attach(p) for p in attach_refs(line)]   # `@path` in a prompt attaches it
         if got: self.note('\n'.join(got))
         return self._turn(line)
@@ -1374,8 +1392,10 @@ class Ui:
             # each grew their own, and the seal that keeps late text below the note reached only one.
             if self.turn is not None: return self.stop()
             return self.paint()
-        if k.name == 'enter':
+        if k.name in ('enter', 'alt+enter'):
+            self._hold = k.name == 'alt+enter'
             coro = self.submit()
+            self._hold = False
             self.paint()
             return coro
         if k.name == 'ctrl+v':
