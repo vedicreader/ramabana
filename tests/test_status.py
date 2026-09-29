@@ -1,6 +1,6 @@
 """Status lines: the short line a model writes before each call, kept per run for the `now` pane."""
 from ramabana.agent import Agent
-from ramabana.runtime import Run, status_line
+from ramabana.runtime import Run, said_before_call, status_line
 from ramabana.testing import FakeBackend, MemHost, ScriptedBackend, Step, fake_agent
 from ramabana.tools import delegate, sub_briefing
 
@@ -106,3 +106,76 @@ def test_the_snapshot_carries_the_root_and_sub_agent_status():
     snap = seen[0]
     assert snap['root']['status'] == 'Asking a sub-agent.'
     assert snap['subs'][0]['status'] == 'Checking the imports.'
+
+
+def test_every_briefing_says_the_ing_form_and_the_root_asks_once():
+    from ramabana.agent import RULES, SMALL_RULES
+    for rules in (RULES, SMALL_RULES): assert sum('eight words' in t for _, t in rules) == 1
+    said = [next(t for _, t in rules if 'eight words' in t) for rules in (RULES, SMALL_RULES)]
+    assert all('-ing form' in t for t in said + [sub_briefing()])
+    assert not any('Start every user-facing response' in t for _, t in RULES), 'one instruction about narrating, not two'
+
+
+def test_a_status_skips_fences_and_drops_bullets_and_bold():
+    assert status_line('- **Reading** the loader.\n```') == 'Reading the loader.'
+    assert status_line('Checking it.\n```python\n') == 'Checking it.'
+    assert status_line('1. Running the tests.') == 'Running the tests.'
+
+
+def test_a_finished_run_keeps_no_streamed_text():
+    r = Run('run_h')
+    r.start()
+    r.hear('the whole final answer ' * 50)
+    r.finish()
+    assert r._heard == []
+
+
+def test_the_tool_loop_every_narrating_rishi_backend_uses_records_the_calling_message_before_the_tool_runs():
+    from rishi.core import RishiToolLoop
+    from rishi.claude import ClaudeChat
+    from rishi.remote import RemoteChat
+    from urai import Chat, ToolLoopMixin
+    for c in (ClaudeChat, RemoteChat): assert c._send is ToolLoopMixin._send and c._run_tools is ToolLoopMixin._run_tools
+    seen = []
+    class Loop(RishiToolLoop, Chat):
+        def _model_step(self, **kw):
+            if any(m.get('role') == 'tool' for m in self.hist): return {'role': 'assistant', 'content': 'done'}
+            return {'role': 'assistant', 'content': 'Reading the loader.',
+                    'tool_calls': [{'id': '1', 'type': 'function', 'function': {'name': 'look', 'arguments': {'path': 'a'}}}]}
+    def look(path: str) -> str:
+        "Read `path`."
+        seen.append(said_before_call(chat.hist))
+        return 'x'
+    chat = Loop('x', tools=[look]); chat._set_tools([look])
+    chat('go')
+    assert seen == ['Reading the loader.']
+
+
+class _Quiet(FakeBackend):
+    narrates = False
+    def spawn(self, sp='', tools=(), **kw):
+        self.sub = FakeBackend(self.spec, sp=sp, tools=tools, shared=True)
+        self.sub.max_steps = 0
+        self.sub._send = lambda msg, **kw: next(t for t in self.sub.tools if t.__name__ == 'status')(text='Reading the tests')
+        return self.sub
+
+
+def test_status_calls_leave_a_quiet_sub_agent_its_real_step_budget():
+    be = _Quiet()
+    delegate(be, 'q', tools=[view], run=Run('run_b', 'child', 'q'), max_steps=12)
+    assert be.sub.max_steps == 24, 'one status call per real call'
+
+
+def test_a_root_on_a_backend_that_hides_its_text_gets_the_status_tool():
+    from ramabana.core import ModelSpec
+    a, be = fake_agent()
+    a.routing._cache['fake'] = ModelSpec('fake', 'litert', 'fake/model', ctx=1000)
+    assert 'status' in {t.__name__ for t in a.tools} and '`status`' in a.system_prompt()
+    status = next(t for t in a.tools if t.__name__ == 'status')
+    assert status(text='idle') and a.status_line == '', 'with no turn running it is a no-op'
+    be.replies = ['ok']
+    be._send = lambda msg, **kw: (status(text='Reading the tests'), 'ok')[1]
+    a.ask('go')
+    assert a.status_line == 'Reading the tests' and not a.activity.acts, 'display-only: no act'
+    b, _ = fake_agent()
+    assert 'status' not in {t.__name__ for t in b.tools}

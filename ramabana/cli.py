@@ -973,7 +973,7 @@ class Ui:
             return
         self._now_at, self._now_dirty = t, False
         try: write_snapshot(self.agent, p)
-        except OSError: return
+        except Exception: return   # a snapshot that fails must never stop the animate loop
         self._now_busy = self.agent.busy
 
     ASKING, PY_LABEL, CONT = 'approve? [y/n/a · n: reason] ', 'python › ', '...      '

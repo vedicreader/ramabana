@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/pane.html.md"""
 # %% ../nbs/18_pane.ipynb #dcfdb8be
 from __future__ import annotations
 
-import json, os, re, time
+import json, os, re, time, weakref
 from pathlib import Path
 
 from fastcore.basics import first
@@ -21,14 +21,21 @@ from shalya.core import clip, diff_text, one_line as _1
 from .monitor import _counts, _rel
 
 # %% auto #0
-__all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'PALETTE', 'now_snapshot', 'write_snapshot', 'read_snapshot',
-           'render', 'main']
+__all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'PALETTE', 'now_snapshot', 'write_snapshot',
+           'read_snapshot', 'render', 'main']
 
 # %% ../nbs/18_pane.ipynb #d2a80a47
 CALLS_KEPT = 8       #: a sub-agent's latest calls in a snapshot
 OUT_CHARS = 200      #: chars kept of each call's result
 ANSWER_CHARS = 500   #: chars kept of a finished sub-agent's answer
 DIFF_LINES = 80      #: lines kept of each file's diff
+SHELL_EVERY = 1.0    #: seconds between asks about a live background shell
+
+class _Seen:
+    "What earlier snapshots of one agent computed that is dear to compute again: its files, and each shell's state."
+    def __init__(self): self.key, self.files, self.shells = None, [], {}
+
+_SEEN = weakref.WeakKeyDictionary()
 
 def _secs(r, now): return round(((r.ended or now) - r.started) if r.started else 0, 1)
 
@@ -45,34 +52,45 @@ def _sub(r, every, now):
             'calls': [{'line': a.summary, 'ok': a.ok, 'done': a.done, 'out': clip(a.detail, OUT_CHARS)} for a in calls[-CALLS_KEPT:]],
             'answer': clip(r.answer, ANSWER_CHARS) if r.terminal else ''}
 
-def _files(agent):
-    "This turn's writes: path under the first root, lines added and removed, and the diff cut to `DIFF_LINES`."
+def _files(agent, seen, turn):
+    "This turn's writes: path under the first root, lines added and removed, and the diff cut to `DIFF_LINES`. Recomputed only after a call finishes."
+    key = (agent.current_turn_id, len(agent.before), sum(a.done for a in turn), turn[-1].id if turn else '')
+    if key == seen.key: return seen.files
     root, out = first(agent.host.roots or ()), []
     for p, (was, now) in agent.changes().items():
         d = diff_text(was, now, rel := _rel(p, root))
         (added, removed), ls = _counts(d), d.splitlines()
         more = [f'… {len(ls) - DIFF_LINES} more lines'] if len(ls) > DIFF_LINES else []
         out.append({'path': rel, 'added': added, 'removed': removed, 'diff': '\n'.join(ls[:DIFF_LINES] + more)})
+    seen.key, seen.files = key, out
     return out
 
 _STARTED = re.compile(r'started (cmd_\w+)')
 
-def _shells(agent, every, since, now):
+def _shell_state(agent, seen, rid, now):
+    "`rid`'s state, asked of the host at most every `SHELL_EVERY` while it runs and never again once it has ended; '' when unknown."
+    state, at = seen.shells.get(rid, (None, 0))
+    if state is not None and (state != 'running' or now - at < SHELL_EVERY): return state
+    try: state = agent.host.cmd_output(rid, 1)[0]
+    except Exception: state = ''   # a host that runs no background commands, or has forgotten this one
+    seen.shells[rid] = state, now
+    return state
+
+def _shells(agent, seen, every, since, now):
     "`run_shell_bg` commands the host still knows: live ones, and those started since `since`."
     out = []
     for a in every:
         if a.tool != 'run_shell_bg' or not (m := _STARTED.match(a.detail)): continue
-        try: state = agent.host.cmd_output(m[1], 1)[0]
-        except Exception: continue   # a host that runs no background commands, or has forgotten this one
-        if state == 'running' or a.started >= since:
+        if a.started < since and seen.shells.get(m[1], ('running',))[0] != 'running': continue
+        if (state := _shell_state(agent, seen, m[1], now)) and (state == 'running' or a.started >= since):
             out.append({'kind': 'shell', 'id': m[1], 'label': _1(a.args.get('command'), 120), 'state': state,
                         'elapsed': round(now - a.started, 1) if state == 'running' else None})
     return out
 
-def _background(agent, bg, every, since, now):
+def _background(agent, seen, bg, every, since, now):
     "Background delegations, shells and folder watches, one row each."
     return ([{'kind': 'delegate', 'id': r.id, 'label': _1(r.question, 120), 'state': r.state, 'elapsed': _secs(r, now)} for r in bg]
-            + _shells(agent, every, since, now)
+            + _shells(agent, seen, every, since, now)
             + [{'kind': 'watch', 'id': w.id, 'label': w.folder, 'state': w.last_status or 'watching', 'elapsed': None} for w in agent.monitors.all()])
 
 def now_snapshot(agent):
@@ -80,14 +98,14 @@ def now_snapshot(agent):
     (every, mark), now, root = agent.activity.window(), time.time(), agent.run()
     ids, since = {a.id for a in every}, root.started if root else 0
     mine, bg = [a for a in every[mark:] if a.parent_action_id not in ids], _bg_runs(agent, since)
-    kids = [c for c in (root.children if root else []) if c.kind == 'child']
+    kids, seen = [c for c in (root.children if root else []) if c.kind == 'child'], _SEEN.setdefault(agent, _Seen())
     return {'at': now, 'busy': agent.busy,
             'root': {'turn_elapsed': _secs(root, now) if root else 0, 'steps': len(mine), 'state': root.state if root else 'idle',
                      'status': agent.status_line, 'current': _current(mine)},
             'plan': [{'text': t.text, 'status': t.status} for t in agent.plan.todos],
             'subs': [_sub(r, every, now) for r in kids + bg],
-            'files': _files(agent),
-            'background': _background(agent, bg, every, since, now)}
+            'files': _files(agent, seen, every[mark:]),
+            'background': _background(agent, seen, bg, every, since, now)}
 
 # %% ../nbs/18_pane.ipynb #22ae7faf
 def write_snapshot(agent, path):

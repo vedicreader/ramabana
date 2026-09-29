@@ -264,10 +264,10 @@ def _no_path(f):
 STATUS_NOTE = '\n- Your text between tool calls is not seen here, so send that line with `status` instead.'
 
 def status_tool(run):
-    "A display-only `status` tool, for a sub-agent whose text between calls never reaches us."
+    "A display-only `status` tool for `run`, or the callable returning it, whose model's text between calls never reaches us."
     def status(text: str) -> str:
         "Say in one short line what you are doing now."
-        run.set_status(text)
+        if (r := run() if callable(run) else run) is not None: r.set_status(text)
         return 'noted'
     return status
 
@@ -287,7 +287,7 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
         sub = backend.spawn(sp=sub_sp(ifnone(sp, sub_briefing(writes)), skills) + inbox_note(run.key) + (STATUS_NOTE if quiet else ''),
                 tools=[_inboxed(t if writes or t.__name__ not in PATH_WRITES else _no_path(t), run)
                        for t in read_only(tools, max_calls=max_steps * 4, writes=writes, block=NO_SUB)] + ([status_tool(run)] if quiet else []), **kw)
-        if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
+        if hasattr(sub, 'max_steps'): sub.max_steps = max_steps * (2 if quiet else 1)   # rishi counts each `status` call as a step
         if not run.attach(sub): return _stopped(run)
         with run_context(run): reply = sub.send([*images, question] if images else question, run=run)
         while not run.cancelled and (msgs := run.drain_inbox()):

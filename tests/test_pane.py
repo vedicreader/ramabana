@@ -198,3 +198,44 @@ def test_background_lists_delegations_shells_and_folder_watches(monkeypatch):
     assert kinds['watch']['id'] == w.id and '/proj' in kinds['watch']['label']
     assert now_snapshot(a)['subs'][0]['id'] == kinds['delegate']['id'], 'a background delegation is a sub-agent too'
     json.dumps(bg)
+
+
+def test_changes_survive_a_tool_thread_adding_to_before():
+    import sys, threading
+    a, _ = fake_agent()
+    stop, was = threading.Event(), sys.getswitchinterval()
+    def grow():
+        i = 0
+        while not stop.is_set():
+            a.before[f'/proj/n{i % 400}.py'] = ''; a.before.pop(f'/proj/n{(i + 200) % 400}.py', None); i += 1
+    sys.setswitchinterval(1e-6)   # switch threads often enough that the race shows every run
+    t = threading.Thread(target=grow, daemon=True); t.start()
+    try:
+        for _ in range(300): a.changes()
+    finally: stop.set(); t.join(); sys.setswitchinterval(was)
+
+
+def test_a_steady_snapshot_reads_no_file_and_asks_no_shell(monkeypatch):
+    import ramabana.pane as pane
+    a, _ = fake_agent()
+    a.before['/proj/a.py'] = 'def a(): pass\n'; a.host.files['/proj/a.py'] = 'def a(): return 1\n'
+    act = a.activity.start('run_shell_bg', {'command': 'pytest'})
+    a.activity.finish(act, "started cmd_aaaaaaaa; read it with shell_output('cmd_aaaaaaaa')")
+    done = a.activity.start('run_shell_bg', {'command': 'ls'})
+    a.activity.finish(done, "started cmd_bbbbbbbb; read it with shell_output('cmd_bbbbbbbb')")
+    reads, asks = [], []
+    real = a.host.text_at
+    monkeypatch.setattr(a.host, 'text_at', lambda p: (reads.append(p), real(p))[1])
+    monkeypatch.setattr(a.host, 'cmd_output', lambda rid, tail=200: (asks.append(rid), ('running' if rid == 'cmd_aaaaaaaa' else 'exit 0', ''))[1], raising=False)
+    first = now_snapshot(a)
+    assert first['files'][0]['added'] == 1 and sorted(asks) == ['cmd_aaaaaaaa', 'cmd_bbbbbbbb']
+    reads.clear(); asks.clear()
+    assert now_snapshot(a)['files'] == first['files']
+    assert reads == [] and asks == [], 'nothing changed, so nothing is read or asked'
+    monkeypatch.setattr(pane, 'SHELL_EVERY', 0)
+    now_snapshot(a)
+    assert asks == ['cmd_aaaaaaaa'], 'a shell known to have exited is never asked again'
+    reads.clear()
+    a.host.files['/proj/a.py'] = 'def a(): return 2\n'
+    fin = a.activity.start('replace_text', {'path': '/proj/a.py'}); a.activity.finish(fin, 'ok')
+    assert '+def a(): return 2' in now_snapshot(a)['files'][0]['diff'] and reads, 'a finished call recomputes the files'

@@ -27,13 +27,13 @@ from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
 from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
-from .runtime import Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
+from .runtime import QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed)
+                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool)
 from .monitor import Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -637,10 +637,9 @@ RULES = (
     (None, 'Act on the user’s verb. “Create”, “run”, “fix”, “add” and “as NAME” request a\n'
            '  result, not a plan: use the tool that produces it, verify it, then report what exists.\n'
            '  Never stop at “I will…”.'),
-    (None, 'Start every user-facing response with what you plan to do or the next action. Keep the user\n'
-           '  informed during ongoing work, and end the response with the result, conclusion, or what is needed.'),
-    (None, 'Before each tool call, write one line of at most eight words, in the -ing form, saying what\n'
-           '  you are doing: “Reading the config loader.”'),
+    (None, 'Start every response with what you plan to do. Before each tool call, write one line of at most\n'
+           '  eight words, in the -ing form, saying what you are doing: “Reading the config loader.” End with\n'
+           '  the result, conclusion, or what is needed.'),
     (None, 'Never claim a file changed, a command passed, or a test went green unless a tool\n'
            '  result in this conversation says so. If you did not run it, say you did not run it.'),
     (None, 'A tool result starting with ERROR: is a failure. Read it, fix the cause, and try a\n'
@@ -716,7 +715,7 @@ OUTPUT_CONTRACT = ('\n\n<output-contract>Reply in plain sentences: no headings, 
 
 SMALL_RULES = (
     (None, 'Act on the user’s verb: “create”, “run”, “fix” want a result, not a plan. Use the tool that produces it, verify, then report what exists.'),
-    (None, 'Before each tool call, write one line of at most eight words saying what you are doing, like “Reading the config loader.”'),
+    (None, 'Before each tool call, write one line of at most eight words, in the -ing form, saying what you are doing: “Reading the config loader.”'),
     (None, 'Never claim a file changed or a command passed unless a tool result here says so.'),
     (None, 'A tool result starting with ERROR: is a failure: read it and change the approach. Never repeat the same call unchanged.'),
     ('search_code', '`search_code` finds code *like* the query, in this repo and every installed package.'),
@@ -1432,6 +1431,11 @@ def background_notice(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #d598e329
 @patch(as_prop=True)
+def _quiet(self:Agent):
+    "Whether the turn model's text between calls never reaches us, so it reports its status with a tool."
+    return getattr(self.spec_or_none('turn'), 'runtime', '') in QUIET_RUNTIMES
+
+@patch(as_prop=True)
 def tools(self:Agent):
     "Every tool the turn model can afford, built once and recorded. Rebuilt by `reload`."
     if self._tools is None:
@@ -1443,7 +1447,7 @@ def tools(self:Agent):
             self.approvals.tools = self.approvals.tools | view.writes
             self.approvals.prune()
         root = lambda: r if (r := current_run()) is self.run() else None
-        self._tools = view.map(lambda f: _inboxed(self._record(f), root, lambda msgs: self._steered.extend(msgs))).tools
+        self._tools = view.map(lambda f: _inboxed(self._record(f), root, lambda msgs: self._steered.extend(msgs))).tools + ([status_tool(root)] if self._quiet else [])
     return self._tools
 
 
@@ -1452,7 +1456,7 @@ def tools(self:Agent):
 # %% ../nbs/03_agent.ipynb #f37435ce
 @patch
 def system_prompt(self:Agent):
-    note = inbox_note(self.inbox_key)
+    note = inbox_note(self.inbox_key) + (STATUS_NOTE if self._quiet else '')
     if self._sp: return self._sp + note
     if self._tools is None: self.tools
     if self.profile == 'small': return small_system_prompt(self.host, tools=self._plain, cfg=self.cfg) + note
@@ -1754,7 +1758,7 @@ def settle_tree(self:Agent):
 def changes(self:Agent):
     "`{path: (before, after)}` for every file this turn's write tools actually moved."
     out = {}
-    for p, was in self.before.items():
+    for p, was in dict(self.before).items():   # the tool thread adds to `before` while a pane reads it
         now = self.host.text_at(p)
         if now is not None and now != was: out[p] = (was, now)
     return out

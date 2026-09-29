@@ -25,7 +25,9 @@ def mk(host, spec, **kw):
     return a
 
 
-def names(a): return {getattr(t, '__name__', '') for t in a.tools}
+def names(a):
+    "The catalog's tool names; a LiteRT agent's display-only `status` tool is not in the catalog."
+    return {getattr(t, '__name__', '') for t in a.tools} - {'status'}
 
 
 @pytest.fixture
@@ -53,7 +55,7 @@ def test_the_agent_recomputes_the_profile_when_the_model_changes(host):
     a.routing.set = lambda name, job='turn': cur.__setitem__('spec', LOCAL) or LOCAL
     before = len(a.tools)
     note = a.set_model('gemma-e4b')
-    assert a.profile == 'small' and len(a.tools) == len(SMALL_TOOLS) < before
+    assert a.profile == 'small' and len(names(a)) == len(SMALL_TOOLS) < before
     assert a.status()['profile'] == 'small' and 'small profile' in a.note
     assert 'small profile' in a.command('/model')            # the user can see which profile is active
     assert mk(host, LOCAL, profile='full').profile == 'full'
@@ -191,7 +193,8 @@ def test_auto_small_says_so_once_at_start_up(host):
         return a
     a = agent(profile='auto'); a.start(); a.start()
     lines = [n for n in host.notes if n.startswith('small profile:')]
-    assert len(lines) == 1 and 'gemma-e4b is local' in lines[0] and '14 tools' in lines[0] and 'warm start off' in lines[0] and '--profile full' in lines[0]
+    assert len(lines) == 1 and 'gemma-e4b is local' in lines[0] and 'warm start off' in lines[0] and '--profile full' in lines[0]
+    assert '15 tools' in lines[0], 'the fourteen and `status`'
     host.notes.clear()
     b = agent(); b.start()
     assert not [n for n in host.notes if n.startswith('small profile:')]                 # full says nothing

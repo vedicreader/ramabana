@@ -8,9 +8,9 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
            'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM', 'ONESHOT_CUT',
-           'IMG_TOKENS', 'STATUS_CHARS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture', 'estimate_tokens',
-           'halvings', 'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt',
-           'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
+           'IMG_TOKENS', 'QUIET_RUNTIMES', 'STATUS_CHARS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture',
+           'estimate_tokens', 'halvings', 'threshold', 'should_compact', 'serialise', 'split_previous',
+           'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
            'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
            'use_chat', 'RishiBackend', 'make_backend', 'status_line', 'said_before_call', 'Run', 'current_run',
            'run_context', 'TokenLogger']
@@ -546,7 +546,7 @@ def _parts(msg):
 # %% ../nbs/01_runtime.ipynb #197644e7
 class Backend:
     kind='?'
-    narrates=True   # the text before each tool call reaches `hist` or the stream
+    narrates=True   # the text before each tool call reaches `hist` or the stream; see `QUIET_RUNTIMES`
     _tag_reminded=False
     def __init__(self,spec,sp='',tools=(),approve=None,tool_max_len=None,shared=False,**kw):
         self.spec,self.sp,self.tools,self.approve=spec,sp,list(tools),approve
@@ -779,6 +779,8 @@ def use_chat(f):
     try: yield f
     finally: _MK_CHAT = old
 
+QUIET_RUNTIMES = frozenset({'litert'})   #: they run the tool loop inside the engine, so the text before a call never reaches us
+
 class RishiBackend(Backend):
     kind='rishi'
     def __init__(self,*a,max_steps=MAX_STEPS,**kw):
@@ -789,9 +791,7 @@ class RishiBackend(Backend):
         if self._prefill is None:self._prefill=prefills_think(self.chat)
         return self._prefill
     @property
-    def narrates(self):
-        "LiteRT runs the tool loop inside its engine, so the text before a call never reaches us."
-        return self.spec.runtime!='litert'
+    def narrates(self): return self.spec.runtime not in QUIET_RUNTIMES
     @property
     def tool_channel(self):
         "The channel this backend's tool schemas travel on, from the chat once it exists."
@@ -919,10 +919,13 @@ def make_backend(spec,**kw):return RishiBackend(spec,**kw)
 # %% ../nbs/01_runtime.ipynb #dfaf99f8
 STATUS_CHARS = 80   #: longest status line kept
 
+_NOT_SAID = re.compile(r'^\s*(>|```|~~~|$)')   # thinking quotes, code fences, blank lines
+_BULLET = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+')
+
 def status_line(text, n=STATUS_CHARS):
-    "The last line of `text` worth showing as a status: not blank, not a thinking quote, clipped to `n` chars."
-    line = next((l for l in reversed(str(text or '').splitlines()) if l.strip() and not l.lstrip().startswith('>')), '')
-    return ' '.join(line.split())[:n].rstrip()
+    "The last line of `text` worth showing as a status, without bullet or bold, clipped to `n` chars."
+    line = next((l for l in reversed(str(text or '').splitlines()) if not _NOT_SAID.match(l)), '')
+    return ' '.join(_BULLET.sub('', line).replace('**', '').split())[:n].rstrip()
 
 def said_before_call(hist):
     "The text of the message that made the latest tool call in `hist`, or ''."
@@ -1010,7 +1013,8 @@ class Run:
         with self._lock:
             if self.terminal: return self
             self.state = 'cancelled' if self.cancelled else state
-            self.ended = time.time(); self._done.set()
+            self.ended, self._heard = time.time(), []
+            self._done.set()
         return self
 
     def _mark_cancel(self):

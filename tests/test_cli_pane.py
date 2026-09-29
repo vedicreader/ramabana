@@ -226,3 +226,9 @@ def test_the_session_opens_the_pane_in_tmux_and_quitting_closes_it(tmp_path, mon
     asyncio.run(go())
     assert len(me.made) == 1 and me.made[0].killed, 'auto opened it inside tmux; ctrl+d took it down with the session'
     tty.close()
+
+
+def test_a_snapshot_that_raises_never_escapes_write_now(ui, monkeypatch):
+    def boom(agent, path): raise RuntimeError('dictionary changed size during iteration')
+    monkeypatch.setattr(cli, 'write_snapshot', boom)
+    ui.write_now(force=True)

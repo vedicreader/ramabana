@@ -342,7 +342,7 @@ def test_the_briefing_describes_only_the_tools_the_model_was_given():
     # The response-order rule and durable-memory rule are both included in the briefing.
     # lead with the answer, and look in durable memory before acting.
     rules = A.work_rules()
-    assert 'Start every user-facing response with what you plan to do or the next action.' in rules
+    assert 'Start every response with what you plan to do.' in rules
     assert 'Keep a plan small enough that every step has one independently verifiable outcome.' in rules
     assert 'Before acting on a request, search Vishalakshi durable memory with `memory_search`' in rules
 
