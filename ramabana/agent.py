@@ -639,6 +639,8 @@ RULES = (
            '  Never stop at “I will…”.'),
     (None, 'Start every user-facing response with what you plan to do or the next action. Keep the user\n'
            '  informed during ongoing work, and end the response with the result, conclusion, or what is needed.'),
+    (None, 'Before each tool call, write one line of at most eight words, in the -ing form, saying what\n'
+           '  you are doing: “Reading the config loader.”'),
     (None, 'Never claim a file changed, a command passed, or a test went green unless a tool\n'
            '  result in this conversation says so. If you did not run it, say you did not run it.'),
     (None, 'A tool result starting with ERROR: is a failure. Read it, fix the cause, and try a\n'
@@ -714,6 +716,7 @@ OUTPUT_CONTRACT = ('\n\n<output-contract>Reply in plain sentences: no headings, 
 
 SMALL_RULES = (
     (None, 'Act on the user’s verb: “create”, “run”, “fix” want a result, not a plan. Use the tool that produces it, verify, then report what exists.'),
+    (None, 'Before each tool call, write one line of at most eight words saying what you are doing, like “Reading the config loader.”'),
     (None, 'Never claim a file changed or a command passed unless a tool result here says so.'),
     (None, 'A tool result starting with ERROR: is a failure: read it and change the approach. Never repeat the same call unchanged.'),
     ('search_code', '`search_code` finds code *like* the query, in this repo and every installed package.'),
@@ -1647,6 +1650,11 @@ def run(self:Agent, run_id=''):
 # %% ../nbs/03_agent.ipynb #4b5c9dc8
 @patch(as_prop=True)
 def busy(self:Agent): return bool(self.runs(active=True))
+
+@patch(as_prop=True)
+def status_line(self:Agent):
+    "What the foreground turn's model last said it was doing, or ''."
+    return getattr(self.run(), 'status', '')
 
 # %% ../nbs/03_agent.ipynb #2bbfe138
 @patch
@@ -2868,7 +2876,7 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
             for chunk in backend.stream(outgoing, run=run, **kw):
                 if run.cancelled: break
                 chunk = _stream_chunk(out, chunk)
-                if chunk: out.append(chunk); yield chunk
+                if chunk: out.append(chunk); run.hear(chunk); yield chunk
         run.finish()
         if run.cancelled: keep('cancelled', ''.join(out))
         else:

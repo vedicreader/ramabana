@@ -131,3 +131,70 @@ def test_a_resumed_turn_replays_only_the_root_calls():
     list(a.stream('go'))
     out = _resumed_acts(a.history[-1]['activity'])
     assert out.count('view_file(') == 1 and 'delegate_search(' in out
+
+
+V2 = {'at', 'busy', 'root', 'plan', 'subs', 'files', 'background'}
+
+
+def test_a_v2_snapshot_has_the_plan_the_files_and_every_sub_agent_call():
+    a, _ = fake_agent()
+    a.plan.set('ship', ['read a.py', 'fix it', 'test it'])
+    a.plan.update(a.plan.todos[0].id, status='done'); a.plan.update(a.plan.todos[1].id, status='active')
+    _delegating(a, [], reads=10)
+    list(a.stream('go'))
+    a.before.update({'/proj/a.py': 'def a(): pass\n', '/proj/big.py': ''})
+    a.host.files.update({'/proj/a.py': 'def a(): return 1\n', '/proj/big.py': ''.join(f'x{i} = {i}\n' for i in range(200))})
+    snap = now_snapshot(a)
+    assert set(snap) == V2 and {'status', 'current', 'steps', 'state', 'turn_elapsed'} <= set(snap['root'])
+    assert snap['plan'] == [{'text': 'read a.py', 'status': 'done'}, {'text': 'fix it', 'status': 'active'}, {'text': 'test it', 'status': 'pending'}]
+    sub, = snap['subs']
+    assert {'id', 'question', 'elapsed', 'state', 'steps', 'status', 'current', 'calls', 'answer'} <= set(sub)
+    assert sub['steps'] == 10 and len(sub['calls']) == 8, 'the last eight calls, not all of them'
+    call = sub['calls'][-1]
+    assert set(call) == {'line', 'ok', 'done', 'out'} and call['ok'] and call['done'] and 'def a' in call['out']
+    assert sub['answer'].startswith('a() is defined'), 'a finished sub-agent shows its answer'
+    files = {f['path']: f for f in snap['files']}
+    assert (files['a.py']['added'], files['a.py']['removed']) == (1, 1) and '+def a(): return 1' in files['a.py']['diff']
+    big = files['big.py']
+    assert big['added'] == 200 and len(big['diff'].splitlines()) <= 81, 'a long diff is clipped'
+    assert json.loads(json.dumps(snap)) == snap
+
+
+def test_a_long_tool_result_and_answer_are_clipped():
+    a, _ = fake_agent()
+    a.host.files['/proj/a.py'] = 'y = 1\n' * 400
+    class Root(ScriptedBackend):
+        def spawn(self, sp='', tools=(), **kw):
+            return ScriptedBackend(self.spec, steps=[Step(tool=READ), Step('word ' * 400)], token_delay=0, tools=tools)
+    be = Root(steps=[Step(tool=ASK), Step('done')], token_delay=0, tools=a.tools)
+    a._be = a._be_or_none = lambda job='turn': be
+    list(a.stream('go'))
+    sub, = now_snapshot(a)['subs']
+    assert len(sub['calls'][0]['out']) < 300 and len(sub['answer']) < 700
+
+
+def test_background_lists_delegations_shells_and_folder_watches(monkeypatch):
+    from ramabana.monitor import FolderWatch
+    a, _ = fake_agent()
+    _delegating(a, [], ('delegate_async', {'question': 'what does a.py define?'}))
+    list(a.stream('go'))
+    end = time.monotonic() + 5
+    while time.monotonic() < end and not all(r.terminal for r in a._side_runs()): time.sleep(.01)
+    act = a.activity.start('run_shell_bg', {'command': 'pytest -x tests'})
+    a.activity.finish(act, "started cmd_1234abcd; read it with shell_output('cmd_1234abcd')")
+    gone = a.activity.start('run_shell_bg', {'command': 'forgotten'})
+    a.activity.finish(gone, "started cmd_00000000; read it with shell_output('cmd_00000000')")
+    def out(rid, tail=200):
+        if rid != 'cmd_1234abcd': raise KeyError(rid)
+        return 'running', ''
+    monkeypatch.setattr(a.host, 'cmd_output', out, raising=False)
+    w = FolderWatch('/proj', 'review it'); a.monitors.watches[w.id] = w
+    bg = now_snapshot(a)['background']
+    assert all(set(r) == {'kind', 'id', 'label', 'state', 'elapsed'} for r in bg)
+    kinds = {r['kind']: r for r in bg}
+    assert set(kinds) == {'delegate', 'shell', 'watch'}, 'a shell the host no longer knows is left out'
+    assert kinds['delegate']['state'] == 'completed' and kinds['delegate']['label'].startswith('what does a.py')
+    assert (kinds['shell']['id'], kinds['shell']['label'], kinds['shell']['state']) == ('cmd_1234abcd', 'pytest -x tests', 'running')
+    assert kinds['watch']['id'] == w.id and '/proj' in kinds['watch']['label']
+    assert now_snapshot(a)['subs'][0]['id'] == kinds['delegate']['id'], 'a background delegation is a sub-agent too'
+    json.dumps(bg)

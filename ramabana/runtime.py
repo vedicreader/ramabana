@@ -8,11 +8,12 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
            'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM', 'ONESHOT_CUT',
-           'IMG_TOKENS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture', 'estimate_tokens', 'halvings',
-           'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle',
-           'surgical_history', 'reorient', 'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor',
-           'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend', 'use_chat', 'RishiBackend',
-           'make_backend', 'Run', 'current_run', 'run_context', 'TokenLogger']
+           'IMG_TOKENS', 'STATUS_CHARS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture', 'estimate_tokens',
+           'halvings', 'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt',
+           'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
+           'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
+           'use_chat', 'RishiBackend', 'make_backend', 'status_line', 'said_before_call', 'Run', 'current_run',
+           'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import contextvars, copy, math, os, re, sys, threading, time, uuid
@@ -545,6 +546,7 @@ def _parts(msg):
 # %% ../nbs/01_runtime.ipynb #197644e7
 class Backend:
     kind='?'
+    narrates=True   # the text before each tool call reaches `hist` or the stream
     _tag_reminded=False
     def __init__(self,spec,sp='',tools=(),approve=None,tool_max_len=None,shared=False,**kw):
         self.spec,self.sp,self.tools,self.approve=spec,sp,list(tools),approve
@@ -787,6 +789,10 @@ class RishiBackend(Backend):
         if self._prefill is None:self._prefill=prefills_think(self.chat)
         return self._prefill
     @property
+    def narrates(self):
+        "LiteRT runs the tool loop inside its engine, so the text before a call never reaches us."
+        return self.spec.runtime!='litert'
+    @property
     def tool_channel(self):
         "The channel this backend's tool schemas travel on, from the chat once it exists."
         return tool_channel(self.spec,self.chat)
@@ -911,6 +917,18 @@ def __getattr__(name):
 def make_backend(spec,**kw):return RishiBackend(spec,**kw)
 
 # %% ../nbs/01_runtime.ipynb #dfaf99f8
+STATUS_CHARS = 80   #: longest status line kept
+
+def status_line(text, n=STATUS_CHARS):
+    "The last line of `text` worth showing as a status: not blank, not a thinking quote, clipped to `n` chars."
+    line = next((l for l in reversed(str(text or '').splitlines()) if l.strip() and not l.lstrip().startswith('>')), '')
+    return ' '.join(line.split())[:n].rstrip()
+
+def said_before_call(hist):
+    "The text of the message that made the latest tool call in `hist`, or ''."
+    m = next((m for m in reversed(hist or ()) if isinstance(m, dict) and m.get('role') == 'assistant'), None)
+    return resp_text(m) if m and m.get('tool_calls') else ''
+
 @dataclass
 class Run:
     "A foreground or delegated model call with bounded cancellation."
@@ -925,9 +943,11 @@ class Run:
     ended: float = 0.
     backend: object = None
     log: object = None
+    status: str = ''          # what its model last said it was doing
+    answer: str = ''          # the reply it finished with
 
     def __post_init__(self):
-        self.children, self._lock, self._done, self.inbox = [], threading.RLock(), threading.Event(), []
+        self.children, self._lock, self._done, self.inbox, self._heard = [], threading.RLock(), threading.Event(), [], []
         self.key = uuid.uuid4().hex[:8]
         if self.parent is not None: self.parent.children.append(self)
         if self.log is None and getattr(self.parent, 'log', None) is not None: self.log = self.parent.log.parent/f'{self.id}.log'
@@ -947,6 +967,22 @@ class Run:
         "Every queued user message, taken once."
         with self._lock: out, self.inbox = self.inbox, []
         return out
+
+    def set_status(self, text):
+        "Make `text`'s last line the status, noting a new one in the transcript."
+        if (s := status_line(text)) and s != self.status:
+            self.status = s
+            self.write(f'~ {s}')
+        return self
+
+    def hear(self, text):
+        "Keep streamed text until the next tool call."
+        with self._lock: self._heard.append(text)
+
+    def on_call(self):
+        "A call is starting: what was streamed since the last, else the message that made it, becomes the status."
+        with self._lock: said, self._heard = ''.join(self._heard), []
+        return self.set_status(status_line(said) or said_before_call(getattr(self.backend, 'hist', None)))
 
     @property
     def terminal(self): return self.state in ('completed', 'cancelled', 'detached', 'terminated', 'failed')

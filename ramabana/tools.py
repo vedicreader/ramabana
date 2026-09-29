@@ -6,21 +6,22 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 
 # %% auto #0
 __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP', 'SUB_SP', 'NO_SUB', 'PATH_WRITES',
-           'ASYNC_MAX', 'ASYNC_KEEP', 'MAX_MEDIA', 'MAX_ATTACH', 'NullHost', 'draws_itself', 'image_tools', 'tools_for',
-           'small_tool', 'ToolEntry', 'ToolCatalog', 'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'path_write',
-           'write_targets', 'delegate', 'delegate_many', 'Background', 'named_skills', 'picture_mime', 'read_pictures',
-           'subagent_tools', 'parse_plan_items', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES',
-           'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API',
-           'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
-           'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX',
-           'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools',
-           'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err',
-           'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write',
-           'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost',
-           'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost',
-           'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools',
-           'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt',
-           'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
+           'STATUS_NOTE', 'ASYNC_MAX', 'ASYNC_KEEP', 'MAX_MEDIA', 'MAX_ATTACH', 'NullHost', 'draws_itself',
+           'image_tools', 'tools_for', 'small_tool', 'ToolEntry', 'ToolCatalog', 'inbox_note', 'sub_briefing', 'sub_sp',
+           'bad_json', 'path_write', 'write_targets', 'status_tool', 'delegate', 'delegate_many', 'Background',
+           'named_skills', 'picture_mime', 'read_pictures', 'subagent_tools', 'parse_plan_items', 'API_VENDORS',
+           'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS',
+           'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS',
+           'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS',
+           'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS',
+           'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds',
+           'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find',
+           'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary',
+           'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost',
+           'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools',
+           'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs',
+           'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools',
+           'research_tools', 'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, contextvars, functools, json, re, threading, time, uuid
@@ -163,6 +164,7 @@ SUB_MAX_STEPS = 12
 #: the half both briefings share
 SUB_SP_HEAD = """You are a research sub-agent in a Python IDE. Answer the delegated question only.
 - Use tools as needed. Report findings with file paths and line numbers.
+- Before each tool call, write one line of at most eight words, in the -ing form, saying what you are doing.
 - State plainly when you find nothing. Do not guess.
 - A claim that something ran, exists or failed names the tool call or artifact behind it. Anything else is a hypothesis; say so.
 - End with one line: `state: completed`, `state: blocked` or `state: failed`, and why."""
@@ -221,10 +223,11 @@ def _model_refused(sub, reply):
     return bool(problems) and str(reply or '').strip() == str(problems[-1]).strip()
 
 def _inboxed(f, run, heard=None):
-    "The tool, with any user message for `run` appended to its result and passed to `heard`."
+    "The tool, taking `run`'s status as it starts, with any user message for `run` appended to its result and passed to `heard`."
     @functools.wraps(f)
     def call(*a, **kw):
-        out, r = f(*a, **kw), run() if callable(run) else run
+        if (r := run() if callable(run) else run) is not None: r.on_call()
+        out = f(*a, **kw)
         if isinstance(out, str) and r is not None and (msgs := r.drain_inbox()):
             out += f'\n\n<user-message key="{r.key}">\n' + '\n'.join(msgs) + '\n</user-message>'
             if heard: heard(msgs)
@@ -258,6 +261,16 @@ def _no_path(f):
         return f(*a, **kw)
     return call
 
+STATUS_NOTE = '\n- Your text between tool calls is not seen here, so send that line with `status` instead.'
+
+def status_tool(run):
+    "A display-only `status` tool, for a sub-agent whose text between calls never reaches us."
+    def status(text: str) -> str:
+        "Say in one short line what you are doing now."
+        run.set_status(text)
+        return 'noted'
+    return status
+
 def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skills=(),
              writes=False,      # hand over WRITE_TOOLS as well
              approve=None,      # the gate those writes answer to
@@ -270,14 +283,16 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
     run.write(f'question: {question}')
     try:
         kw = {'approve': approve} if approve is not None else {}
-        sub = backend.spawn(sp=sub_sp(ifnone(sp, sub_briefing(writes)), skills) + inbox_note(run.key),
+        quiet = not getattr(backend, 'narrates', True)
+        sub = backend.spawn(sp=sub_sp(ifnone(sp, sub_briefing(writes)), skills) + inbox_note(run.key) + (STATUS_NOTE if quiet else ''),
                 tools=[_inboxed(t if writes or t.__name__ not in PATH_WRITES else _no_path(t), run)
-                       for t in read_only(tools, max_calls=max_steps * 4, writes=writes, block=NO_SUB)], **kw)
+                       for t in read_only(tools, max_calls=max_steps * 4, writes=writes, block=NO_SUB)] + ([status_tool(run)] if quiet else []), **kw)
         if hasattr(sub, 'max_steps'): sub.max_steps = max_steps
         if not run.attach(sub): return _stopped(run)
         with run_context(run): reply = sub.send([*images, question] if images else question, run=run)
         while not run.cancelled and (msgs := run.drain_inbox()):
             with run_context(run): reply = sub.send('\n'.join(msgs), run=run)
+        run.answer = str(reply)
         run.write(f'answer: {reply}')
         if run.cancelled: return _stopped(run.finish())
         if _model_refused(sub, reply):

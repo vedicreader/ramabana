@@ -7,43 +7,87 @@ Docs: https://vedicreader.github.io/ramabana/pane.html.md"""
 # %% ../nbs/18_pane.ipynb #dcfdb8be
 from __future__ import annotations
 
-import json, os, time
+import json, os, re, time
 from pathlib import Path
 
+from fastcore.basics import first
 from fastcore.script import call_parse
 from rich.console import Console, Group
 from rich.live import Live
 from rich.text import Text
 
-from shalya.core import one_line as _1
+from shalya.core import clip, diff_text, one_line as _1
+
+from .monitor import _counts, _rel
 
 # %% auto #0
-__all__ = ['PALETTE', 'now_snapshot', 'write_snapshot', 'read_snapshot', 'render', 'main']
+__all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'PALETTE', 'now_snapshot', 'write_snapshot', 'read_snapshot',
+           'render', 'main']
 
 # %% ../nbs/18_pane.ipynb #d2a80a47
+CALLS_KEPT = 8       #: a sub-agent's latest calls in a snapshot
+OUT_CHARS = 200      #: chars kept of each call's result
+ANSWER_CHARS = 500   #: chars kept of a finished sub-agent's answer
+DIFF_LINES = 80      #: lines kept of each file's diff
+
 def _secs(r, now): return round(((r.ended or now) - r.started) if r.started else 0, 1)
 
 def _current(acts): return next((a.summary for a in reversed(acts) if not a.done), '')
 
-def _subs(agent, root):
-    "The turn's delegations, then the background runs that are live or finished since it began."
-    since = root.started if root else 0
-    bg = [r for r in agent._side_runs() if r.kind == 'background' and (not r.terminal or r.ended >= since)]
-    return [c for c in (root.children if root else []) if c.kind == 'child'] + bg
+def _bg_runs(agent, since):
+    "Background delegations that are live or finished since `since`."
+    return [r for r in agent._side_runs() if r.kind == 'background' and (not r.terminal or r.ended >= since)]
+
+def _sub(r, every, now):
+    calls = [a for a in every if a.run_id == r.id]
+    return {'id': r.id, 'question': _1(r.question, 200), 'elapsed': _secs(r, now), 'state': r.state, 'steps': len(calls),
+            'status': r.status, 'current': _current(calls),
+            'calls': [{'line': a.summary, 'ok': a.ok, 'done': a.done, 'out': clip(a.detail, OUT_CHARS)} for a in calls[-CALLS_KEPT:]],
+            'answer': clip(r.answer, ANSWER_CHARS) if r.terminal else ''}
+
+def _files(agent):
+    "This turn's writes: path under the first root, lines added and removed, and the diff cut to `DIFF_LINES`."
+    root, out = first(agent.host.roots or ()), []
+    for p, (was, now) in agent.changes().items():
+        d = diff_text(was, now, rel := _rel(p, root))
+        (added, removed), ls = _counts(d), d.splitlines()
+        more = [f'… {len(ls) - DIFF_LINES} more lines'] if len(ls) > DIFF_LINES else []
+        out.append({'path': rel, 'added': added, 'removed': removed, 'diff': '\n'.join(ls[:DIFF_LINES] + more)})
+    return out
+
+_STARTED = re.compile(r'started (cmd_\w+)')
+
+def _shells(agent, every, since, now):
+    "`run_shell_bg` commands the host still knows: live ones, and those started since `since`."
+    out = []
+    for a in every:
+        if a.tool != 'run_shell_bg' or not (m := _STARTED.match(a.detail)): continue
+        try: state = agent.host.cmd_output(m[1], 1)[0]
+        except Exception: continue   # a host that runs no background commands, or has forgotten this one
+        if state == 'running' or a.started >= since:
+            out.append({'kind': 'shell', 'id': m[1], 'label': _1(a.args.get('command'), 120), 'state': state,
+                        'elapsed': round(now - a.started, 1) if state == 'running' else None})
+    return out
+
+def _background(agent, bg, every, since, now):
+    "Background delegations, shells and folder watches, one row each."
+    return ([{'kind': 'delegate', 'id': r.id, 'label': _1(r.question, 120), 'state': r.state, 'elapsed': _secs(r, now)} for r in bg]
+            + _shells(agent, every, since, now)
+            + [{'kind': 'watch', 'id': w.id, 'label': w.folder, 'state': w.last_status or 'watching', 'elapsed': None} for w in agent.monitors.all()])
 
 def now_snapshot(agent):
-    "What the foreground turn and its sub-agents are doing, as a JSON-able dict."
+    "The foreground turn, its plan, sub-agents, writes and background work, as a JSON-able dict."
     (every, mark), now, root = agent.activity.window(), time.time(), agent.run()
-    ids = {a.id for a in every}
-    mine = [a for a in every[mark:] if a.parent_action_id not in ids]
-    def sub(r):
-        calls = [a for a in every if a.run_id == r.id]
-        return {'id': r.id, 'question': _1(r.question, 200), 'elapsed': _secs(r, now),
-                'current': _current(calls), 'state': r.state, 'steps': len(calls)}
+    ids, since = {a.id for a in every}, root.started if root else 0
+    mine, bg = [a for a in every[mark:] if a.parent_action_id not in ids], _bg_runs(agent, since)
+    kids = [c for c in (root.children if root else []) if c.kind == 'child']
     return {'at': now, 'busy': agent.busy,
-            'root': {'turn_elapsed': _secs(root, now) if root else 0, 'steps': len(mine),
-                     'current': _current(mine), 'state': root.state if root else 'idle'},
-            'subs': [sub(r) for r in _subs(agent, root)]}
+            'root': {'turn_elapsed': _secs(root, now) if root else 0, 'steps': len(mine), 'state': root.state if root else 'idle',
+                     'status': agent.status_line, 'current': _current(mine)},
+            'plan': [{'text': t.text, 'status': t.status} for t in agent.plan.todos],
+            'subs': [_sub(r, every, now) for r in kids + bg],
+            'files': _files(agent),
+            'background': _background(agent, bg, every, since, now)}
 
 # %% ../nbs/18_pane.ipynb #22ae7faf
 def write_snapshot(agent, path):
