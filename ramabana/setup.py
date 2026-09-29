@@ -7,15 +7,56 @@ Docs: https://vedicreader.github.io/ramabana/setup.html.md"""
 # %% ../nbs/19_setup.ipynb #6c9acc6f
 from __future__ import annotations
 
-import json, os, platform, re, shlex, shutil, subprocess, sys, uuid
+import importlib, importlib.util, json, os, platform, re, shlex, shutil, subprocess, sys, uuid
 
-from fastcore.all import Path, ifnone, patch, store_attr
-
-from . import core
+from fastcore.basics import ifnone, patch, store_attr
+from fastcore.xtras import Path
 
 # %% auto #0
-__all__ = ['SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD', 'WHY', 'tmux_version', 'tmux_conf',
-           'Setup']
+__all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
+           'WHY', 'VALUED', 'EARLY', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup',
+           'launch_args', 'run_cli']
+
+# %% ../nbs/19_setup.ipynb #8cc164e0
+ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
+
+def env_prefixes():
+    "The env prefixes `core` reads: its own once loaded, where an app may have changed them, else `ENV_DEFAULT`."
+    return (c.ENV_PREFIX, c.ENV_FALLBACK) if (c := sys.modules.get('ramabana.core')) else ENV_DEFAULT
+
+#: the modules of each extra that ramabana imports
+EXTRAS = dict(search=('vishalakshi', 'litesearch', 'kosha', 'rgapi', 'fossick'),
+              python=('dhrishti', 'jupyter_client'),
+              serve=('mcp', 'acp'),
+              cli=('teleprint', 'fastpylight'),
+              dhrona=('dhrona',))
+
+def installed(mod):
+    "Whether `mod` would import, without importing it."
+    try: return importlib.util.find_spec(mod) is not None
+    except (ImportError, ValueError): return False
+
+def need(extra, *mods):
+    "`''` when `mods`, by default all of `extra`'s, are installed; else what to install."
+    miss = [m for m in mods or EXTRAS[extra] if not installed(m)]
+    return f"{', '.join(miss)} not installed: pip install 'ramabana[{extra}]'" if miss else ''
+
+#: console scripts besides `run_cli`: the module whose `main` runs, its extra, and the modules it needs
+SCRIPTS = dict(run_mcp=('mcp', 'serve', ('mcp',)), run_acp=('racp', 'serve', ('acp',)),
+               run_pane=('pane', 'cli', ('teleprint', 'rich')))
+
+def _refuse(msg):
+    "A console script that prints `msg` and exits 2."
+    def main():
+        print(msg, file=sys.stderr)
+        return 2
+    return main
+
+def __getattr__(name):
+    "The `main` a console script in `SCRIPTS` calls itself, so `call_parse` reads the command line; or one naming the missing extra."
+    if name not in SCRIPTS: raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+    mod, extra, mods = SCRIPTS[name]
+    return _refuse(msg) if (msg := need(extra, *mods)) else importlib.import_module(f'ramabana.{mod}').main
 
 # %% ../nbs/19_setup.ipynb #c674b32c
 SOCKET, WRAP_MIN, SPLIT_MIN, KEYS_MIN = 'ramabana', (3, 0), (3, 1), (3, 2)
@@ -58,7 +99,7 @@ class Setup:
         self.cfg, self.environ, self.argv = Path(cfg or '~/.config/ramabana').expanduser(), ifnone(environ, os.environ), ifnone(argv, sys.argv)
         self.cwd, self.isatty = cwd or os.getcwd(), isatty or (lambda: sys.stdin.isatty() and sys.stdout.isatty())
 
-    def _env(self, name): return self.environ.get(core.ENV_PREFIX+name) or self.environ.get(core.ENV_FALLBACK+name)
+    def _env(self, name): return next((v for p in env_prefixes() if (v := self.environ.get(p+name))), None)
     @property
     def tmux(self): return self.which('tmux')
 
@@ -80,12 +121,12 @@ class Setup:
     def command(self):
         "The argv that reruns this command line: its script, else this Python."
         exe, *args = self.argv
-        me = [exe] if os.path.isfile(exe) and os.access(exe, os.X_OK) else [sys.executable, '-c', 'import sys; from ramabana.cli import main; sys.exit(main())']
+        me = [exe] if os.path.isfile(exe) and os.access(exe, os.X_OK) else [sys.executable, '-c', 'import sys; from ramabana.setup import run_cli; sys.exit(run_cli())']
         return [*me, *args]
 
     def wrap(self):
         "The `execvpe` arguments that rerun `command` on a tmux server of its own."
-        env = {**self.environ, core.ENV_PREFIX+'WRAPPED': '1'}
+        env = {**self.environ, env_prefixes()[0]+'WRAPPED': '1'}
         return self.tmux, ['tmux', '-L', f'{SOCKET}-{uuid.uuid4().hex[:8]}', '-f', str(self.conf()), 'new-session', '-s', SOCKET,
                            '-c', self.cwd, 'sh', '-c', HOLD, 'ramabana', *self.command()], env
 
@@ -99,6 +140,33 @@ class Setup:
         if self.environ.get('TMUX'): return self.ext_keys()
         if self._env('WRAPPED') or not (self.tmux or self.offer_install()) or (self.version() or (0,)) < WRAP_MIN: return
         self.execvpe(*self.wrap())
+
+# %% ../nbs/19_setup.ipynb #d30426c2
+#: the `ramabana` options that take a value; every other option is a flag
+VALUED = ('--root', '--model', '--approve', '--pii', '--theme', '--max-tool-calls', '--max-steps', '--cfg', '--resume',
+          '--attach', '--tmux', '--pane', '--optin', '--profile')
+#: options after which `main` returns before `launch`, or checks the python extra first
+EARLY = ('-h', '--help', '--json', '--doctor', '--kernels', '--python', '--attach', '--agent-proxy')
+
+def launch_args(argv):
+    "`Setup`'s `cfg` and `launch`'s `tmux` for an interactive command line, read without `main`'s parser; None leaves it to `main`."
+    kw, it = dict(cfg=None, tmux='auto', pane='auto'), iter(argv)
+    for a in it:
+        k, eq, v = a.partition('=')
+        if not a.startswith('-') or a == '-' or k in EARLY: return None
+        if k in VALUED: kw[k[2:]] = v if eq else next(it, '')
+    if kw['tmux'] not in ('auto', 'on') or kw['pane'] not in ('auto', 'on', 'off'): return None
+    return dict(cfg=kw['cfg'], tmux=kw['tmux'])
+
+def run_cli():
+    "The `ramabana` script: rerun inside tmux before anything heavy loads, then parse the command line for `cli.main`."
+    if (msg := need('cli')): return _refuse(msg)()
+    if (kw := launch_args(sys.argv[1:])) is not None: Setup(kw['cfg']).launch(tmux=kw['tmux'])
+    from fastcore.script import anno_parser
+    from ramabana.cli import main
+    args = vars(anno_parser(main.__wrapped__, pos=['prompt']).parse_args())
+    for k in ('pdb', 'xtra'): args.pop(k, None)
+    return main(**args)
 
 # %% ../nbs/19_setup.ipynb #235e735b
 @patch
@@ -159,7 +227,7 @@ def doctor(self:Setup):
     v, about, conf, pane = self.version(), self.about(), self.cfg/'tmux.conf', self.which('ramabana-pane')
     keys = f'{self._show_ext() or "unknown"} in this tmux' if self.environ.get('TMUX') else \
            f"{'on' if v and v >= KEYS_MIN else 'needs tmux 3.2+'} in ramabana's own tmux server"
-    miss = [x for x in core.EXTRAS if core.need(x)]
+    miss = [x for x in EXTRAS if need(x)]
     split = f'ok on {about}' if v and v >= SPLIT_MIN else 'needs tmux 3.1+' + (f', this is {about}; /pane prints a command to run instead' if v else '')
     print(f'tmux: {about} at {self.tmux}' if v else 'tmux: not found', f'split: {split}', f'extended-keys: {keys}',
           f'config: {conf}' + ('' if conf.exists() else ', written by the first session'),

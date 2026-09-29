@@ -8,26 +8,27 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE_ALIASES', 'CLAUDE', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
            'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'PROBE_TTL',
-           'PROBE_DIR', 'HARNESS', 'EXTRAS', 'SCRIPTS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY',
-           'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS',
-           'PROFILES', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS', 'MODEL_ALIASES', 'TOOL_CHANNELS',
-           'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'probe_path', 'probed', 'forget_probes',
-           'runtime_remedy', 'runtime_detail', 'runtime_available', 'installed', 'need', 'auth_status',
-           'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve',
-           'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for', 'register_model',
-           'unregister_model', 'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model', 'force_tags',
+           'PROBE_DIR', 'HARNESS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES',
+           'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'PROFILES',
+           'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS', 'MODEL_ALIASES', 'TOOL_CHANNELS', 'BranchChanged',
+           'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'probe_path', 'probed', 'forget_probes',
+           'runtime_remedy', 'runtime_detail', 'runtime_available', 'auth_status', 'copilot_catalog',
+           'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps',
+           'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for', 'register_model', 'unregister_model',
+           'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model', 'force_tags',
            'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
 from fastcore.all import Path, atomic_save
 from shalya.host import HostError
+from .setup import ENV_DEFAULT
 import urai, rishi.core   # registers rishi's backends with urai
 from .models import CATALOG, claude_ids, claude_aliases, provider_models
 from dataclasses import dataclass, field
 
 # %% ../nbs/00_core.ipynb #2049138c
-ENV_PREFIX, ENV_FALLBACK = 'RAMABANA_', 'LEELA_'
+ENV_PREFIX, ENV_FALLBACK = ENV_DEFAULT
 
 AgentError = HostError
 class BranchChanged(AgentError): "A branch moved while a person decided on it, so nothing was written."
@@ -195,39 +196,12 @@ def runtime_available(runtime):
     except (ImportError, KeyError, ValueError): return False
 
 # %% ../nbs/00_core.ipynb #2b914187
-#: the modules of each extra that ramabana imports
-EXTRAS = dict(search=('vishalakshi', 'litesearch', 'kosha', 'rgapi', 'fossick'),
-              python=('dhrishti', 'jupyter_client'),
-              serve=('mcp', 'acp'),
-              cli=('teleprint', 'fastpylight'),
-              dhrona=('dhrona',))
-
-def installed(mod):
-    "Whether `mod` would import, without importing it."
-    try: return importlib.util.find_spec(mod) is not None
-    except (ImportError, ValueError): return False
-
-def need(extra, *mods):
-    "`''` when `mods`, by default all of `extra`'s, are installed; else what to install."
-    miss = [m for m in mods or EXTRAS[extra] if not installed(m)]
-    return f"{', '.join(miss)} not installed: pip install 'ramabana[{extra}]'" if miss else ''
-
-#: console scripts: the module whose `main` runs, its extra, and the modules it needs
-SCRIPTS = dict(run_cli=('cli', 'cli', ()), run_mcp=('mcp', 'serve', ('mcp',)), run_acp=('racp', 'serve', ('acp',)),
-               run_pane=('pane', 'cli', ('teleprint', 'rich')))
-
-def _refuse(msg):
-    "A console script that prints `msg` and exits 2."
-    def main():
-        print(msg, file=sys.stderr)
-        return 2
-    return main
+from .setup import EXTRAS, SCRIPTS, installed, need
 
 def __getattr__(name):
-    "The `main` a console script in `SCRIPTS` calls itself, so `call_parse` reads the command line; or one naming the missing extra."
-    if name not in SCRIPTS: raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
-    mod, extra, mods = SCRIPTS[name]
-    return _refuse(msg) if (msg := need(extra, *mods)) else importlib.import_module(f'ramabana.{mod}').main
+    "The console scripts, for a `ramabana` script installed while they lived here."
+    if name not in (*SCRIPTS, 'run_cli'): raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+    return getattr(importlib.import_module('ramabana.setup'), name)
 
 # %% ../nbs/00_core.ipynb #9881cc3b
 def _json_has(path, *keys):

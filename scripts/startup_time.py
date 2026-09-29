@@ -3,12 +3,13 @@
 
     .venv/bin/python scripts/startup_time.py [--root nbs] [--profile full] [--runs 3]
 
-`relaunch` is the outer process's time to exec tmux (a fake tmux on PATH records it). The session numbers
+`relaunch` is the outer process's time to exec tmux, through the console script `pyproject.toml` declares (a fake
+tmux on PATH records it). The session numbers
 come from the real `main` with `--tmux off`, hooked: `prompt` is the first paint, `prompt_tools` the moment
 the system prompt and tools are built, `ready` when `Agent.start` returns, and `litesearch` whether it was
 imported by then.
 """
-import argparse, fcntl, json, os, pty, select, shutil, statistics, struct, subprocess, sys, tempfile, termios, time
+import argparse, fcntl, json, os, pty, select, shutil, statistics, struct, subprocess, sys, tempfile, termios, time, tomllib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
@@ -67,9 +68,11 @@ def relaunch(tmp):
                              f"exec perl -MTime::HiRes=time -e 'open(F, \">{mark}\"); print F time'\n")
     (bin_/'tmux').chmod(0o755)
     subprocess.run([bin_/'tmux', '-V'], capture_output=True)   # macOS scans a new executable on its first run
-    exe = str(Path(PY).parent/'ramabana')
+    mod, fn = tomllib.loads((HERE/'pyproject.toml').read_text())['project']['scripts']['ramabana'].split(':')
+    (exe := tmp/'ramabana').write_text(f'#!{PY}\nimport sys\nfrom {mod} import {fn}\nsys.exit({fn}())\n')   # the console script pip writes
+    exe.chmod(0o755)
     t0 = time.time()
-    in_pty([exe, '--cfg', str(tmp/'cfg')], env(PATH=f"{bin_}:{os.environ['PATH']}"), lambda: False, timeout=30)
+    in_pty([str(exe), '--cfg', str(tmp/'cfg')], env(PATH=f"{bin_}:{os.environ['PATH']}"), lambda: False, timeout=30)
     return round(float(mark.read_text()) - t0, 3)
 
 def session(tmp, root, profile):

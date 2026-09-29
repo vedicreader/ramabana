@@ -11,8 +11,6 @@ Modules:
 
 __version__ = "0.2.4"
 
-from .core import AgentError, agent_err, env
-
 __all__ = ['Host', 'NullHost', 'Hit', 'Backend', 'Agent', 'Completer', 'Approvals', 'Ask',
            'Plan', 'Todo', 'ModelSpec', 'Routing', 'AgentError', 'agent_err', 'env']
 
@@ -20,14 +18,16 @@ _lazy = {'Host': ('.tools', 'Host'), 'NullHost': ('.tools', 'NullHost'), 'Hit': 
          'Backend': ('.runtime', 'Backend'), 'Agent': ('.agent', 'Agent'),
          'Completer': ('.agent', 'Completer'), 'Approvals': ('.agent', 'Approvals'),
          'Ask': ('.agent', 'Ask'), 'Plan': ('.agent', 'Plan'), 'Todo': ('.agent', 'Todo'),
-         'ModelSpec': ('.core', 'ModelSpec'), 'Routing': ('.core', 'Routing')}
+         'ModelSpec': ('.core', 'ModelSpec'), 'Routing': ('.core', 'Routing'),
+         'AgentError': ('.core', 'AgentError'), 'agent_err': ('.core', 'agent_err'), 'env': ('.core', 'env')}
 
 
 def __getattr__(name):
     """Import the heavy names on first touch.
 
     `runtime` reaches for Rishi, which lazily loads the selected local or hosted engine;
-    it should not be imported because someone merely asked for `ramabana.Host`.
+    it should not be imported because someone merely asked for `ramabana.Host`. Nor should `core`,
+    so the `ramabana` script can rerun itself inside tmux before anything heavy loads.
     """
     if name in _lazy:
         from importlib import import_module

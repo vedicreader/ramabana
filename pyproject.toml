@@ -44,11 +44,11 @@ Repository = "https://github.com/vedicreader/ramabana"
 Documentation = "https://vedicreader.github.io/ramabana/"
 
 [project.scripts]
-ramabana = "ramabana.core:run_cli"
-ramabana-mcp = "ramabana.core:run_mcp"
-ramabana-acp = "ramabana.core:run_acp"
+ramabana = "ramabana.setup:run_cli"
+ramabana-mcp = "ramabana.setup:run_mcp"
+ramabana-acp = "ramabana.setup:run_acp"
 ramabana-tick = "ramabana.monitor:tick"
-ramabana-pane = "ramabana.core:run_pane"
+ramabana-pane = "ramabana.setup:run_pane"
 
 [project.entry-points.nbdev]
 ramabana = "ramabana._modidx:d"

@@ -107,3 +107,42 @@ def test_a_start_that_fails_says_so_in_a_note(tmp_path):
         assert await until(lambda: not ui.starting)
         assert 'no model available' in text(ui) and 'no weights' in text(ui), text(ui)
     session(a, body)
+
+
+HEAVY = ('ramabana.core', 'ramabana.cli', 'ramabana.agent', 'rishi', 'shalya', 'teleprint', 'litesearch')
+
+def test_the_tmux_relaunch_is_decided_before_the_heavy_imports(tmp_path):
+    (bin_ := tmp_path/'bin').mkdir()
+    (bin_/'tmux').write_text("#!/bin/sh\necho 'tmux 3.5a'\n"); (bin_/'tmux').chmod(0o755)
+    out = child(f'''
+    import io, os, sys
+    os.environ['PATH'] = {str(bin_)!r} + ':' + os.environ['PATH']
+    for k in ('TMUX', 'RAMABANA_TMUX', 'RAMABANA_WRAPPED', 'LEELA_TMUX', 'LEELA_WRAPPED'): os.environ.pop(k, None)
+    class Tty(io.StringIO):
+        def isatty(self): return True
+    real = sys.stdout
+    sys.stdin = sys.stdout = Tty()
+    def execvpe(file, args, env):
+        real.write(repr(sorted(m for m in {HEAVY!r} if m in sys.modules)) + ' ' + env['RAMABANA_WRAPPED']); real.flush()
+        os._exit(0)
+    os.execvpe = execvpe
+    sys.argv = ['ramabana', '--root', '.', '--cfg', {str(tmp_path/'cfg')!r}]
+    from ramabana.setup import run_cli
+    run_cli()
+    ''')
+    assert out == '[] 1', out
+
+def test_launch_args_leave_every_session_that_returns_early_to_main():
+    from ramabana.setup import launch_args
+    assert launch_args(['--root', 'a,b', '--profile=full', '--no-web']) == dict(cfg=None, tmux='auto')
+    assert launch_args(['--cfg', '/c', '--tmux', 'on', '--pane', 'off']) == dict(cfg='/c', tmux='on')
+    for argv in (['hi'], ['--root', 'a', 'hi'], ['-'], ['--json'], ['--doctor'], ['--kernels'], ['-h'], ['--python'],
+                 ['--attach', 'x'], ['--agent-proxy'], ['--tmux', 'off'], ['--tmux', 'nope'], ['--pane', 'sideways'], ['--vault', 'hi']):
+        assert launch_args(argv) is None, argv
+
+def test_launch_args_know_every_option_that_takes_a_value():
+    from fastcore.script import anno_parser
+    from ramabana.setup import VALUED
+    p = anno_parser(cli.main.__wrapped__, pos=['prompt'])
+    valued = {a.option_strings[0] for a in p._actions if a.option_strings and a.nargs != 0} - {'--xtra'}
+    assert valued == set(VALUED)

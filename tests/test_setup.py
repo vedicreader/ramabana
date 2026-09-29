@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ramabana import core
+from ramabana import core, setup
 from ramabana.setup import Setup, tmux_conf, tmux_version
 
 
@@ -79,7 +79,7 @@ def test_without_a_script_on_argv_the_relaunch_runs_this_python(tmp_path):
     s, box = mk(tmp_path, argv=('-c', '--pane', 'on'))
     s.launch()
     cmd = box.execd[1][-5:]
-    assert cmd[:2] == [sys.executable, '-c'] and 'ramabana.cli' in cmd[2] and cmd[-2:] == ['--pane', 'on']
+    assert cmd[:2] == [sys.executable, '-c'] and 'run_cli()' in cmd[2] and cmd[-2:] == ['--pane', 'on']
 
 @pytest.mark.parametrize('why,kw,environ,tty', [
     ('one-shot', dict(prompt='hi'), None, True),
@@ -170,7 +170,7 @@ def test_inside_your_own_tmux_extended_keys_are_turned_on_only_when_off(tmp_path
 
 def test_doctor_prints_one_line_per_check(tmp_path, capsys, monkeypatch):
     s, box = mk(tmp_path, Box(have={'tmux', 'ramabana-pane'}, version='tmux 3.0a'))
-    monkeypatch.setattr(core, 'need', lambda extra, *mods: 'missing' if extra in ('serve', 'dhrona') else '')
+    monkeypatch.setattr(setup, 'need', lambda extra, *mods: 'missing' if extra in ('serve', 'dhrona') else '')
     assert s.doctor() == 0
     out = capsys.readouterr().out.splitlines()
     assert [l.split(':')[0] for l in out] == ['tmux', 'split', 'extended-keys', 'config', 'ramabana-pane', 'extras']
