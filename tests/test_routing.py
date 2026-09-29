@@ -28,37 +28,37 @@ def child(code):
 def test_the_one_shot_model_is_named_once_and_moves_every_cheap_job(monkeypatch):
     "Turn model is independent of oneshot; oneshot moves every cheap job; env can override one job."
     assert LOCAL['gemma-e4b'] == 'litert-community/gemma-4-E4B-it-litert-lm'
-    assert DEFAULT_POLICY['oneshot'] == 'gemma-e4b'
+    assert DEFAULT_POLICY['oneshot'] == 'gpt-4.1'
 
     r = Routing(turn='gpt-mini')
-    for job in ONESHOT_JOBS: assert r.name_for(job) == 'gemma-e4b', job
-    assert r.name_for('turn') == 'gpt-mini' and r.name_for('subagent') == 'gpt-4.1'
-    # a summary of this conversation belongs on the model holding it. Under the `oneshot` policy
-    # it loaded a second local runtime to summarise the first.
-    assert 'summary' not in ONESHOT_JOBS and r.name_for('summary') == 'gpt-mini'
+    for job in ONESHOT_JOBS: assert r.name_for(job) == 'gpt-4.1', job
+    assert r.name_for('turn') == 'gpt-mini' and r.name_for('subagent') == 'claude-sonnet-5'
+    assert 'summary' not in ONESHOT_JOBS and r.name_for('summary') == 'gpt-4.1'   # its own default
 
     r.policy['oneshot'] = 'gpt-sol'                    # one name moves them all
     for job in ONESHOT_JOBS: assert r.name_for(job) == 'gpt-sol', job
-    assert r.name_for('summary') == 'gpt-mini', 'except the one that follows the turn'
+    assert r.name_for('summary') == 'gpt-4.1', 'except summary, which has its own'
     r.policy['summary'] = 'gpt'                        # and it may still be singled out
     assert r.name_for('summary') == 'gpt' and r.name_for('classify') == 'gpt-sol'
 
-    monkeypatch.delenv('LEELA_MODEL', raising=False)
+    for k in ('LEELA_MODEL', 'RAMABANA_MODEL', 'RAMABANA_MODEL_SUMMARY'): monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv('LEELA_MODEL_SUMMARY', 'gemma-12b')
+    monkeypatch.setenv('OPENAI_API_KEY', 'x')
     r2 = Routing(turn='gemma-e2b')
     assert r2.spec('summary').name == 'gemma-12b'
-    assert r2.spec('classify').name == core.DFLT_LOCAL
+    assert r2.spec('classify').name == 'gpt-4.1'
 
-    r2.set('gemma-12b')                                # stand-in for a cloud turn, no network
+    r2.set('gemma-12b')
     assert r2.spec('turn').name == 'gemma-12b'
     for job in ('completion', 'classify'):
-        assert r2.spec(job).name == core.DFLT_LOCAL and r2.spec(job).local, job
-    assert r2.spec('subagent').name == 'gpt-4.1' and not r2.spec('subagent').local
+        assert r2.spec(job).name == 'gpt-4.1' and not r2.spec(job).local, job
+    assert r2.name_for('subagent') == 'claude-sonnet-5'
 
 
-def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runtime):
+def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runtime, monkeypatch):
     "Missing oneshot runtime falls back with a note; a missing turn model raises."
     hide_runtime('mlx')
+    monkeypatch.setenv('OPENAI_API_KEY', 'x')
     r = Routing(turn='gpt-mini')
     r.policy['oneshot'] = 'mlx/not-installed-here'
     with pytest.raises(Exception): r.spec('oneshot', fallback=False)
@@ -473,3 +473,79 @@ def test_the_picker_lists_only_the_current_catalog(monkeypatch):
     rows = core.available_models()
     assert [r['label'] for r in rows if r['provider'] == 'claude'] == list(models.CATALOG['claude'])
     assert not any('claude-opus-5' == r['label'] or 'claude-sonnet-4-6' == r['label'] for r in rows)
+
+
+# -- cloud defaults ----------------------------------------------------------------------
+
+LOCAL_RUNTIMES = ('litert', 'mlx', 'llama', 'ollama')
+
+def no_model_env(monkeypatch):
+    for p in ('RAMABANA_', 'LEELA_'):
+        for j in ('', *(f'_{j.upper()}' for j in core.JOBS)): monkeypatch.delenv(f'{p}MODEL{j}', raising=False)
+
+def test_the_defaults_are_cloud_models(monkeypatch):
+    "Opus takes the turn, gpt-4.1 the small jobs, Sonnet the sub-agents; no local engine is a default."
+    no_model_env(monkeypatch)
+    r = Routing()
+    assert r.name_for('turn') == 'claude-opus-5-5' and r.name_for('subagent') == 'claude-sonnet-5'
+    for job in ('oneshot', 'classify', 'completion', 'inline', 'summary'): assert r.name_for(job) == 'gpt-4.1', job
+    assert all(MODELS.get(n, ('remote',))[0] not in LOCAL_RUNTIMES for n in DEFAULT_POLICY.values() if n)
+    assert not hasattr(r, 'default_local')
+
+def test_env_overrides_still_route(monkeypatch):
+    no_model_env(monkeypatch)
+    monkeypatch.setenv('RAMABANA_MODEL', 'gemma-e4b')
+    monkeypatch.setenv('RAMABANA_MODEL_CLASSIFY', 'gemma-e2b')
+    r = Routing()
+    assert (r.name_for('turn'), r.name_for('classify'), r.name_for('completion')) == ('gemma-e4b', 'gemma-e2b', 'gpt-4.1')
+    assert r.spec('turn').local                        # named explicitly, so a local model still runs
+
+def test_alternatives_never_fall_back_to_a_local_model(monkeypatch):
+    no_model_env(monkeypatch)
+    r = Routing(turn='gemma-e4b')
+    r.policy['summary'] = 'gemma-12b'
+    for job in core.JOBS:
+        assert not [a for a in r.alternatives(job) if a in core.LOCAL or a.split('/')[0] in LOCAL_RUNTIMES], job
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    monkeypatch.setattr(r, 'policy', {**r.policy, 'subagent': 'gpt-4.1'})
+    with pytest.raises(core.AgentError, match=r'classify job: gpt-4\.1 needs OPENAI_API_KEY'): r.spec('classify')
+
+def test_a_missing_key_or_cli_names_the_job_the_model_and_what_is_needed(monkeypatch, hide_runtime):
+    no_model_env(monkeypatch)
+    hide_runtime('claude')
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    r = Routing()
+    with pytest.raises(core.AgentError, match=r'turn job: claude-opus-5-5 .*claude /login'): r.spec('turn')
+    with pytest.raises(core.AgentError, match=r'completion job: gpt-4\.1 needs OPENAI_API_KEY'): r.spec('completion')
+    with pytest.raises(core.AgentError, match=r'subagent job: claude-sonnet-5 .*Claude Code'): r.spec('subagent')
+
+def test_a_cheap_job_without_its_key_moves_to_a_cloud_model_and_says_why(monkeypatch):
+    no_model_env(monkeypatch)
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    monkeypatch.setenv('GEMINI_API_KEY', 'x')
+    r = Routing(turn='gemini/gemini-2.5-flash')
+    assert r.spec('classify').name == 'gemini/gemini-2.5-flash'
+    assert 'gpt-4.1 needs OPENAI_API_KEY' in r.notes['classify']
+    monkeypatch.setenv('OPENAI_API_KEY', 'x')
+    assert Routing(turn='gemini/gemini-2.5-flash').spec('classify').name == 'gpt-4.1'
+
+def test_a_job_that_cannot_run_says_why_where_it_is_asked(monkeypatch, hide_runtime):
+    from ramabana.agent import Completer
+    no_model_env(monkeypatch)
+    hide_runtime('claude')
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    a = Agent(MemHost(), extensions=False, subagents=False)
+    c = Completer(a)
+    assert c.complete('x = ', 4) == '' and 'completion job: gpt-4.1 needs OPENAI_API_KEY' in c.note
+    assert a.oneshot('hi', job='classify') == '' and 'OPENAI_API_KEY' in a.routing.notes['classify']
+
+def test_a_turn_without_its_key_does_not_start_and_says_why(monkeypatch, hide_runtime):
+    no_model_env(monkeypatch)
+    hide_runtime('claude')
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: FakeBackend(spec, **kw))
+    a = Agent(MemHost(), model='gpt-4.1', extensions=False, subagents=False)
+    assert a.start() is None and a.note == 'turn job: gpt-4.1 needs OPENAI_API_KEY; set it in the environment'
+    monkeypatch.setenv('GEMINI_API_KEY', 'x')
+    assert a.set_model('gemini/gemini-2.5-flash', 'classify').name == 'gemini/gemini-2.5-flash'   # moving off a job that cannot run
+    assert a.set_model('gemini/gemini-2.5-flash').name == 'gemini/gemini-2.5-flash' and a.start() is not None

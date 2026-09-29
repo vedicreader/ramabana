@@ -26,7 +26,7 @@ from fastcore.basics import first, patch
 from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
-from .core import agent_err, available_models, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
+from .core import AgentError, agent_err, available_models, missing_key, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .runtime import QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of
@@ -1144,11 +1144,12 @@ def skills(self:Agent):
 # %% ../nbs/03_agent.ipynb #a29bf6f1
 @patch
 def _be_or_none(self:Agent, job='turn'):
-    "The backend for `job` if it can start, else None."
+    "The backend for `job` if it can start, else None with the reason in `routing.notes[job]`."
     try:
         b = self._be(job)
-        return b if b.start() is not None else None
-    except Exception: return None
+        if b.start() is not None: return b
+        self.routing.notes[job] = b.note
+    except Exception as e: self.routing.notes[job] = str(e) if isinstance(e, AgentError) else agent_err(e)
 
 # %% ../nbs/03_agent.ipynb #0358c91a
 @patch
@@ -1825,6 +1826,9 @@ def model(self:Agent): return self.routing.spec('turn')
 def start(self:Agent):
     "Build the turn backend, once. Returns it, or None with `note` explaining why not."
     b = self._be('turn')
+    if (k := missing_key(b.spec)):
+        self.note = f'turn job: {b.spec.name} needs {k}; set it in the environment'
+        return None
     if b.start() is None:
         self.note = b.note
         return None
@@ -1847,8 +1851,8 @@ def retry(self:Agent):
 def set_model(self:Agent, name, job='turn'):
     "Point `job` at `name`. A turn-model change carries the live conversation with it."
     if self.busy: raise RuntimeError('cannot change model while the assistant is working')
-    previous = self.routing.spec(job)
-    old = (previous.backend, previous.model_id)
+    previous = self.spec_or_none(job)
+    old = previous and (previous.backend, previous.model_id)
     history = self._backends[old].snapshot_hist() if job == 'turn' and old in self._backends else []
     before = (self.budget, self.profile)
     spec = self.routing.set(name, job)
@@ -1857,7 +1861,7 @@ def set_model(self:Agent, name, job='turn'):
     if job == 'subagent': self._catalogs.clear(); self._views.clear()
     if job == 'turn' and new != old:
         self._be('turn').resume_hist(history)
-    still_used = {(self.routing.spec(j).backend, self.routing.spec(j).model_id) for j in JOBS}
+    still_used = {(s.backend, s.model_id) for j in JOBS if (s := self.spec_or_none(j))}
     if old not in still_used and old in self._backends:
         self._backends.pop(old).close()
     self.note = f'{job} → {model_note(spec)}' + (f' · {self.profile} profile' if job == 'turn' else '')
@@ -3093,7 +3097,7 @@ def _clean(text, before, max_lines):
 
 # %% ../nbs/03_agent.ipynb #d5db0743
 class Completer:
-    "Inline completion: the local model, a throwaway conversation, and only when asked for."
+    "Inline completion: the `completion` model, a throwaway conversation, and only when asked for."
 
     def __init__(self, agent, max_lines=MAX_COMPLETION_LINES, max_tokens=COMPLETION_TOKENS):
         self.a, self.max_lines, self.max_tokens = agent, max_lines, max_tokens
@@ -3120,7 +3124,7 @@ class Completer:
         "The text to insert at `pos` in `code`, or `''` with `note` saying why there isn't any."
         b = self.a._be_or_none('completion')
         if b is None:
-            self.note = 'no completion model available'
+            self.note = self.a.routing.notes.get('completion') or 'no completion model available'
             return ''
         if b.busy:
             self.note = 'model busy -- it is mid-turn'

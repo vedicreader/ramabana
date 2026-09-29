@@ -8,14 +8,15 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE_ALIASES', 'CLAUDE', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
            'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PROBE_TTL', 'PROBE_DIR', 'HARNESS',
-           'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX',
-           'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS',
-           'MODEL_ALIASES', 'TOOL_CHANNELS', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx',
-           'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available',
-           'auth_status', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec',
-           'unknown_model', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for',
-           'register_model', 'unregister_model', 'alias_path', 'saved_models', 'load_models', 'save_model',
-           'delete_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
+           'DFLT_TURN', 'DFLT_SMALL', 'DFLT_SUBAGENT', 'DFLT_LOCAL', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
+           'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS',
+           'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS', 'MODEL_ALIASES', 'TOOL_CHANNELS', 'KEY_ENVS',
+           'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'probe_path', 'probed', 'forget_probes',
+           'runtime_remedy', 'runtime_detail', 'runtime_available', 'auth_status', 'copilot_catalog',
+           'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps',
+           'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for', 'register_model', 'unregister_model',
+           'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model', 'force_tags',
+           'forget_forced_tags', 'tool_channel', 'missing_key', 'is_local', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
@@ -155,7 +156,10 @@ def _harness_available(mod, binary):
     return not _harness_detail(mod, binary)
 
 # %% ../nbs/00_core.ipynb #8f978b99
-def _claude_available(): return _harness_available(*HARNESS['claude'])
+def _claude_available():
+    "Whether Claude Code can be driven: its SDK is installed and `claude` is on PATH. Never imports the SDK, which takes a second."
+    try: return importlib.util.find_spec('claude_agent_sdk') is not None and bool(shutil.which('claude'))
+    except (ImportError, ValueError): return False
 
 # %% ../nbs/00_core.ipynb #ae0f2158
 def _copilot_available():
@@ -273,11 +277,11 @@ def available_models(include_legacy=False):
     return out
 
 # %% ../nbs/00_core.ipynb #70d7dfa3
-DFLT_LOCAL = 'gemma-e4b'
-completer = DFLT_LOCAL
-cheap = completer
+DFLT_TURN, DFLT_SMALL, DFLT_SUBAGENT = 'claude-opus-5-5', 'gpt-4.1', 'claude-sonnet-5'
+DFLT_LOCAL = 'gemma-e4b'   #: the local model to suggest; never a route unless named
+LOCAL_RUNTIMES = ('litert', 'mlx', 'llama', 'ollama')
 
-DEFAULT_POLICY = {'turn': None, 'oneshot': completer, 'inline': None, 'completion': None, 'classify': None, 'summary': None, 'subagent': 'gpt-4.1'}
+DEFAULT_POLICY = {'turn': None, 'oneshot': DFLT_SMALL, 'inline': None, 'completion': None, 'classify': None, 'summary': DFLT_SMALL, 'subagent': DFLT_SUBAGENT}
 _LOCAL_CTX = {'gemma-e2b': 16_384, 'gemma-e4b': 16_384, 'gemma-12b': 16_384, 'qwen-4b': 32_768, 'mini-coder-4b': 32_768, 'ornith-9b': 32_768, 'llama-qwen-0.6b': 32_768, 'llama-qwen-1.7b': 32_768, 'llama-qwen-4b': 32_768}
 DFLT_LOCAL_CTX = 32_768
 
@@ -346,9 +350,9 @@ def unknown_model(name):
 PREFIXES = RUNTIME_NAMES
 RETIRED = {'claude_code': 'use `claude/` instead: the same models, through Claude Code itself', 'cursor': 'the Cursor backend was removed'}
 
-def resolve(name, default_local=DFLT_LOCAL):
-    'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec.'
-    if not name: name = default_local
+def resolve(name):
+    'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec; none is `DFLT_TURN`.'
+    if not name: name = DFLT_TURN
     if name in MODELS:
         backend, mid = MODELS[name]
         config = CUSTOM.get(name, {}).get('config', {})
@@ -372,7 +376,7 @@ def resolve(name, default_local=DFLT_LOCAL):
             if not runtime_available('copilot'): raise RuntimeError(COPILOT_UNAVAILABLE)
             ctx, note = _copilot_ctx(model_id)
             return ModelSpec(name, 'copilot', model_id, ctx, note)
-        if runtime in ('litert', 'mlx', 'llama', 'ollama', *AGENTS):
+        if runtime in (*LOCAL_RUNTIMES, *AGENTS):
             if not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
             ctx = claude_ctx(model_id) if runtime == 'claude' else DFLT_AGENT_CTX if runtime in AGENTS else local_ctx(name)
             return ModelSpec(name, runtime, model_id, ctx)
@@ -542,15 +546,26 @@ def tool_channel(spec, chat=None):
     return 'native'
 
 # %% ../nbs/00_core.ipynb #e81acb32
+KEY_ENVS = {'openai': 'OPENAI_API_KEY', 'anthropic': 'ANTHROPIC_API_KEY', 'gemini': 'GEMINI_API_KEY'}
+
+def missing_key(spec):
+    "The env var a cloud `spec` needs and this environment lacks, else ''."
+    if spec.runtime != 'remote': return ''
+    k = (spec.config or {}).get('api_key_env') or KEY_ENVS.get(spec.model_id.partition('/')[0])
+    return k if k and not os.environ.get(k) else ''
+
+def is_local(name):
+    "Whether `name` names an on-device model, from the tables or its prefix, without resolving it."
+    return (MODELS.get(name) or (str(name).split('/')[0],))[0] in LOCAL_RUNTIMES
+
 @dataclass
 class Routing:
     "Job -> model: the policy, and the one place that decides what runs where."
     turn: str = None
     policy: dict = field(default_factory=lambda: dict(DEFAULT_POLICY))
-    default_local: str = DFLT_LOCAL
 
     def __post_init__(self):
-        if not self.turn: self.turn = env('MODEL') or self.default_local
+        if not self.turn: self.turn = env('MODEL') or DFLT_TURN
         for job in JOBS:
             if (v := env(f'MODEL_{job.upper()}')): self.policy[job] = v
         self._cache, self.notes = {}, {}
@@ -564,34 +579,42 @@ class Routing:
 
     def _resolve(self, name):
         "Resolve `name`, cached."
-        if name not in self._cache: self._cache[name] = resolve(name, self.default_local)
+        if name not in self._cache: self._cache[name] = resolve(name)
         return self._cache[name]
 
+    def _usable(self, name):
+        "Resolve `name`, refusing a cloud model whose key is not set."
+        spec = self._resolve(name)
+        if (k := missing_key(spec)): raise AgentError(f'needs {k}; set it in the environment')
+        return spec
+
     def alternatives(self, job):
-        "Where `job` goes when its own model is not on this machine, best first."
+        "Where `job` goes when its own model cannot run here, best first: the other routes, never a local model."
         seen, out = {self.name_for(job)}, []
-        for alt in (self.policy.get('oneshot') if job in ONESHOT_JOBS else None,
-                    self.turn, *(self.policy.get(j) for j in JOBS), self.default_local):
-            if alt and alt not in seen:
+        for alt in (self.policy.get('oneshot') if job in ONESHOT_JOBS else None, self.turn, *(self.policy.get(j) for j in JOBS)):
+            if alt and alt not in seen and not is_local(alt):
                 seen.add(alt); out.append(alt)
         return out
 
     def spec(self, job='turn', fallback=True):
-        "The `ModelSpec` for `job`, on another model when its own is not installed."
+        "The `ModelSpec` for `job`, else another cloud route; failing that, an error naming the job, the model and what it needs."
         n = self.name_for(job)
-        try: return self._resolve(n)
+        try: return self._resolve(n) if job == 'turn' else self._usable(n)   # the turn's key is `Agent.start`'s to report
         except Exception as e:
-            if not fallback or job == 'turn': raise
+            why = str(e) if isinstance(e, AgentError) else f'unavailable ({agent_err(e)})'
+            err = AgentError(f'{job} job: {n} {why}')
+            if not fallback or job == 'turn': raise err from e
             for alt in self.alternatives(job):
-                try: spec = self._resolve(alt)
+                try: spec = self._usable(alt)
                 except Exception: continue
-                self.notes[job] = f'{n} unavailable ({agent_err(e)}); using {alt}'
+                if spec.local: continue
+                self.notes[job] = f'{n} {why}; using {alt}'
                 return spec
-            raise
+            raise err from e
 
     def set(self, name, job='turn'):
         "Validate `name`, then point `job` at it."
-        spec = resolve(name, self.default_local)
+        spec = resolve(name)
         if job == 'turn': self.turn = name
         else: self.policy[job] = name
         self._cache[name] = spec
