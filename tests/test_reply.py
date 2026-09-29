@@ -25,6 +25,8 @@ def test_every_palette_names_a_pygments_style_that_exists():
     for name, style in cli.CODE_THEMES.items():
         assert name in cli.THEMES, f'{name!r} is a code theme for no palette'
         get_style_by_name(style)          # raises for a style pygments does not ship
+    import fastpylight
+    assert set(cli.THEMES) <= set(cli.HL_THEMES) and set(cli.HL_THEMES.values()) <= set(fastpylight.themes())
 
 
 def test_the_default_is_the_near_black_github_dark():
@@ -144,3 +146,40 @@ def test_the_model_row_sits_under_the_bar_and_follows_the_routing_table():
         assert 'no such model' in ui.model_row().plain, 'an unroutable model is a sentence, not a raise'
     finally: tty.close()
 
+
+def test_a_diff_is_coloured_by_line_its_code_by_language_and_anything_else_stays_gray():
+    G = cli.GRUVBOX
+    def at(t, i): return ' '.join(str(s.style) for s in t.spans if s.start <= i < s.end)
+    d = cli.diff_rich('--- a/x.py\n+++ b/x.py\n@@ -1 +1,2 @@\n-def f(): pass\n+def f(): return 1\n+s = "café 🐍"; n = 7\n'
+                      '--- a/uv.lock\n+++ b/uv.lock\n@@ -1 +1 @@\n-a = 1\n+a = 2')
+    p = d.plain
+    assert G['red'] in at(d, p.index('-def')) and G['green'] in at(d, p.index('+def'))
+    assert cli.scope_style('keyword') in at(d, p.index('return')), 'the code on a + line is highlighted as Python'
+    assert cli.scope_style('number') in at(d, p.index('7')), 'offsets past a non-ASCII character still line up'
+    assert 'bold' in at(d, p.index('--- a/uv.lock')), 'the hunk ends where its header says, not at the next file'
+    assert G['green'] in at(d, p.index('a = 2')) and G['red'] in at(d, p.index('a = 1')), 'no grammar: whole lines coloured'
+    stat = cli.diff_rich(' leela/app.py | 24 ++++--\n 1 file changed')
+    assert any(G['green'] in str(s.style) and set(stat.plain[s.start:s.end]) == {'+'} for s in stat.spans)
+    assert any(G['red'] in str(s.style) and set(stat.plain[s.start:s.end]) == {'-'} for s in stat.spans)
+    for s in ('3 passed in 0.2s', '--- notes\n+++ more\n- a list item'):
+        out = cli.diff_rich(s)
+        assert out.plain == s and not out.spans and G['gray'] in str(out.style)
+
+
+def test_the_changed_table_shows_the_largest_files_and_totals_every_one():
+    out = '\n'.join(rows(cli.changed_table([(f'd/f{i}.py', i, 1, i == 14) for i in range(15)]), width=60))
+    assert 'd/f14.py' in out and 'd/f3.py' in out and 'd/f2.py' not in out
+    assert '3 more files' in out and 'new' in next(l for l in out.splitlines() if 'd/f14.py' in l)
+    assert '15 files' in out and '+105' in out and '-15' in out
+
+
+
+def test_the_changed_table_prints_a_path_with_brackets_as_written():
+    out = '\n'.join(rows(cli.changed_table([('app/[id]/page.tsx', 1, 0, False), ('x[/].py', 2, 1, True)]), width=60))
+    assert 'app/[id]/page.tsx' in out and 'x[/].py' in out
+
+
+def test_highlighting_stays_on_its_token_after_a_crlf():
+    t = cli.hl_text('x = 1\r\ny = 22\r\n', 'python')
+    assert t.plain == 'x = 1\ny = 22\n'
+    assert any(t.plain[s.start:s.end] == '22' and s.style == cli.scope_style('number') for s in t.spans)

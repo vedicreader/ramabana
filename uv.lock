@@ -1180,6 +1180,18 @@ wheels = [
 ]
 
 [[package]]
+name = "fastpylight"
+version = "0.1.18"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/87/3a/8977783f6bfd2b0718912e3cb89fd0a175f1cc9491be09c537ea4d6e1599/fastpylight-0.1.18.tar.gz", hash = "sha256:efa244a2ebe7296684658db68c0ddcc97976701e1551861a1c6a1fec0857565a", size = 28945, upload-time = "2026-08-28T23:18:35.4Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/b9/eaa416a602de850785e5122217046d60ee406e08a241ad4fd3aefb7c2f78/fastpylight-0.1.18-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:b8fc43cd7043906e24dd2b8598fa478816abaf9cfb538f3365e943920df6ad62", size = 8340809, upload-time = "2026-08-28T23:18:26.634Z" },
+    { url = "https://files.pythonhosted.org/packages/46/04/884573f207575b150de93cc3b5a49aa65c219fa1457b46b9e36a650ecbca/fastpylight-0.1.18-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:05c15eb36d8ac53902c37913dec6586ad5a59f09795c7827788f1cea12437aeb", size = 8051378, upload-time = "2026-08-28T23:18:28.704Z" },
+    { url = "https://files.pythonhosted.org/packages/68/86/74aabdf9712b65200ac290f5e594f7953b542569aaf8ce22770aae13a3f7/fastpylight-0.1.18-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:53ac9b80592d57e87423dcc8b0bb71846f0424a1779f63298485366a2a202e9a", size = 8340226, upload-time = "2026-08-28T23:18:31.706Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/c0/d38a4df0608a446f7f9c3d36d6399d7f7caccc0eb2922a60b5636d6d419c/fastpylight-0.1.18-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:10c4c7c9ad50d1128f265e1c13dd609b446fde7d449556cfe2dc94e00e5e5da1", size = 8050133, upload-time = "2026-08-28T23:18:33.989Z" },
+]
+
+[[package]]
 name = "fastspec"
 version = "0.2.4"
 source = { registry = "https://pypi.org/simple" }
@@ -3869,6 +3881,7 @@ dependencies = [
 
 [package.optional-dependencies]
 cli = [
+    { name = "fastpylight" },
     { name = "pyghostty" },
     { name = "shalya", extra = ["tmux"] },
     { name = "teleprint" },
@@ -3895,6 +3908,7 @@ requires-dist = [
     { name = "dhrona", marker = "extra == 'dhrona'", specifier = ">=0.1.4" },
     { name = "exhash", specifier = ">=0.4.9" },
     { name = "fastcore", specifier = ">=2.1.16" },
+    { name = "fastpylight", marker = "extra == 'cli'", specifier = ">=0.1.18" },
     { name = "fastspec", specifier = ">=0.2.1" },
     { name = "fossick", specifier = ">=0.1.17" },
     { name = "gheasy", specifier = ">=0.0.10" },

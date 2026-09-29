@@ -7,19 +7,19 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 # %% auto #0
 __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', 'KEYS_OFF', 'EXT_NAMES', 'EXT_CTRL',
            'KEYS_PATCHED', 'MODES_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEMES', 'CODE_THEMES', 'KAKU', 'GRUVBOX',
-           'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'NOTIFY_EVERY', 'FOLD_RUNNING',
-           'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS',
-           'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA', 'CLIP_IMAGE',
-           'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS',
-           'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS',
-           'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'BLOCK_START', 'PYREPL_MODULES',
-           'PYREPL_PKGS', 'TMUX_MODES', 'PANE_MODES', 'ext_key', 'ext_keys_ok', 'code_theme', 'code_bg', 'set_theme',
-           'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
-           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size',
-           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
-           'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'Ui', 'parse_answer', 'ask_pattern', 'ThemedCode',
-           'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain', 'headless_prompt', 'ask_once', 'main', 'pane_cmd',
-           'MAX_MEDIA', 'MAX_ATTACH']
+           'ACTIVE_THEME', 'HL_THEMES', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'NOTIFY_EVERY',
+           'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR',
+           'MAX_GROUP_ROWS', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA',
+           'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS',
+           'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR',
+           'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'BLOCK_START',
+           'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'PANE_MODES', 'ext_key', 'ext_keys_ok', 'code_theme',
+           'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media',
+           'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note',
+           'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs',
+           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'hl_text', 'diff_rich',
+           'changed_table', 'Ui', 'parse_answer', 'ask_pattern', 'ThemedCode', 'Reply', 'compact_md', 'mk_host',
+           'mk_agent', 'amain', 'headless_prompt', 'ask_once', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -35,6 +35,8 @@ from rich.markdown import CodeBlock, Markdown
 from rich.syntax import Syntax
 from rich.cells import cell_len
 from rich.theme import Theme
+from rich.table import Table
+import fastpylight
 from fastcore.script import call_parse
 from fastcore.basics import patch, ifnone
 from teleprint.buffer import Buffer
@@ -279,6 +281,24 @@ ACTIVE_THEME = 'github-dark'
 def code_theme(name=None):
     "The pygments style to highlight code with under the named palette."
     return CODE_THEMES.get(name or ACTIVE_THEME, 'github-dark')
+
+#: fastpylight (Lumis) themes, one per palette, for the code inside a diff
+HL_THEMES = {'github-dark': 'github_dark', 'dark': 'github_dark', 'light': 'github_light',
+             'gruvbox': 'gruvbox_dark', 'gruvbox-light': 'gruvbox_light', 'nord': 'nord',
+             'dracula': 'dracula', 'solarized': 'solarized_osaka_dark',
+             'solarized-light': 'solarized_osaka_light', 'tokyonight': 'tokyonight_night',
+             'catppuccin': 'catppuccin_mocha', 'kanagawa': 'kanagawa_wave', 'everforest': 'everforest_dark',
+             'latte': 'catppuccin_latte'}
+
+@functools.cache
+def _hl_colors(theme): return fastpylight.theme_colors(theme)
+
+def scope_style(scope, name=None):
+    "The rich style the palette's Lumis theme gives token `scope`; the longest dotted prefix it names wins."
+    c = _hl_colors(HL_THEMES.get(name or ACTIVE_THEME, 'github_dark'))
+    while scope and scope not in c: scope = scope.rpartition('.')[0]
+    if not (s := c.get(scope)) or not s['fg']: return ''
+    return ' '.join([s['fg']] + ['bold'] * bool(s['bold']) + ['italic'] * bool(s['italic']))
 
 def code_bg(palette=None):
     "The code block background: the palette's `bg1`."
@@ -759,12 +779,79 @@ async def run_turn(ui, prompt):
         ui.show_media(ui.agent.resp_media)
         for p in ui.agent.problems: ui.say(Text(p), 'error')
         ui.agent.clear_problems()
-        if (ch := ui.agent.changed_line()): ui.say(Text(ch), 'note', fold=None)
+        if (rows := ui.agent.changed_rows()): ui.say(changed_table(rows), 'note', fold=None, source=ui.agent.changed_line(rows))
         ui.ring()
         ui.touch(now=True)
         ui.paint()
     if blk is not None and ui._reply: ui.log_cell('**assistant**\n\n' + ui._reply, cell_type='markdown')
     return blk
+
+# %% ../nbs/05_cli.ipynb #02201508
+_STAT = re.compile(r'^(\s*\S.*?\s\|\s+\d+\s)(\+*)(-*)\s*$')
+_HUNK = re.compile(r'^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@')
+
+def hl_text(code, lang):
+    "`code` coloured by fastpylight, whose offsets count UTF-8 bytes where rich counts characters."
+    t = Text(code)
+    if lang == 'plaintext': return t
+    code = t.plain
+    at = [i for i, ch in enumerate(code) for _ in ch.encode()] + [len(code)]
+    for a, b, k in fastpylight.tokenize(code, lang):
+        if (st := scope_style(k)): t.stylize(st, at[a], at[b])
+    return t
+
+def _mix(a, b, t): return '#' + ''.join(f'{round(int(a[i:i+2], 16) * (1 - t) + int(b[i:i+2], 16) * t):02x}' for i in (1, 3, 5))
+
+def _hunk(ls, lang):
+    "Rows for one hunk body; each side is highlighted whole, so a string spanning lines keeps its colour."
+    G, ls = GRUVBOX, [l or ' ' for l in ls]
+    def side(keep): return iter(hl_text('\n'.join(l[1:] for l in ls if l[:1] in keep), lang).split('\n', allow_blank=True))
+    old, new, rows = side((' ', '-')), side((' ', '+')), []
+    for l in ls:
+        k = l[:1]
+        c = {'+': G['green'], '-': G['red']}.get(k, G['gray'])
+        if k == '\\': rows.append(Text(l, style=c)); continue
+        code = next(old) if k == '-' else next(new)
+        if k == ' ': next(old)
+        if lang == 'plaintext': code.stylize(c)
+        row = Text(k, style=c) + code
+        if k != ' ': row.stylize(f"on {_mix(G['bg0'], c, .15)}")
+        rows.append(row)
+    return rows
+
+def diff_rich(s):
+    "`s` coloured when it holds a unified diff, its code by the file's language, or a diffstat; else gray."
+    G, ls = GRUVBOX, s.split('\n')
+    hunks = any(l.startswith('@@ ') for l in ls)
+    if not hunks and not any(_STAT.match(l) for l in ls): return Text(s, style=G['gray'])
+    rows, lang, i = [], 'plaintext', 0
+    while i < len(ls):
+        l = ls[i]; i += 1
+        if hunks and l.startswith(('--- ', '+++ ')) and (f := l[4:].split('\t')[0].strip()) != '/dev/null': lang = fastpylight.guess('', f)
+        if hunks and l.startswith(('diff --git', '--- ', '+++ ')): rows.append(Text(l, style=f"bold {G['fg1']}"))
+        elif hunks and (m := _HUNK.match(l)):
+            rows.append(Text(l, style=G['aqua']))
+            o, n, j = int(ifnone(m[1], 1)), int(ifnone(m[2], 1)), i
+            while j < len(ls) and (o > 0 or n > 0 or ls[j][:1] == '\\'):
+                k = ls[j][:1]
+                if k not in ('', ' ', '+', '-', '\\'): break
+                o, n, j = o - (k in ('', ' ', '-')), n - (k in ('', ' ', '+')), j + 1
+            rows += _hunk(ls[i:j], lang); i = j
+        elif (m := _STAT.match(l)): rows.append(Text.assemble((m[1], G['gray']), (m[2], G['green']), (m[3], G['red'])))
+        else: rows.append(Text(l, style=G['gray']))
+    return Text('\n').join(rows)
+
+def changed_table(rows, cap=12):
+    "The turn's changed files, largest `cap` first, then a total over every one."
+    G, n = GRUVBOX, len(rows)
+    t = Table.grid(padding=(0, 2))
+    t.add_column(style=G['fg1']); t.add_column(justify='right', style=G['green'])
+    t.add_column(justify='right', style=G['red']); t.add_column(style=G['yellow'])
+    for p, a, d, new in sorted(rows, key=lambda r: r[1] + r[2], reverse=True)[:cap]: t.add_row(Text(p), f'+{a}', f'-{d}', 'new' if new else '')
+    if n > cap: t.add_row(Text(f'… {n - cap} more files', style=G['gray']))
+    t.add_row(Text(f"{n} file{'' if n == 1 else 's'}", style=f"bold {G['fg1']}"), f'+{sum(r[1] for r in rows)}', f'-{sum(r[2] for r in rows)}')
+    return t
+
 
 # %% ../nbs/05_cli.ipynb #2874a64d
 def _now_file(agent): return None if (d := agent.runs_dir) is None else d/'now.json'
@@ -1184,7 +1271,7 @@ class Ui:
         else:
             line = Text(act.line(), style=self._act_style(act))
             src = act.line() if not act.detail else f'{act.line()}\n{act.detail}'
-            body = [line] if not act.detail else [line, Text(act.detail, style=GRUVBOX['gray'])]
+            body = [line] if not act.detail else [line, diff_rich(act.detail)]
             self.comp.set_body(blk, *body, source=src)
             blk.collapsed = self._folded(act, blk)
             self.comp.refresh_block(blk)
@@ -1213,7 +1300,7 @@ class Ui:
         if len(kids) > len(shown):
             body.append(Text(f'   … {len(kids) - len(shown)} earlier', style=GRUVBOX['gray']))
         body += [Text('   ' + k.line(), style=self._act_style(k)) for k in shown]
-        if act.detail: body.append(Text(act.detail, style=GRUVBOX['gray']))
+        if act.detail: body.append(diff_rich(act.detail))
         src = '\n'.join([act.line()] + ['   ' + k.line() for k in kids] + ([act.detail] if act.detail else []))
         self.comp.set_body(blk, *body, source=src)
         blk.collapsed = self._folded(act, blk)
@@ -2038,7 +2125,7 @@ def _act(self:Ui, act):
     else:
         line = Text(act.line(), style=self._act_style(act))
         src = act.line() if not act.detail else f'{act.line()}\n{act.detail}'
-        body = [line] if not act.detail else [line, Text(act.detail, style=GRUVBOX['gray'])]
+        body = [line] if not act.detail else [line, diff_rich(act.detail)]
         self.comp.set_body(blk, *body, source=src)
         blk.collapsed = self._folded(act, blk)
         self.comp.refresh_block(blk)
