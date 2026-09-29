@@ -836,7 +836,7 @@ def _hunk(ls, lang):
 
 def is_diff(s):
     "Whether `s` holds a unified diff: at least one hunk header."
-    return any(l.startswith('@@ ') for l in (s or '').split('\n'))
+    return any(_HUNK.match(l) for l in (s or '').split('\n'))
 
 def diff_rich(s):
     "`s` coloured when it holds a unified diff, its code by the file's language, or a diffstat; else gray."
@@ -873,7 +873,7 @@ def changed_table(rows, cap=12):
 
 
 def opens(act):
-    "Whether a finished call stays open on its result: a write bar the runs, or a unified diff."
+    "Whether a finished call stays open: a write other than a shell or python run, or any unified diff."
     return (act.tool in WRITE_TOOLS or path_write(act.tool, act.args)) and act.kind != 'run' or is_diff(act.detail)
 
 class OpenDiff:
@@ -885,9 +885,8 @@ class OpenDiff:
 
     def __rich_console__(self, console, options):
         if not self.capped: yield self.text; return
-        n = next((i + 1 for i, b in enumerate(self.ui.drillable()) if b is self.blk), None)
         yield Text('\n').join(self.rows[:DIFF_OPEN])
-        yield Text(f'… +{len(self.rows) - DIFF_OPEN} lines · {f"alt+{n}" if n else "ctrl+o"} opens', style='dim')
+        yield Text(f'… +{len(self.rows) - DIFF_OPEN} lines · click or ctrl+r opens', style='dim')
 
 # %% ../nbs/05_cli.ipynb #2874a64d
 def _now_file(agent): return None if (d := agent.runs_dir) is None else d/'now.json'
@@ -957,7 +956,7 @@ class Ui:
         self._compact_hook = getattr(agent.compactor, 'on_compact', None)
         agent.compactor.on_compact = self._on_compact
         if agent.approvals is not None: agent.approvals.listen(self.on_ask, self.on_answer)
-        comp.on_frame = self.place_pics
+        comp.on_frame, comp.toggle = self.place_pics, self.toggle
 
     def _post(self, fn, *a):
         "Run `fn` on the loop thread, or now without a loop."
@@ -1048,13 +1047,16 @@ class Ui:
         self.flush_stream()
         blocks = self.drillable()
         if not 1 <= n <= len(blocks): return False
-        blk = blocks[n - 1]
+        self.toggle(blocks[n - 1])
+        self.touch(now=True)
+        return True
+
+    def toggle(self, blk):
+        "Fold or open `blk` for good; a result shown in part opens whole first."
         capped = self._capped(blk)
         self._held.add(blk.id)
         if capped: self.comp.refresh_block(blk)
-        else: self.comp.toggle(blk)
-        self.touch(now=True)
-        return True
+        else: Compositor.toggle(self.comp, blk)
 
     def working(self):
         "The working footer while a turn runs: the last few calls and a totals line."

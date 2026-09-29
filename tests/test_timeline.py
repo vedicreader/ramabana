@@ -450,11 +450,42 @@ def test_a_finished_edit_shows_its_diff(frozen):
 def test_a_long_diff_shows_its_head_until_opened(frozen):
     _, blk = a_call(frozen, 'edit_file', a_diff(50))
     rows = plain_rows(frozen, blk)
-    assert len(rows) == 1 + 20 + 1 and '… +30 lines · alt+1 opens' in rows[-1], rows[-1]
+    assert len(rows) == 1 + 20 + 1 and rows[-1].strip() == HINT, rows[-1]
     assert frozen.drill(1) and not blk.collapsed
     rows = plain_rows(frozen, blk)
     assert len(rows) == 51 and '+x46 = 46' in rows[-1], 'opening shows the whole diff'
     assert frozen.drill(1) and blk.collapsed
+
+HINT = '… +30 lines · click or ctrl+r opens'
+
+def test_the_hint_names_no_number_a_new_block_could_shift(frozen):
+    _, blk = a_call(frozen, 'edit_file', a_diff(50))
+    a_call(frozen, 'view_file', 'line\n' * 5)
+    frozen.comp._dirty(blk)
+    assert plain_rows(frozen, blk)[-1].strip() == HINT
+
+def test_a_click_opens_a_capped_diff_whole_and_a_second_folds_it(frozen):
+    _, blk = a_call(frozen, 'edit_file', a_diff(50))
+    comp = frozen.comp
+    def click():
+        comp._frame()
+        comp.click(0, next(y for y, e in enumerate(comp._screen) if e and e[0] == blk.id))
+    click()
+    assert not blk.collapsed and len(plain_rows(frozen, blk)) == 51
+    click()
+    assert blk.collapsed
+
+def test_an_earlier_turns_capped_diff_opens_as_its_hint_says(frozen):
+    _, blk = a_call(frozen, 'edit_file', a_diff(50))
+    a_finished_turn(frozen)
+    assert blk not in frozen.turn_blocks() and plain_rows(frozen, blk)[-1].strip() == HINT
+    frozen.on_key(Key('ctrl+r'))
+    assert frozen.transcript.active and len(frozen.comp._block_lines(blk)) == 51
+    frozen.leave_transcript()
+
+def test_a_stray_hunk_marker_in_shell_output_still_folds(frozen):
+    _, blk = a_call(frozen, 'run_shell', 'a\n@@ weird\nb\n')
+    assert blk.collapsed
 
 def test_ctrl_o_and_the_transcript_open_a_long_diff_whole(frozen):
     _, read = a_call(frozen, 'view_file', 'line\n' * 5)
