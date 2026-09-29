@@ -213,7 +213,8 @@ def need(extra, *mods):
     return f"{', '.join(miss)} not installed: pip install 'ramabana[{extra}]'" if miss else ''
 
 #: console scripts: the module whose `main` runs, its extra, and the modules it needs
-SCRIPTS = dict(run_cli=('cli', 'cli', ()), run_mcp=('mcp', 'serve', ('mcp',)), run_acp=('racp', 'serve', ('acp',)))
+SCRIPTS = dict(run_cli=('cli', 'cli', ()), run_mcp=('mcp', 'serve', ('mcp',)), run_acp=('racp', 'serve', ('acp',)),
+               run_pane=('pane', 'cli', ('teleprint', 'rich')))
 
 def _refuse(msg):
     "A console script that prints `msg` and exits 2."

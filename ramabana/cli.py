@@ -2201,7 +2201,6 @@ def _act(self:Ui, act):
 
 
 # %% ../nbs/05_cli.ipynb #79b1ca2e
-from .vault import WorkspaceHost
 from .agent import mk_agent, mk_host
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
@@ -2312,6 +2311,7 @@ def main(
     profile: str = 'auto',               # auto | small | full: small suits ≤32k local models
 ):
     "Run Ramabana as a terminal agent or Python prompt. Name every folder it may work on: --root .,~/notes"
+    if doctor: return Setup(cfg).doctor()
     if (kernels or python or attach or agent_proxy) and (msg := need('python')):
         print(msg, file=sys.stderr)
         return 2
@@ -2319,7 +2319,6 @@ def main(
         from ramabana.pyrepl import sessions
         print(sessions())
         return 0
-    if doctor: return Setup(cfg).doctor()
     if warm and no_warm:
         print('--warm and --no-warm contradict each other; pass one', file=sys.stderr)
         return 2

@@ -37,6 +37,8 @@ pip install 'ramabana[all]'    # every extra
 
 A framework picks what it needs, such as `ramabana[search,serve]`. Without an extra, its tool groups drop out of the catalog, and its commands name the extra to install.
 
+For now a bare `pip install ramabana` still installs most of these packages. shalya 0.1.1, which the core needs, requires dhrishti, jupyter-client, fossick, litesearch and vishalakshi, and vishalakshi brings in mcp. The extras decide what ramabana uses. The lean install arrives once shalya splits its own extras.
+
 For the terminal on its own, `uv tool install 'ramabana[cli]'`, then `ramabana`. The first interactive run starts inside a tmux server of ramabana’s own, so the now pane and shift+enter need no tmux setup. When tmux is missing, it offers the install command once. `ramabana --doctor` checks tmux, extended keys, the config and `ramabana-pane`. `--tmux off` or `RAMABANA_TMUX=off` keeps the session in the terminal you started it in. Detaching or closing the window ends the session, and `--resume latest` reopens it.
 
 | command | what it is |

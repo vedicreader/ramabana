@@ -118,3 +118,32 @@ def test_the_bare_core_runs_with_every_extra_blocked():
 def test_a_console_script_is_the_module_main_so_call_parse_reads_the_command_line():
     import ramabana.cli, ramabana.core as core, ramabana.mcp, ramabana.racp
     assert (core.run_cli, core.run_mcp, core.run_acp) == (ramabana.cli.main, ramabana.mcp.main, ramabana.racp.main)
+
+def test_doctor_runs_without_the_python_extra():
+    run(EXTRAS['python'], '''
+    from ramabana.cli import main
+    from ramabana.setup import Setup
+    Setup.doctor = lambda self: 0
+    rc, err = said(main, doctor=True, python=True)
+    assert rc == 0 and 'pip install' not in err, (rc, err)
+    ''')
+
+def test_the_pane_script_names_the_cli_extra_when_it_is_missing():
+    assert tomllib.loads(PYPROJECT.read_text())['project']['scripts']['ramabana-pane'].endswith(':run_pane')
+    run(EXTRAS['cli'], '''
+    from ramabana.core import run_pane
+    rc, err = said(run_pane)
+    assert rc == 2 and "pip install 'ramabana[cli]'" in err, (rc, err)
+    ''')
+
+def test_core_does_not_pin_what_nothing_imports():
+    deps = {_name(r) for r in tomllib.loads(PYPROJECT.read_text())['project']['dependencies']}
+    assert 'liteparse' not in deps, 'rishi pins it'
+
+def test_the_readme_says_a_bare_install_still_pulls_most_dependencies():
+    readme = (PYPROJECT.parent/'README.md').read_text()
+    assert 'bare `pip install ramabana` still installs most' in readme and 'shalya splits its own extras' in readme
+
+def test_the_cli_does_not_reexport_workspace_host():
+    import ramabana.cli
+    assert not hasattr(ramabana.cli, 'WorkspaceHost')

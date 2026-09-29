@@ -24,7 +24,6 @@ dependencies = [
     "exhash>=0.4.9",
     "fastcore>=2.1.16",
     "rishi>=0.1.39",   # chats sharing a LiteRT engine take turns (engine_lock); a second chat on the same thread raises EngineBusy instead of hanging
-    "liteparse>=2.12,<2.13",
     "fastspec>=0.2.1",
     "pyyaml>=6.0",
     "pobblebonk>=0.0.3",
@@ -49,7 +48,7 @@ ramabana = "ramabana.core:run_cli"
 ramabana-mcp = "ramabana.core:run_mcp"
 ramabana-acp = "ramabana.core:run_acp"
 ramabana-tick = "ramabana.monitor:tick"
-ramabana-pane = "ramabana.pane:main"
+ramabana-pane = "ramabana.core:run_pane"
 
 [project.entry-points.nbdev]
 ramabana = "ramabana._modidx:d"

@@ -1,7 +1,8 @@
 """The package boundary: Shalya describes tools; Ramabana composes them into an agent."""
 
 from ramabana.agent import Approvals
-from ramabana.cli import WorkspaceHost, mk_agent, mk_host
+from ramabana.cli import mk_agent, mk_host
+from ramabana.vault import WorkspaceHost
 from ramabana.mcp import _annotate
 from ramabana.racp import EditorHost
 from ramabana.shop import Cart, cart_tools
