@@ -13,13 +13,14 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS',
            'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR',
            'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'BLOCK_START',
-           'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'PANE_MODES', 'ext_key', 'ext_keys_ok', 'code_theme',
-           'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media',
-           'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note',
-           'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs',
-           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'run_turn', 'hl_text', 'diff_rich',
-           'changed_table', 'Ui', 'parse_answer', 'ask_pattern', 'ThemedCode', 'Reply', 'compact_md', 'mk_host',
-           'mk_agent', 'amain', 'headless_prompt', 'ask_once', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
+           'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'PANE_MODES', 'ALIVE_EVERY', 'REOPEN_EVERY', 'ext_key',
+           'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text',
+           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
+           'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu',
+           'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'Ui', 'parse_answer',
+           'ask_pattern', 'ThemedCode', 'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain', 'headless_prompt',
+           'ask_once', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -741,6 +742,15 @@ class ChoiceMenu:
         return False, None
 
 
+def close_done_shells(host):
+    "Close the tmux panes of `run_shell_bg` commands that have exited; `cmd_output` keeps what they printed."
+    for rid, r in list(getattr(host, '_bg', {}).items()):
+        if isinstance(r, tuple) or 'state' in r: continue   # a process with a log file, or a pane already closed
+        try:
+            if host.cmd_output(rid, 1)[0] != 'running': host.cmd_stop(rid)
+        except Exception: pass   # tmux lost the pane already; the turn's end must not fail on it
+
+
 async def run_turn(ui, prompt):
     "One turn, streamed into the transcript."
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
@@ -773,6 +783,7 @@ async def run_turn(ui, prompt):
             blk = ui.stream(blk, chunk)
     finally:
         ui.turn = None
+        close_done_shells(ui.agent.host)
         ui.write_now(force=True)
         ui.flush_stream()
         ui._seg_blk = None
@@ -872,7 +883,7 @@ class Ui:
         self._flash = None
         self._queued_echo = []
         self._hold = False
-        self.pane, self._pane_at = None, None
+        self.pane, self._pane_at, self._alive_at, self._reopen_at = None, None, 0.0, 0.0
         self._now_at, self._now_busy, self._now_dirty = 0.0, False, False
         self._echoed = []
         self.acts = {}
@@ -1050,6 +1061,7 @@ class Ui:
                 self.paint()
             if self.turn is not None or self._now_busy or self._now_dirty: self.write_now()
             if self.pane is not None and _now_file(self.agent) != self._pane_at: self.open_pane()
+            self._revive()
 
     def write_now(self, force=False):
         "Write `now.json` for the pane, at most every `PANE_EVERY` seconds unless `force`."
@@ -2530,6 +2542,9 @@ def _alive(pane):
     try: return not pane.refresh().dead
     except Exception: return False
 
+ALIVE_EVERY = 1.0    #: seconds between asks whether the viewer still draws
+REOPEN_EVERY = 10.0  #: seconds between reopenings of a viewer that died
+
 _act_now = Ui._act
 @patch
 def _act(self:Ui, act):
@@ -2563,6 +2578,16 @@ def close_pane(self:Ui):
     try: p.kill()
     except Exception: pass
     return f'closed the pane {p.id}' if alive else f'the pane {p.id} was already closed'
+
+@patch
+def _revive(self:Ui):
+    "Reopen the `now` pane when its viewer died, asking at most every `ALIVE_EVERY` and reopening at most every `REOPEN_EVERY`."
+    t = time.monotonic()
+    if self.pane is None or t - self._alive_at < ALIVE_EVERY: return
+    self._alive_at = t
+    if _alive(self.pane) or t - self._reopen_at < REOPEN_EVERY: return
+    self._reopen_at = t
+    self.open_pane()
 
 @patch
 def start_pane(self:Ui, mode='auto'):

@@ -1,9 +1,11 @@
 "The `now` pane: the Ui keeps `<runs_dir>/now.json` fresh, and `/pane` opens a tmux split that draws it."
 import asyncio, os, shlex
-from types import SimpleNamespace
+from pathlib import Path
+from types import MethodType, SimpleNamespace
 
-import pytest
+import fastmux, pytest
 from teleprint.compositor import Compositor
+from shalya.host import LocalHost
 from teleprint.testing import EmuTty
 
 import ramabana.cli as cli
@@ -27,11 +29,12 @@ def ui(tmp_path):
 
 class Pane:
     "A tmux pane: `alive` is tmux still having it, `dead` its viewer gone while `remain-on-exit` keeps it."
-    def __init__(self, id): self.id, self.killed, self.alive, self.dead = id, False, True, False
+    def __init__(self, id): self.id, self.killed, self.alive, self.dead, self.asked = id, False, True, False, 0
     def kill(self):
         if not self.alive: raise RuntimeError(f"can't find {self.id}")
         self.killed = True
     def refresh(self):
+        self.asked += 1
         if not self.alive: raise RuntimeError(f"can't find {self.id}")
         return self
 
@@ -232,3 +235,45 @@ def test_a_snapshot_that_raises_never_escapes_write_now(ui, monkeypatch):
     def boom(agent, path): raise RuntimeError('dictionary changed size during iteration')
     monkeypatch.setattr(cli, 'write_snapshot', boom)
     ui.write_now(force=True)
+
+
+def test_a_dead_viewer_is_reopened_at_most_every_ten_seconds_and_never_after_off(ui, clock):
+    me = ui.agent.host.tmux_pane = Me()
+    _submit(ui, '/pane')
+    me.made[0].dead = True
+    clock.now += cli.REOPEN_EVERY
+    _tick(ui)
+    assert me.made[0].killed and len(me.splits) == 2 and ui.pane is me.made[1], 'the animate tick brings it back'
+    asked = me.made[1].asked
+    for _ in range(5): ui._revive()
+    assert me.made[1].asked == asked, 'asked tmux at most once a second'
+    me.made[1].alive = False
+    clock.now += 1
+    ui._revive()
+    assert len(me.splits) == 2, 'a viewer that keeps dying is not reopened in a loop'
+    clock.now += cli.REOPEN_EVERY
+    ui._revive()
+    assert len(me.splits) == 3 and ui.pane is me.made[2]
+    _submit(ui, '/pane off')
+    clock.now += 2 * cli.REOPEN_EVERY
+    ui._revive()
+    assert len(me.splits) == 3 and ui.pane is None, '/pane off keeps it closed'
+
+
+class BgPane(fastmux.Pane):
+    "A `run_shell_bg` pane, which tmux keeps after its command exits: `code` is None while it runs."
+    def __init__(self, code=None): super().__init__(id='%9', code=code, dead=code is not None, killed=False)
+    def wait(self, timeout_ms=0): return self.code
+    def display(self, n): return SimpleNamespace(text=f'output of {self.code}')
+    def kill(self): self.killed = True
+
+def test_the_turn_end_closes_the_panes_of_exited_shells_and_keeps_running_ones(ui, monkeypatch):
+    host = ui.agent.host
+    for f in ('cmd_output', 'cmd_stop', '_bg_run'): monkeypatch.setattr(host, f, MethodType(getattr(LocalHost, f), host), raising=False)
+    live, done, failed = BgPane(), BgPane(0), BgPane(2)
+    logged = (SimpleNamespace(poll=lambda: 0), Path('/nonexistent.log'))
+    monkeypatch.setattr(host, '_bg', {'cmd_live': live, 'cmd_done': done, 'cmd_failed': failed, 'cmd_logged': logged}, raising=False)
+    asyncio.run(cli.run_turn(ui, 'hello'))
+    assert (live.killed, done.killed, failed.killed) == (False, True, True)
+    assert host._bg['cmd_live'] is live and host._bg['cmd_logged'] is logged, 'a process without a pane is not touched'
+    assert host.cmd_output('cmd_done') == ('exit 0', 'output of 0') and host.cmd_output('cmd_failed')[0] == 'exit 2', 'the output outlives the pane'

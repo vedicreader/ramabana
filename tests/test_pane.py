@@ -1,9 +1,10 @@
 "The `now` pane: what a turn and its sub-agents are doing, as a file, and that file drawn."
 
 import json, time
+import pytest
 from rich.console import Console
 
-from ramabana.pane import now_snapshot, read_snapshot, render, write_snapshot
+from ramabana.pane import PALETTE, Viewer, board, now_snapshot, read_snapshot, render, write_snapshot
 from ramabana.runtime import current_run
 from ramabana.testing import ScriptedBackend, Step, fake_agent
 
@@ -24,9 +25,9 @@ def _delegating(a, seen, ask=ASK, reads=1, after=()):
     return be
 
 
-def _text(snap, width=40, now=None):
+def _text(snap, width=40, now=None, open=()):
     con = Console(record=True, width=width, color_system=None)
-    con.print(render(snap, width, now=now))
+    con.print(render(snap, width, now=now, open=open))
     return con.export_text()
 
 
@@ -91,24 +92,145 @@ def test_a_snapshot_is_written_whole_and_a_bad_file_reads_as_none(tmp_path):
     assert read_snapshot(p) is None
 
 
-def _sub(id, state, secs, current='', q='which files import fastllm and why?'):
-    return {'id': id, 'question': q, 'elapsed': secs, 'current': current, 'state': state, 'steps': 3}
+def _board(now, at=None):
+    "A busy turn written at `at`: a status line, a plan, two sub-agents, two files and a shell."
+    call = lambda line, ok=True, done=True, out='': {'line': line, 'ok': ok, 'done': done, 'out': out}
+    return {'at': now if at is None else at, 'busy': True,
+            'root': {'turn_elapsed': 42, 'steps': 7, 'state': 'running', 'status': 'Checking the pane tests', 'current': 'Run shell: pytest'},
+            'plan': [{'text': 'Read the viewer', 'status': 'done'}, {'text': 'Rewrite render', 'status': 'active'},
+                     {'text': 'Wire the CLI', 'status': 'pending'}, {'text': 'Poll the file', 'status': 'cancelled'}],
+            'subs': [{'id': 'run_aaa', 'question': 'which files import fastllm and why?', 'elapsed': 12, 'state': 'running', 'steps': 3,
+                      'status': 'Searching for imports', 'current': 'Search code: fastllm',
+                      'calls': [call('Search code: import fastllm', out='ramabana/agent.py:12: import fastllm'),
+                                call('Read ramabana/llm.py', ok=False, out='no such file'), call('Search code: fastllm', None, False)],
+                      'answer': ''},
+                     {'id': 'run_bbb', 'question': 'is the pane tested?', 'elapsed': 8, 'state': 'completed', 'steps': 1, 'status': '',
+                      'current': '', 'calls': [call('Read tests/test_pane.py', out='def test_render')],
+                      'answer': 'Yes: tests/test_pane.py covers render and the snapshot.'}],
+            'files': [{'path': 'ramabana/pane.py', 'added': 120, 'removed': 40,
+                       'diff': '--- a/ramabana/pane.py\n+++ b/ramabana/pane.py\n@@ -1,3 +1,3 @@\n import json\n-from rich.live import Live\n+from teleprint.keys import Parser'},
+                      {'path': 'tests/test_pane.py', 'added': 30, 'removed': 5, 'diff': '+x = 1'}],
+            'background': [{'kind': 'shell', 'id': 'cmd_1234abcd', 'label': 'pytest -x tests', 'state': 'running', 'elapsed': 30},
+                           {'kind': 'watch', 'id': 'w_1', 'label': '/proj', 'state': 'watching', 'elapsed': None}]}
 
+SUB, FILE = ('sub', 'run_aaa'), ('file', 'ramabana/pane.py')
 
-def test_render_draws_idle_busy_and_finished_sub_agents():
+def test_the_board_draws_each_section_collapsed_and_opens_a_row_on_request():
     now = time.time()
     assert 'waiting' in _text(None)
-    idle = {'at': now, 'busy': False, 'root': {'turn_elapsed': 9, 'steps': 4, 'current': '', 'state': 'completed'}, 'subs': []}
-    assert 'idle' in _text(idle, now=now)
-    busy = {'at': now - 5, 'busy': True,
-            'root': {'turn_elapsed': 12, 'steps': 3, 'current': 'Delegate 2 questions', 'state': 'running'},
-            'subs': [_sub('run_aaa', 'running', 4, 'Search code: fastllm'), _sub('run_bbb', 'completed', 2),
-                     _sub('run_ccc', 'failed', 1)]}
-    out = _text(busy, now=now)
-    assert 'main' in out and 'step 3' in out and '17s' in out, 'a running clock advances past the write'
-    assert 'Delegate 2 questions' in out and 'Search code: fastllm' in out
-    assert '▶ run_aaa' in out and '✓ run_bbb' in out and '✗ run_ccc' in out
-    assert all(len(l) <= 40 for l in out.splitlines()), 'long lines are cut, not wrapped'
+    idle = {'at': now, 'busy': False, 'root': {'turn_elapsed': 9, 'steps': 4, 'state': 'completed', 'status': '', 'current': ''},
+            'plan': [], 'subs': [], 'files': [], 'background': []}
+    assert _text(idle, now=now).split() == ['main', '·', 'idle', '·', '4', 'steps'], 'idle is one line; empty sections are left out'
+    out = _text(_board(now, now - 5), now=now)
+    head = out.splitlines()[0]
+    assert 'step 7' in head and '47s' in head and 'Checking the pane' in head, 'a running clock advances past the write'
+    assert 'Run shell: pytest' not in out, 'the chat shows the current call, so the board does not'
+    assert all(t in out for t in ('Plan', '✓ Read the viewer', '◐ Rewrite render', '○ Wire the CLI', '✗ Poll the file'))
+    rows = out.splitlines()
+    aaa, bbb = [next(l for l in rows if i in l) for i in ('run_aaa', 'run_bbb')]
+    assert aaa.startswith('▸ run_aaa') and 'Searching for' in aaa and aaa.rstrip().endswith('▶') and '17s' in aaa
+    assert bbb.startswith('▸ run_bbb') and 'is the pane tested?' in bbb and bbb.rstrip().endswith('✓'), 'no status: the question'
+    assert 'import fastllm' not in out and 'covers render' not in out, 'a closed row hides its calls and answer'
+    f = next(l for l in rows if 'ramabana/pane.py' in l)
+    assert f.startswith('▸') and '+120' in f and '−40' in f and 'Parser' not in out
+    sh = next(l for l in rows if 'pytest -x tests' in l)
+    assert 'shell' in sh and 'running' in sh and '35s' in sh
+    assert 'watching' in out and all(len(l) <= 40 for l in rows), 'long lines are cut, not wrapped'
+
+    out = _text(_board(now), now=now, open={SUB, FILE, ('sub', 'run_bbb')})
+    assert '▾ run_aaa' in out and 'which files import fastllm' in out, 'the question the status line replaced'
+    assert '✓ Search code: import fastllm' in out and '✗ Read ramabana/llm.py' in out and 'no such file' in out
+    assert '→ Yes: tests/test_pane.py' in out and 'the snapshot.' in out, 'a finished sub-agent shows its answer, wrapped'
+    assert '▾' in next(l for l in out.splitlines() if 'ramabana/pane.py' in l) and '+from teleprint.keys import Parser' in out
+    assert all(len(l) <= 40 for l in out.splitlines())
+    rows = dict((t.plain.strip(), t) for _, t in board(_board(now), 40, now, {FILE}))
+    assert PALETTE['green'] in str(rows['+from teleprint.keys import Parser'].style) and PALETTE['red'] in str(rows['-from rich.live import Live'].style)
+
+
+class Tty:
+    "The pane's terminal: scripted input chunks (an exception is raised), a size, and every write kept."
+    def __init__(self, *input, size=(40, 30)): self.input, self.size, self.writes, self.restored = list(input), size, [], False
+    def read(self, timeout=0):
+        x = self.input.pop(0) if self.input else b''
+        if isinstance(x, BaseException): raise x
+        return x.encode() if isinstance(x, str) else x
+    def write(self, s): self.writes.append(s)
+    def restore(self): self.restored = True
+
+def _viewer(tmp_path, snap, **kw):
+    (p := tmp_path/'now.json').write_text(json.dumps(snap))
+    v = Viewer(p, Tty(**kw))
+    v.tick()
+    return v, p
+
+def _feed(v, *data):
+    v.tty.input += data
+    for _ in data: v.tick()
+
+def _y(v, key): return next(i for i, (k, _) in enumerate(v.rows) if k == key)
+
+def test_a_click_opens_the_row_under_it_and_keys_move_and_toggle(tmp_path):
+    v, _ = _viewer(tmp_path, _board(time.time()))
+    y = _y(v, SUB)
+    _feed(v, f'\x1b[<0;3;{y + 1}M\x1b[<0;3;{y + 1}m')
+    assert v.open == {SUB} and v.cursor == SUB and '▾ run_aaa' in ''.join(v.tty.writes), 'the press toggles, the release does not'
+    _feed(v, f'\x1b[<0;3;{y + 1}M', '\x1b[<0;3;1M')
+    assert v.open == set(), 'a second click closes it; a click on the header does nothing'
+    moves = []
+    for k in ('j', 'j', 'k', '\x1b[B', '\x1b[A', 'G', 'g'): _feed(v, k); moves.append(v.cursor)
+    assert moves == [('sub', 'run_bbb'), FILE, ('sub', 'run_bbb'), FILE, ('sub', 'run_bbb'), ('file', 'tests/test_pane.py'), SUB]
+    _feed(v, '\r'); assert v.open == {SUB}
+    _feed(v, ' '); assert v.open == set()
+    _feed(v, 'q'); assert v.done
+    v.done = False
+    _feed(v, '\x03'); assert v.done, 'ctrl+c as a byte quits too'
+
+def test_open_rows_and_the_cursor_survive_a_new_snapshot(tmp_path):
+    now = time.time()
+    v, p = _viewer(tmp_path, _board(now))
+    _feed(v, 'j', '\r', 'G')
+    later = _board(now + 1)
+    later['subs'][0]['calls'].append({'line': 'Read ramabana/fresh.py', 'ok': True, 'done': True, 'out': ''})
+    p.write_text(json.dumps(later))
+    v.tick()
+    assert v.snap['at'] == now + 1 and v.open == {SUB} and v.cursor == ('file', 'tests/test_pane.py')
+    assert 'Read ramabana/fresh.py' in ''.join(v.tty.writes)
+
+def test_only_changed_lines_are_written_and_a_resize_repaints_all(tmp_path):
+    now = time.time()
+    v, _ = _viewer(tmp_path, _board(now))
+    v.tick(now=now); n = len(v.tty.writes)
+    v.tick(now=now)
+    assert len(v.tty.writes) == n, 'nothing changed: nothing written'
+    v.tick(now=now + 1)
+    tick = v.tty.writes[-1]
+    assert '43s' in tick and '13s' in tick and 'Rewrite render' not in tick, 'a clock second rewrites only the rows with clocks'
+    v.tty.size = (50, 30)
+    v.tick(now=now + 1)
+    assert v.tty.writes[-1].startswith('\x1b[2J') and 'Rewrite render' in v.tty.writes[-1], 'a resize repaints every row'
+
+def test_a_bad_frame_becomes_an_error_row_and_the_terminal_is_given_back(tmp_path):
+    now = time.time()
+    v, p = _viewer(tmp_path, _board(now))
+    p.write_text(json.dumps({'at': now, 'busy': True, 'root': {}}))
+    v.tick()
+    assert 'KeyError' in v.err and v.snap['at'] == now, 'the last good snapshot stays'
+    v.tick()
+    assert '⚠' in v.tty.writes[-1] and _y(v, SUB), 'the next frame draws it with an error row'
+    p.write_text(json.dumps(_board(now + 1)))
+    v.tick()
+    assert v.err == '' and v.snap['at'] == now + 1
+
+    for stop in (b'q', KeyboardInterrupt()):
+        v = Viewer(p, Tty(RuntimeError('tty hiccup'), stop))
+        v.run()
+        w = v.tty.writes
+        assert '\x1b[?1049h' in w[0] and '\x1b[?1000;1006h' in w[0] and v.tty.input == [], 'the loop read on past the hiccup'
+        assert '\x1b[?1049l' in w[-1] and '\x1b[?1000;1006l' in w[-1] and v.tty.restored
+    class Boom(BaseException): pass
+    v = Viewer(p, Tty(Boom()))
+    with pytest.raises(Boom): v.run()
+    assert '\x1b[?1049l' in v.tty.writes[-1] and v.tty.restored
 
 
 def test_sub_agent_calls_spend_neither_the_root_budget_nor_its_hooks():
