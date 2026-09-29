@@ -19,8 +19,9 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
            'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu',
            'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich', 'changed_table', 'opens', 'OpenDiff',
-           'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'start_agent',
-           'off_loop', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
+           'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index',
+           'start_agent', 'off_loop', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd',
+           'MAX_MEDIA', 'MAX_ATTACH']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -2210,15 +2211,38 @@ def _act(self:Ui, act):
 from .agent import mk_agent, mk_host
 
 # %% ../nbs/05_cli.ipynb #73ba4424
+from .setup import index_gate, log_index, save_index
+
+def sync_index(host, cfg=None, dirs=None):
+    "Sync the code index when a package or root changed since the last good sync, else reopen it; `run` or `skip`, logged to `<cfg>/kosha.log`."
+    if (sync := getattr(host, 'sync_index', None)) is None: return None
+    if cfg is None:
+        sync()
+        return 'run'
+    t0, reopen = time.monotonic(), getattr(host, 'open_index', None)
+    try: state, why = index_gate(cfg, host.roots, dirs)
+    except Exception as e: state, why = None, f'no fingerprint ({agent_err(e)})'
+    if not why and reopen is not None:
+        reopen()
+        log_index(cfg, 'skip', 'unchanged', time.monotonic() - t0)
+        return 'skip'
+    sync()
+    def done():
+        if (wait := getattr(host, 'wait_index', None)) is not None: wait()
+        ok = getattr(host, 'index_ready', False)
+        if ok and state is not None: save_index(cfg, state)
+        log_index(cfg, 'run', (why or 'this host cannot reopen an index') + ('' if ok else f'; failed: {getattr(host, "search_note", "")}'), time.monotonic() - t0)
+    threading.Thread(target=done, daemon=True, name='ramabana-index-log').start()
+    return 'run'
+
 def start_agent(agent, closed=lambda: False, note=None):
     "Start the turn model, then the code index search reads; the backend, or None with `agent.note` saying why."
     b = agent.start()
     if closed():
         if b is not None: b.close()
         return None
-    if (sync := getattr(agent.host, 'sync_index', None)) is not None:
-        try: sync()
-        except Exception as e: (note or (lambda t: print(t, file=sys.stderr)))(f'the code index did not start: {agent_err(e)}')
+    try: sync_index(agent.host, getattr(agent, 'cfg', None))
+    except Exception as e: (note or (lambda t: print(t, file=sys.stderr)))(f'the code index did not start: {agent_err(e)}')
     return b
 
 async def off_loop(fn):

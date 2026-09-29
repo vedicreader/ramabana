@@ -102,7 +102,7 @@ def main(
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     if model:
         agent, host = mk_agent(roots, model=model, approve='none', web=web, vault=vault,
-                               read_outside=read_outside, pii=pii, pii_ner=pii_ner,
+                               read_outside=read_outside, pii=pii, pii_ner=pii_ner, host_kw={'index': True},
                                cfg=Path(cfg).expanduser() if cfg else None)
     else:
         agent, host = None, mk_host(roots, web=web, vault=vault, read_outside=read_outside,

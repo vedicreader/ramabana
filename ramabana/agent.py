@@ -3577,13 +3577,13 @@ def mk_agent(roots=('.',),
              read_outside=False,      # read-only tools may name any path
              pii=PII_OFF,             # off | redact | refuse PII from the vault
              pii_ner=False,           # gate titled names too, not only patterns
-             host_kw=None,            # to `mk_host`: `index`, `warm`, `vault=<path>`
+             host_kw=None,            # to `mk_host`: `index` (off: `sync_index` runs it after the model), `warm`, `vault=<path>`
              **kw):                   # forwarded to `Agent`
-    "A host over `roots` and an `Agent` on it, gated as `approve` says."
+    "A host over `roots` and an `Agent` on it, gated as `approve` says; no code index until asked."
     approvals = None if approve == 'none' else Approvals(mode=approve, timeout=None,
                                                          rules_path=cfg/'approvals.json' if (cfg := kw.get('cfg')) else None)
     host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec,
-                   read_outside=read_outside, pii=pii, pii_ner=pii_ner, **(host_kw or {}))
+                   read_outside=read_outside, pii=pii, pii_ner=pii_ner, **{'index': False, **(host_kw or {})})
     if approvals is not None: approvals.host = host
     agent = Agent(host, model=model, approvals=approvals, **kw)
     agent.lend_model()   # else `--vault` loads a second runtime

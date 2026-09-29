@@ -173,7 +173,7 @@ def test_doctor_prints_one_line_per_check(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(setup, 'need', lambda extra, *mods: 'missing' if extra in ('serve', 'dhrona') else '')
     assert s.doctor() == 0
     out = capsys.readouterr().out.splitlines()
-    assert [l.split(':')[0] for l in out] == ['tmux', 'split', 'extended-keys', 'config', 'ramabana-pane', 'extras']
+    assert [l.split(':')[0] for l in out] == ['tmux', 'split', 'extended-keys', 'config', 'ramabana-pane', 'extras', 'kosha']
     assert "pip install 'ramabana[serve,dhrona]'" in out[5]
     assert '3.0a' in out[0] and '/bin/tmux' in out[0] and '3.1' in out[1] and str(tmp_path/'cfg'/'tmux.conf') in out[3]
     assert '/bin/ramabana-pane' in out[4] and box.asked == []

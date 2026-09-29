@@ -253,3 +253,16 @@ def test_a_renamed_shalya_helper_cannot_break_import():
     print(shalya.skills._mod_skill is orig)
     ''')
     assert out.strip() == 'True', out
+
+def test_start_imports_no_search_stack_and_starts_no_index(tmp_path):
+    out = child(f'''
+    import sys, threading, time
+    import ramabana.agent as am
+    from ramabana.testing import FakeBackend
+    am.make_backend = lambda spec, **kw: FakeBackend(spec, **kw)
+    a, h = am.mk_agent([{str(tmp_path)!r}], model='gpt-4.1', web=False, cfg=__import__('pathlib').Path({str(tmp_path/'cfg')!r}))
+    assert a.start() is not None
+    time.sleep(.5)
+    print(sorted(m for m in {SEARCH!r} if m in sys.modules), [t.name for t in threading.enumerate() if 'kosha' in t.name])
+    ''')
+    assert out.strip() == '[] []', out

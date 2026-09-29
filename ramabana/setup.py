@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/setup.html.md"""
 # %% ../nbs/19_setup.ipynb #6c9acc6f
 from __future__ import annotations
 
-import importlib, importlib.util, json, os, platform, re, shlex, shutil, subprocess, sys, uuid
+import importlib, importlib.util, json, os, platform, re, shlex, shutil, subprocess, sys, sysconfig, time, uuid
 
 from fastcore.basics import ifnone, patch, store_attr
 from fastcore.xtras import Path
@@ -15,8 +15,9 @@ from fastcore.xtras import Path
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
            'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'PII_OFF', 'PII_MODES', 'VALUED', 'EARLY', 'FLAGS',
-           'LAUNCHED', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal',
-           'launch_args', 'run_cli']
+           'LAUNCHED', 'KOSHA_STATE', 'KOSHA_LOG', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf',
+           'Setup', 'refusal', 'launch_args', 'run_cli', 'site_dirs', 'pkg_state', 'root_state', 'index_state',
+           'index_changes', 'index_gate', 'save_index', 'log_index', 'last_index']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -246,6 +247,72 @@ def ext_keys(self:Setup):
     print('turned on extended-keys in this tmux server so shift+enter reaches ramabana; ~/.tmux.conf is unchanged', file=sys.stderr)
     return True
 
+# %% ../nbs/19_setup.ipynb #b4e1a002
+KOSHA_STATE, KOSHA_LOG = 'kosha-state.json', 'kosha.log'
+
+def site_dirs():
+    "The site-packages folders this Python installs into."
+    return sorted({sysconfig.get_path('purelib'), sysconfig.get_path('platlib')})
+
+def pkg_state(dirs=None):
+    "`{dist-info name: mtime}` across `dirs`, default `site_dirs()`."
+    return {p.name[:-10]: p.stat().st_mtime for d in (dirs or site_dirs()) for p in Path(d).glob('*.dist-info')}
+
+def root_state(root):
+    "A root's git HEAD and index mtime; outside git, the newest mtime of it and its entries."
+    try: r = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD', '--absolute-git-dir'], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError): r = None
+    if r is not None and r.returncode == 0:
+        head, gd = r.stdout.split()[:2]
+        return dict(head=head, index=(p.stat().st_mtime if (p := Path(gd)/'index').exists() else 0))
+    p = Path(root)
+    return dict(mtime=max([p.stat().st_mtime, *(c.lstat().st_mtime for c in p.iterdir())]))
+
+def index_state(roots, dirs=None):
+    "The fingerprint of what a sync of `roots` reads."
+    return dict(packages=pkg_state(dirs), roots={str(r): root_state(r) for r in roots})
+
+def _pkg(name): return ' '.join(name.rpartition('-')[::2])
+
+def index_changes(old, new, most=3):
+    "Why `new` differs from `old`, e.g. `packages changed: +foo 1.2` or `leela HEAD a1b2→c3d4`; '' when it does not."
+    if not old: return 'first sync'
+    po, pn, why = old.get('packages', {}), new['packages'], []
+    pk = [f'+{_pkg(n)}' for n in sorted(set(pn) - set(po))] + [f'-{_pkg(n)}' for n in sorted(set(po) - set(pn))] + \
+         [f'~{_pkg(n)}' for n in sorted(set(pn) & set(po)) if pn[n] != po[n]]
+    if pk: why.append('packages changed: ' + ' '.join(pk[:most]) + (f' and {len(pk)-most} more' if len(pk) > most else ''))
+    for r, s in new['roots'].items():
+        o, name = old.get('roots', {}).get(r), Path(r).name
+        if o is None: why.append(f'{name} new root')
+        elif s.get('head') != o.get('head'): why.append(f"{name} HEAD {(o.get('head') or '-')[:4]}→{(s.get('head') or '-')[:4]}")
+        elif s != o: why.append(f"{name} {'index' if 'index' in s else 'files'} changed")
+    return '; '.join(why)
+
+def index_gate(cfg, roots, dirs=None):
+    "`(state, why)`: the fingerprint now, and why kosha must run, '' to skip it."
+    try: old = json.loads((Path(cfg)/KOSHA_STATE).read_text())
+    except (OSError, ValueError): old = None
+    state = index_state(roots, dirs)
+    return state, index_changes(old, state)
+
+def save_index(cfg, state):
+    "Keep `state` as the last good sync's, beside the roots other sessions indexed."
+    p = Path(cfg)/KOSHA_STATE
+    try: old = json.loads(p.read_text())
+    except (OSError, ValueError): old = {}
+    p.mk_write(json.dumps(dict(packages=state['packages'], roots={**old.get('roots', {}), **state['roots']})))
+
+def log_index(cfg, decision, why, secs):
+    "Append `when · run|skip · why · secs` to `<cfg>/kosha.log`."
+    p = Path(cfg)/KOSHA_LOG
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, 'a') as f: f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} · {decision} · {why} · {secs:.2f}s\n")
+
+def last_index(cfg):
+    "The last line of `<cfg>/kosha.log`, or ''."
+    try: return (Path(cfg)/KOSHA_LOG).read_text().splitlines()[-1]
+    except (OSError, IndexError): return ''
+
 # %% ../nbs/19_setup.ipynb #883f4a12
 @patch
 def doctor(self:Setup):
@@ -258,6 +325,7 @@ def doctor(self:Setup):
     print(f'tmux: {about} at {self.tmux}' if v else 'tmux: not found', f'split: {split}', f'extended-keys: {keys}',
           f'config: {conf}' + ('' if conf.exists() else ', written by the first session'),
           f'ramabana-pane: {pane}' if pane else 'ramabana-pane: not on PATH; the pane runs python -m ramabana.pane',
-          f"extras: {', '.join(miss)} missing: pip install 'ramabana[{','.join(miss)}]'" if miss else 'extras: all installed', sep='\n')
+          f"extras: {', '.join(miss)} missing: pip install 'ramabana[{','.join(miss)}]'" if miss else 'extras: all installed',
+          f'kosha: {last_index(self.cfg) or f"no decision yet; the first session writes {self.cfg/KOSHA_LOG}"}', sep='\n')
     if not v: self.offer_install(force=True)
     return 0
