@@ -266,3 +266,19 @@ def test_start_imports_no_search_stack_and_starts_no_index(tmp_path):
     print(sorted(m for m in {SEARCH!r} if m in sys.modules), [t.name for t in threading.enumerate() if 'kosha' in t.name])
     ''')
     assert out.strip() == '[] []', out
+
+@pytest.mark.parametrize('how', ['raises', 'none'])
+def test_a_failed_start_still_syncs_the_index_after_the_attempt(tmp_path, how):
+    a, be = slow_agent(tmp_path)
+    order = []
+    def start():
+        order.append('start')
+        if how == 'raises': raise RuntimeError('no claude on PATH')
+    a.start = start
+    a.host.sync_index = lambda: order.append('sync')
+    if how == 'raises':
+        with pytest.raises(RuntimeError, match='no claude'): cli.start_agent(a)
+    else: assert cli.start_agent(a) is None
+    assert order == ['start', 'sync']
+    order.clear()
+    assert cli.start_agent(a, closed=lambda: True) is None and order == ['start']

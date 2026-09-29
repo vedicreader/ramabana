@@ -1,11 +1,13 @@
 "The code index runs only when a package or an indexed root changed, and says why in `<cfg>/kosha.log`."
 import json, subprocess, sys, textwrap
 
+import pytest
+
 from fastcore.xtras import Path
 
 from ramabana import setup
 from ramabana.cli import start_agent, sync_index
-from ramabana.setup import KOSHA_LOG, index_changes, index_state, last_index, log_index
+from ramabana.setup import KOSHA_LOG, KOSHA_STATE, index_changes, index_gate, index_state, last_index, log_index, save_index
 
 def git(root, *args): subprocess.run(['git', '-C', str(root), *args], check=True, capture_output=True)
 
@@ -22,11 +24,23 @@ def site(tmp_path, *pkgs):
     for p in pkgs: (d/f'{p}.dist-info').mkdir()
     return d
 
+@pytest.fixture(autouse=True)
+def env_db(tmp_path, monkeypatch):
+    "Kosha's env db, present unless a test removes it."
+    p = tmp_path/'xdg'/'kosha'/'env.db'
+    p.parent.mkdir(parents=True); p.write_text('')
+    monkeypatch.setattr(setup, 'kosha_env_db', lambda: p)
+    return p
+
+def indexed(*roots):
+    "What a real sync leaves in each root."
+    for r in roots: (Path(r)/'.kosha').mkdir(exist_ok=True); (Path(r)/'.kosha'/'code.db').write_text('')
+
 class Host:
-    "A fake kosha: records syncs, and reports ready."
+    "A fake kosha: records syncs, writes each root's code db, and reports ready."
     index_ready, search_note = True, 'ok'
     def __init__(self, *roots): self.roots, self.synced, self.opened = [str(r) for r in roots], 0, 0
-    def sync_index(self): self.synced += 1
+    def sync_index(self): self.synced += 1; indexed(*self.roots)
     def wait_index(self, timeout=None): return True
     def open_index(self): self.opened += 1
 
@@ -87,13 +101,16 @@ def test_the_log_line_and_the_doctor_line(tmp_path, capsys):
 def test_an_unchanged_start_imports_no_kosha(tmp_path):
     r, d, cfg = repo(tmp_path), site(tmp_path, 'fastcore-1.8.0'), tmp_path/'cfg'
     sync_index(Host(r), cfg, dirs=[d]); settle(cfg, 1)
+    env = setup.kosha_env_db()
     code = f'''
     import sys, time
     from ramabana.agent import mk_agent
     from ramabana.cli import start_agent
     from ramabana.testing import FakeBackend
     from ramabana import setup
-    setup.site_dirs = lambda: [{str(d)!r}]
+    setup.kosha_env_db = lambda: __import__('pathlib').Path({str(env)!r})
+    _ps = setup.pkg_state
+    setup.pkg_state = lambda dirs=None: _ps(dirs or [{str(d)!r}])
     a, h = mk_agent([{str(r)!r}], web=False, cfg=__import__('pathlib').Path({str(cfg)!r}))
     a._be = lambda job='turn': FakeBackend()
     start_agent(a)
@@ -104,3 +121,48 @@ def test_an_unchanged_start_imports_no_kosha(tmp_path):
     assert out.returncode == 0, out.stderr[-3000:]
     assert out.stdout.strip() == '[] 1 True', out.stdout
     assert last_index(cfg).split(' · ')[1] == 'skip'
+
+def test_a_missing_code_db_or_env_db_is_a_reason_to_run(tmp_path, env_db):
+    r, d, cfg = repo(tmp_path), site(tmp_path, 'fastcore-1.8.0'), tmp_path/'cfg'
+    h = Host(r)
+    sync_index(h, cfg, dirs=[d]); settle(cfg, 1)
+    (r/'.kosha'/'code.db').unlink()
+    assert index_gate(cfg, [r], [d])[1] == 'index missing'
+    assert sync_index(h, cfg, dirs=[d]) == 'run'; settle(cfg, 2)
+    assert (cfg/KOSHA_LOG).read_text().splitlines()[-1].split(' · ')[2] == 'index missing'
+    env_db.unlink()
+    assert index_gate(cfg, [r], [d])[1] == 'index missing'
+
+def test_uncommitted_edits_change_the_worktree_digest(tmp_path):
+    r, d, cfg = repo(tmp_path), site(tmp_path, 'fastcore-1.8.0'), tmp_path/'cfg'
+    indexed(r)
+    save_index(cfg, index_state([r], [d]))
+    assert index_gate(cfg, [r], [d])[1] == '', 'the code db kosha writes is not an edit'
+    (r/'a.py').write_text('x = 2\n')
+    assert index_gate(cfg, [r], [d])[1] == 'leela worktree changed'
+    save_index(cfg, index_state([r], [d]))
+    import os, time
+    os.utime(r/'a.py', (time.time() + 5, time.time() + 5))
+    assert index_gate(cfg, [r], [d])[1] == 'leela worktree changed', 'a second edit to an edited file'
+
+def test_packages_are_read_as_importlib_metadata_finds_them(tmp_path):
+    import importlib.metadata as md
+    names = {n.rpartition('-')[0] for n in index_state([], None)['packages']}
+    assert {'fastcore', 'rishi'} <= {n.lower().replace('-', '_') for n in names}
+    assert len(names) >= len({d.metadata['Name'] for d in md.distributions()}) - 5
+
+def test_the_state_is_written_atomically_and_the_log_is_capped(tmp_path, monkeypatch):
+    cfg = tmp_path/'cfg'
+    save_index(cfg, {'packages': {}, 'roots': {}})
+    assert json.loads((cfg/KOSHA_STATE).read_text()) == {'packages': {}, 'roots': {}}
+    assert not list(cfg.glob('*.tmp')) and not list(cfg.glob('.*tmp*'))
+    import os
+    replaced = []
+    real = os.replace
+    monkeypatch.setattr(os, 'replace', lambda a, b: (replaced.append(Path(b).name), real(a, b)))
+    save_index(cfg, {'packages': {'a-1': 1.0}, 'roots': {}})
+    assert replaced == [KOSHA_STATE]
+    (cfg/KOSHA_LOG).write_text(''.join(f'line {i} ' + 'x' * 100 + '\n' for i in range(1000)))
+    log_index(cfg, 'skip', 'unchanged', 0)
+    lines = (cfg/KOSHA_LOG).read_text().splitlines()
+    assert len(lines) == 500 and lines[-1].split(' · ')[1] == 'skip' and lines[0].startswith('line 501 ')

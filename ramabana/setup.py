@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/setup.html.md"""
 # %% ../nbs/19_setup.ipynb #6c9acc6f
 from __future__ import annotations
 
-import importlib, importlib.util, json, os, platform, re, shlex, shutil, subprocess, sys, sysconfig, time, uuid
+import hashlib, importlib, importlib.util, json, os, platform, re, shlex, shutil, subprocess, sys, time, uuid
 
 from fastcore.basics import ifnone, patch, store_attr
 from fastcore.xtras import Path
@@ -15,9 +15,9 @@ from fastcore.xtras import Path
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
            'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'PII_OFF', 'PII_MODES', 'VALUED', 'EARLY', 'FLAGS',
-           'LAUNCHED', 'KOSHA_STATE', 'KOSHA_LOG', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf',
-           'Setup', 'refusal', 'launch_args', 'run_cli', 'site_dirs', 'pkg_state', 'root_state', 'index_state',
-           'index_changes', 'index_gate', 'save_index', 'log_index', 'last_index']
+           'LAUNCHED', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need',
+           'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'run_cli', 'kosha_env_db', 'pkg_state',
+           'root_state', 'index_state', 'index_changes', 'index_gate', 'save_index', 'log_index', 'last_index']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -248,25 +248,41 @@ def ext_keys(self:Setup):
     return True
 
 # %% ../nbs/19_setup.ipynb #b4e1a002
-KOSHA_STATE, KOSHA_LOG = 'kosha-state.json', 'kosha.log'
+KOSHA_STATE, KOSHA_LOG, LOG_MAX, LOG_KEEP = 'kosha-state.json', 'kosha.log', 64_000, 500
 
-def site_dirs():
-    "The site-packages folders this Python installs into."
-    return sorted({sysconfig.get_path('purelib'), sysconfig.get_path('platlib')})
+def kosha_env_db():
+    "Where `Kosha()` keeps its package index: `<xdg data>/kosha/env.db`, as kosha computes it."
+    from fastcore.xdg import xdg_data_home
+    return xdg_data_home()/'kosha'/'env.db'
 
 def pkg_state(dirs=None):
-    "`{dist-info name: mtime}` across `dirs`, default `site_dirs()`."
-    return {p.name[:-10]: p.stat().st_mtime for d in (dirs or site_dirs()) for p in Path(d).glob('*.dist-info')}
+    "`{dist name-version: mtime}` for what `importlib.metadata` finds on `dirs`, default `sys.path`, as kosha lists packages."
+    from importlib.metadata import distributions
+    out = {}
+    for d in distributions(**({'path': [str(p) for p in dirs]} if dirs else {})):
+        if (p := getattr(d, '_path', None)) is None: continue
+        try: out[re.sub(r'\.(dist|egg)-info$', '', p.name)] = p.stat().st_mtime
+        except OSError: pass
+    return out
+
+def _worktree(root, out):
+    "A digest of `git status --porcelain` and the mtimes of the paths it names, kosha's own `.kosha` left out."
+    h, paths = hashlib.sha1(), [p for p in out.split('\0') if p and '.kosha' not in Path(p[3:]).parts]
+    for p in paths:
+        f = Path(root)/p[3:]
+        h.update(p.encode()); h.update(repr(f.stat().st_mtime if f.exists() else 0).encode())
+    return h.hexdigest()[:12]
 
 def root_state(root):
-    "A root's git HEAD and index mtime; outside git, the newest mtime of it and its entries."
-    try: r = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD', '--absolute-git-dir'], capture_output=True, text=True, timeout=10)
+    "A root's git HEAD and working-tree digest, staged changes included; outside git, the newest mtime of its entries."
+    try:
+        r = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True, timeout=10)
+        st = subprocess.run(['git', '--no-optional-locks', '-C', str(root), 'status', '--porcelain=v1', '-z'], capture_output=True, text=True, timeout=10) if r.returncode == 0 else None
     except (OSError, subprocess.SubprocessError): r = None
     if r is not None and r.returncode == 0:
-        head, gd = r.stdout.split()[:2]
-        return dict(head=head, index=(p.stat().st_mtime if (p := Path(gd)/'index').exists() else 0))
+        return dict(head=r.stdout.strip(), worktree=_worktree(root, st.stdout))
     p = Path(root)
-    return dict(mtime=max([p.stat().st_mtime, *(c.lstat().st_mtime for c in p.iterdir())]))
+    return dict(mtime=max([0, *(c.lstat().st_mtime for c in p.iterdir() if c.name != '.kosha')]))
 
 def index_state(roots, dirs=None):
     "The fingerprint of what a sync of `roots` reads."
@@ -285,28 +301,39 @@ def index_changes(old, new, most=3):
         o, name = old.get('roots', {}).get(r), Path(r).name
         if o is None: why.append(f'{name} new root')
         elif s.get('head') != o.get('head'): why.append(f"{name} HEAD {(o.get('head') or '-')[:4]}→{(s.get('head') or '-')[:4]}")
-        elif s != o: why.append(f"{name} {'index' if 'index' in s else 'files'} changed")
+        elif s.get('worktree') != o.get('worktree'): why.append(f'{name} worktree changed')
+        elif s != o: why.append(f'{name} files changed')
     return '; '.join(why)
 
 def index_gate(cfg, roots, dirs=None):
-    "`(state, why)`: the fingerprint now, and why kosha must run, '' to skip it."
+    "`(state, why)`: the fingerprint now, and why kosha must run, '' to skip it. A missing code or env db is a reason."
     try: old = json.loads((Path(cfg)/KOSHA_STATE).read_text())
     except (OSError, ValueError): old = None
     state = index_state(roots, dirs)
-    return state, index_changes(old, state)
+    missing = not kosha_env_db().exists() or any(not (Path(r)/'.kosha'/'code.db').exists() for r in roots)
+    return state, '; '.join(w for w in (old and missing and 'index missing', index_changes(old, state)) if w)
+
+def _replace(p, text):
+    "Write `text` to `p` through a temp file and `os.replace`, so a reader never sees half of it."
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(f'.{p.name}.{os.getpid()}.tmp')
+    tmp.write_text(text)
+    os.replace(tmp, p)
 
 def save_index(cfg, state):
     "Keep `state` as the last good sync's, beside the roots other sessions indexed."
     p = Path(cfg)/KOSHA_STATE
     try: old = json.loads(p.read_text())
     except (OSError, ValueError): old = {}
-    p.mk_write(json.dumps(dict(packages=state['packages'], roots={**old.get('roots', {}), **state['roots']})))
+    _replace(p, json.dumps(dict(packages=state['packages'], roots={**old.get('roots', {}), **state['roots']})))
 
 def log_index(cfg, decision, why, secs):
-    "Append `when · run|skip · why · secs` to `<cfg>/kosha.log`."
+    "Append `when · run|skip · why · secs` to `<cfg>/kosha.log`, trimmed to its last `LOG_KEEP` lines past `LOG_MAX` bytes."
     p = Path(cfg)/KOSHA_LOG
     p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, 'a') as f: f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} · {decision} · {why} · {secs:.2f}s\n")
+    line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} · {decision} · {why} · {secs:.2f}s\n"
+    if p.exists() and p.stat().st_size > LOG_MAX: return _replace(p, ''.join((p.read_text().splitlines(True) + [line])[-LOG_KEEP:]))
+    with open(p, 'a') as f: f.write(line)
 
 def last_index(cfg):
     "The last line of `<cfg>/kosha.log`, or ''."

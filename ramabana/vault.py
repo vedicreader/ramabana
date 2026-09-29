@@ -11,7 +11,7 @@ __all__ = ['DFLT_VAULT', 'MEM_SECTIONS', 'TOC_DEPTH', 'safe_shelf', 'VaultHost',
 # %% ../nbs/07_vault.ipynb #bcb01f4f
 import json, re, threading, time
 from pathlib import Path
-from fastcore.basics import AttrDict
+from fastcore.basics import AttrDict, patch
 from fastcore.meta import delegates
 from fastcore.parallel import startthread
 from .core import AgentError, agent_err, need
@@ -290,8 +290,6 @@ class WorkspaceHost(VaultHost, SpecHost):
 
 
 # %% ../nbs/07_vault.ipynb #a7c1e0f1
-from fastcore.basics import patch
-
 class LazyIndex:
     "A root's Kosha index as it stands on disk, opened without a sync on first use."
     def __init__(self, root): self.root, self._k = Path(root), None

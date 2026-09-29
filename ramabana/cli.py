@@ -2236,13 +2236,15 @@ def sync_index(host, cfg=None, dirs=None):
     return 'run'
 
 def start_agent(agent, closed=lambda: False, note=None):
-    "Start the turn model, then the code index search reads; the backend, or None with `agent.note` saying why."
-    b = agent.start()
+    "Try the turn model, then start the code index search reads, whether the model came up or not; the backend, or None with `agent.note` saying why."
+    try: b, err = agent.start(), None
+    except Exception as e: b, err = None, e
     if closed():
         if b is not None: b.close()
         return None
     try: sync_index(agent.host, getattr(agent, 'cfg', None))
     except Exception as e: (note or (lambda t: print(t, file=sys.stderr)))(f'the code index did not start: {agent_err(e)}')
+    if err is not None: raise err
     return b
 
 async def off_loop(fn):
