@@ -422,3 +422,103 @@ def test_a_folded_call_does_not_ink_the_transcript_above_it_again():
     assert mark > 0, 'the document has to outgrow the window for anything to be inked at all'
     assert patched < bare, f'patched inked the banner {patched} times, unpatched {bare}'
 
+
+# -- a write finishes open, its diff on show ---------------------------------------------------
+
+def a_diff(n):
+    "A unified diff `n` lines long: one hunk adding to a Python file."
+    return '--- a/m.py\n+++ b/m.py\n' + f'@@ -0,0 +1,{n - 3} @@\n' + '\n'.join(f'+x{i} = {i}' for i in range(n - 3))
+
+def a_call(u, tool, out, ok=True):
+    a = u.agent.activity.start(tool, {'path': 'm.py'})
+    u.agent.activity.finish(a, out, ok=ok)
+    return a, u.acts[a.id]
+
+def plain_rows(u, blk): return [''.join(s.text for s in r) for _, r in u.comp._block_rows(blk)]
+
+@pytest.fixture
+def frozen(ui, monkeypatch):
+    monkeypatch.setattr(agent.time, 'time', lambda: 0.0)   # no "(Ns)" growing into a row on a slow worker
+    return ui
+
+def test_a_finished_edit_shows_its_diff(frozen):
+    _, blk = a_call(frozen, 'edit_file', a_diff(8))
+    rows = plain_rows(frozen, blk)
+    assert not blk.collapsed and len(rows) == 9
+    assert all(any(f'+x{i} = {i}' in r for r in rows) for i in range(5))
+
+def test_a_long_diff_shows_its_head_until_opened(frozen):
+    _, blk = a_call(frozen, 'edit_file', a_diff(50))
+    rows = plain_rows(frozen, blk)
+    assert len(rows) == 1 + 20 + 1 and rows[-1].strip() == HINT, rows[-1]
+    assert frozen.drill(1) and not blk.collapsed
+    rows = plain_rows(frozen, blk)
+    assert len(rows) == 51 and '+x46 = 46' in rows[-1], 'opening shows the whole diff'
+    assert frozen.drill(1) and blk.collapsed
+
+HINT = '… +30 lines · click or ctrl+r opens'
+
+def test_the_hint_names_no_number_a_new_block_could_shift(frozen):
+    _, blk = a_call(frozen, 'edit_file', a_diff(50))
+    a_call(frozen, 'view_file', 'line\n' * 5)
+    frozen.comp._dirty(blk)
+    assert plain_rows(frozen, blk)[-1].strip() == HINT
+
+def test_a_click_opens_a_capped_diff_whole_and_a_second_folds_it(frozen):
+    _, blk = a_call(frozen, 'edit_file', a_diff(50))
+    comp = frozen.comp
+    def click():
+        comp._frame()
+        comp.click(0, next(y for y, e in enumerate(comp._screen) if e and e[0] == blk.id))
+    click()
+    assert not blk.collapsed and len(plain_rows(frozen, blk)) == 51
+    click()
+    assert blk.collapsed
+
+def test_an_earlier_turns_capped_diff_opens_as_its_hint_says(frozen):
+    _, blk = a_call(frozen, 'edit_file', a_diff(50))
+    a_finished_turn(frozen)
+    assert blk not in frozen.turn_blocks() and plain_rows(frozen, blk)[-1].strip() == HINT
+    frozen.on_key(Key('ctrl+r'))
+    assert frozen.transcript.active and len(frozen.comp._block_lines(blk)) == 51
+    frozen.leave_transcript()
+
+def test_a_stray_hunk_marker_in_shell_output_still_folds(frozen):
+    _, blk = a_call(frozen, 'run_shell', 'a\n@@ weird\nb\n')
+    assert blk.collapsed
+
+def test_ctrl_o_and_the_transcript_open_a_long_diff_whole(frozen):
+    _, read = a_call(frozen, 'view_file', 'line\n' * 5)
+    _, blk = a_call(frozen, 'edit_file', a_diff(50))
+    assert read.collapsed and len(plain_rows(frozen, blk)) == 22
+    frozen.transcript.active = True
+    assert len(frozen.comp._block_lines(blk)) == 51, 'the transcript view shows the whole diff'
+    frozen.transcript.active = False
+    assert frozen.fold_work() is False, 'a diff shown in part counts as shut'
+    assert not read.collapsed and len(plain_rows(frozen, blk)) == 51
+    assert frozen.fold_work() is True and read.collapsed and blk.collapsed
+
+def test_a_git_diff_opens_on_its_highlighted_hunks(frozen):
+    from rich.style import Style
+    from ramabana.cli import scope_style
+    _, blk = a_call(frozen, 'git_diff', '--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-def f(): pass\n+def f(): return 1')
+    assert not blk.collapsed and len(plain_rows(frozen, blk)) == 6
+    kw = Style.parse(scope_style('keyword')).color
+    assert any(s.style and s.style.color == kw and 'return' in s.text for _, r in frozen.comp._block_rows(blk) for s in r)
+    _, shell = a_call(frozen, 'run_shell', 'a\nb\nc\n')
+    assert shell.collapsed, 'a shell call whose output is no diff still folds'
+
+def test_a_finished_read_still_folds(frozen):
+    _, blk = a_call(frozen, 'view_file', 'line\n' * 5)
+    assert blk.collapsed and len(plain_rows(frozen, blk)) == 1
+
+def test_an_edit_the_reader_folded_stays_folded(frozen):
+    act, blk = a_call(frozen, 'edit_file', a_diff(8))
+    assert frozen.drill(1) and blk.collapsed
+    frozen._act(act)
+    assert blk.collapsed, 'the repaint undid what the reader chose'
+
+def test_a_failed_write_stays_open_and_whole(frozen):
+    _, blk = a_call(frozen, 'edit_file', 'error: no match\n' * 30, ok=False)
+    assert not blk.collapsed and len(plain_rows(frozen, blk)) == 32
+
