@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.6
+
+- Sub-agents never get the delegation, watch or plan tools, whatever the turn model or budget (a cloud turn used to hand them the root's full list). `ROOT_ONLY` names them.
+
 ## 0.2.5
 
 - Enter mid-turn steers the running turn; shift+enter queues; shift+tab cycles approvals, with the mode always on screen. Kitty and modifyOtherKeys keys decoded.
