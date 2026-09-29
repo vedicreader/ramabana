@@ -2,6 +2,21 @@
 
 <!-- do not remove -->
 
+## 0.2.5
+
+- Enter mid-turn steers the running turn; shift+enter queues; shift+tab cycles approvals, with the mode always on screen. Kitty and modifyOtherKeys keys decoded.
+- The now pane: status lines per agent and sub-agent, the plan, a sub-agent accordion, files touched and background jobs. Opens beside the chat in tmux; `/pane`, `--pane auto|on|off`.
+- Sub-agent calls show on the activity, stamped with their run; read-only ones are shown, not governed.
+- First run starts ramabana in its own tmux server, one per launch; asks once to install tmux; `ramabana --doctor` checks the setup; `--tmux off` opts out.
+- Edits and `git_diff` finish open on a highlighted diff, capped at `DIFF_OPEN`; changed files show as a table.
+- Reply code fences highlight through fastpylight.
+- Startup: the prompt draws in about 0.3–0.6 s while the model starts on a thread; the search stack loads lazily.
+- `sync_index` runs kosha only when a package or root changed, and logs run or skip to `kosha.log`.
+- Routing: Claude Opus takes the turn, gpt-4.1 the small jobs, Sonnet the sub-agents; no local engine on a default route. A local turn keeps side jobs local; without `OPENAI_API_KEY`, gpt-4.1 jobs fall back to Sonnet.
+- Extras: `search`, `python`, `serve`, `cli`, `dhrona`, `all`. A missing extra drops its tools and its commands name the extra to install. The core includes what shalya needs.
+- Dependency floors raised to current releases.
+- Lean prose pass: one-line docstrings, fewer comments. The `03_agent` chats were re-recorded.
+
 ## 0.2.4
 
 - Sub-agents see pictures: `delegate_search`/`delegate_async(images=[...])` send pictures (inside the open folders, recognised by bytes, ≤ 8 × 20 MB; pictures × questions ≤ 8) to the sub-agent's model; refused for models that can't take images.

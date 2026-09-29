@@ -21,22 +21,22 @@ dependencies = [
     "shalya>=0.1.1",   # generate_image(images=, path=) with guarded destinations; picture checks by bytes; memory_search rows
     "uraiyadal>=0.0.8",   # a refused approval's reason (`Ask.reply`) reaches the model
     "gheasy>=0.0.10",
-    "exhash>=0.4.9",
-    "fastcore>=2.1.16",
+    "exhash>=0.4.11",
+    "fastcore>=2.2.19",
     "rishi>=0.1.39",   # chats sharing a LiteRT engine take turns (engine_lock); a second chat on the same thread raises EngineBusy instead of hanging
-    "fastspec>=0.2.1",
-    "pyyaml>=6.0",
+    "fastspec>=0.2.4",
+    "pyyaml>=6.0.3",
     "pobblebonk>=0.0.3",
 ]
 
 [project.optional-dependencies]
 search = ["vishalakshi>=0.1.17",   # note(key=), folder watches, age/stale
           "litesearch>=0.1.35", "koshas>=0.1.9",   # `rows` hands `code_row` the hit, so the federated repo leg works
-          "rgapi>=0.1.19", "fossick>=0.1.17"]
-python = ["dhrishti>=0.1.2", "jupyter-client>=8.9.1", "rich"]
-serve = ["mcp>=1.2", "agent-client-protocol>=0.12.1"]
+          "rgapi>=0.1.23", "fossick>=0.1.17"]
+python = ["dhrishti>=0.1.3", "jupyter-client>=8.10.0", "rich>=15.0.0"]
+serve = ["mcp>=1.29.1", "agent-client-protocol>=0.12.1"]
 dhrona = ["dhrona>=0.1.4"]
-cli = ["ramabana[search,python]", "teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.1", "fastpylight>=0.1.18"]
+cli = ["ramabana[search,python]", "teleprint>=0.1.3", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.1", "fastpylight>=0.1.18"]
 all = ["ramabana[search,python,serve,dhrona,cli]"]
 
 [project.urls]
@@ -75,10 +75,10 @@ path = "ramabana/__init__.py"
 dev = [
     "ramabana[all]",
     "rishi[all]>=0.1.39",
-    "nbdev>=3.3.11",
-    "notebook>=7.6.1",
-    "pytest>=8.0.0",
-    "pytest-xdist>=3.5.0",
+    "nbdev>=3.3.14",
+    "notebook>=7.6.2",
+    "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
     "dhrona>=0.1.4",
 ]
 

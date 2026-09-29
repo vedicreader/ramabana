@@ -153,9 +153,9 @@ def test_core_does_not_pin_what_nothing_imports():
     deps = {_name(r) for r in tomllib.loads(PYPROJECT.read_text())['project']['dependencies']}
     assert 'liteparse' not in deps, 'rishi pins it'
 
-def test_the_readme_says_a_bare_install_still_pulls_most_dependencies():
+def test_the_readme_says_the_core_includes_what_shalya_needs():
     readme = (PYPROJECT.parent/'README.md').read_text()
-    assert 'bare `pip install ramabana` still installs most' in readme and 'shalya splits its own extras' in readme
+    assert 'The core install includes what shalya needs' in readme and 'shalya splits' not in readme
 
 def test_the_cli_does_not_reexport_workspace_host():
     import ramabana.cli
