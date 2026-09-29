@@ -49,7 +49,7 @@ from teleprint.widgets import CompletionMenu, Tooltip
 from .core import PII_MODES, PII_OFF, PROFILES, accepts, agent_err, env, model_note
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, subject
-from .pane import write_snapshot
+from .pane import quit_mark, write_snapshot
 from .setup import Setup
 from datetime import datetime
 from . import __version__
@@ -2561,6 +2561,7 @@ def open_pane(self:Ui, arg=''):
     if self.pane is not None and self._pane_at == p and _alive(self.pane):
         return self.note(f'the pane is already open in {self.pane.id} · /pane off closes it')
     self.close_pane()
+    quit_mark(p).unlink(missing_ok=True)
     self.write_now(force=True)
     cmd = pane_cmd(p)
     if (me := _tmux_pane(self.agent.host)) is None:
@@ -2581,11 +2582,13 @@ def close_pane(self:Ui):
 
 @patch
 def _revive(self:Ui):
-    "Reopen the `now` pane when its viewer died, asking at most every `ALIVE_EVERY` and reopening at most every `REOPEN_EVERY`."
+    "Reopen the `now` pane when its viewer crashed, not quit, asking at most every `ALIVE_EVERY` and reopening at most every `REOPEN_EVERY`."
     t = time.monotonic()
     if self.pane is None or t - self._alive_at < ALIVE_EVERY: return
     self._alive_at = t
-    if _alive(self.pane) or t - self._reopen_at < REOPEN_EVERY: return
+    if _alive(self.pane): return
+    if quit_mark(self._pane_at).exists(): return self.close_pane()
+    if t - self._reopen_at < REOPEN_EVERY: return
     self._reopen_at = t
     self.open_pane()
 

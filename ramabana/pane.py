@@ -23,7 +23,7 @@ from .monitor import _counts, _rel
 
 # %% auto #0
 __all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'PALETTE', 'ENTER', 'LEAVE', 'now_snapshot',
-           'write_snapshot', 'read_snapshot', 'board', 'render', 'Viewer', 'main']
+           'write_snapshot', 'read_snapshot', 'board', 'render', 'quit_mark', 'Viewer', 'main']
 
 # %% ../nbs/18_pane.ipynb #d2a80a47
 CALLS_KEPT = 8       #: a sub-agent's latest calls in a snapshot
@@ -220,6 +220,10 @@ def _lit(t, width):
     t.stylize(f"on {PALETTE['cursor']}")
     return t
 
+def quit_mark(path):
+    "The file a viewer the user quit leaves beside the snapshot at `path`, so the CLI keeps it closed."
+    return Path(path).with_suffix('.closed')
+
 class Viewer:
     "The board for the snapshot at `path`, drawn on `tty`: the last good snapshot, the open rows and the cursor."
     def __init__(self, path, tty):
@@ -284,7 +288,7 @@ class Viewer:
         except Exception as e: self.snap, self.err = self.good, _1(f'{type(e).__name__}: {e}', 200)
 
     def run(self, every=0.2):
-        "Draw until q or ctrl+c, then give the terminal back as it was."
+        "Draw until q or ctrl+c, give the terminal back as it was, and leave the `quit_mark`."
         self.tty.write(ENTER)
         try:
             while not self.done: self.tick(every)
@@ -292,6 +296,7 @@ class Viewer:
         finally:
             self.tty.write(LEAVE)
             self.tty.restore()
+        quit_mark(self.path).touch()
 
 # %% ../nbs/18_pane.ipynb #7f9d2673
 @call_parse

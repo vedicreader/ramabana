@@ -4,7 +4,7 @@ import json, time
 import pytest
 from rich.console import Console
 
-from ramabana.pane import PALETTE, Viewer, board, now_snapshot, read_snapshot, render, write_snapshot
+from ramabana.pane import PALETTE, Viewer, board, now_snapshot, quit_mark, read_snapshot, render, write_snapshot
 from ramabana.runtime import current_run
 from ramabana.testing import ScriptedBackend, Step, fake_agent
 
@@ -361,3 +361,15 @@ def test_a_steady_snapshot_reads_no_file_and_asks_no_shell(monkeypatch):
     a.host.files['/proj/a.py'] = 'def a(): return 2\n'
     fin = a.activity.start('replace_text', {'path': '/proj/a.py'}); a.activity.finish(fin, 'ok')
     assert '+def a(): return 2' in now_snapshot(a)['files'][0]['diff'] and reads, 'a finished call recomputes the files'
+
+
+def test_a_quit_leaves_a_mark_beside_the_snapshot_and_a_crash_does_not(tmp_path):
+    (p := tmp_path/'now.json').write_text(json.dumps(_board(time.time())))
+    for stop in ('q', '\x03', KeyboardInterrupt()):
+        quit_mark(p).unlink(missing_ok=True)
+        Viewer(p, Tty(stop)).run()
+        assert quit_mark(p) == tmp_path/'now.closed' and quit_mark(p).exists(), f'{stop!r} is a quit'
+    quit_mark(p).unlink()
+    class Boom(BaseException): pass
+    with pytest.raises(Boom): Viewer(p, Tty(Boom())).run()
+    assert not quit_mark(p).exists(), 'a crash is not a quit'

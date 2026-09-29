@@ -10,7 +10,7 @@ from teleprint.testing import EmuTty
 
 import ramabana.cli as cli
 from ramabana.cli import Ui, amain, main
-from ramabana.pane import read_snapshot
+from ramabana.pane import quit_mark, read_snapshot
 from ramabana.testing import fake_agent
 
 
@@ -277,3 +277,19 @@ def test_the_turn_end_closes_the_panes_of_exited_shells_and_keeps_running_ones(u
     assert (live.killed, done.killed, failed.killed) == (False, True, True)
     assert host._bg['cmd_live'] is live and host._bg['cmd_logged'] is logged, 'a process without a pane is not touched'
     assert host.cmd_output('cmd_done') == ('exit 0', 'output of 0') and host.cmd_output('cmd_failed')[0] == 'exit 2', 'the output outlives the pane'
+
+
+def test_a_viewer_the_user_quit_stays_closed_until_pane_opens_it_again(ui, clock):
+    me = ui.agent.host.tmux_pane = Me()
+    _submit(ui, '/pane')
+    mark = quit_mark(ui.agent.runs_dir/'now.json')
+    mark.touch()
+    me.made[0].dead = True
+    clock.now += 2 * cli.REOPEN_EVERY
+    ui._revive()
+    assert len(me.splits) == 1 and ui.pane is None and me.made[0].killed, 'a quit is /pane off'
+    clock.now += 2 * cli.REOPEN_EVERY
+    ui._revive()
+    assert len(me.splits) == 1
+    _submit(ui, '/pane')
+    assert len(me.splits) == 2 and ui.pane is me.made[1] and not mark.exists(), '/pane clears the mark and opens'
