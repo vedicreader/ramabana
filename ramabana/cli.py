@@ -19,8 +19,9 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
            'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
            'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich', 'changed_table', 'opens',
-           'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'amain',
-           'headless_prompt', 'ask_once', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
+           'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md',
+           'start_agent', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA',
+           'MAX_ATTACH']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -899,6 +900,7 @@ class Ui:
         self.ask = None
         self._asked_at = 0.0
         self.turn = None
+        self.starting = False
         self._queued = None
         self._queued_prompt = None
         self._prompt = None
@@ -1011,16 +1013,19 @@ class Ui:
 
     def status(self):
         "The status bar: what is loaded, whether it is working, and what it has cost."
-        s = self.agent.status()
-        busy = self.turn is not None or s['busy']
-        state = 'working' if busy else ('ready' if s['ready'] else 'idle')
-        color = GRUVBOX['yellow'] if busy else GRUVBOX['green'] if s['ready'] else GRUVBOX['gray']
+        if self.starting: s, busy, state, color = None, True, 'starting model…', GRUVBOX['yellow']
+        else:
+            s = self.agent.status()
+            busy = self.turn is not None or s['busy']
+            state = 'working' if busy else ('ready' if s['ready'] else 'idle')
+            color = GRUVBOX['yellow'] if busy else GRUVBOX['green'] if s['ready'] else GRUVBOX['gray']
         mark = self.SPINNER[self.frame % len(self.SPINNER)] if busy else '●'
         out = self.bow_text(busy, color); out.append(' ')
         out.append(self.WORDMARK, style=f"bold {GRUVBOX['fg0']}")
         out.append(f" {VERSION}", style=GRUVBOX['gray'])
-        out.append(f"  {s['model']}  ", style=GRUVBOX['gray'])
+        out.append(f"  {s['model'] if s else self.agent.model.name}  ", style=GRUVBOX['gray'])
         out.append(f'{mark} {state.lower()}', style=color)
+        if s is None: return out
         bits = [f"{s['ntools']} tools", f"{s['nskills']} skills", f"{round(s['pct_full'] * 100)}% ctx"]
         if s.get('plan_line'): bits.append(s['plan_line'])
         if s['compactions']: bits.append(f"{s['compactions']} compacted")
@@ -1058,7 +1063,7 @@ class Ui:
 
     def working(self):
         "The working footer while a turn runs: the last few calls and a totals line."
-        if self.turn is None and not self.agent.busy: return []
+        if self.starting or (self.turn is None and not self.agent.busy): return []
         acts = self.agent.activity.since()
         nums = {b.id: i + 1 for i, b in enumerate(self.drillable())}
         rows = []
@@ -1093,7 +1098,7 @@ class Ui:
 
     def write_now(self, force=False):
         "Write `now.json` for the pane, at most every `PANE_EVERY` seconds unless `force`."
-        if (p := _now_file(self.agent)) is None: return
+        if self.starting or (p := _now_file(self.agent)) is None: return
         t = time.monotonic()
         if not force and t - self._now_at < PANE_EVERY:
             self._now_dirty = True
@@ -1554,6 +1559,7 @@ class Ui:
         if name == '/mouse': return self.note(self.set_mouse(arg))
         if name == '/approve': return self.note(self.approve_mode(arg))
         if name == '#note': return self.note(self.note_memory(arg))
+        if line.startswith('/') and self.starting: return self.note(f'{name} waits for the model · try again once it is ready')
         if line.startswith('/'):
             out = self.agent.command(line)
             if out is None and (body := self.agent.expand_command(line)) is not None: return self._turn(body)
@@ -2203,6 +2209,29 @@ def _act(self:Ui, act):
 # %% ../nbs/05_cli.ipynb #79b1ca2e
 from .agent import mk_agent, mk_host
 
+# %% ../nbs/05_cli.ipynb #73ba4424
+def start_agent(agent):
+    "Start the turn model, then the code index search reads; the backend, or None with `agent.note` saying why."
+    b = agent.start()
+    if (sync := getattr(agent.host, 'sync_index', None)) is not None: sync()
+    return b
+
+@patch
+async def warm_up(self:Ui):
+    "Start the model off the loop; a start that fails says why in a note."
+    try:
+        if await asyncio.to_thread(start_agent, self.agent) is None: self.note(f'no model available: {self.agent.note}')
+    except Exception as e: self.note(f'no model available: {agent_err(e)}')
+    finally:
+        self.starting = False
+        self.paint()
+
+@patch
+def begin(self:Ui):
+    "Start the model behind the prompt; lines sent meanwhile wait in the queue."
+    self.starting = True
+    self.start_turn(self.warm_up())
+
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
 async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto'):
     "The tty loop: one terminal, one event loop, one keyboard owner."
@@ -2231,6 +2260,8 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
             ui.say(plan_text(agent.plan.md()), 'plan', fold=None, source=agent.plan.md())
             ui.show_plan = True
         else: ui.say(Text('tab completes /commands · ctrl+t toggles the plan · /help for keys', style=GRUVBOX['gray']), 'note', fold=None)
+        if attach or python or agent_proxy: await ui.warm_up()   # the kernel's host replaces this one, on a started model
+        else: ui.begin()
         if attach: ui.hint = f'{hint} · attached to {await ui.attach_session(attach)}'
         elif python or agent_proxy:
             await ui.enter_python()
@@ -2277,6 +2308,10 @@ def ask_once(agent, prompt, as_json=False):
 # %% ../nbs/05_cli.ipynb #ce629efa
 TMUX_MODES = {'auto': None, 'on': True, 'off': False}
 PANE_MODES = ('auto', 'on', 'off')
+
+def host_kw(tmux='auto'):
+    "The CLI's host options: `--tmux`, and no code index until the model is up."
+    return dict(tmux=TMUX_MODES[tmux], index=False)
 
 @call_parse(pos=['prompt'])
 def main(
@@ -2357,7 +2392,7 @@ def main(
         return 2
     try: agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault, spec=spec,
                                read_outside=read_outside, subagent_writes=subagent_writes,
-                               pii=pii, pii_ner=pii_ner, host_kw=dict(tmux=TMUX_MODES[tmux]),
+                               pii=pii, pii_ner=pii_ner, host_kw=host_kw(tmux),
                                max_tool_calls=max_tool_calls, max_steps=max_steps,
                                warm=True if warm else False if no_warm else None, optin=tuple(s.strip() for s in optin.split(',') if s.strip()), profile=profile,
                                cfg=Path(cfg).expanduser() if cfg else None)
@@ -2374,9 +2409,9 @@ def main(
             return 2
         if (was := getattr(agent, 'resumed_roots', None)):
             print(f'that session had also opened {", ".join(was)} · /root add PATH to open again', file=sys.stderr)
-    if agent.start() is None and not prompt:
-        print(f'no model available: {agent.note}', file=sys.stderr)
-    if prompt: return sys.exit(ask_once(agent, prompt, as_json=json))
+    if prompt:
+        start_agent(agent)
+        return sys.exit(ask_once(agent, prompt, as_json=json))
     hint = f"{', '.join(host.roots)} · /python · /help"
     try: asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane))
     except KeyboardInterrupt: pass

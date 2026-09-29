@@ -9,19 +9,19 @@ __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WR
            'STATUS_NOTE', 'ASYNC_MAX', 'ASYNC_KEEP', 'MAX_MEDIA', 'MAX_ATTACH', 'NullHost', 'draws_itself',
            'image_tools', 'tools_for', 'small_tool', 'ToolEntry', 'ToolCatalog', 'inbox_note', 'sub_briefing', 'sub_sp',
            'bad_json', 'path_write', 'write_targets', 'status_tool', 'delegate', 'delegate_many', 'Background',
-           'named_skills', 'picture_mime', 'read_pictures', 'subagent_tools', 'parse_plan_items', 'API_VENDORS',
-           'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS',
-           'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS',
-           'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS',
-           'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS',
-           'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds',
-           'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find',
-           'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary',
-           'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost',
-           'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools',
-           'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs',
-           'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools',
-           'research_tools', 'author_tools', 'legacy_tools']
+           'named_skills', 'picture_mime', 'read_pictures', 'subagent_tools', 'parse_plan_items', 'mod_doc',
+           'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS',
+           'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES',
+           'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS',
+           'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX',
+           'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip',
+           'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed',
+           'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect',
+           'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost',
+           'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load',
+           'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools',
+           'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt',
+           'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, contextvars, functools, json, re, threading, time, uuid
@@ -565,3 +565,29 @@ def parse_plan_items(items):
         except Exception: pass
     return [ln.strip().lstrip('-* ').strip() for ln in s.splitlines() if ln.strip()]
 
+
+# %% ../nbs/02_tools.ipynb #a86ffa5d
+import ast, importlib, sys, shalya.skills
+from importlib.machinery import PathFinder
+from shalya.skills import Skill, _describe
+_shalya_mod_skill = shalya.skills._mod_skill
+
+def mod_doc(modpath):
+    "A module's docstring read from its source, loading nothing; None when that cannot be done."
+    if (m := sys.modules.get(modpath)) is not None: return m.__doc__
+    spec, path = None, None
+    for i, part in enumerate(parts := modpath.split('.')):
+        if (spec := PathFinder.find_spec('.'.join(parts[:i+1]), path)) is None: return None
+        path = spec.submodule_search_locations
+    if not (spec.origin or '').endswith('.py'): return None
+    try: return ast.get_docstring(ast.parse(Path(spec.origin).read_bytes()), clean=False)
+    except (OSError, SyntaxError, ValueError): return None
+
+def _mod_skill(name, modpath):
+    "shalya's pyskill, described from source so listing skills imports nothing."
+    if (doc := mod_doc(modpath)) is None: return _shalya_mod_skill(name, modpath)
+    if not doc.strip(): return None
+    return Skill(name=name, source='pyskill', description=_describe(doc), where=modpath,
+                 _text=lambda: importlib.import_module(modpath).__doc__ or '')
+
+shalya.skills._mod_skill = _mod_skill
