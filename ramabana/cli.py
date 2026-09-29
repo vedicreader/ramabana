@@ -13,15 +13,14 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'GUIDE', 'MEDIA', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM',
            'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH',
            'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'DIFF_LEXERS',
-           'BLOCK_START', 'PYREPL_MODULES', 'TMUX_MODES', 'PANE_MODES', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH',
-           'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text',
-           'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
-           'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
-           'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
-           'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich', 'changed_table', 'opens',
-           'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md',
-           'start_agent', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA',
-           'MAX_ATTACH']
+           'BLOCK_START', 'PYREPL_MODULES', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key',
+           'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text',
+           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
+           'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu',
+           'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich', 'changed_table', 'opens', 'OpenDiff',
+           'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'start_agent',
+           'off_loop', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -52,7 +51,8 @@ from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, subject
 from .pane import quit_mark, write_snapshot
 from .tools import WRITE_TOOLS, path_write
-from .setup import Setup
+from . import setup
+from .setup import PANE_MODES, TMUX_MODES, Setup, refusal
 from datetime import datetime
 from . import __version__
 
@@ -900,7 +900,7 @@ class Ui:
         self.ask = None
         self._asked_at = 0.0
         self.turn = None
-        self.starting = False
+        self.starting = self.closed = False
         self._queued = None
         self._queued_prompt = None
         self._prompt = None
@@ -2210,21 +2210,41 @@ def _act(self:Ui, act):
 from .agent import mk_agent, mk_host
 
 # %% ../nbs/05_cli.ipynb #73ba4424
-def start_agent(agent):
+def start_agent(agent, closed=lambda: False, note=None):
     "Start the turn model, then the code index search reads; the backend, or None with `agent.note` saying why."
     b = agent.start()
-    if (sync := getattr(agent.host, 'sync_index', None)) is not None: sync()
+    if closed():
+        if b is not None: b.close()
+        return None
+    if (sync := getattr(agent.host, 'sync_index', None)) is not None:
+        try: sync()
+        except Exception as e: (note or (lambda t: print(t, file=sys.stderr)))(f'the code index did not start: {agent_err(e)}')
     return b
+
+async def off_loop(fn):
+    "`fn()` on a daemon thread, so quitting never waits for it."
+    loop = asyncio.get_running_loop()
+    fut = loop.create_future()
+    def settle(r, e):
+        if not fut.done(): fut.set_exception(e) if e else fut.set_result(r)
+    def run():
+        try: r, e = fn(), None
+        except Exception as x: r, e = None, x
+        try: loop.call_soon_threadsafe(settle, r, e)
+        except RuntimeError: pass   # the loop closed: the session quit meanwhile
+    threading.Thread(target=run, daemon=True, name='ramabana-start').start()
+    return await fut
 
 @patch
 async def warm_up(self:Ui):
     "Start the model off the loop; a start that fails says why in a note."
     try:
-        if await asyncio.to_thread(start_agent, self.agent) is None: self.note(f'no model available: {self.agent.note}')
+        b = await off_loop(lambda: start_agent(self.agent, lambda: self.closed, lambda t: self._post(self.note, t)))
+        if b is None and not self.closed: self.note(f'no model available: {self.agent.note}')
     except Exception as e: self.note(f'no model available: {agent_err(e)}')
     finally:
         self.starting = False
-        self.paint()
+        if not self.closed: self.paint()
 
 @patch
 def begin(self:Ui):
@@ -2281,6 +2301,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         if ui is not None: ui.close_pane()
         tty.write('\x1b[?2004l' + MOUSE_OFF + (KEYS_OFF if ext_keys_ok(tty) else '') + '\r\n')   # `stop` never ran if setup raised
         tty.restore()
+        if ui is not None: ui.closed = True
         agent.close()
         if ui is not None and ui.agent_bridge is not None: await ui.agent_bridge.close()
         if ui is not None and ui.kernel is not None: await ui.kernel.shutdown()
@@ -2306,9 +2327,6 @@ def ask_once(agent, prompt, as_json=False):
     return 0 if ok else 1
 
 # %% ../nbs/05_cli.ipynb #ce629efa
-TMUX_MODES = {'auto': None, 'on': True, 'off': False}
-PANE_MODES = ('auto', 'on', 'off')
-
 def host_kw(tmux='auto'):
     "The CLI's host options: `--tmux`, and no code index until the model is up."
     return dict(tmux=TMUX_MODES[tmux], index=False)
@@ -2354,37 +2372,19 @@ def main(
         from ramabana.pyrepl import sessions
         print(sessions())
         return 0
-    if warm and no_warm:
-        print('--warm and --no-warm contradict each other; pass one', file=sys.stderr)
+    if (msg := refusal(tmux, pane, profile, pii, vault, python, attach, agent_proxy, warm, no_warm)):
+        print(msg, file=sys.stderr)
         return 2
     prompt = headless_prompt(prompt)
     if prompt and approve == 'ask':
         print('one-shot runs have nobody to ask, so every write will be refused · pass --approve auto', file=sys.stderr)
-    if vault and (python or attach or agent_proxy):
-        print('there is no vault-backed host for a dhrishti session; drop --vault', file=sys.stderr)
-        return 2
     if attach:
         from ramabana.pyrepl import find_session
         try: attach = find_session(attach)
         except RuntimeError as e:
             print(e, file=sys.stderr)
             return 2
-    if tmux not in TMUX_MODES:
-        print(f"unknown --tmux {tmux!r}; choose one of {', '.join(TMUX_MODES)}", file=sys.stderr)
-        return 2
-    if pane not in PANE_MODES:
-        print(f"unknown --pane {pane!r}; choose one of {', '.join(PANE_MODES)}", file=sys.stderr)
-        return 2
-    if profile not in PROFILES:
-        print(f"unknown --profile {profile!r}; choose one of {', '.join(PROFILES)}", file=sys.stderr)
-        return 2
-    if pii not in PII_MODES:
-        print(f"unknown --pii {pii!r}; choose one of {', '.join(PII_MODES)}", file=sys.stderr)
-        return 2
-    if pii != PII_OFF and not vault:
-        print('--pii gates what a vault returns; add --vault', file=sys.stderr)
-        return 2
-    Setup(cfg).launch(prompt, json, tmux)
+    if not setup.LAUNCHED: Setup(cfg).launch(prompt, json, tmux)
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     try: set_theme(theme)
     except ValueError as e:
@@ -2544,6 +2544,7 @@ def stop(self:Ui):
     self._stop_at, self._stop_count = now, self._stop_count + 1
     if self._stop_count >= 3:return 'quit'
     cleared = self.drop_queued()
+    if self.starting: return self.note('the model is still starting · ctrl+d quits')
     if self.turn is not None:
         self.flush_stream()
         self._seg_blk = None

@@ -569,8 +569,6 @@ def parse_plan_items(items):
 # %% ../nbs/02_tools.ipynb #a86ffa5d
 import ast, importlib, sys, shalya.skills
 from importlib.machinery import PathFinder
-from shalya.skills import Skill, _describe
-_shalya_mod_skill = shalya.skills._mod_skill
 
 def mod_doc(modpath):
     "A module's docstring read from its source, loading nothing; None when that cannot be done."
@@ -583,11 +581,13 @@ def mod_doc(modpath):
     try: return ast.get_docstring(ast.parse(Path(spec.origin).read_bytes()), clean=False)
     except (OSError, SyntaxError, ValueError): return None
 
-def _mod_skill(name, modpath):
-    "shalya's pyskill, described from source so listing skills imports nothing."
-    if (doc := mod_doc(modpath)) is None: return _shalya_mod_skill(name, modpath)
-    if not doc.strip(): return None
-    return Skill(name=name, source='pyskill', description=_describe(doc), where=modpath,
-                 _text=lambda: importlib.import_module(modpath).__doc__ or '')
-
-shalya.skills._mod_skill = _mod_skill
+try:   # shalya's private helpers: if they move, listing keeps shalya's own importing behaviour
+    from shalya.skills import Skill, _describe, _mod_skill as _shalya_mod_skill
+    def _mod_skill(name, modpath):
+        "shalya's pyskill, described from source so listing skills imports nothing."
+        if (doc := mod_doc(modpath)) is None: return _shalya_mod_skill(name, modpath)
+        if not doc.strip(): return None
+        return Skill(name=name, source='pyskill', description=_describe(doc), where=modpath,
+                     _text=lambda: importlib.import_module(modpath).__doc__ or '')
+    shalya.skills._mod_skill = _mod_skill
+except ImportError: pass

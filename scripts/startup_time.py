@@ -8,6 +8,9 @@ tmux on PATH records it). The session numbers
 come from the real `main` with `--tmux off`, hooked: `prompt` is the first paint, `prompt_tools` the moment
 the system prompt and tools are built, `ready` when `Agent.start` returns, and `litesearch` whether it was
 imported by then.
+
+It starts the real default model, so a first run may download its weights, and it indexes `--root` (default `nbs/`)
+in the background. Config goes to a temporary `--cfg`, so your sessions and history are untouched.
 """
 import argparse, fcntl, json, os, pty, select, shutil, statistics, struct, subprocess, sys, tempfile, termios, time, tomllib
 from pathlib import Path

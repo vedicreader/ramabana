@@ -1117,13 +1117,16 @@ def profile(self:Agent):
 
 
 # %% ../nbs/03_agent.ipynb #c2f8f265
+_REG_LOCK = threading.RLock()   # the start thread and the loop thread can both ask first
+
 @patch(as_prop=True)
 def registry(self:Agent):
-    "The extension registry. The object outlives a reload, which re-reads only the extension files."
-    if self._reg is None: self._reg = Registry(host=self.host, agent=self)
-    if self.extensions and not self._reg.loaded:
-        try: load(self._reg, self.host.roots, self.cfg, self.project_extensions, self.ext_paths)
-        except Exception as e: self._reg.notes.append(f'extension loading failed: {agent_err(e)}')
+    "The extension registry, built once. The object outlives a reload, which re-reads only the extension files."
+    with _REG_LOCK:
+        if self._reg is None: self._reg = Registry(host=self.host, agent=self)
+        if self.extensions and not self._reg.loaded:
+            try: load(self._reg, self.host.roots, self.cfg, self.project_extensions, self.ext_paths)
+            except Exception as e: self._reg.notes.append(f'extension loading failed: {agent_err(e)}')
     return self._reg
 
 # %% ../nbs/03_agent.ipynb #47fc0470

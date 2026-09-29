@@ -146,3 +146,110 @@ def test_launch_args_know_every_option_that_takes_a_value():
     p = anno_parser(cli.main.__wrapped__, pos=['prompt'])
     valued = {a.option_strings[0] for a in p._actions if a.option_strings and a.nargs != 0} - {'--xtra'}
     assert valued == set(VALUED)
+
+
+# fix round 1
+
+class _Tty(__import__('io').StringIO):
+    def isatty(self): return True
+
+def test_a_missing_tmux_is_offered_once_per_start(tmp_path, monkeypatch):
+    from ramabana import setup
+    asked = []
+    monkeypatch.setattr(setup.Setup, 'tmux', property(lambda self: None))
+    monkeypatch.setattr(setup.Setup, 'installer', lambda self: ['brew', 'install', 'tmux'])
+    monkeypatch.setattr(setup.Setup, '_answer', lambda self, cmd: asked.append(cmd) or '')
+    monkeypatch.setattr(setup, 'LAUNCHED', False)
+    for k in ('TMUX', 'RAMABANA_TMUX', 'RAMABANA_WRAPPED', 'LEELA_TMUX', 'LEELA_WRAPPED'): monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(sys, 'stdin', _Tty()); monkeypatch.setattr(sys, 'stdout', _Tty())
+    def stop(*a, **kw): raise KeyError('stopped before the agent')
+    monkeypatch.setattr(cli, 'mk_agent', stop)
+    monkeypatch.setattr(sys, 'argv', ['ramabana', '--root', str(tmp_path), '--cfg', str(tmp_path/'cfg')])
+    assert setup.run_cli() == 2
+    assert len(asked) == 1, asked
+
+def test_quitting_during_start_returns_at_once_and_closes_what_start_made(tmp_path):
+    import time
+    a, be = slow_agent(tmp_path)
+    synced, closed = [], []
+    a.host.sync_index = lambda: synced.append(1)
+    chat, gated = __import__('types').SimpleNamespace(close=lambda: closed.append(1)), be._start
+    be._start = lambda: (gated(), chat)[1]   # the engine a start makes after the session quit
+    t0 = time.monotonic()
+    async def body(ui):
+        await asyncio.sleep(.05)
+        ui.closed = True
+        a.close()
+    session(a, body)
+    assert time.monotonic() - t0 < 2, 'quit waited for the start'
+    be.gate.set()
+    for _ in range(200):
+        if closed: break
+        time.sleep(.01)
+    assert closed and not synced
+    assert all(t.daemon for t in threading.enumerate() if t.name == 'ramabana-start')
+
+def test_the_registry_is_built_once_when_two_threads_ask(tmp_path, monkeypatch):
+    import time
+    from ramabana import agent as agent_mod
+    from ramabana.testing import MemHost
+    calls = []
+    def load(reg, *a):
+        calls.append(1); time.sleep(.1); reg.mark_loaded(reg.mark())
+    monkeypatch.setattr(agent_mod, 'load', load)
+    a = agent_mod.Agent(MemHost({'/proj/a.py': 'x = 1\n'}), cfg=tmp_path, extensions=True, profile='full')
+    ts = [threading.Thread(target=lambda: a.registry) for _ in range(2)]
+    for t in ts: t.start()
+    for t in ts: t.join(5)
+    assert len(calls) == 1
+
+@pytest.mark.parametrize('argv', [['--warm', '--no-warm'], ['--pii', 'redact'], ['--profile', 'huge'], ['--pii', 'maybe', '--vault'],
+                                  ['--model'], ['--model', '--root', 'x'], ['--vault', '--python']])
+def test_launch_args_leave_what_main_refuses_to_main(argv):
+    from ramabana.setup import launch_args
+    assert launch_args(argv) is None
+
+def test_main_and_setup_refuse_with_one_check():
+    import inspect
+    from ramabana.setup import refusal
+    assert 'refusal(' in inspect.getsource(cli.main.__wrapped__)
+    assert refusal(warm=True, no_warm=True).startswith('--warm and --no-warm') and refusal() == ''
+    assert refusal(pii='redact').endswith('add --vault') and 'unknown --profile' in refusal(profile='huge')
+
+def test_early_and_the_flags_launch_args_reads_are_main_options():
+    from fastcore.script import anno_parser
+    from ramabana.setup import EARLY, FLAGS
+    opts = {o for a in anno_parser(cli.main.__wrapped__, pos=['prompt'])._actions for o in a.option_strings}
+    assert set(EARLY) <= opts and set(FLAGS) <= opts
+    assert {'--json', '--doctor', '--kernels', '--python', '--attach', '--agent-proxy', '--help'} <= set(EARLY)
+
+def test_an_index_that_fails_to_start_is_a_note_and_the_model_stays_up(tmp_path):
+    a, be = slow_agent(tmp_path)
+    def boom(): raise RuntimeError('kosha broke')
+    a.host.sync_index = boom
+    async def body(ui):
+        be.gate.set()
+        assert await until(lambda: not ui.starting)
+        await asyncio.sleep(.05)
+        assert a.ready and 'no model available' not in text(ui) and 'kosha broke' in text(ui), text(ui)
+    session(a, body)
+
+def test_ctrl_c_during_start_says_the_model_is_still_starting(tmp_path):
+    a, be = slow_agent(tmp_path)
+    async def body(ui):
+        await asyncio.sleep(.05)
+        ui.stop()
+        assert 'still starting' in text(ui) and 'idle' not in text(ui), text(ui)
+        be.gate.set()
+        assert await until(lambda: not ui.starting)
+    session(a, body)
+
+def test_a_renamed_shalya_helper_cannot_break_import():
+    out = child('''
+    import shalya.skills
+    orig = shalya.skills._mod_skill
+    del shalya.skills._describe
+    import ramabana.tools
+    print(shalya.skills._mod_skill is orig)
+    ''')
+    assert out.strip() == 'True', out
