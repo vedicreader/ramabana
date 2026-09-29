@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from ramabana import core
 from ramabana.setup import Setup, tmux_conf, tmux_version
 
 
@@ -167,11 +168,13 @@ def test_inside_your_own_tmux_extended_keys_are_turned_on_only_when_off(tmp_path
     s.launch(prompt='hi')
     assert box.calls == []
 
-def test_doctor_prints_one_line_per_check(tmp_path, capsys):
+def test_doctor_prints_one_line_per_check(tmp_path, capsys, monkeypatch):
     s, box = mk(tmp_path, Box(have={'tmux', 'ramabana-pane'}, version='tmux 3.0a'))
+    monkeypatch.setattr(core, 'need', lambda extra, *mods: 'missing' if extra in ('serve', 'dhrona') else '')
     assert s.doctor() == 0
     out = capsys.readouterr().out.splitlines()
-    assert [l.split(':')[0] for l in out] == ['tmux', 'split', 'extended-keys', 'config', 'ramabana-pane']
+    assert [l.split(':')[0] for l in out] == ['tmux', 'split', 'extended-keys', 'config', 'ramabana-pane', 'extras']
+    assert "pip install 'ramabana[serve,dhrona]'" in out[5]
     assert '3.0a' in out[0] and '/bin/tmux' in out[0] and '3.1' in out[1] and str(tmp_path/'cfg'/'tmux.conf') in out[3]
     assert '/bin/ramabana-pane' in out[4] and box.asked == []
     s, box = mk(tmp_path, Box(have=set(), system='Linux'), environ={'TMUX': 'x'})

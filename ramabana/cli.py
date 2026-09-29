@@ -13,21 +13,20 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS',
            'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR',
            'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'BLOCK_START',
-           'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'PANE_MODES', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH',
-           'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text',
-           'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
-           'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
-           'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
-           'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'Ui', 'parse_answer',
-           'ask_pattern', 'ThemedCode', 'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain', 'headless_prompt',
-           'ask_once', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
+           'PYREPL_MODULES', 'TMUX_MODES', 'PANE_MODES', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES',
+           'ext_key', 'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card',
+           'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment',
+           'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture',
+           'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu',
+           'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'Ui', 'parse_answer',
+           'ask_pattern', 'ThemedCode', 'Reply', 'compact_md', 'amain', 'headless_prompt', 'ask_once', 'main',
+           'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
 import json as _json
 from base64 import b64encode
 from dataclasses import dataclass
-from importlib.util import find_spec
 from pathlib import Path
 from random import randrange
 from urllib.parse import unquote, urlparse
@@ -46,7 +45,7 @@ from teleprint.keys import Key, Parser, _mod
 from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
-from .core import PII_MODES, PII_OFF, PROFILES, accepts, agent_err, env, model_note
+from .core import EXTRAS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, env, installed, model_note, need
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, subject
 from .pane import quit_mark, write_snapshot
@@ -1961,8 +1960,7 @@ def reply(self:Ui, text):
     return Reply(compact_md(text), code_theme=code_theme(), style=GRUVBOX['fg1'])
 
 # %% ../nbs/05_cli.ipynb #pymode01
-PYREPL_MODULES = ('jupyter_client', 'dhrishti')
-PYREPL_PKGS = {'jupyter_client': 'jupyter-client'}
+PYREPL_MODULES = EXTRAS['python']
 
 @patch
 def log_cell(self:Ui, source, outputs=None, cell_type='code'):
@@ -1985,8 +1983,8 @@ async def enter_python(self:Ui):
             if self.attached:
                 self.attached = ''
                 self.note('left the attached session; starting a kernel of your own')
-            if missing := [m for m in PYREPL_MODULES if find_spec(m) is None]:
-                return self.note(f"python mode needs {' and '.join(missing)}: pip install {' '.join(PYREPL_PKGS.get(m, m) for m in missing)}", 'error')
+            if missing := [m for m in PYREPL_MODULES if not installed(m)]:
+                return self.note(f"python mode needs {' and '.join(missing)}: pip install 'ramabana[python]'", 'error')
             from ramabana.pyrepl import Kernel, use_kernel
             self.note('starting a kernel')
             try: self.kernel = await Kernel(self.agent.host.roots[0]).start()
@@ -2152,42 +2150,7 @@ def _act(self:Ui, act):
 
 # %% ../nbs/05_cli.ipynb #79b1ca2e
 from .vault import WorkspaceHost
-
-
-def mk_host(roots=('.',),
-            approvals=None,          # gates writes on this host
-            web=True,                # wire the web tools to fossick
-            vault=False,             # keep reads in a vishalakshi vault
-            spec=False,              # let the agent read and call an API spec
-            read_outside=False,      # read-only tools may name any path
-            pii=PII_OFF,             # off | redact | refuse PII from the vault
-            pii_ner=False,           # gate titled names too, not only patterns
-            **kwargs):               # to the host: `index`, `warm`, `vault=<path>`
-    "The workspace host shared by the terminal, MCP and ACP."
-    return WorkspaceHost(roots, approvals=approvals, web=web, vault=vault, spec=spec,
-                         read_outside=read_outside, pii=pii, pii_ner=pii_ner, **kwargs)
-
-
-def mk_agent(roots=('.',),
-             model=None,
-             approve='ask',           # ask | edits | auto | off | none (no gate)
-             web=True,                # wire the web tools to fossick
-             vault=False,             # keep reads in a vishalakshi vault
-             spec=False,              # let the agent load OpenAPI/Azure/GCP specs
-             read_outside=False,      # read-only tools may name any path
-             pii=PII_OFF,             # off | redact | refuse PII from the vault
-             pii_ner=False,           # gate titled names too, not only patterns
-             host_kw=None,            # to `mk_host`: `index`, `warm`, `vault=<path>`
-             **kw):                   # forwarded to `Agent`
-    "A host over `roots` and an `Agent` on it, gated as `approve` says."
-    approvals = None if approve == 'none' else Approvals(mode=approve, timeout=None,
-                                                         rules_path=cfg/'approvals.json' if (cfg := kw.get('cfg')) else None)
-    host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec,
-                   read_outside=read_outside, pii=pii, pii_ner=pii_ner, **(host_kw or {}))
-    if approvals is not None: approvals.host = host
-    agent = Agent(host, model=model, approvals=approvals, **kw)
-    agent.lend_model()   # else `--vault` loads a second runtime
-    return agent, host
+from .agent import mk_agent, mk_host
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
 async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto'):
@@ -2297,6 +2260,9 @@ def main(
     profile: str = 'auto',               # auto | small | full: small suits ≤32k local models
 ):
     "Run Ramabana as a terminal agent or Python prompt. Name every folder it may work on: --root .,~/notes"
+    if (kernels or python or attach or agent_proxy) and (msg := need('python')):
+        print(msg, file=sys.stderr)
+        return 2
     if kernels:
         from ramabana.pyrepl import sessions
         print(sessions())
@@ -2314,9 +2280,6 @@ def main(
     if attach:
         from ramabana.pyrepl import find_session
         try: attach = find_session(attach)
-        except ModuleNotFoundError:
-            print('--attach needs dhrishti and jupyter-client: pip install dhrishti jupyter-client', file=sys.stderr)
-            return 2
         except RuntimeError as e:
             print(e, file=sys.stderr)
             return 2

@@ -159,9 +159,11 @@ def doctor(self:Setup):
     v, about, conf, pane = self.version(), self.about(), self.cfg/'tmux.conf', self.which('ramabana-pane')
     keys = f'{self._show_ext() or "unknown"} in this tmux' if self.environ.get('TMUX') else \
            f"{'on' if v and v >= KEYS_MIN else 'needs tmux 3.2+'} in ramabana's own tmux server"
+    miss = [x for x in core.EXTRAS if core.need(x)]
     split = f'ok on {about}' if v and v >= SPLIT_MIN else 'needs tmux 3.1+' + (f', this is {about}; /pane prints a command to run instead' if v else '')
     print(f'tmux: {about} at {self.tmux}' if v else 'tmux: not found', f'split: {split}', f'extended-keys: {keys}',
           f'config: {conf}' + ('' if conf.exists() else ', written by the first session'),
-          f'ramabana-pane: {pane}' if pane else 'ramabana-pane: not on PATH; the pane runs python -m ramabana.pane', sep='\n')
+          f'ramabana-pane: {pane}' if pane else 'ramabana-pane: not on PATH; the pane runs python -m ramabana.pane',
+          f"extras: {', '.join(miss)} missing: pip install 'ramabana[{','.join(miss)}]'" if miss else 'extras: all installed', sep='\n')
     if not v: self.offer_install(force=True)
     return 0

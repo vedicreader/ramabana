@@ -38,7 +38,7 @@ from shalya import (MAX_TOOL_CHARS, Host, HostError, NO_ROOTS, implemented, imag
 from shalya.core import one_line as _1
 from shalya.host import LocalHost, _fuse
 from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for, mime_for
-from .core import AgentError, agent_err, spec_caps, accepts
+from .core import AgentError, agent_err, spec_caps, accepts, installed
 from .runtime import Run, current_run, run_context
 
 # %% ../nbs/02_tools.ipynb #e0ca9981
@@ -112,7 +112,10 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_s
     # `generate_image` saves files, so it needs a writable host
     image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
              if image_available() and host.writes and 'image' not in set(drop or ()) else None)
-    return _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image, optin=optin)
+    tools = _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image, optin=optin)
+    # `LocalHost.search` fuses its legs with litesearch
+    if isinstance(host, LocalHost) and not installed('litesearch'): tools = [t for t in tools if t.__name__ != 'search_code']
+    return tools
 
 def small_tool(f):
     "Mark an extension tool for the small profile, whose catalog omits unmarked tools."

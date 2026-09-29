@@ -19,22 +19,33 @@ Start with one folder. Ramabana writes only inside the folders `--root` names, a
 
 ## Install
 
-Ramabana needs Python 3.12 or newer. Everything it imports is a dependency. The terminal is the one extra:
+Ramabana needs Python 3.12 or newer. The core is the agent, its hosts, and the file, code, shell and git tools. Each extra adds one use:
 
 ``` sh
-pip install ramabana           # the agent, the hosts, the tools, and every server below
-pip install 'ramabana[cli]'    # and the terminal session
+pip install ramabana           # the core, to build an agent or an app on
+pip install 'ramabana[cli]'    # the terminal session, with search and python
+pip install 'ramabana[all]'    # every extra
 ```
+
+| extra | adds |
+|----|----|
+| `[search]` | semantic code search, the vault’s memory and watches, the web tools |
+| `[python]` | the Python prompt and `--attach`, on dhrishti |
+| `[serve]` | `ramabana-mcp` and `ramabana-acp` |
+| `[dhrona]` | warm starts from dhrona’s example rounds |
+| `[cli]` | the terminal session, plus `[search]` and `[python]` |
+
+A framework picks what it needs, such as `ramabana[search,serve]`. Without an extra, its tool groups drop out of the catalog, and its commands name the extra to install.
 
 For the terminal on its own, `uv tool install 'ramabana[cli]'`, then `ramabana`. The first interactive run starts inside a tmux server of ramabana’s own, so the now pane and shift+enter need no tmux setup. When tmux is missing, it offers the install command once. `ramabana --doctor` checks tmux, extended keys, the config and `ramabana-pane`. `--tmux off` or `RAMABANA_TMUX=off` keeps the session in the terminal you started it in. Detaching or closing the window ends the session, and `--resume latest` reopens it.
 
-| command             | what it is                                          |
-|---------------------|-----------------------------------------------------|
-| `ramabana`          | the terminal session, on teleprint. Needs `[cli]`   |
-| `ramabana-mcp`      | the MCP server                                      |
-| `ramabana-acp`      | the Agent Client Protocol server an editor launches |
-| `ramabana --python` | the Python prompt, on dhrishti                      |
-| `ramabana-tick`     | the scheduled beat, on pobblebonk                   |
+| command | what it is |
+|----|----|
+| `ramabana` | the terminal session, on teleprint. Needs `[cli]` |
+| `ramabana-mcp` | the MCP server. Needs `[serve]` |
+| `ramabana-acp` | the Agent Client Protocol server an editor launches. Needs `[serve]` |
+| `ramabana --python` | the Python prompt, on dhrishti. Needs `[python]` |
+| `ramabana-tick` | the scheduled beat, on pobblebonk |
 
 ## Point it at a model
 
@@ -337,7 +348,7 @@ The editor names the folder. `--root` here is the fallback for a client that nam
 
 ## Drive it from Python
 
-[`ramabana.cli.mk_agent`](https://vedicreader.github.io/ramabana/cli.html#mk_agent) builds what the terminal runs: a host over the named folders, and an [`Agent`](https://vedicreader.github.io/ramabana/agent.html#agent) gated the way `approve` says. The example below uses the same [`Agent.ask`](https://vedicreader.github.io/ramabana/agent.html#agent.ask) path with [`fake_agent`](https://vedicreader.github.io/ramabana/testing.html#fake_agent), which supplies a deterministic backend and an in-memory project. It runs without credentials, downloads, or writes to disk.
+[`ramabana.agent.mk_agent`](https://vedicreader.github.io/ramabana/agent.html#mk_agent) builds what the terminal runs: a host over the named folders, and an [`Agent`](https://vedicreader.github.io/ramabana/agent.html#agent) gated the way `approve` says. The example below uses the same [`Agent.ask`](https://vedicreader.github.io/ramabana/agent.html#agent.ask) path with [`fake_agent`](https://vedicreader.github.io/ramabana/testing.html#fake_agent), which supplies a deterministic backend and an in-memory project. It runs without credentials, downloads, or writes to disk.
 
 ``` python
 from ramabana.testing import fake_agent

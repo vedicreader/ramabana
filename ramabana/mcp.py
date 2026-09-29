@@ -16,7 +16,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from shalya import LocalHost, discover, find, skill_index
 from .tools import ToolCatalog, ToolEntry, tools_for
-from .cli import mk_agent, mk_host
+from .agent import mk_agent, mk_host
 from .core import PII_OFF
 
 # %% ../nbs/06_mcp.ipynb #6d6ba498

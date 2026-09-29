@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastcore.meta import delegates
-from .core import AgentError, agent_err
+from .core import AgentError, agent_err, need
 from shalya.host import LocalHost
 
 # %% ../nbs/10_spec.ipynb #spec06
@@ -59,6 +59,7 @@ def load_spec(src, timeout=30):
     if not s: raise SpecError('a spec url, path or dict is required')
     if urlparse(s).scheme in ('http', 'https'):
         s = raw_url(s)
+        if msg := need('search', 'fossick'): raise SpecError(f'cannot fetch {s}: {msg}')
         from fossick import get_page   # httpx.get fails behind some TLS proxies
         try: r = get_page(s, timeout=timeout)
         except Exception as e: raise SpecError(f'could not read the spec at {s}: {agent_err(e)}') from e

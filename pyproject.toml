@@ -24,35 +24,30 @@ dependencies = [
     "exhash>=0.4.9",
     "fastcore>=2.1.16",
     "rishi>=0.1.39",   # chats sharing a LiteRT engine take turns (engine_lock); a second chat on the same thread raises EngineBusy instead of hanging
-    "fossick>=0.1.17",
-    "koshas>=0.1.9",   # `rows` hands `code_row` the hit, so the federated repo leg works
-    "litesearch>=0.1.35",
     "liteparse>=2.12,<2.13",
-    "rgapi>=0.1.19",
-    "vishalakshi>=0.1.17",   # note(key=), folder watches, age/stale
     "fastspec>=0.2.1",
     "pyyaml>=6.0",
-    "mcp>=1.2",
     "pobblebonk>=0.0.3",
-    "dhrishti>=0.1.2",
-    "jupyter-client>=8.9.1",
-    "agent-client-protocol>=0.12.1",
 ]
 
 [project.optional-dependencies]
-cli = ["teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.1",
-       "fastpylight>=0.1.18"]
-dhrona = [
-    "dhrona>=0.1.4",
-]
+search = ["vishalakshi>=0.1.17",   # note(key=), folder watches, age/stale
+          "litesearch>=0.1.35", "koshas>=0.1.9",   # `rows` hands `code_row` the hit, so the federated repo leg works
+          "rgapi>=0.1.19", "fossick>=0.1.17"]
+python = ["dhrishti>=0.1.2", "jupyter-client>=8.9.1", "rich"]
+serve = ["mcp>=1.2", "agent-client-protocol>=0.12.1"]
+dhrona = ["dhrona>=0.1.4"]
+cli = ["ramabana[search,python]", "teleprint>=0.1.1", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.1", "fastpylight>=0.1.18"]
+all = ["ramabana[search,python,serve,dhrona,cli]"]
+
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
 Documentation = "https://vedicreader.github.io/ramabana/"
 
 [project.scripts]
-ramabana = "ramabana.cli:main"
-ramabana-mcp = "ramabana.mcp:main"
-ramabana-acp = "ramabana.racp:main"
+ramabana = "ramabana.core:run_cli"
+ramabana-mcp = "ramabana.core:run_mcp"
+ramabana-acp = "ramabana.core:run_acp"
 ramabana-tick = "ramabana.monitor:tick"
 ramabana-pane = "ramabana.pane:main"
 
@@ -79,7 +74,7 @@ path = "ramabana/__init__.py"
 
 [dependency-groups]
 dev = [
-    "ramabana[cli]",
+    "ramabana[all]",
     "rishi[all]>=0.1.39",
     "nbdev>=3.3.11",
     "notebook>=7.6.1",

@@ -14,7 +14,7 @@ from pathlib import Path
 from fastcore.basics import AttrDict
 from fastcore.meta import delegates
 from fastcore.parallel import startthread
-from .core import AgentError, agent_err
+from .core import AgentError, agent_err, need
 from shalya import Hit, LocalHost, clip
 from .spec import SpecHost
 
@@ -242,6 +242,7 @@ class WorkspaceHost(VaultHost, SpecHost):
                  pii_ner=None,
                  warm=True,
                  **kwargs):
+        if (vault is True or isinstance(vault, (str, Path))) and (msg := need('search', 'vishalakshi')): raise AgentError(f'no vault: {msg}')
         self._vault_enabled, self._spec_enabled = bool(vault), bool(spec)
         inherited_memory, inherited_apis = kwargs.get('memory'), kwargs.get('apis')
         source = DFLT_VAULT if vault is True else vault

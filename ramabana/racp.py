@@ -18,7 +18,7 @@ try:
                             LoadSessionResponse, NewSessionResponse, PermissionOption, PromptCapabilities,
                             PromptResponse, ToolCallLocation, ToolCallUpdate)
 except ImportError as e: raise ImportError(
-    f"ramabana-acp needs agent-client-protocol: pip install agent-client-protocol ({e})") from None
+    f"ramabana-acp needs agent-client-protocol: pip install 'ramabana[serve]' ({e})") from None
 from fastcore.basics import ifnone
 from fastcore.script import call_parse
 from . import __version__

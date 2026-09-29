@@ -15,7 +15,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
            'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives',
            'project_context', 'work_rules', 'system_prompt', 'small_system_prompt', 'Todo', 'Plan', 'plan_tools',
-           'Agent', 'git_shell_denial', 'note_tools', 'Completer']
+           'Agent', 'git_shell_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -3545,3 +3545,43 @@ def _be(self:Agent, job='turn'):
             for cb in getattr(self, '_chat_callbacks', {}).values(): backend.add_cb(cb)
         self._backends[key] = backend
     return self._backends[key]
+
+# %% ../nbs/03_agent.ipynb #08c3bf66
+from .core import PII_OFF
+from .vault import WorkspaceHost
+
+
+def mk_host(roots=('.',),
+            approvals=None,          # gates writes on this host
+            web=True,                # wire the web tools to fossick
+            vault=False,             # keep reads in a vishalakshi vault
+            spec=False,              # let the agent read and call an API spec
+            read_outside=False,      # read-only tools may name any path
+            pii=PII_OFF,             # off | redact | refuse PII from the vault
+            pii_ner=False,           # gate titled names too, not only patterns
+            **kwargs):               # to the host: `index`, `warm`, `vault=<path>`
+    "The workspace host shared by the terminal, MCP and ACP."
+    return WorkspaceHost(roots, approvals=approvals, web=web, vault=vault, spec=spec,
+                         read_outside=read_outside, pii=pii, pii_ner=pii_ner, **kwargs)
+
+
+def mk_agent(roots=('.',),
+             model=None,
+             approve='ask',           # ask | edits | auto | off | none (no gate)
+             web=True,                # wire the web tools to fossick
+             vault=False,             # keep reads in a vishalakshi vault
+             spec=False,              # let the agent load OpenAPI/Azure/GCP specs
+             read_outside=False,      # read-only tools may name any path
+             pii=PII_OFF,             # off | redact | refuse PII from the vault
+             pii_ner=False,           # gate titled names too, not only patterns
+             host_kw=None,            # to `mk_host`: `index`, `warm`, `vault=<path>`
+             **kw):                   # forwarded to `Agent`
+    "A host over `roots` and an `Agent` on it, gated as `approve` says."
+    approvals = None if approve == 'none' else Approvals(mode=approve, timeout=None,
+                                                         rules_path=cfg/'approvals.json' if (cfg := kw.get('cfg')) else None)
+    host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec,
+                   read_outside=read_outside, pii=pii, pii_ner=pii_ner, **(host_kw or {}))
+    if approvals is not None: approvals.host = host
+    agent = Agent(host, model=model, approvals=approvals, **kw)
+    agent.lend_model()   # else `--vault` loads a second runtime
+    return agent, host
