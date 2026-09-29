@@ -9,13 +9,13 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES',
            'OUTPUT_CONTRACT', 'SMALL_RULES', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK',
-           'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WARM_ROUNDS', 'WARM_SMALL_CHARS',
-           'WARM_OFF_SMALL', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK', 'COMPLETE_SP',
-           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
-           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
-           'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives',
-           'project_context', 'work_rules', 'system_prompt', 'small_system_prompt', 'Todo', 'Plan', 'plan_tools',
-           'Agent', 'git_shell_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
+           'PLAN_TOOLS', 'ROOT_ONLY', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WARM_ROUNDS',
+           'WARM_SMALL_CHARS', 'WARM_OFF_SMALL', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK',
+           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
+           'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key',
+           'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text',
+           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'small_system_prompt', 'Todo', 'Plan',
+           'plan_tools', 'Agent', 'git_shell_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -980,6 +980,9 @@ def plan_tools(get_plan, save=None):
 
     return [set_plan, update_todo]
 
+PLAN_TOOLS = frozenset(f.__name__ for f in plan_tools(list))
+ROOT_ONLY = NO_SUB | PLAN_TOOLS   #: the root turn's own tools, never handed to a sub-agent
+
 # %% ../nbs/03_agent.ipynb #baaf2f5e
 class Agent:
     "The IDE's agent: a routed chat whose tools are the host's own capabilities."
@@ -1399,15 +1402,17 @@ def _plain(self:Agent): return self.catalog.tools
 
 @patch
 def _sub_plain(self:Agent):
-    "The sub-agent policy view of the same catalog-building path."
+    "The sub-agent policy view of the same catalog-building path, without `ROOT_ONLY`."
     budget = self.subagent_budget
     same = budget == self.budget
     source = self._catalog_for(budget, full=same)
-    if same and self.subagent_writes: return self.tools
-    if not self.subagent_writes: return source.tools
-    key = ('subagent', budget.tool_max, tuple(budget.drop))
-    if key not in self._views: self._views[key] = source.map(self._record)
-    return self._views[key].tools
+    if same and self.subagent_writes: tools = self.tools
+    elif not self.subagent_writes: tools = source.tools
+    else:
+        key = ('subagent', budget.tool_max, tuple(budget.drop))
+        if key not in self._views: self._views[key] = source.map(self._record)
+        tools = self._views[key].tools
+    return [t for t in tools if getattr(t, '__name__', '') not in ROOT_ONLY]
 
 @patch
 def _sub_tools(self:Agent):

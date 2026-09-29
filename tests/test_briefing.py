@@ -121,7 +121,24 @@ def test_a_sub_agent_is_sized_to_the_model_sub_agents_run_on(host):
 
     same = mk(host, BIG, subagents=True)
     same.tools
-    assert same._sub_plain() is same._plain
+    assert {t.__name__ for t in same._sub_plain()} == {t.__name__ for t in same._plain} - A.ROOT_ONLY
+
+
+@pytest.mark.parametrize('turn,sub', [(BIG, BIG), (BIG, SMALL), (SMALL, SMALL), (SMALL, BIG)],
+                         ids=['cloud-same', 'cloud-local', 'local-same', 'local-cloud'])
+@pytest.mark.parametrize('writes', [False, True], ids=['read', 'write'])
+def test_a_sub_agent_never_gets_the_roots_delegation_watch_or_plan_tools(host, turn, sub, writes):
+    """A cloud turn whose sub-agents afford the same budget handed them `self.tools` whole, so a
+    sub-agent could delegate, watch and rewrite the root's plan. Every path, and the monitors'
+    reviewer, takes `_sub_plain`; the root keeps its own tools."""
+    host.without = frozenset({'ask', 'api'})   # the watches too
+    a = mk(host, turn, subagents=True, subagent_writes=writes, profile='full')
+    a.routing.spec = lambda job='turn', fallback=True: turn if job == 'turn' else sub
+    assert A.ROOT_ONLY <= names(a), 'the root keeps delegation, watches and the plan'
+    for tools in (a._sub_plain(), a._sub_tools(), a.monitors.get_tools()):
+        got = {getattr(t, '__name__', '') for t in tools}
+        assert not (got & A.ROOT_ONLY)
+        if writes: assert {'replace_text', 'run_python'} <= got, 'a writing sub-agent keeps the writes'
 
 
 def test_a_task_can_name_the_skills_it_needs():

@@ -62,13 +62,13 @@ def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
     search = next(t for t in a.tools if getattr(t, '__name__', '') == 'delegate_search')
 
     assert a.subagent_writes is False
-    assert {t.__name__ for t in a._sub_plain()} == {t.__name__ for t in a._plain}
+    assert {t.__name__ for t in a._sub_plain()} == {t.__name__ for t in a._plain} - agent.ROOT_ONLY
     assert not ({t.__name__ for t in read_only(a.tools)} & WRITE_TOOLS)
 
     a.command('/subagents on')
     granted = {t.__name__ for t in read_only(a.tools, writes=True, block=NO_SUB)}
     assert 'replace_text' in granted and not (granted & NO_SUB), 'writes yes, recursion never'
-    assert a._sub_plain() is a.tools
+    assert a._sub_plain() == [t for t in a.tools if t.__name__ not in agent.ROOT_ONLY]
 
     before = len(a.calls)
     search(questions=['add a docstring to a.py'])
@@ -79,7 +79,7 @@ def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
     assert SUB_WRITE_SP in spawned.sp
 
     a.command('/subagents off')
-    assert a.subagent_writes is False and a._sub_plain() is a._plain
+    assert a.subagent_writes is False and a._sub_plain() == [t for t in a._plain if t.__name__ not in agent.ROOT_ONLY]
     search(questions=['where else do we do X?'])
     assert be.spawned[-1].approve is None
     assert SUB_READ_SP in be.spawned[-1].sp

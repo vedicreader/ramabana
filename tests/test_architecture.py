@@ -1,6 +1,6 @@
 """The package boundary: Shalya describes tools; Ramabana composes them into an agent."""
 
-from ramabana.agent import Approvals
+from ramabana.agent import ROOT_ONLY, Approvals
 from ramabana.cli import mk_agent, mk_host
 from ramabana.vault import WorkspaceHost
 from ramabana.mcp import _annotate
@@ -31,7 +31,7 @@ def test_agent_keeps_catalogs_instead_of_parallel_tool_caches():
     assert approvals.tools == agent.catalog.writes
     assert not hasattr(agent, '_subtools')
     assert not hasattr(agent, '_subrec')
-    assert {tool.__name__ for tool in agent._sub_plain()} == names
+    assert {tool.__name__ for tool in agent._sub_plain()} == names - ROOT_ONLY
 
 
 def test_every_frontend_uses_one_provider_capable_host(tmp_path):
