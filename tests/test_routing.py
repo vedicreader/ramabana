@@ -46,13 +46,12 @@ def test_the_one_shot_model_is_named_once_and_moves_every_cheap_job(monkeypatch)
     monkeypatch.setenv('OPENAI_API_KEY', 'x')
     r2 = Routing(turn='gemma-e2b')
     assert r2.spec('summary').name == 'gemma-12b'
-    assert r2.spec('classify').name == 'gpt-4.1'
+    assert r2.spec('classify').name == 'gemma-e2b'     # a local turn keeps the jobs without their own
 
-    r2.set('gemma-12b')
-    assert r2.spec('turn').name == 'gemma-12b'
+    r2.set('sonnet')
     for job in ('completion', 'classify'):
         assert r2.spec(job).name == 'gpt-4.1' and not r2.spec(job).local, job
-    assert r2.name_for('subagent') == 'claude-sonnet-5'
+    assert r2.name_for('subagent') == 'claude-sonnet-5' and r2.spec('summary').name == 'gemma-12b'
 
 
 def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runtime, monkeypatch):
@@ -497,18 +496,20 @@ def test_env_overrides_still_route(monkeypatch):
     monkeypatch.setenv('RAMABANA_MODEL', 'gemma-e4b')
     monkeypatch.setenv('RAMABANA_MODEL_CLASSIFY', 'gemma-e2b')
     r = Routing()
-    assert (r.name_for('turn'), r.name_for('classify'), r.name_for('completion')) == ('gemma-e4b', 'gemma-e2b', 'gpt-4.1')
+    assert (r.name_for('turn'), r.name_for('classify'), r.name_for('completion')) == ('gemma-e4b', 'gemma-e2b', 'gemma-e4b')
     assert r.spec('turn').local                        # named explicitly, so a local model still runs
 
-def test_alternatives_never_fall_back_to_a_local_model(monkeypatch):
+def test_alternatives_never_fall_back_to_a_local_model(monkeypatch, hide_runtime):
     no_model_env(monkeypatch)
     r = Routing(turn='gemma-e4b')
     r.policy['summary'] = 'gemma-12b'
     for job in core.JOBS:
         assert not [a for a in r.alternatives(job) if a in core.LOCAL or a.split('/')[0] in LOCAL_RUNTIMES], job
+    assert r.alternatives('classify') == [], 'a job on a local turn has nowhere else to go'
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
-    monkeypatch.setattr(r, 'policy', {**r.policy, 'subagent': 'gpt-4.1'})
-    with pytest.raises(core.AgentError, match=r'classify job: gpt-4\.1 needs OPENAI_API_KEY'): r.spec('classify')
+    hide_runtime('claude')
+    r.set('gpt-4.1', 'classify')
+    with pytest.raises(core.AgentError, match=r'classify job: gpt-4\.1 needs OPENAI_API_KEY'): r.spec('classify')   # never the local turn
 
 def test_a_missing_key_or_cli_names_the_job_the_model_and_what_is_needed(monkeypatch, hide_runtime):
     no_model_env(monkeypatch)
@@ -519,10 +520,11 @@ def test_a_missing_key_or_cli_names_the_job_the_model_and_what_is_needed(monkeyp
     with pytest.raises(core.AgentError, match=r'completion job: gpt-4\.1 needs OPENAI_API_KEY'): r.spec('completion')
     with pytest.raises(core.AgentError, match=r'subagent job: claude-sonnet-5 .*Claude Code'): r.spec('subagent')
 
-def test_a_cheap_job_without_its_key_moves_to_a_cloud_model_and_says_why(monkeypatch):
+def test_a_cheap_job_without_its_key_moves_to_a_cloud_model_and_says_why(monkeypatch, hide_runtime):
     no_model_env(monkeypatch)
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
     monkeypatch.setenv('GEMINI_API_KEY', 'x')
+    hide_runtime('claude')                             # no Sonnet either, so the turn takes it
     r = Routing(turn='gemini/gemini-2.5-flash')
     assert r.spec('classify').name == 'gemini/gemini-2.5-flash'
     assert 'gpt-4.1 needs OPENAI_API_KEY' in r.notes['classify']
@@ -549,3 +551,56 @@ def test_a_turn_without_its_key_does_not_start_and_says_why(monkeypatch, hide_ru
     monkeypatch.setenv('GEMINI_API_KEY', 'x')
     assert a.set_model('gemini/gemini-2.5-flash', 'classify').name == 'gemini/gemini-2.5-flash'   # moving off a job that cannot run
     assert a.set_model('gemini/gemini-2.5-flash').name == 'gemini/gemini-2.5-flash' and a.start() is not None
+
+
+# -- a local turn keeps its side jobs; a missing OpenAI key falls to Sonnet ---------------
+
+SIDE = ('oneshot', 'classify', 'completion', 'inline', 'summary', 'subagent')
+
+def test_a_local_turn_keeps_every_side_job_on_the_machine(monkeypatch):
+    no_model_env(monkeypatch)
+    for r in (Routing(turn='gemma-e4b'), Routing(turn='litert/litert-community/x')):
+        for job in SIDE: assert r.name_for(job) == r.turn, job
+    monkeypatch.setenv('RAMABANA_MODEL', 'gemma-e2b')
+    r = Routing()
+    assert all(r.name_for(j) == 'gemma-e2b' for j in SIDE)
+    r.set('gemma-12b')
+    assert all(r.name_for(j) == 'gemma-12b' for j in SIDE), '/model to another local model carries them'
+    r.set('opus')
+    assert (r.name_for('classify'), r.name_for('subagent')) == ('gpt-4.1', 'claude-sonnet-5'), 'and back to the cloud defaults'
+
+def test_an_explicit_job_setting_wins_over_a_local_turn(monkeypatch):
+    no_model_env(monkeypatch)
+    monkeypatch.setenv('RAMABANA_MODEL_SUMMARY', 'gpt-4.1')
+    r = Routing(turn='gemma-e4b')
+    assert r.name_for('summary') == 'gpt-4.1' and r.name_for('classify') == 'gemma-e4b'
+    r.set('claude-sonnet-5', 'subagent')
+    assert r.name_for('subagent') == 'claude-sonnet-5'
+    r.set('gpt-mini', 'oneshot')
+    assert [r.name_for(j) for j in ('classify', 'completion', 'inline')] == ['gpt-mini'] * 3
+    r.policy['completion'] = 'gpt-sol'                   # a policy written directly, as leela does
+    assert r.name_for('completion') == 'gpt-sol'
+
+def test_a_cloud_turn_keeps_the_defaults(monkeypatch):
+    no_model_env(monkeypatch)
+    for turn in (None, 'sonnet', 'gpt-mini'):
+        r = Routing(turn=turn)
+        assert [r.name_for(j) for j in SIDE] == ['gpt-4.1'] * 5 + ['claude-sonnet-5'], turn
+
+def test_without_an_openai_key_small_jobs_fall_to_sonnet_and_say_so_once(monkeypatch):
+    no_model_env(monkeypatch)
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: FakeBackend(spec, **kw))
+    notes = []
+    h = MemHost(); h.note = notes.append
+    a = Agent(h, extensions=False, subagents=False)
+    assert a.routing.spec('classify').name == 'claude-sonnet-5'
+    for job in ('classify', 'completion', 'summary', 'inline', 'classify'): assert a._be_or_none(job).spec.name == 'claude-sonnet-5'
+    said = [n for n in notes if 'gpt-4.1' in n]
+    assert said == ['gpt-4.1 unavailable (no OPENAI_API_KEY); small jobs use claude-sonnet-5'], notes
+
+def test_with_neither_gpt_nor_sonnet_the_error_names_job_model_and_key(monkeypatch, hide_runtime):
+    no_model_env(monkeypatch)
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    hide_runtime('claude')
+    with pytest.raises(core.AgentError, match=r'^classify job: gpt-4\.1 needs OPENAI_API_KEY'): Routing().spec('classify')

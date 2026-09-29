@@ -72,7 +72,7 @@ export RAMABANA_MODEL=sonnet    # the same choice in every session
 
 `/models` lists what this machine can reach and marks the one running. `/model NAME` changes model without ending the session. `/model` alone prints the routing summary.
 
-Short jobs route away from the turn model. Completions, inline edits, classification, summaries and other one-shot work run on `gpt-4.1`. Delegated sub-agents run on `claude-sonnet-5`. When a job’s model cannot run, because its key is unset or `claude` is missing, the job moves to another cloud route and `/model` says why; with none left, the error names the job, the model and the key or CLI it needs.
+Short jobs route away from the turn model. Completions, inline edits, classification, summaries and other one-shot work run on `gpt-4.1`. Delegated sub-agents run on `claude-sonnet-5`. When the turn model is local, every job without a model of its own stays on it, so nothing leaves the machine. When a job’s model cannot run, because its key is unset or `claude` is missing, the job moves to another cloud route: without `OPENAI_API_KEY` the `gpt-4.1` jobs use `claude-sonnet-5`, and the session says so once. With none left, the error names the job, the model and the key or CLI it needs.
 
 `$RAMABANA_MODEL_<JOB>` overrides one job. `<JOB>` is `ONESHOT`, `INLINE`, `COMPLETION`, `CLASSIFY`, `SUMMARY` or `SUBAGENT`. The turn model uses `$RAMABANA_MODEL` and has no `_TURN` variable. `/model JOB NAME` sets one job inside a session:
 

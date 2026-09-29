@@ -1144,12 +1144,14 @@ def skills(self:Agent):
 # %% ../nbs/03_agent.ipynb #a29bf6f1
 @patch
 def _be_or_none(self:Agent, job='turn'):
-    "The backend for `job` if it can start, else None with the reason in `routing.notes[job]`."
+    "The backend for `job` if it can start, else None with the reason in `routing.notes[job]`; a model that fell back says so in the chat, once."
     try:
         b = self._be(job)
         if b.start() is not None: return b
         self.routing.notes[job] = b.note
     except Exception as e: self.routing.notes[job] = str(e) if isinstance(e, AgentError) else agent_err(e)
+    finally:
+        while (news := getattr(self.routing, 'news', None)): self.host.note(news.pop(0))
 
 # %% ../nbs/03_agent.ipynb #0358c91a
 @patch

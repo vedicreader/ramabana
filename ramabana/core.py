@@ -566,13 +566,22 @@ class Routing:
 
     def __post_init__(self):
         if not self.turn: self.turn = env('MODEL') or DFLT_TURN
+        self.chosen = set()
         for job in JOBS:
-            if (v := env(f'MODEL_{job.upper()}')): self.policy[job] = v
-        self._cache, self.notes = {}, {}
+            if (v := env(f'MODEL_{job.upper()}')): self.policy[job] = v; self.chosen.add(job)
+        self._cache, self.notes, self.said, self.news = {}, {}, set(), []
+
+    def own(self, job):
+        "Whether `job` has a model of its own: set by env, `set`, or a policy that is not the default."
+        return bool(v := self.policy.get(job)) and (job in self.chosen or v != DEFAULT_POLICY.get(job))
+
+    def follows_turn(self, job):
+        "Whether `job` stays on a local turn: it has no model of its own, nor through `oneshot`."
+        return job != 'turn' and is_local(self.turn) and not self.own(job) and not (job in ONESHOT_JOBS and self.own('oneshot'))
 
     def name_for(self, job='turn'):
-        "The model name for `job`: its policy, then `oneshot` for a cheap job, then `turn`."
-        if job == 'turn': return self.turn
+        "The model name for `job`: a local turn's when it follows one, else its policy, then `oneshot` for a cheap job, then `turn`."
+        if job == 'turn' or self.follows_turn(job): return self.turn
         if (n := self.policy.get(job)): return n
         if job in ONESHOT_JOBS and (n := self.policy.get('oneshot')): return n
         return self.turn
@@ -589,12 +598,21 @@ class Routing:
         return spec
 
     def alternatives(self, job):
-        "Where `job` goes when its own model cannot run here, best first: the other routes, never a local model."
-        seen, out = {self.name_for(job)}, []
-        for alt in (self.policy.get('oneshot') if job in ONESHOT_JOBS else None, self.turn, *(self.policy.get(j) for j in JOBS)):
+        "Where `job` goes when its own model cannot run here, best first: Sonnet for `DFLT_SMALL`, then the other routes; never a local model, and nowhere for a job on a local turn."
+        if self.follows_turn(job): return []
+        seen, out, n = {self.name_for(job)}, [], self.name_for(job)
+        for alt in (DFLT_SUBAGENT if n == DFLT_SMALL else None, self.policy.get('oneshot') if job in ONESHOT_JOBS else None,
+                    self.turn, *(self.policy.get(j) for j in JOBS)):
             if alt and alt not in seen and not is_local(alt):
                 seen.add(alt); out.append(alt)
         return out
+
+    def fell(self, n, alt, why):
+        "Queue one chat note in `news` per model that fell back, however many jobs fell with it."
+        if n in self.said: return
+        self.said.add(n)
+        k = missing_key(self._cache[n]) if n in self._cache else ''
+        self.news.append(f"{n} unavailable ({f'no {k}' if k else why}); {'small jobs' if n == DFLT_SMALL else 'its jobs'} use {alt}")
 
     def spec(self, job='turn', fallback=True):
         "The `ModelSpec` for `job`, else another cloud route; failing that, an error naming the job, the model and what it needs."
@@ -609,6 +627,7 @@ class Routing:
                 except Exception: continue
                 if spec.local: continue
                 self.notes[job] = f'{n} {why}; using {alt}'
+                self.fell(n, alt, why)
                 return spec
             raise err from e
 
@@ -616,7 +635,9 @@ class Routing:
         "Validate `name`, then point `job` at it."
         spec = resolve(name)
         if job == 'turn': self.turn = name
-        else: self.policy[job] = name
+        else:
+            self.policy[job] = name
+            self.chosen.add(job)
         self._cache[name] = spec
         return spec
 
