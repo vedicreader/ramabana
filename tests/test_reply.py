@@ -179,6 +179,31 @@ def test_the_changed_table_prints_a_path_with_brackets_as_written():
     assert 'app/[id]/page.tsx' in out and 'x[/].py' in out
 
 
+def colours(md, word):
+    "The colours `word` is drawn in when `md` renders as a reply."
+    from rich.style import Style
+    con = Console(file=io.StringIO(), width=60, force_terminal=True, color_system='truecolor')
+    segs = list(con.render(cli.Reply(md)))
+    return {s.style.color for s in segs if s.style and word in s.text}, Style.parse(cli.scope_style('keyword')).color
+
+def test_a_diff_fence_highlights_the_code_in_its_hunks():
+    got, kw = colours('```diff\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-def f(): pass\n+def f(): return 1\n```\n', 'return')
+    assert kw in got, 'the keyword on a + line takes the palette colour, not only green'
+
+def test_a_python_fence_is_coloured_by_fastpylight(monkeypatch):
+    seen = []
+    def spy(code, lang): seen.append(lang); return hl(code, lang)
+    hl = cli.hl_text
+    monkeypatch.setattr(cli, 'hl_text', spy)
+    got, kw = colours('```python\ndef f(): return 1\n```\n', 'return')
+    assert seen == ['python'] and kw in got
+
+def test_an_unknown_fence_language_falls_back_to_pygments(monkeypatch):
+    seen = []
+    monkeypatch.setattr(cli, 'hl_text', lambda code, lang: seen.append(lang))
+    out = '\n'.join(rows(cli.Reply('```nosuchlang\nsome words\n```\n')))
+    assert 'some words' in out and seen == []
+
 def test_highlighting_stays_on_its_token_after_a_crlf():
     t = cli.hl_text('x = 1\r\ny = 22\r\n', 'python')
     assert t.plain == 'x = 1\ny = 22\n'

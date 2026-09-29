@@ -9,18 +9,19 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'KEYS_PATCHED', 'MODES_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEMES', 'CODE_THEMES', 'KAKU', 'GRUVBOX',
            'ACTIVE_THEME', 'HL_THEMES', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'NOTIFY_EVERY',
            'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR',
-           'MAX_GROUP_ROWS', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'MEDIA',
-           'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS',
-           'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR',
-           'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'BLOCK_START',
-           'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'PANE_MODES', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH',
-           'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text',
-           'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
-           'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
-           'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
-           'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'Ui', 'parse_answer',
-           'ask_pattern', 'ThemedCode', 'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain', 'headless_prompt',
-           'ask_once', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
+           'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION',
+           'GUIDE', 'MEDIA', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM',
+           'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH',
+           'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'DIFF_LEXERS',
+           'BLOCK_START', 'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'PANE_MODES', 'ALIVE_EVERY', 'REOPEN_EVERY',
+           'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme',
+           'plan_text', 'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs',
+           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size',
+           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
+           'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich',
+           'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode',
+           'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain', 'headless_prompt', 'ask_once', 'main', 'pane_cmd',
+           'MAX_MEDIA', 'MAX_ATTACH']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -37,9 +38,10 @@ from rich.syntax import Syntax
 from rich.cells import cell_len
 from rich.theme import Theme
 from rich.table import Table
+from rich.padding import Padding
 import fastpylight
 from fastcore.script import call_parse
-from fastcore.basics import patch, ifnone
+from fastcore.basics import patch, ifnone, store_attr
 from teleprint.buffer import Buffer
 from teleprint.compositor import Compositor
 from teleprint.keys import Key, Parser, _mod
@@ -50,6 +52,7 @@ from .core import PII_MODES, PII_OFF, PROFILES, accepts, agent_err, env, model_n
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, subject
 from .pane import quit_mark, write_snapshot
+from .tools import WRITE_TOOLS, path_write
 from .setup import Setup
 from datetime import datetime
 from . import __version__
@@ -350,6 +353,7 @@ ACT_TAIL = 3
 PANE_EVERY = 0.2  # seconds between `now.json` writes
 FLASH_FOR = 2.0   # seconds a flash stays up
 MAX_GROUP_ROWS = 8
+DIFF_OPEN = 20    #: diff lines a finished call shows until the reader opens it
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
                     'join', 'kernels', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
@@ -830,10 +834,14 @@ def _hunk(ls, lang):
         rows.append(row)
     return rows
 
+def is_diff(s):
+    "Whether `s` holds a unified diff: at least one hunk header."
+    return any(l.startswith('@@ ') for l in (s or '').split('\n'))
+
 def diff_rich(s):
     "`s` coloured when it holds a unified diff, its code by the file's language, or a diffstat; else gray."
     G, ls = GRUVBOX, s.split('\n')
-    hunks = any(l.startswith('@@ ') for l in ls)
+    hunks = is_diff(s)
     if not hunks and not any(_STAT.match(l) for l in ls): return Text(s, style=G['gray'])
     rows, lang, i = [], 'plaintext', 0
     while i < len(ls):
@@ -863,6 +871,23 @@ def changed_table(rows, cap=12):
     t.add_row(Text(f"{n} file{'' if n == 1 else 's'}", style=f"bold {G['fg1']}"), f'+{sum(r[1] for r in rows)}', f'-{sum(r[2] for r in rows)}')
     return t
 
+
+def opens(act):
+    "Whether a finished call stays open on its result: a write bar the runs, or a unified diff."
+    return (act.tool in WRITE_TOOLS or path_write(act.tool, act.args)) and act.kind != 'run' or is_diff(act.detail)
+
+class OpenDiff:
+    "A result shown `DIFF_OPEN` lines deep, with a hint, until the reader opens it."
+    def __init__(self, ui, blk, text): store_attr(); self.rows = text.split('\n', allow_blank=True)
+
+    @property
+    def capped(self): return len(self.rows) > DIFF_OPEN and not (self.ui.transcript.active or self.blk.id in self.ui._held)
+
+    def __rich_console__(self, console, options):
+        if not self.capped: yield self.text; return
+        n = next((i + 1 for i, b in enumerate(self.ui.drillable()) if b is self.blk), None)
+        yield Text('\n').join(self.rows[:DIFF_OPEN])
+        yield Text(f'… +{len(self.rows) - DIFF_OPEN} lines · {f"alt+{n}" if n else "ctrl+o"} opens', style='dim')
 
 # %% ../nbs/05_cli.ipynb #2874a64d
 def _now_file(agent): return None if (d := agent.runs_dir) is None else d/'now.json'
@@ -1024,8 +1049,10 @@ class Ui:
         blocks = self.drillable()
         if not 1 <= n <= len(blocks): return False
         blk = blocks[n - 1]
-        self.comp.toggle(blk)
+        capped = self._capped(blk)
         self._held.add(blk.id)
+        if capped: self.comp.refresh_block(blk)
+        else: self.comp.toggle(blk)
         self.touch(now=True)
         return True
 
@@ -1157,7 +1184,7 @@ class Ui:
         self.flush_stream()
         work = [b for b in self.turn_blocks() if b.tag in ('step', 'tool') and b.height > 1]
         if not work: return False
-        shut = not all(b.collapsed for b in work)
+        shut = not all(b.collapsed or self._capped(b) for b in work)
         for b in work:
             b.collapsed = shut
             self._held.add(b.id)
@@ -1179,7 +1206,16 @@ class Ui:
         if blk.id in self._held: return blk.collapsed
         if blk.height <= FOLD_TOOL: return False
         if not act.done: return FOLD_RUNNING and act.id not in self.kids
-        return act.ok                          
+        return act.ok and (act.id in self.kids or not opens(act))
+
+    def _capped(self, blk):
+        "Whether `blk` is open on a result it shows only in part."
+        return not blk.collapsed and any(getattr(p, 'capped', False) for p in blk.body)
+
+    def _detail(self, act, blk):
+        "A call's result as `diff_rich` draws it; a finished call that `opens` shows it capped."
+        t = diff_rich(act.detail)
+        return OpenDiff(self, blk, t) if act.done and act.ok and opens(act) else t
 
     def _echo(self, body, kind='user', **kw):
         "Print what was typed, retractable until its turn starts."
@@ -1284,7 +1320,7 @@ class Ui:
         else:
             line = Text(act.line(), style=self._act_style(act))
             src = act.line() if not act.detail else f'{act.line()}\n{act.detail}'
-            body = [line] if not act.detail else [line, diff_rich(act.detail)]
+            body = [line] if not act.detail else [line, self._detail(act, blk)]
             self.comp.set_body(blk, *body, source=src)
             blk.collapsed = self._folded(act, blk)
             self.comp.refresh_block(blk)
@@ -1922,11 +1958,26 @@ def paste(self:Ui, text):
         return self.transcript.rebuild(bottom=self.transcript.follow)
     return self.paint()
 
+DIFF_LEXERS = {'diff', 'patch', 'udiff'}
+
+@functools.cache
+def _hl_langs(): return frozenset(fastpylight.languages()) - {'plaintext'}
+
+def fence_lang(name):
+    "fastpylight's name for a fence's language: 'diff' for a patch, None when it has no grammar."
+    name = (name or '').lower()
+    if name in DIFF_LEXERS: return 'diff'
+    if name in _hl_langs(): return name
+    return None if (g := fastpylight.guess('', f'x.{name}')) == 'plaintext' else g
+
 class ThemedCode(CodeBlock):
-    "A fenced block in the palette's pygments style, on the palette's own background."
+    "A fenced block on the palette's background: a diff by `diff_rich`, known code by fastpylight, else pygments."
     def __rich_console__(self, console, options):
-        yield Syntax(str(self.text).rstrip(), self.lexer_name, theme=code_theme(),
-                     background_color=code_bg(), word_wrap=True, padding=(0, 1))
+        code, lang = str(self.text).rstrip(), fence_lang(self.lexer_name)
+        try: t = None if lang is None else diff_rich(code) if lang == 'diff' else hl_text(code, lang)
+        except Exception: t = None
+        if t is None: yield Syntax(code, self.lexer_name, theme=code_theme(), background_color=code_bg(), word_wrap=True, padding=(0, 1))
+        else: yield Padding(t, (0, 1), style=f'on {code_bg()}', expand=True)
 
 class Reply(Markdown):
     "Rich's `Markdown` with our code block."
@@ -2138,7 +2189,7 @@ def _act(self:Ui, act):
     else:
         line = Text(act.line(), style=self._act_style(act))
         src = act.line() if not act.detail else f'{act.line()}\n{act.detail}'
-        body = [line] if not act.detail else [line, diff_rich(act.detail)]
+        body = [line] if not act.detail else [line, self._detail(act, blk)]
         self.comp.set_body(blk, *body, source=src)
         blk.collapsed = self._folded(act, blk)
         self.comp.refresh_block(blk)
