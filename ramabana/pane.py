@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/pane.html.md"""
 # %% ../nbs/18_pane.ipynb #dcfdb8be
 from __future__ import annotations
 
-import io, json, os, re, textwrap, time, weakref
+import io, json, os, re, select, signal, textwrap, time, weakref
 from pathlib import Path
 
 from fastcore.basics import first
@@ -22,8 +22,9 @@ from shalya.core import clip, diff_text, one_line as _1
 from .monitor import _counts, _rel
 
 # %% auto #0
-__all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'PALETTE', 'ENTER', 'LEAVE', 'now_snapshot',
-           'write_snapshot', 'read_snapshot', 'board', 'render', 'quit_mark', 'Viewer', 'main']
+__all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'PALETTE', 'ENTER', 'LEAVE', 'WHEEL',
+           'now_snapshot', 'write_snapshot', 'read_snapshot', 'board', 'render', 'quit_mark', 'PaneTty', 'Viewer',
+           'main']
 
 # %% ../nbs/18_pane.ipynb #d2a80a47
 CALLS_KEPT = 8       #: a sub-agent's latest calls in a snapshot
@@ -194,9 +195,10 @@ def _bg_row(b, width, drift):
 
 def board(snap, width=40, now=None, open=(), err=''):
     "The pane for `snap` as `(key, row)` pairs, one per screen line; a row with a `key` opens and closes."
-    if not snap: return [(None, _line('waiting for the agent…', PALETTE['gray'], width))]
+    warn = [(None, _line('⚠ ' + err, PALETTE['red'], width))] if err else []
+    if not snap: return [(None, _line('waiting for the agent…', PALETTE['gray'], width))] + warn
     drift = max(0, (now or time.time()) - snap['at'])
-    rows = [(None, _head(snap, width, drift))] + ([(None, _line('⚠ ' + err, PALETTE['red'], width))] if err else [])
+    rows = [(None, _head(snap, width, drift))] + warn
     def section(title, body):
         if body: rows.extend([(None, Text('')), (None, Text(title, style=f"bold {PALETTE['gray']}")), *body])
     section('Plan', [(None, _todo(t, width)) for t in snap['plan']])
@@ -212,6 +214,7 @@ def render(snap, width=40, now=None, open=()):
 # %% ../nbs/18_pane.ipynb #43ff61da
 ENTER = '\x1b[?1049h\x1b[?25l\x1b[?1000;1006h'   #: alt screen, cursor hidden, SGR mouse clicks on
 LEAVE = '\x1b[?1000;1006l\x1b[?25h\x1b[?1049l'
+WHEEL = 3   #: rows a mouse wheel notch scrolls
 
 def _lit(t, width):
     "`t` padded to `width` on the cursor's background."
@@ -224,12 +227,20 @@ def quit_mark(path):
     "The file a viewer the user quit leaves beside the snapshot at `path`, so the CLI keeps it closed."
     return Path(path).with_suffix('.closed')
 
+class PaneTty(RealTty):
+    "`RealTty` whose `read` returns None at the end of input, where `RealTty.read` would spin."
+    def read(self, timeout=0.02):
+        if not select.select([self.fd], [], [], timeout)[0]: return b''
+        return os.read(self.fd, 4096) or None
+
+def _leave(sig, frame): raise SystemExit(0)
+
 class Viewer:
-    "The board for the snapshot at `path`, drawn on `tty`: the last good snapshot, the open rows and the cursor."
+    "The board for the snapshot at `path`, drawn on `tty`: the last good snapshot, the open rows, the cursor and the scroll."
     def __init__(self, path, tty):
         self.path, self.tty, self.parser = Path(path), tty, Parser()
-        self.snap = self.good = self.stamp = self.size = self.cursor = self.shown = None
-        self.open, self.rows, self.top, self.err, self.done = set(), [], 0, '', False
+        self.snap = self.good = self.stamp = self.cursor = self.shown = None
+        self.open, self.rows, self.top, self.err, self.done, self.size = set(), [], 0, '', False, tty.size
 
     def reload(self):
         "Read the snapshot again when its file changed; a missing or bad one keeps the last."
@@ -241,29 +252,40 @@ class Viewer:
 
     def toggle(self, key): self.open ^= {key}
 
+    def move(self, key):
+        "Put the cursor on `key` and scroll just enough to show it."
+        self.cursor, h = key, self.size[1]
+        y = next(i for i, (k, _) in enumerate(self.rows) if k == key)
+        self.top = y if y < self.top else y - h + 1 if y >= self.top + h else self.top
+
     def on(self, ev):
-        "Act on one input event: a click toggles the row under it; keys move the cursor, toggle, or quit."
-        keys = [k for k, _ in self.rows if k]
+        "Act on one input event: a click toggles the row under it, the wheel scrolls, keys move, toggle, scroll or quit."
+        keys, h = [k for k, _ in self.rows if k], self.size[1]
         if isinstance(ev, Mouse):
             y = ev.y + self.top
-            if ev.press and ev.btn == 0 and 0 <= y < len(self.rows) and (k := self.rows[y][0]): self.cursor = k; self.toggle(k)
+            if ev.press and ev.btn in (64, 65): self.top += WHEEL if ev.btn == 65 else -WHEEL
+            elif ev.press and ev.btn == 0 and 0 <= y < len(self.rows) and (k := self.rows[y][0]): self.cursor = k; self.toggle(k)
             return
         if not isinstance(ev, Key): return
         n, i = ev.name, keys.index(self.cursor) if self.cursor in keys else -1
         if n in ('q', 'ctrl+c'): self.done = True
-        elif not keys: return
+        elif n in ('pageup', 'pagedown'): self.top += (h - 1) * (1 if n == 'pagedown' else -1)
+        elif n in ('g', 'G'):
+            if keys: self.cursor = keys[0 if n == 'g' else -1]
+            self.top = 0 if n == 'g' else len(self.rows)
+        elif n in ('j', 'down'):
+            if i + 1 < len(keys): self.move(keys[i + 1])
+            else: self.top += 1
+        elif n in ('k', 'up'):
+            if i > 0: self.move(keys[i - 1])
+            else: self.top -= 1
         elif n in ('enter', ' ') and i >= 0: self.toggle(self.cursor)
-        elif n in ('j', 'down'): self.cursor = keys[min(i + 1, len(keys) - 1)]
-        elif n in ('k', 'up'): self.cursor = keys[max(i - 1, 0)]
-        elif n in ('g', 'G'): self.cursor = keys[0 if n == 'g' else -1]
 
     def paint(self, now=None):
         "Draw the board at the terminal's size, writing only the lines that changed; a new size redraws all."
         w, h = self.tty.size
         if (w, h) != self.size: self.size, self.shown = (w, h), None
         self.rows = board(self.snap, w, now, self.open, self.err)
-        if (y := next((i for i, (k, _) in enumerate(self.rows) if k and k == self.cursor), None)) is not None:
-            self.top = min(self.top, y) if y < self.top + h else y - h + 1
         self.top = max(0, min(self.top, len(self.rows) - h))
         texts = [_lit(t, w) if k and k == self.cursor else t for k, t in self.rows[self.top:self.top + h]]
         con = Console(file=io.StringIO(), width=w, force_terminal=True, color_system='truecolor', highlight=False)
@@ -273,14 +295,16 @@ class Viewer:
         old = old or []
         for y in range(max(len(lines), len(old))):
             new = lines[y] if y < len(lines) else ''
-            if new != (old[y] if y < len(old) else ''): out.append(f'\x1b[{y + 1};1H{new}\x1b[K')
+            if new != (old[y] if y < len(old) else ''): out.append(f'\x1b[{y + 1};1H\x1b[K{new}')
         if out: self.tty.write(''.join(out))
         self.shown = lines
 
     def tick(self, every=0, now=None):
         "Read input for up to `every` seconds, act on it, reload and repaint. An error becomes a row over the last good snapshot."
         try:
-            data = self.tty.read(every)
+            if (data := self.tty.read(every)) is None:
+                self.done = True
+                return
             for ev in self.parser.feed(data) if data else self.parser.flush(): self.on(ev)
             self.reload()
             self.paint(now)
@@ -288,15 +312,18 @@ class Viewer:
         except Exception as e: self.snap, self.err = self.good, _1(f'{type(e).__name__}: {e}', 200)
 
     def run(self, every=0.2):
-        "Draw until q or ctrl+c, give the terminal back as it was, and leave the `quit_mark`."
+        "Draw until q, ctrl+c, a hangup, SIGTERM or the end of input, leave the `quit_mark`, and give the terminal back."
+        was = {s: signal.signal(s, _leave) for s in (signal.SIGHUP, signal.SIGTERM)}
         self.tty.write(ENTER)
         try:
-            while not self.done: self.tick(every)
-        except KeyboardInterrupt: pass
+            try:
+                while not self.done: self.tick(every)
+            except (KeyboardInterrupt, SystemExit): pass
+            quit_mark(self.path).touch()
         finally:
+            for s, h in was.items(): signal.signal(s, h)
             self.tty.write(LEAVE)
             self.tty.restore()
-        quit_mark(self.path).touch()
 
 # %% ../nbs/18_pane.ipynb #7f9d2673
 @call_parse
@@ -304,4 +331,4 @@ def main(path:str,        # the snapshot file the CLI writes
          every:float=0.2, # seconds to wait for input between frames
         ):
     "Show the `now` snapshot at `path` as a board until q or ctrl+c."
-    Viewer(path, RealTty()).run(every)
+    Viewer(path, PaneTty()).run(every)

@@ -13,12 +13,12 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS',
            'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR',
            'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'BLOCK_START',
-           'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'PANE_MODES', 'ALIVE_EVERY', 'REOPEN_EVERY', 'ext_key',
-           'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text',
-           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
-           'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
-           'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu',
-           'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'Ui', 'parse_answer',
+           'PYREPL_MODULES', 'PYREPL_PKGS', 'TMUX_MODES', 'PANE_MODES', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH',
+           'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text',
+           'key_card', 'guide_text', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
+           'Attachment', 'sendable', 'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
+           'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
+           'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'Ui', 'parse_answer',
            'ask_pattern', 'ThemedCode', 'Reply', 'compact_md', 'mk_host', 'mk_agent', 'amain', 'headless_prompt',
            'ask_once', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH']
 
@@ -884,6 +884,7 @@ class Ui:
         self._queued_echo = []
         self._hold = False
         self.pane, self._pane_at, self._alive_at, self._reopen_at = None, None, 0.0, 0.0
+        self._opened_at, self._quick = None, 0
         self._now_at, self._now_busy, self._now_dirty = 0.0, False, False
         self._echoed = []
         self.acts = {}
@@ -2473,6 +2474,7 @@ def submit(self:Ui):
     line = self.buf.text.strip()
     if line == '/pane' or line.startswith('/pane '):
         self.buf.clear()
+        self._quick = 0
         return self.open_pane(line[len('/pane'):].strip())
     if line == '/root' or line.startswith('/root '):
         self.buf.clear()
@@ -2544,6 +2546,8 @@ def _alive(pane):
 
 ALIVE_EVERY = 1.0    #: seconds between asks whether the viewer still draws
 REOPEN_EVERY = 10.0  #: seconds between reopenings of a viewer that died
+QUICK_DEATH = 5.0    #: a viewer that dies younger than this died at once
+REVIVE_TRIES = 3     #: quick deaths in a row before the pane is given up
 
 _act_now = Ui._act
 @patch
@@ -2567,7 +2571,7 @@ def open_pane(self:Ui, arg=''):
     if (me := _tmux_pane(self.agent.host)) is None:
         why = 'tmux is turned off (--tmux off)' if getattr(self.agent.host, '_tmux', None) is False else 'no tmux here'
         return self.note(f'{why}; in another terminal run: {cmd}')
-    try: self.pane, self._pane_at = me.split('right', cmd, size='35%'), p
+    try: self.pane, self._pane_at, self._opened_at = me.split('right', cmd, size='35%'), p, time.monotonic()
     except Exception as e: return self.note(f'the pane did not open ({agent_err(e)}); in another terminal run: {cmd}', 'error')
     return self.note(f'the pane is open in {self.pane.id} · /pane off closes it')
 
@@ -2582,12 +2586,17 @@ def close_pane(self:Ui):
 
 @patch
 def _revive(self:Ui):
-    "Reopen the `now` pane when its viewer crashed, not quit, asking at most every `ALIVE_EVERY` and reopening at most every `REOPEN_EVERY`."
+    "Reopen the `now` pane when its viewer crashed, not quit: asked at most every `ALIVE_EVERY`, reopened at most every `REOPEN_EVERY`, given up after `REVIVE_TRIES` quick deaths."
     t = time.monotonic()
     if self.pane is None or t - self._alive_at < ALIVE_EVERY: return
     self._alive_at = t
     if _alive(self.pane): return
     if quit_mark(self._pane_at).exists(): return self.close_pane()
+    if self._opened_at is not None:
+        self._quick, self._opened_at = self._quick + 1 if t - self._opened_at < QUICK_DEATH else 0, None
+        if self._quick >= REVIVE_TRIES:
+            self.close_pane()
+            return self.note('the pane keeps exiting; run `ramabana --doctor`', 'error')
     if t - self._reopen_at < REOPEN_EVERY: return
     self._reopen_at = t
     self.open_pane()

@@ -293,3 +293,19 @@ def test_a_viewer_the_user_quit_stays_closed_until_pane_opens_it_again(ui, clock
     assert len(me.splits) == 1
     _submit(ui, '/pane')
     assert len(me.splits) == 2 and ui.pane is me.made[1] and not mark.exists(), '/pane clears the mark and opens'
+
+
+def test_a_viewer_that_keeps_dying_at_once_is_given_up_with_one_note(ui, clock):
+    me = ui.agent.host.tmux_pane = Me()
+    _submit(ui, '/pane')
+    for _ in range(60):
+        me.made[-1].alive = False   # each viewer dies within a second of opening
+        clock.now += 1
+        ui._revive()
+    assert len(me.splits) == 3 and ui.pane is None, 'reopened twice, then given up at the third quick death'
+    assert len(me.splits) == 3 and _said(ui).count('keeps exiting') == 1 and 'ramabana --doctor' in _said(ui)
+    _submit(ui, '/pane')
+    me.made[-1].alive = False
+    clock.now += 1
+    ui._revive()
+    assert len(me.splits) == 5 and ui.pane is me.made[-1], '/pane starts the count again'

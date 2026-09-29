@@ -1,10 +1,10 @@
 "The `now` pane: what a turn and its sub-agents are doing, as a file, and that file drawn."
 
-import json, time
+import json, os, signal, time
 import pytest
 from rich.console import Console
 
-from ramabana.pane import PALETTE, Viewer, board, now_snapshot, quit_mark, read_snapshot, render, write_snapshot
+from ramabana.pane import PALETTE, PaneTty, Viewer, board, now_snapshot, quit_mark, read_snapshot, render, write_snapshot
 from ramabana.runtime import current_run
 from ramabana.testing import ScriptedBackend, Step, fake_agent
 
@@ -148,11 +148,12 @@ def test_the_board_draws_each_section_collapsed_and_opens_a_row_on_request():
 
 
 class Tty:
-    "The pane's terminal: scripted input chunks (an exception is raised), a size, and every write kept."
+    "The pane's terminal: scripted input chunks (an exception is raised, a function called), a size, and every write kept."
     def __init__(self, *input, size=(40, 30)): self.input, self.size, self.writes, self.restored = list(input), size, [], False
     def read(self, timeout=0):
         x = self.input.pop(0) if self.input else b''
         if isinstance(x, BaseException): raise x
+        if callable(x): return x()
         return x.encode() if isinstance(x, str) else x
     def write(self, s): self.writes.append(s)
     def restore(self): self.restored = True
@@ -373,3 +374,48 @@ def test_a_quit_leaves_a_mark_beside_the_snapshot_and_a_crash_does_not(tmp_path)
     class Boom(BaseException): pass
     with pytest.raises(Boom): Viewer(p, Tty(Boom())).run()
     assert not quit_mark(p).exists(), 'a crash is not a quit'
+
+
+
+def test_every_row_of_a_board_taller_than_the_pane_can_be_reached(tmp_path):
+    now = time.time()
+    v, _ = _viewer(tmp_path, _board(now), size=(40, 12))
+    _feed(v, 'j', '\r', 'j', '\r', 'j', '\r')
+    n, seen = len(v.rows), set()
+    assert n > 30 and v.rows[-1][1].plain.startswith('▶ watch'), 'three rows open; Background, with no keys, is last'
+    for _ in range(n): _feed(v, 'j'); seen |= set(range(v.top, v.top + 12))
+    assert max(seen) == n - 1 and v.cursor == ('file', 'tests/test_pane.py'), 'j scrolls on past the last key'
+    for _ in range(n): _feed(v, 'k'); seen |= set(range(v.top, v.top + 12))
+    assert seen == set(range(n)) and v.top == 0 and v.cursor == SUB, 'and k past the first'
+    _feed(v, 'G'); assert v.top == n - 12 and 'watch' in ''.join(v.tty.writes[-1:])
+    _feed(v, 'g'); assert v.top == 0
+    seen = set(range(12))
+    for _ in range(n): _feed(v, '\x1b[<65;3;3M'); seen |= set(range(v.top, v.top + 12))
+    assert seen == set(range(n)) and v.cursor == SUB, 'the wheel scrolls the view and leaves the cursor'
+    _feed(v, '\x1b[<64;3;3M'); assert v.top == n - 15
+    _feed(v, '\x1b[5~'); assert v.top == n - 26
+    _feed(v, '\x1b[6~'); assert v.top == n - 15, 'pgup and pgdn scroll a page less a row'
+
+def test_hangup_terminate_and_end_of_input_are_quits(tmp_path):
+    (p := tmp_path/'now.json').write_text(json.dumps(_board(time.time())))
+    was = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGHUP)
+    for sig in (signal.SIGHUP, signal.SIGTERM):
+        quit_mark(p).unlink(missing_ok=True)
+        v = Viewer(p, Tty(lambda: os.kill(os.getpid(), sig) or b''))
+        v.run()
+        assert quit_mark(p).exists() and '\x1b[?1049l' in v.tty.writes[-1] and v.tty.restored, f'{sig!r}: marked and restored'
+        assert (signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGHUP)) == was, 'the handlers are put back'
+    quit_mark(p).unlink()
+    Viewer(p, Tty(None)).run()
+    assert quit_mark(p).exists(), 'end of input is a quit'
+    r, w = os.pipe()
+    t = PaneTty.__new__(PaneTty); t.fd = r
+    assert t.read(0) == b''
+    os.write(w, b'q'); assert t.read(0) == b'q'
+    os.close(w); assert t.read(0) is None, 'EOF reads as None, not an endless empty loop'
+    os.close(r)
+
+def test_an_error_before_the_first_snapshot_still_shows_and_each_line_is_erased_before_it_is_drawn(tmp_path):
+    assert '⚠ boom' in ''.join(t.plain for _, t in board(None, 40, err='boom'))
+    v, _ = _viewer(tmp_path, _board(time.time()))
+    assert '\x1b[1;1H\x1b[K\x1b[' in v.tty.writes[-1], 'CSI K comes before the text, so a pending wrap keeps the last cell'
