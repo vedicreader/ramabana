@@ -18,7 +18,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'Agent', 'git_shell_denial', 'note_tools', 'Completer']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
-import contextvars, datetime, difflib, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
+import contextvars, datetime, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
 from glob import escape as glob_escape
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,7 +34,7 @@ from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, Too
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed)
-from .monitor import Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
+from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
 MAX_DETAIL = 4000     # chars of a result kept for the fold
@@ -1761,13 +1761,16 @@ def changes(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #d6948ac4
 @patch
-def changed_line(self:Agent):
-    "One line for the turn's writes: `changed: a.py (+3 -1), b.py`."
-    def pm(b, a):
-        d = [l[0] for l in list(difflib.unified_diff(b.splitlines(), a.splitlines(), lineterm='', n=0))[2:] if l[0] in '+-']
-        return f"+{d.count('+')} -{d.count('-')}"
-    ch = self.changes()
-    return 'changed: ' + ', '.join(f'{Path(p).name} ({pm(b, a)})' for p, (b, a) in ch.items()) if ch else ''
+def changed_rows(self:Agent):
+    "`(path under the first root, added, removed, new)` for each file this turn's writes moved."
+    r = first(self.host.roots or ())
+    return [(_rel(p, r), *_counts(diff_text(b, a, p)), p in self.new) for p, (b, a) in self.changes().items()]
+
+@patch
+def changed_line(self:Agent, rows=None):
+    "One line for the turn's writes, or for `rows` from `changed_rows`: `changed: src/a.py (+3 -1), b.py (+1 -0)`."
+    if rows is None: rows = self.changed_rows()
+    return 'changed: ' + ', '.join(f'{p} (+{a} -{d})' for p, a, d, _ in rows) if rows else ''
 
 @patch
 def verify_command(self:Agent):

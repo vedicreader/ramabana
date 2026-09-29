@@ -59,6 +59,17 @@ def test_a_turn_that_wrote_without_checking_runs_the_project_check():
     assert a._finish('nothing changed') == 'nothing changed'
 
 
+def test_changed_rows_name_each_file_by_its_path_under_the_root():
+    was = {'/proj/a/app.py': 'x\n', '/proj/b/app.py': 'y\n'}
+    host = MemHost(dict(was))
+    a, _ = fake_agent(host)
+    a._prepare('change')
+    a.before.update({**was, '/proj/new.py': ''}); a.new.add('/proj/new.py')
+    host.files.update({'/proj/a/app.py': 'x\nz\n', '/proj/b/app.py': 'w\n', '/proj/new.py': 'n\n'})
+    assert {r[0]: r[1:] for r in a.changed_rows()} == {'a/app.py': (1, 0, False), 'b/app.py': (1, 1, False), 'new.py': (1, 0, True)}
+    assert 'a/app.py (+1 -0)' in a.changed_line() and 'b/app.py (+1 -1)' in a.changed_line()
+
+
 def test_rewind_restores_the_files_a_turn_changed(tmp_path):
     host = MemHost({'/proj/a.py': 'def a(): pass\n'})
     a, _ = fake_agent(host, cfg=tmp_path)
