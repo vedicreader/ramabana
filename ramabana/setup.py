@@ -14,7 +14,8 @@ from fastcore.xtras import Path
 
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
-           'WHY', 'VALUED', 'EARLY', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup',
+           'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'PII_OFF', 'PII_MODES', 'VALUED', 'EARLY', 'FLAGS',
+           'LAUNCHED', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal',
            'launch_args', 'run_cli']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
@@ -142,26 +143,51 @@ class Setup:
         self.execvpe(*self.wrap())
 
 # %% ../nbs/19_setup.ipynb #d30426c2
+TMUX_MODES = {'auto': None, 'on': True, 'off': False}
+PANE_MODES = ('auto', 'on', 'off')
+PROFILES = ('auto', 'small', 'full')
+PII_OFF = 'off'
+PII_MODES = (PII_OFF, 'redact', 'refuse')
+
+def refusal(tmux='auto', pane='auto', profile='auto', pii=PII_OFF, vault=False, python=False, attach='', agent_proxy=False,
+            warm=False, no_warm=False):
+    "Why `main` refuses these options before starting anything, or ''."
+    if warm and no_warm: return '--warm and --no-warm contradict each other; pass one'
+    if vault and (python or attach or agent_proxy): return 'there is no vault-backed host for a dhrishti session; drop --vault'
+    for name, v, ok in (('tmux', tmux, TMUX_MODES), ('pane', pane, PANE_MODES), ('profile', profile, PROFILES), ('pii', pii, PII_MODES)):
+        if v not in ok: return f"unknown --{name} {v!r}; choose one of {', '.join(ok)}"
+    if pii != PII_OFF and not vault: return '--pii gates what a vault returns; add --vault'
+    return ''
+
 #: the `ramabana` options that take a value; every other option is a flag
 VALUED = ('--root', '--model', '--approve', '--pii', '--theme', '--max-tool-calls', '--max-steps', '--cfg', '--resume',
           '--attach', '--tmux', '--pane', '--optin', '--profile')
 #: options after which `main` returns before `launch`, or checks the python extra first
 EARLY = ('-h', '--help', '--json', '--doctor', '--kernels', '--python', '--attach', '--agent-proxy')
+#: the flags `refusal` reads
+FLAGS = ('--vault', '--warm', '--no-warm')
+LAUNCHED = False   # `run_cli` has run `launch`, so `main` does not ask again
 
 def launch_args(argv):
-    "`Setup`'s `cfg` and `launch`'s `tmux` for an interactive command line, read without `main`'s parser; None leaves it to `main`."
-    kw, it = dict(cfg=None, tmux='auto', pane='auto'), iter(argv)
+    "`Setup`'s `cfg` and `launch`'s `tmux` for an interactive command line `main` accepts, read without its parser; None leaves it to `main`."
+    kw, flags, it = dict(cfg=None, tmux='auto', pane='auto', profile='auto', pii=PII_OFF), set(), iter(argv)
     for a in it:
         k, eq, v = a.partition('=')
         if not a.startswith('-') or a == '-' or k in EARLY: return None
-        if k in VALUED: kw[k[2:]] = v if eq else next(it, '')
-    if kw['tmux'] not in ('auto', 'on') or kw['pane'] not in ('auto', 'on', 'off'): return None
+        if k in VALUED:
+            if not eq and ((v := next(it, None)) is None or v.startswith('-')): return None
+            kw[k[2:]] = v
+        elif k in FLAGS: flags.add(k[2:].replace('-', '_'))
+    if refusal(**{k: kw[k] for k in ('tmux', 'pane', 'profile', 'pii')}, **{f: True for f in flags}) or kw['tmux'] == 'off': return None
     return dict(cfg=kw['cfg'], tmux=kw['tmux'])
 
 def run_cli():
     "The `ramabana` script: rerun inside tmux before anything heavy loads, then parse the command line for `cli.main`."
+    global LAUNCHED
     if (msg := need('cli')): return _refuse(msg)()
-    if (kw := launch_args(sys.argv[1:])) is not None: Setup(kw['cfg']).launch(tmux=kw['tmux'])
+    if (kw := launch_args(sys.argv[1:])) is not None:
+        LAUNCHED = True
+        Setup(kw['cfg']).launch(tmux=kw['tmux'])
     from fastcore.script import anno_parser
     from ramabana.cli import main
     args = vars(anno_parser(main.__wrapped__, pos=['prompt']).parse_args())

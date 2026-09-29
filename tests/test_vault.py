@@ -352,5 +352,6 @@ def test_every_frontend_offers_the_flag_and_the_cli_refuses_a_name_it_does_not_k
         src = inspect.getsource(getattr(f, '__wrapped__', f))
         assert 'pii: str' in src and 'pii_ner: bool' in src, f
     assert PII_MODES == ('off', 'redact', 'refuse')
-    refuse = inspect.getsource(getattr(cli_main, '__wrapped__', cli_main))
-    assert 'unknown --pii' in refuse and 'add --vault' in refuse
+    from ramabana.setup import refusal
+    assert 'refusal(' in inspect.getsource(cli_main.__wrapped__)
+    assert refusal(pii='wat').startswith('unknown --pii') and refusal(pii='redact').endswith('add --vault')

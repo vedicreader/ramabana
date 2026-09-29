@@ -7,22 +7,21 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 # %% auto #0
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE_ALIASES', 'CLAUDE', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
-           'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PII_OFF', 'PII_MODES', 'PROBE_TTL',
-           'PROBE_DIR', 'HARNESS', 'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES',
-           'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'PROFILES',
-           'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS', 'MODEL_ALIASES', 'TOOL_CHANNELS', 'BranchChanged',
-           'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'probe_path', 'probed', 'forget_probes',
-           'runtime_remedy', 'runtime_detail', 'runtime_available', 'auth_status', 'copilot_catalog',
-           'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps',
-           'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for', 'register_model', 'unregister_model',
-           'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model', 'force_tags',
-           'forget_forced_tags', 'tool_channel', 'Routing']
+           'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PROBE_TTL', 'PROBE_DIR', 'HARNESS',
+           'DFLT_LOCAL', 'completer', 'cheap', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX',
+           'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS',
+           'MODEL_ALIASES', 'TOOL_CHANNELS', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx',
+           'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available',
+           'auth_status', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec',
+           'unknown_model', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for',
+           'register_model', 'unregister_model', 'alias_path', 'saved_models', 'load_models', 'save_model',
+           'delete_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
 from fastcore.all import Path, atomic_save
 from shalya.host import HostError
-from .setup import ENV_DEFAULT
+from .setup import ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES
 import urai, rishi.core   # registers rishi's backends with urai
 from .models import CATALOG, claude_ids, claude_aliases, provider_models
 from dataclasses import dataclass, field
@@ -75,8 +74,6 @@ RUNTIME_REMEDY = {
     'litert': 'LiteRT ships with rishi; reinstall it with `pip install --upgrade rishi`',
 }
 MODELS = {**{k: ('litert', v) for k, v in LOCAL.items()}, **{k: ('mlx', v) for k, v in MLX.items()},**{k: ('llama', v) for k, v in LLAMA.items()},**{k: ('claude', v) for k, v in {**CLAUDE, **CLAUDE_ALIASES}.items()},**{k: ('remote', v) for k, v in CLOUD.items()}}
-PII_OFF = 'off'
-PII_MODES = (PII_OFF, 'redact', 'refuse')
 
 # %% ../nbs/00_core.ipynb #68d2ad3a
 def claude_ctx(model_id):
@@ -434,7 +431,6 @@ def budget_for(spec, tool_max, channel='native'):
     return Budget(FRUGAL_DROP, False, mx, f'{ctx//1000}k window: no inlined skills, no {"/".join(FRUGAL_DROP)} tools, tool results clipped to {mx} chars')
 
 # %% ../nbs/00_core.ipynb #baf2dbfe
-PROFILES = ('auto', 'small', 'full')
 SMALL_PROFILE_CTX = 32_000
 SMALL_TOOLS = ('view_file', 'replace_text', 'create_file', 'ls', 'grep', 'search_code', 'run_shell', 'run_python',
                'git_status', 'git_diff', 'git_commit', 'notebook_cells', 'view_cell', 'edit_cell')
@@ -445,7 +441,6 @@ def profile_for(spec, profile='auto'):
     if profile != 'auto': return profile
     ctx = getattr(spec, 'ctx', 0) or 0
     return 'small' if getattr(spec, 'local', False) or 0 < ctx <= SMALL_PROFILE_CTX else 'full'
-
 
 # %% ../nbs/00_core.ipynb #3e2adbad
 def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):
