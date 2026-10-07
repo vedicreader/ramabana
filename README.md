@@ -144,7 +144,7 @@ Type `/` and press tab to complete a command. The list holds this session’s co
 | `/cost`, `/compact [NOTE]` | what the session has spent, and shortening the history |
 | `/tool-budget [auto\|20..400]`, `/steps [auto\|8..80]` | the per-turn budgets, and what the last turn used |
 | `/approve [off\|ask\|edits\|auto]`, `/subagents [on\|off]` | who may write, and whether delegates may |
-| `/commit [MESSAGE]`, `/pr [TITLE]` | a commit or pull request drafted from the diff, behind approval |
+| `/commit [FOLDER] [MESSAGE]`, `/pr [FOLDER] [TITLE]` | a commit or pull request drafted from the diff of the repository holding FOLDER (default the project), behind approval |
 | `/rewind [TURN] [files\|chat\|both]`, `/branches`, `/branch NAME` | undo a turn’s files or chat, and the conversation branches. Undo restores edits, undoes git writes, and removes created files still unchanged |
 | `/watch [RUN\|monitors]`, `/unwatch`, `/tell RUN TEXT` | a tmux pane on a run’s transcript, and a message to a running sub-agent |
 | `/pane`, `/pane off` | the now pane in a tmux split, and closing it |

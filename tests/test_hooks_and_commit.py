@@ -221,3 +221,61 @@ def test_run_shell_is_only_steered_to_a_git_tool_this_agent_has():
     assert not a._deny_git_shell('run_shell', {'command': 'git commit -m x'})
     out = tools['run_shell']('git commit -m x')
     assert not (failed(out) and '`git_commit`' in out), out
+
+
+def _two_repos(tmp_path):
+    "Two repositories, each its own open folder, the second one not the first root."
+    first, second = _repo_with_a_commit(tmp_path), tmp_path/'second'
+    second.mkdir()
+    _git(second, 'init', '-q', '-b', 'main'); _git(second, 'config', 'user.email', 't@t'); _git(second, 'config', 'user.name', 't')
+    (second/'c.txt').write_text('one\n'); _git(second, 'add', 'c.txt'); _git(second, 'commit', '-q', '-m', 'init')
+    return first, second
+
+
+def test_rewind_undoes_a_commit_made_in_a_second_repository(tmp_path):
+    "The undo token keeps the repository it came from, so `/rewind` checks and resets that one, not the first root."
+    from shalya.host import LocalHost
+    first, second = _two_repos(tmp_path)
+    a, _ = fake_agent(host=LocalHost([str(first), str(second)], index=False), cfg=tmp_path/'cfg', approvals=Approvals(tools=set(), mode='auto'))
+    tools = {t.__name__: t for t in a.tools}
+    first_head = _git(first, 'rev-parse', 'HEAD')
+    a._prepare('commit in the second repository')
+    tools['replace_text'](str(second/'c.txt'), [{'oldText': 'one', 'newText': 'two'}])
+    tools['git_commit']('turn commit', 'c.txt', path=str(second))
+    a._finish('done')
+    assert _git(second, 'log', '-1', '--format=%s') == 'turn commit'
+    assert a.git_undo[a.current_turn_id][0]['root'] == str(second.resolve())
+    said = a.command('/rewind files')
+    assert 'undid 1 git write' in said and 'restored 1 file' in said and 'refused' not in said, said
+    assert _git(second, 'log', '--oneline').count('\n') == 0 and (second/'c.txt').read_text() == 'one\n'
+    assert _git(first, 'rev-parse', 'HEAD') == first_head
+
+
+def test_a_git_write_with_a_path_snapshots_the_tree_and_records_nothing_as_binary(tmp_path):
+    "A git tool's `path` names the repository, not a file: the call snapshots the tree, and the folder never lands in `binary`."
+    from shalya.host import LocalHost
+    from ramabana.tools import write_targets
+    first, second = _two_repos(tmp_path)
+    assert write_targets('git_checkout', {'branch': 'x', 'path': str(second)}) == []
+    _git(second, 'checkout', '-q', '-b', 'other'); (second/'c.txt').write_text('other\n'); _git(second, 'commit', '-q', '-am', 'on other'); _git(second, 'checkout', '-q', 'main')
+    a, _ = fake_agent(host=LocalHost([str(first), str(second)], index=False), cfg=tmp_path/'cfg', approvals=Approvals(tools=set(), mode='auto'))
+    tools = {t.__name__: t for t in a.tools}
+    a._prepare('switch branches in the second repository')
+    tools['git_checkout']('other', path=str(second))
+    assert not a.binary and str(second) not in a.before, (a.binary, a.before)
+    assert any(p.endswith('c.txt') for p in a.changes()), 'the checkout moved a file and the snapshot saw it'
+
+
+def test_commit_takes_a_repository_path_and_names_it_in_the_approval(tmp_path):
+    "`/commit PATH MESSAGE` commits in the repository holding PATH; the approval preview names its root."
+    from shalya.host import LocalHost
+    first, second = _two_repos(tmp_path)
+    a, _ = fake_agent(host=LocalHost([str(first), str(second)], index=False), approvals=Approvals(tools=set(), mode='auto'))
+    a.approvals.host = a.host                                 # as `make_agent` wires it
+    (second/'c.txt').write_text('changed\n')
+    assert 'ERROR' not in a.command(f'/commit {second} Change c')
+    assert _git(second, 'log', '-1', '--format=%s') == 'Change c' and not _git(second, 'status', '--porcelain')
+    assert _git(first, 'log', '--oneline').count('\n') == 0
+    ask = next(x for x in a.approvals.history if x.tool == 'git_commit')
+    assert ask.preview.startswith(f'in {second.resolve()}'), ask.preview
+    assert a.command(f'/commit {second}') == 'nothing to commit'

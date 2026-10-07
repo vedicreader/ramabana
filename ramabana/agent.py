@@ -29,7 +29,7 @@ from urai import parse_args, tc_name
 from .core import AgentError, agent_err, available_models, missing_key, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .runtime import QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
-from shalya.tools import OPTIN, group_of
+from shalya.tools import OPTIN, group_of, git_repo
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
@@ -269,6 +269,10 @@ def preview_for(name, args, host=None):
         return f'{p}  (new {args.get("cell_type","code")} cell at {args.get("index",-1)})\n\n{args.get("source","")}'[:MAX_PREVIEW]
     if name == 'run_python':  return str(args.get('code', ''))[:MAX_PREVIEW]
     if name == 'run_shell':   return (f"$ {args.get('command', '')}" + (f'\n  in {c}' if (c := args.get('cwd')) else ''))[:MAX_PREVIEW]
+    if name in GIT_WRITE_TOOLS and host is not None:
+        try: where = f'in {git_repo(host, p).root}'
+        except Exception as e: where = agent_err(e)
+        return f'{where}\n\n{json.dumps(args, indent=2, default=str)}'[:MAX_PREVIEW]
     if name == 'replace_text' and host is not None:
         try:
             if not (es := edits(args.get('edits', []))): return f'{p}\n\nno edits given'
@@ -336,7 +340,7 @@ def answer_md(ask):
 
 # %% ../nbs/03_agent.ipynb #ca1437e3
 EDIT_GROUPS = ('file', 'notebook')
-ALWAYS_ASK = ('add_root',)         #: asked in every mode short of `auto`
+ALWAYS_ASK = ('add_root', 'restart_kernel')   #: asked in every mode short of `auto`
 REMOVED_TOOLS = frozenset({'add_todo', 'list_plan', 'delegate_parallel', 'delegate_status', 'remember_note',
                            'watch_folder', 'list_folder_watches', 'cancel_folder_watch', 'check_folders', 'memory_topics', 'poll_watches'})
 DOOM_LOOP = 3                      #: identical gated calls that force an ask
@@ -1328,11 +1332,11 @@ def _deny_git_shell(self:Agent, name, args):
 
 @patch
 def _keep_undo(self:Agent, name, out):
-    "Keep a git write's `undo` token and resulting HEAD against this turn, for `/rewind`."
+    "Keep a git write's `undo` token, resulting HEAD and repository root against this turn, for `/rewind`."
     try: d = json.loads(out)
     except Exception: return
     if not isinstance(d, dict): return
-    self.git_undo.setdefault(self.current_turn_id, []).append({k: str(d.get(k) or '') for k in ('summary', 'undo', 'undoes', 'head', 'branch')} | {'tool': name})
+    self.git_undo.setdefault(self.current_turn_id, []).append({k: str(d.get(k) or '') for k in ('summary', 'undo', 'undoes', 'head', 'branch', 'root')} | {'tool': name})
     if (cd := self.checkpoint_dir) is not None:
         cd.mkdir(parents=True, exist_ok=True)
         (cd/f'{self.current_turn_id}.git.json').write_text(json.dumps(self.git_undo[self.current_turn_id]))
@@ -2298,34 +2302,42 @@ def rewind(self:Agent, turn_id='', what='both'):
 
 
 @patch
+def _git_root(self:Agent, w):
+    "The repository a kept git write happened in; a token kept without one names the first root."
+    return w.get('root') or str(self.host.roots[0])
+
+@patch
 def _git_blocked(self:Agent, writes, snap=()):
-    "Why the turn's git writes cannot be undone now (HEAD, branch or other files moved), or ''."
-    last = next((w for w in reversed(writes) if w.get('head')), None)
-    if last is None: return ''
+    "Why the turn's git writes cannot be undone now (HEAD, branch or other files moved in a repository they touched), or ''."
     left = 'git undo refused and files left as they are'
     from gheasy.repo import GitRepo
-    try: r = GitRepo.at(self.host.roots[0]); head = r.run('rev-parse', 'HEAD').strip()
-    except Exception as e: return f'cannot read HEAD ({agent_err(e)}); {left} -- check the repository first, or /rewind chat'
-    def ask(*a):
-        try: return r.run(*a).rstrip()   # porcelain lines keep their leading status column
-        except Exception: return ''
-    if not head.startswith(last['head']): return f"HEAD moved after the turn ({last['head']}..{head[:9]}); {left} -- undo the later commits first, or /rewind chat"
-    branch = ask('branch', '--show-current')
-    if last.get('branch') and branch != last['branch']: return f"branch changed after the turn ({last['branch']} -> {branch or 'detached'}); {left} -- go back to {last['branch']} first, or /rewind chat"
-    root = Path(self.host.roots[0]).resolve()
-    own = {(root/p.lstrip('/')).resolve() for p in snap}
-    dirty = {(r.root/l[3:].split(' -> ')[-1]).resolve() for l in ask('status', '--porcelain', '--untracked-files=no').splitlines() if len(l) > 3}
-    if (others := sorted(str(p.relative_to(root)) if p.is_relative_to(root) else str(p) for p in dirty - own)):
-        return f"uncommitted changes to {', '.join(others)} after the turn; {left} -- commit or stash them first, or /rewind chat"
+    def at(p):
+        try: return Path(self.host.check(p)).resolve()
+        except Exception: return (Path(self.host.roots[0]).resolve()/str(p).lstrip('/')).resolve()
+    own = {at(p) for p in snap}
+    for where in dict.fromkeys(self._git_root(w) for w in writes):
+        last = next((w for w in reversed(writes) if w.get('head') and self._git_root(w) == where), None)
+        if last is None: continue
+        try: r = GitRepo.at(where); head = r.run('rev-parse', 'HEAD').strip()
+        except Exception as e: return f'cannot read HEAD ({agent_err(e)}); {left} -- check the repository first, or /rewind chat'
+        def ask(*a):
+            try: return r.run(*a).rstrip()   # porcelain lines keep their leading status column
+            except Exception: return ''
+        if not head.startswith(last['head']): return f"HEAD moved after the turn ({last['head']}..{head[:9]}); {left} -- undo the later commits first, or /rewind chat"
+        branch = ask('branch', '--show-current')
+        if last.get('branch') and branch != last['branch']: return f"branch changed after the turn ({last['branch']} -> {branch or 'detached'}); {left} -- go back to {last['branch']} first, or /rewind chat"
+        dirty = {(r.root/l[3:].split(' -> ')[-1]).resolve() for l in ask('status', '--porcelain', '--untracked-files=no').splitlines() if len(l) > 3}
+        if (others := sorted(str(p.relative_to(r.root)) if p.is_relative_to(r.root) else str(p) for p in dirty - own)):
+            return f"uncommitted changes to {', '.join(others)} after the turn; {left} -- commit or stash them first, or /rewind chat"
     return ''
 
 @patch
 def _undo_git(self:Agent, writes):
-    "Apply a turn's git `undo` tokens newest first, naming writes gheasy cannot undo."
+    "Apply a turn's git `undo` tokens newest first, each in its own repository, naming writes gheasy cannot undo."
     from gheasy.repo import GitRepo
     done, problems = 0, []
     for w in [w for w in reversed(writes) if w.get('undo')]:
-        try: GitRepo.at(self.host.roots[0]).undo(w['undo']); done += 1
+        try: GitRepo.at(self._git_root(w)).undo(w['undo']); done += 1
         except Exception as e: problems.append(f"{w['tool']}: {agent_err(e)}")
     stuck = [w['tool'] for w in writes if not w.get('undo')]
     parts = [f'undid {done} git write(s)'] if done else []
@@ -2688,28 +2700,37 @@ def _tool(self:Agent, name):
     return next((t for t in self.tools if getattr(t, '__name__', '') == name), None)
 
 @patch
-def commit(self:Agent, message=''):
-    "Commit the index, else every changed tracked file, drafting a missing message."
-    from gheasy.repo import GitRepo
-    diff, log, commit = self._tool('git_diff'), self._tool('git_log'), self._tool('git_commit')
-    if commit is None: return 'no git tools here'
-    staged, d = True, diff(staged=True)
-    if d.strip() == '(no changes)': staged, d = False, diff()
-    if failed(d): return d
-    if d.strip() == '(no changes)': return 'nothing to commit'
-    msg = message.strip() or self.oneshot(f'{clip(d, 12000)}\n\nRecent commits:\n{log(5)}', COMMIT_SP).strip()
-    if not msg: return 'no message was drafted; say /commit MESSAGE'
-    paths = '' if staged else ' '.join(ch['path'] for ch in GitRepo.at(self.host.roots[0]).info()['changes'] if ch['worktree'] not in ' ?')
-    if self.approvals is not None and not self.approvals.request('git_commit', {'message': msg, 'paths': paths}, force=True).answer: return 'commit refused'
-    return commit(msg, paths)
+def _repo_arg(self:Agent, arg):
+    "`(rest, folder)` when `arg` starts with a folder in the open roots, else `(arg, '')`."
+    head, _, rest = arg.partition(' ')
+    try: return (rest.strip(), head) if head and Path(self.host.check(head, must_exist=True)).is_dir() else (arg, '')
+    except Exception: return arg, ''
 
 @patch
-def pull_request(self:Agent, title=''):
-    "Open a PR for the commits ahead of the default branch, drafting a missing title."
+def commit(self:Agent, message='', path=''):
+    "Commit the index, else every changed tracked file, in the repository holding `path`, drafting a missing message."
+    diff, log, commit = self._tool('git_diff'), self._tool('git_log'), self._tool('git_commit')
+    if commit is None: return 'no git tools here'
+    try: r = git_repo(self.host, path)
+    except Exception as e: return err('git commit', e)
+    where = str(r.root)
+    staged, d = True, diff(staged=True, path=where)
+    if d.strip() == '(no changes)': staged, d = False, diff(path=where)
+    if failed(d): return d
+    if d.strip() == '(no changes)': return 'nothing to commit'
+    msg = message.strip() or self.oneshot(f'{clip(d, 12000)}\n\nRecent commits:\n{log(5, path=where)}', COMMIT_SP).strip()
+    if not msg: return 'no message was drafted; say /commit MESSAGE'
+    paths = '' if staged else ' '.join(ch['path'] for ch in r.info()['changes'] if ch['worktree'] not in ' ?')
+    if self.approvals is not None and not self.approvals.request('git_commit', {'message': msg, 'paths': paths, 'path': where}, force=True).answer: return 'commit refused'
+    return commit(msg, paths, path=where)
+
+@patch
+def pull_request(self:Agent, title='', path=''):
+    "Open a PR for the commits ahead of the default branch in the repository holding `path`, drafting a missing title."
     import shlex
-    from gheasy.repo import GitRepo
     from gheasy.core import gh_api, gh_token
-    r = GitRepo.at(self.host.roots[0])
+    try: r = git_repo(self.host, path)
+    except Exception as e: return err('pull request', e)
     info = r.info()
     base, branch = next((b['name'].split('/')[-1] for b in info['branches'] if b['default']), 'main'), info['branch']
     try: rows = r.history(limit=50, ref=f'origin/{base}..HEAD')
@@ -2718,9 +2739,9 @@ def pull_request(self:Agent, title=''):
     subjects = '\n'.join(f"- {c['subject']}" for c in rows)
     t, _, body = (title.strip() or self.oneshot(subjects, PR_SP).strip()).partition('\n')
     body = body.strip() or subjects
-    if self.approvals is not None and not self.approvals.request('pull_request', {'title': t, 'base': base, 'head': branch}, force=True).answer: return 'pull request refused'
+    if self.approvals is not None and not self.approvals.request('pull_request', {'title': t, 'base': base, 'head': branch, 'path': str(r.root)}, force=True).answer: return 'pull request refused'
     try:
-        if not r.info()['upstream'] and failed(pushed := self._tool('git_remote')('push', publish=True)): return pushed
+        if not r.info()['upstream'] and failed(pushed := self._tool('git_remote')('push', publish=True, path=str(r.root))): return pushed
         return gh_api(token=gh_token(), path=str(r.root))[2].pulls.create(title=t, head=branch, base=base, body=body)['html_url']
     except Exception as e:
         return (f'GitHub is out of reach ({agent_err(e)}); run:\n'
@@ -2806,8 +2827,8 @@ def command(self:Agent, line):
         if not arg: return self.current_branch_id
         try: return f"on {self.switch_branch(arg)['branch_id']}"
         except Exception as e: return agent_err(e)
-    if name == 'commit': return self.commit(arg)
-    if name == 'pr': return self.pull_request(arg)
+    if name == 'commit': return self.commit(*self._repo_arg(arg))
+    if name == 'pr': return self.pull_request(*self._repo_arg(arg))
     if name in self.registry.commands:
         fn, _ = self.registry.commands[name]
         try: return fn(self, arg)

@@ -512,6 +512,7 @@ def test_a_delegated_question_runs_on_a_thrown_away_conversation_with_the_scope_
         def list_vars(self): return 'df: DataFrame'
         def terminal_text(self, lines=200): return ''
         def run_python(self, code): return 'ok'
+        def restart_kernel(self): return 'restarted'
 
     h = H(['/x'])
     sub = {t.__name__: t for t in read_only(tools_for(h))}

@@ -43,7 +43,7 @@ from .runtime import Run, current_run, run_context
 
 # %% ../nbs/02_tools.ipynb #e0ca9981
 from fastcore.docments import frontmatter
-from shalya.core import WRITE_TOOLS as _TOOL_WRITES
+from shalya.core import WRITE_TOOLS as _TOOL_WRITES, GIT_WRITE_TOOLS
 _cmds, _edits, _apply_edits, _diff = cmds, edits, apply_edits, diff_text
 #: plus the cart's writes, which shalya cannot name
 WRITE_TOOLS = _TOOL_WRITES | {'cart_add', 'cart_remove'}
@@ -248,9 +248,9 @@ except ImportError:   # shalya 0.1.0 has no `image_targets`; drop this once 0.1.
     def image_targets(path, n=1): return [str(Path(path) if i == 0 else Path(path).with_stem(f'{Path(path).stem}-{i+1}')) for i in range(max(1, int(n)))]
 
 def write_targets(name, args):
-    "Paths a call writes where it names them: saved pictures for `PATH_WRITES`, else `path`."
+    "Paths a call writes where it names them: saved pictures for `PATH_WRITES`, none for a git write, else `path`."
     args = args or {}
-    if not (p := args.get('path')): return []
+    if not (p := args.get('path')) or name in GIT_WRITE_TOOLS: return []   # a git `path` names the repository
     if name not in PATH_WRITES: return [p]
     try: n = max(1, min(int(args.get('n') or 1), 4))
     except (TypeError, ValueError): n = 1   # the tool refuses it

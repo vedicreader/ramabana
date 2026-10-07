@@ -38,7 +38,7 @@ def test_the_gate_draws_its_line_around_the_write_tools_and_answers_as_a_bool():
     from ramabana.tools import GIT_READ_TOOLS, GIT_WRITE_TOOLS
     assert {'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell', 'run_python',
             'run_shell', 'run_shell_bg', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add',
-            'cart_remove', 'add_root'} | GIT_WRITE_TOOLS == set(WRITE_TOOLS)
+            'cart_remove', 'add_root', 'restart_kernel'} | GIT_WRITE_TOOLS == set(WRITE_TOOLS)
     assert not (set(GIT_READ_TOOLS) & set(WRITE_TOOLS)), 'rehearsing a merge is not approving one'
 
     ap = agent.Approvals(tools={'edit_file'}, mode='auto')
@@ -325,3 +325,32 @@ def test_reads_between_the_repeats_neither_count_nor_break_the_streak():
     assert ap.gate(edit_call('a.py')).answer is False and len(asked) == 1
     assert ap.gate(read) and ap.gate(read) and ap.gate(edit_call('a.py')).answer is False   # still the same loop
     stop()
+
+
+def test_restart_kernel_always_asks():
+    "A restart wipes the person's namespace: `edits` mode does not cover it, and the tool is a write."
+    from shalya.tools import group_of, session_tools
+    assert 'restart_kernel' in agent.ALWAYS_ASK and group_of('restart_kernel') == 'session'
+    assert not agent.Approvals.edits_cover('restart_kernel')
+    tool = {t.__name__: t for t in session_tools(None)}['restart_kernel']
+    assert agent.is_write(tool)
+    for mode in ('ask', 'edits'):
+        assert agent.Approvals(tools=WRITE_TOOLS, mode=mode).decide('restart_kernel', {}) is None, mode   # left to a person
+
+
+def _session_hosts(cls):
+    for c in cls.__subclasses__(): yield c; yield from _session_hosts(c)
+
+
+def test_every_session_host_implementer_has_restart_kernel():
+    "Declaring the session group means writing all of it; a host without `restart_kernel` cannot be built."
+    import ramabana.pyrepl, ramabana.testing   # every implementer this package defines
+    from ramabana.tools import NullHost, SessionHost
+    hosts = [c for c in _session_hosts(SessionHost) if c.__module__.split('.')[0] in ('shalya', 'ramabana')]
+    assert {'LocalHost', 'DhrishtiHost', 'FullHost'} <= {c.__name__ for c in hosts}, hosts
+    for c in hosts: assert not getattr(c.restart_kernel, '__isabstractmethod__', False), c
+    class Half(NullHost, SessionHost):
+        def run_python(self, code): return ''
+        def inspect_python(self, code, scope='isolated'): return ''
+        def list_vars(self): return ''
+    with pytest.raises(TypeError, match='restart_kernel'): Half(['/x'])
