@@ -68,6 +68,30 @@ def test_resume_puts_tool_calls_back_into_context(tmp_path):
     assert a.session_id == 's1'
 
 
+def test_a_model_change_before_the_first_turn_keeps_the_resumed_conversation(tmp_path):
+    """The backend starts lazily, so a resume waits in `_resume_hist`; `snapshot_hist` read only the
+    live chat, and a `set_model` before the first turn carried an empty conversation across."""
+    from ramabana import NullHost
+    from ramabana.agent import Agent
+    a = Agent(NullHost(), model=MODEL, cfg=tmp_path)   # a real routing; no backend starts, so no model loads
+    a.history = [_turn('s1', 'read the file', 'It defines a().', model='claude-opus-5-5')]
+    a.resume_session('s1')
+    assert [m['content'] for m in a._be('turn').snapshot_hist()] == ['read the file', 'It defines a().']
+    a.set_model(MODEL)
+    assert a.model.name == MODEL
+    assert [m['content'] for m in a._be('turn').snapshot_hist()] == ['read the file', 'It defines a().']
+
+
+def test_keep_model_resumes_on_the_model_in_use(tmp_path):
+    "A host whose person picked a model resumes on it, not on the model the conversation last ran."
+    a, be = fake_agent(cfg=tmp_path)
+    before = a.model.name
+    a.history = [_turn('s1', 'go', 'done', model='claude-opus-5-5')]
+    a.resume_session('s1', keep_model=True)
+    assert a.model.name == before and a.session_id == 's1' and before in a.note
+    assert [m['content'] for m in be.snapshot_hist()] == ['go', 'done']
+
+
 def test_a_turn_that_only_worked_is_not_dropped(tmp_path):
     "An interrupted turn has tool calls and no reply; its work is still context."
     a, be = fake_agent(cfg=tmp_path)

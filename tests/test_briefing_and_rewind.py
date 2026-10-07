@@ -229,10 +229,14 @@ def test_the_rewind_ask_lists_exactly_what_will_go_and_what_stays(tmp_path):
 
 
 def test_a_binary_pre_image_is_reported_as_unrestorable_rather_than_emptied(tmp_path):
+    from shalya.core import writes
     a, host, tools = _full_agent(tmp_path, {'a.py': 'x = 1\n'})
     (host.root/'img.bin').write_bytes(b'\x89PNG\xff\xfe\x00')
+    # `create_file` refuses a binary target, so a writer that does not is what reaches this path
+    @writes
+    def stamp(path: str, text: str) -> str: (host.root/path).write_text(text); return 'ok'
     a._prepare('overwrite')
-    tools['create_file']('img.bin', 'text now\n'); tools['create_file']('a.py', 'x = 2\n')
+    a._record(stamp)('img.bin', 'text now\n'); tools['create_file']('a.py', 'x = 2\n')
     assert a.binary == {'img.bin'}
     a._finish('done')
     said = a.command('/rewind files')

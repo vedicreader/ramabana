@@ -191,8 +191,8 @@ def test_a_calls_list_arguments_reach_the_activity_and_the_history_faithfully(tm
     assert rows[1]['args'] == {'items': ['one', 'two']} and rows[2]['args'] == {'path': '/proj/a.py', 'start': 1, 'end': 1}
     saved = [json.loads(l) for l in a.history_path.read_text().splitlines()][-1]
     assert saved['activity'][0]['args']['edits'] == edits and saved['activity'][1]['args']['items'] == ['one', 'two']
-    long = a.activity.start('create_file', {'path': 'b.py', 'text': 'x' * 1000}).dict()['args']['text']
-    assert len(long) < 400 and long.startswith('xxx')
     from ramabana.agent import ARG_TEXT
+    long = a.activity.start('create_file', {'path': 'b.py', 'text': 'x' * (ARG_TEXT + 500)}).dict()['args']['text']
+    assert len(long) <= ARG_TEXT + 1 and long.startswith('xxx')
     big = a.activity.start('replace_text', {'path': 'b.py', 'edits': [{'oldText': 'y\n' * 2000, 'newText': 'z'}]}).dict()['args']['edits']
     assert isinstance(big, list) and big[0]['newText'] == 'z' and len(big[0]['oldText']) <= ARG_TEXT + 1 and big[0]['oldText'].startswith('y\ny\n')

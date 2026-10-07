@@ -1551,10 +1551,16 @@ def _load_history(self:Agent):
         start = max(0, p.stat().st_size - HISTORY_TAIL)
         with p.open('rb') as f:
             f.seek(start); raw = f.read()
-        lines = raw.decode('utf-8', 'replace').splitlines()
+        lines = raw.split(b'\n')   # `splitlines` also breaks at U+2028, which a record holds raw
         if start and lines: del lines[0]   # the seek landed mid-line
-        self.history = [json.loads(line) for line in lines if line.strip()][-HISTORY_TURNS:]
-    except Exception: self.history = []
+        self.history = [t for t in map(_log_turn, lines) if t is not None][-HISTORY_TURNS:]
+    except OSError: self.history = []
+
+def _log_turn(line):
+    "One log line as a turn, or `None` when it is blank or not JSON."
+    if not line.strip(): return None
+    try: return json.loads(line.decode('utf-8', 'replace'))
+    except ValueError: return None
 
 # %% ../nbs/03_agent.ipynb #d8f9fcfe
 @patch
@@ -2147,7 +2153,8 @@ def session_added_roots(self:Agent, session_id):
 
 # %% ../nbs/03_agent.ipynb #9a62f465
 @patch
-def resume_session(self:Agent, selector='latest'):
+def resume_session(self:Agent, selector='latest',
+                   keep_model=False):   # stay on the current turn model rather than the conversation's last
     "Resume a persisted conversation by full/prefix id, or the newest with `latest`."
     if self.busy: raise RuntimeError('cannot resume while the assistant is working')
     choices = self.sessions()
@@ -2166,13 +2173,13 @@ def resume_session(self:Agent, selector='latest'):
         canonical.append({'role': 'user', 'content': str(turn.get('prompt', '')) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
         body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
         if body.strip(): canonical.append({'role': 'assistant', 'content': body})
-    if picked['model']: self.set_model(picked['model'])
+    if picked['model'] and not keep_model: self.set_model(picked['model'])
     self._be('turn').resume_hist(canonical)
     self.session_id = picked['id']
     self.plan = Plan()
     self._load_plan()
     bit = f" · plan {self.plan.line()}" if self.plan else ''
-    self.note = f"resumed {picked['id']} · {picked['turns']} turns · {picked['model']}{bit}"
+    self.note = f"resumed {picked['id']} · {picked['turns']} turns · {self.model.name}{bit}"
     return picked
 
 # %% ../nbs/03_agent.ipynb #3fd8838b
@@ -3510,13 +3517,7 @@ def session_turns(self:Agent, sid):
             f.seek(start)
             raw = f.read(max(0, end - start))
     mine = (lambda t: not (t.get('session') or '')) if sid.startswith('legacy-') else (lambda t: (t.get('session') or '') == sid)
-    out = []
-    for line in raw.decode('utf-8', 'replace').splitlines():
-        if not line.strip(): continue
-        try: turn = json.loads(line)
-        except Exception: continue
-        if mine(turn): out.append(turn)
-    return out
+    return [t for t in map(_log_turn, raw.split(b'\n')) if t is not None and mine(t)]
 
 @patch
 def _remember(self:Agent, prompt, text, error='', state='complete'):

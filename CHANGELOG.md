@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.2.7
+
+- `resume_session(keep_model=True)` resumes on the turn model in use. The default still adopts the conversation's last model, and the note names the model actually in use.
+- `Backend.snapshot_hist` includes a resumed conversation that has not reached the model yet. A `set_model` before the first turn after a resume used to carry an empty history across.
+- The log reader splits records at `\n` only. A raw U+2028 inside a record no longer breaks it in two, and one unreadable line costs only itself.
+- Catalog adds `claude-sonnet-5-5` and `gpt-6.1-sol`; live provider models list newest first.
+- Requires `uraiyadal>=0.0.9`: a tagged tool call keeps its arguments, and one whose arguments were lost is asked for again.
+
 ## 0.2.6
 
 - Sub-agents never get the delegation, watch or plan tools, whatever the turn model or budget (a cloud turn used to hand them the root's full list). `ROOT_ONLY` names them.

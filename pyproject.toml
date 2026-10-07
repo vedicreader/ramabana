@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "shalya>=0.1.1",   # generate_image(images=, path=) with guarded destinations; picture checks by bytes; memory_search rows
-    "uraiyadal>=0.0.8",   # a refused approval's reason (`Ask.reply`) reaches the model
+    "uraiyadal>=0.0.9",   # a tagged call keeps its arguments, and a lost one is asked for again
     "gheasy>=0.0.10",
     "exhash>=0.4.11",
     "fastcore>=2.2.19",

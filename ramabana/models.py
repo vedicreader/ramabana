@@ -13,9 +13,9 @@ from fastcore.all import Path
 
 # %% ../nbs/01b_models.ipynb #49247004
 CATALOG = {
-    'claude': ('fable', 'opus', 'sonnet', 'haiku', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'),
-    'anthropic': ('claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'),
-    'openai': ('gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna', 'gpt-5.4', 'gpt-5.4-mini'),
+    'claude': ('fable', 'opus', 'sonnet', 'haiku', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001'),
+    'anthropic': ('claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001'),
+    'openai': ('gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna', 'gpt-5.4', 'gpt-5.4-mini'),
     'codex': ('gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna', 'gpt-5.5'),
     'gemini': ('gemini-3.5-flash', 'gemini-3.1-flash-lite'),
 }
@@ -70,4 +70,5 @@ def provider_models(p, legacy=False, ttl=300):
     from ramabana.core import probed
     try: live = probed(f'{p}-models', lambda: LIVE[p](), ttl=ttl, disk=False) if p in LIVE else []
     except Exception: live = []
-    return list(dict.fromkeys([*CATALOG.get(p, ()), *sorted(m for m in live if _current(p, m, legacy))]))
+    newest = lambda m: (tuple(map(int, re.findall(r'\d+', m))), m)
+    return list(dict.fromkeys([*CATALOG.get(p, ()), *sorted((m for m in live if _current(p, m, legacy)), key=newest, reverse=True)]))

@@ -706,8 +706,9 @@ class Backend:
         self._replace_hist(summary,list(keep)); return self
     
     def snapshot_hist(self):
-        "A detached model-history checkpoint suitable for an in-process branch."
-        return copy.deepcopy(list(self.hist))
+        "A detached model-history checkpoint suitable for an in-process branch, pending history included."
+        # a backend that has not started holds a resumed conversation in `_resume_hist`, not `hist`
+        return copy.deepcopy(list(self.hist if self.chat else (self._resume_hist or [])))
     
     def resume_hist(self,hist):
         "Restore canonical history now, or after this backend starts lazily."
