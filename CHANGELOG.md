@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.2.9
+
+- Tool results carry pictures to the turn model: a `screenshot` or a `view_file` on a picture arrives as an image when the model takes images and the transport carries them. Otherwise a note names the path. Sub-agents follow their own model.
+- Checkpoints, branches and model switches hold a placeholder for pictures, not base64.
+- An `after_tool` hook or a queued steer that rewrites a result keeps its pictures (`keep_media`).
+- The briefing's screenshot rule follows the turn model. A resumed conversation replays paths, not pictures.
+- `MEDIA`, `Attachment`, `media_parts` and `media_note` live in `ramabana.tools`, so a host that only sends files does not import the terminal. `ramabana.cli` re-exports them.
+- `teleprint` is capped below 0.1.4, whose `Compositor` has no `release`. Requires shalya 0.1.3 and uraiyadal 0.0.10.
+
 ## 0.2.8
 
 - Git writes, commits and rewinds act in the repository a call names: `/commit FOLDER MESSAGE`, `/pr FOLDER TITLE`, and `/rewind` undoes a git change where it happened. A git write with `path=` snapshots the tree rather than recording the folder as a file.
