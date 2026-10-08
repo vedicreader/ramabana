@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.11
+
+- The Claude Code and Anthropic catalogs list `claude-haiku-5-5`. The `haiku` alias still resolves to `claude-haiku-4-5-20251001` and `sonnet` to `claude-sonnet-5`.
+- With `ANTHROPIC_API_KEY` set, the Claude Code picker adds the ids the Anthropic key lists after its curated ones. The `claude` and `anthropic` providers share one cached listing and one request.
+- Discovered ids that end in a compact date snapshot, such as `claude-sonnet-4-5-20250929`, are left out of a picker. Curated ids are never filtered.
+- Requires rishi 0.1.40, whose Claude backend runs the `claude` on `$PATH` instead of the Agent SDK's bundled copy.
+
 ## 0.2.10
 
 - The conversation index no longer rescans the whole log on every read. A title-only row, for a conversation that never logged a turn, used to mark the index stale forever. When the log has only grown, the index reads just the new tail. A full rebuild happens only when the log shrank, a row is from an older index version, or there is no index.

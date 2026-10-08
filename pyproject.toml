@@ -23,7 +23,7 @@ dependencies = [
     "gheasy>=0.0.10",
     "exhash>=0.4.11",
     "fastcore>=2.2.19",
-    "rishi>=0.1.39",   # chats sharing a LiteRT engine take turns (engine_lock); a second chat on the same thread raises EngineBusy instead of hanging
+    "rishi>=0.1.40",   # the Claude backend runs the `claude` on $PATH, not the Agent SDK's bundled copy
     "fastspec>=0.2.4",
     "pyyaml>=6.0.3",
     "pobblebonk>=0.0.3",
@@ -74,7 +74,7 @@ path = "ramabana/__init__.py"
 [dependency-groups]
 dev = [
     "ramabana[all]",
-    "rishi[all]>=0.1.39",
+    "rishi[all]>=0.1.40",
     "nbdev>=3.3.14",
     "notebook>=7.6.2",
     "pytest>=9.1.1",
