@@ -160,6 +160,20 @@ def test_a_turn_does_not_inherit_the_previous_turn_s_tree():
     a._prepare('next')
     assert not a._walked and a._tree == {} and a.before == {}
 
+def test_a_tree_too_big_to_watch_is_read_once_not_on_every_command(monkeypatch):
+    "Over the cap every `run_shell` re-read the whole tree, then gave up: seconds a call for nothing."
+    from ramabana import agent as A
+    monkeypatch.setattr(A, 'SHELL_SNAPSHOT', 10)
+    host = MemHost({'/proj/a.py': 'a = 1\n' * 5})
+    a, _ = fake_agent(host)
+    reads = []
+    real = host.text_at
+    host.text_at = lambda p: (reads.append(p), real(p))[1]
+    assert a.snapshot_tree() is False
+    n = len(reads)
+    assert n and a.snapshot_tree() is False and len(reads) == n, 'the second command re-read the tree'
+
+
 def test_streaming_yields_as_it_goes_and_composes_the_same_message_as_blocking():
     """A stream that only yields at the end is a blocking call with extra steps, and a streamed turn
     that quietly saw a different message would be a very hard bug to find."""
@@ -222,7 +236,7 @@ def test_an_attached_image_survives_the_tool_plan():
     # a window a model that can see actually has: `SPEC` is 1k, and one picture is priced
     # at `IMG_TOKENS` however small its bytes are, so the fit check would reject the turn
     be.spec = replace(be.spec, ctx=128_000)
-    a.ask(a.compose('what is in this image?', image=b'\x89PNG-not-really'))
+    a.ask(a.compose('what is in this image? /grep Traceback', image=b'\x89PNG-not-really'))   # a named tool brings a plan
     sent = be.sent[-1]
     assert isinstance(sent, list) and len(sent) == 2
     assert sent[0] == b'\x89PNG-not-really'

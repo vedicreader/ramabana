@@ -11,8 +11,8 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'DFLT_TURN', 'DFLT_SMALL', 'DFLT_SUBAGENT', 'DFLT_LOCAL', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
            'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS',
            'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS', 'MODEL_ALIASES', 'TOOL_CHANNELS', 'KEY_ENVS',
-           'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'probe_path', 'probed', 'forget_probes',
-           'runtime_remedy', 'runtime_detail', 'runtime_available', 'auth_status', 'copilot_catalog',
+           'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'claude_wire', 'probe_path', 'probed',
+           'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available', 'auth_status', 'copilot_catalog',
            'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'resolve', 'spec_caps',
            'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for', 'register_model', 'unregister_model',
            'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model', 'force_tags',
@@ -61,7 +61,8 @@ CLAUDE_MODELS = claude_ids()
 CLAUDE_ALIASES = {**{mid: mid for mid in CLAUDE_MODELS}, **claude_aliases()}
 CLAUDE = {f'claude/{name}': mid for name, mid in CLAUDE_ALIASES.items()}
 DFLT_AGENT_CTX = 128_000
-CLAUDE_CTX = {'claude-opus': 200_000, 'claude-sonnet': 200_000}
+CLAUDE_CTX = {'claude-opus-5': 1_000_000, 'claude-sonnet-5': 1_000_000, 'claude-fable-5': 1_000_000, 'claude-haiku-5': 1_000_000,
+              'claude-opus': 200_000, 'claude-sonnet': 200_000}   #: first prefix wins; 1M is served under `<id>[1m]`
 RUNTIME_NAMES = tuple(urai.RUNTIMES)
 AGENTS = ('claude',)
 HOSTED = ('remote', 'copilot', *AGENTS)
@@ -81,6 +82,10 @@ def claude_ctx(model_id):
     "A Claude Code model's context window, else `DFLT_AGENT_CTX`."
     mid = str(model_id or '')
     return next((c for p, c in CLAUDE_CTX.items() if mid.startswith(p)), DFLT_AGENT_CTX)
+
+def claude_wire(model_id):
+    "The id Claude Code is asked for: its plain id serves 200k, and the 1M window is `<id>[1m]`."
+    return f'{model_id}[1m]' if claude_ctx(model_id) >= 1_000_000 else model_id
 
 # %% ../nbs/00_core.ipynb #07efd167
 PROBE_TTL = 90                                  #: seconds
@@ -277,7 +282,7 @@ def available_models(include_legacy=False):
     return out
 
 # %% ../nbs/00_core.ipynb #70d7dfa3
-DFLT_TURN, DFLT_SMALL, DFLT_SUBAGENT = 'claude-opus-5-5', 'gpt-4.1', 'claude-sonnet-5'
+DFLT_TURN, DFLT_SMALL, DFLT_SUBAGENT = 'claude-opus-5-5', 'gpt-4.1', 'claude-sonnet-5-5'
 DFLT_LOCAL = 'gemma-e4b'   #: the local model to suggest; never a route unless named
 LOCAL_RUNTIMES = ('litert', 'mlx', 'llama', 'ollama')
 

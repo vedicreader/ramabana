@@ -668,7 +668,7 @@ async def run_turn(ui, prompt):
             try: chunk = await asyncio.wait_for(q.get(), .05)
             except asyncio.TimeoutError:
                 run = run or ui.agent.run()
-                if run is not None and run.terminal: break
+                if run is not None and run.terminal and run.state not in ('completed', 'failed'): break   # these end their stream themselves, so what is queued still arrives
                 continue
             if chunk is None:break
             run = run or ui.agent.run()
@@ -933,7 +933,7 @@ class Ui:
     def drillable(self):
         "The turn's foldable entries, newest first: what alt+1..9 reaches."
         return [b for b in reversed(self.turn_blocks())
-                if b.tag in ('step', 'tool') and b.height > 1][:9]
+                if b.tag == 'tool' and b.height > 1][:9]
 
     def drill(self, n):
         "Toggle the `n`th newest foldable entry; False if there is none."
@@ -1077,7 +1077,7 @@ class Ui:
     def fold_work(self):
         "Open or shut every step and call of the turn; True when shut."
         self.flush_stream()
-        work = [b for b in self.turn_blocks() if b.tag in ('step', 'tool') and b.height > 1]
+        work = [b for b in self.turn_blocks() if b.tag == 'tool' and b.height > 1]
         if not work: return False
         shut = not all(b.collapsed or self._capped(b) for b in work)
         for b in work:
@@ -2063,12 +2063,15 @@ async def _promote(self:Ui, name):
 # %% ../nbs/05_cli.ipynb #d16f206f
 @patch
 def _close_seg(self:Ui):
-    "Drop the narration before a call; the call's trace replaces it."
+    "Keep the narration before a call as a `step` above its trace; the reply restarts after it."
     blk = self._seg_blk
     if blk is None: return
-    self.flush_stream()
+    text = self._seg.strip()
     self._seg_blk, self._seg, self._reply, self._rendered = None, '', '', ''
-    self.comp.remove_block(blk)
+    if not text: return self.comp.remove_block(blk)
+    blk.tag, blk.gutter, blk.collapse_at = 'step', GUTTERS['step'], None
+    self.comp.set_body(blk, self.reply(text), source=text)
+    self.comp.refresh_block(blk)
 
 @patch
 def _act(self:Ui, act):
@@ -2273,8 +2276,8 @@ def main(
     tmux: str = 'auto',                  # auto | on | off: read and run in tmux panes
     pane: str = 'auto',                  # auto | on | off: the `now` pane; auto in tmux
     doctor: bool = False,                # check tmux and the now pane, offer to install tmux, and exit
-    warm: bool = False,                  # seed example rounds even in the small profile
-    no_warm: bool = False,               # start without dhrona's example rounds
+    warm: bool = False,                  # seed a fresh session with dhrona's example rounds
+    no_warm: bool = False,               # start without them, which is the default
     optin: str = '',                     # opt-in tool groups: exhash,research,author
     profile: str = 'auto',               # auto | small | full: small suits ≤32k local models
 ):

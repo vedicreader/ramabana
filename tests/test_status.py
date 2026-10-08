@@ -5,7 +5,7 @@ from ramabana.testing import FakeBackend, MemHost, ScriptedBackend, Step, fake_a
 from ramabana.tools import delegate, sub_briefing
 
 READ = ('view_file', {'path': '/proj/a.py'})
-ASKED = 'eight words'
+ASKED = '-ing form'
 
 
 def view(path: str) -> str:
@@ -110,9 +110,8 @@ def test_the_snapshot_carries_the_root_and_sub_agent_status():
 
 def test_every_briefing_says_the_ing_form_and_the_root_asks_once():
     from ramabana.agent import RULES, SMALL_RULES
-    for rules in (RULES, SMALL_RULES): assert sum('eight words' in t for _, t in rules) == 1
-    said = [next(t for _, t in rules if 'eight words' in t) for rules in (RULES, SMALL_RULES)]
-    assert all('-ing form' in t for t in said + [sub_briefing()])
+    for rules in (RULES, SMALL_RULES): assert sum('-ing form' in t for _, t in rules) == 1
+    assert '-ing form' in sub_briefing()
     assert not any('Start every user-facing response' in t for _, t in RULES), 'one instruction about narrating, not two'
 
 

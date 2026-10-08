@@ -32,7 +32,7 @@ def test_the_one_shot_model_is_named_once_and_moves_every_cheap_job(monkeypatch)
 
     r = Routing(turn='gpt-mini')
     for job in ONESHOT_JOBS: assert r.name_for(job) == 'gpt-4.1', job
-    assert r.name_for('turn') == 'gpt-mini' and r.name_for('subagent') == 'claude-sonnet-5'
+    assert r.name_for('turn') == 'gpt-mini' and r.name_for('subagent') == 'claude-sonnet-5-5'
     assert 'summary' not in ONESHOT_JOBS and r.name_for('summary') == 'gpt-4.1'   # its own default
 
     r.policy['oneshot'] = 'gpt-sol'                    # one name moves them all
@@ -51,7 +51,7 @@ def test_the_one_shot_model_is_named_once_and_moves_every_cheap_job(monkeypatch)
     r2.set('sonnet')
     for job in ('completion', 'classify'):
         assert r2.spec(job).name == 'gpt-4.1' and not r2.spec(job).local, job
-    assert r2.name_for('subagent') == 'claude-sonnet-5' and r2.spec('summary').name == 'gemma-12b'
+    assert r2.name_for('subagent') == 'claude-sonnet-5-5' and r2.spec('summary').name == 'gemma-12b'
 
 
 def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runtime, monkeypatch):
@@ -269,9 +269,9 @@ def test_a_claude_model_is_measured_against_its_own_window():
     same conversation was reading about eight times fuller on Claude than on a 1M OpenAI model."""
     from ramabana.core import CLAUDE_MODELS, DFLT_AGENT_CTX, claude_ctx, resolve
     for mid in CLAUDE_MODELS:
-        want = 200_000 if mid.startswith(('claude-opus', 'claude-sonnet')) else DFLT_AGENT_CTX
+        want = 1_000_000 if mid.startswith(('claude-opus-5', 'claude-sonnet-5', 'claude-fable-5', 'claude-haiku-5')) else DFLT_AGENT_CTX
         assert resolve(mid).ctx == want, mid
-    assert resolve('opus').ctx == 200_000 and resolve('sonnet').ctx == 200_000, 'aliases too'
+    assert resolve('opus').ctx == 1_000_000 and resolve('sonnet').ctx == 1_000_000, 'aliases too'
     # a window we do not know falls back rather than being guessed at: a ceiling set too high
     # hides a compaction that should already have happened
     assert claude_ctx('claude-something-unreleased') == DFLT_AGENT_CTX
@@ -461,6 +461,7 @@ def test_a_model_id_the_catalog_moved_past_still_resolves(monkeypatch):
         assert spec.backend == 'claude' and spec.model_id == core.CLAUDE_ALIASES.get(bare, bare), (name, spec)
     assert core.resolve('opus-5').model_id == 'claude-opus-5'
     assert core.resolve('opus').model_id == core.CLAUDE_ALIASES['opus'], 'a tier alias tracks the latest'
+    assert [core.resolve(t).model_id for t in ('sonnet', 'haiku')] == ['claude-sonnet-5-5', 'claude-haiku-5-5'], 'not the older id listed first'
     for name in ('gpt-4.1-mini', 'gpt-5.6', 'gpt-5.5', 'openai/gpt-6-astra', 'codex/gpt-5.4'): assert core.resolve(name).backend == 'remote', name
     with pytest.raises(KeyError): core.resolve('gpt-9')
 
@@ -486,7 +487,7 @@ def test_the_defaults_are_cloud_models(monkeypatch):
     "Opus takes the turn, gpt-4.1 the small jobs, Sonnet the sub-agents; no local engine is a default."
     no_model_env(monkeypatch)
     r = Routing()
-    assert r.name_for('turn') == 'claude-opus-5-5' and r.name_for('subagent') == 'claude-sonnet-5'
+    assert r.name_for('turn') == 'claude-opus-5-5' and r.name_for('subagent') == 'claude-sonnet-5-5'
     for job in ('oneshot', 'classify', 'completion', 'inline', 'summary'): assert r.name_for(job) == 'gpt-4.1', job
     assert all(MODELS.get(n, ('remote',))[0] not in LOCAL_RUNTIMES for n in DEFAULT_POLICY.values() if n)
     assert not hasattr(r, 'default_local')
@@ -518,7 +519,7 @@ def test_a_missing_key_or_cli_names_the_job_the_model_and_what_is_needed(monkeyp
     r = Routing()
     with pytest.raises(core.AgentError, match=r'turn job: claude-opus-5-5 .*claude /login'): r.spec('turn')
     with pytest.raises(core.AgentError, match=r'completion job: gpt-4\.1 needs OPENAI_API_KEY'): r.spec('completion')
-    with pytest.raises(core.AgentError, match=r'subagent job: claude-sonnet-5 .*Claude Code'): r.spec('subagent')
+    with pytest.raises(core.AgentError, match=r'subagent job: claude-sonnet-5-5 .*Claude Code'): r.spec('subagent')
 
 def test_a_cheap_job_without_its_key_moves_to_a_cloud_model_and_says_why(monkeypatch, hide_runtime):
     no_model_env(monkeypatch)
@@ -567,7 +568,7 @@ def test_a_local_turn_keeps_every_side_job_on_the_machine(monkeypatch):
     r.set('gemma-12b')
     assert all(r.name_for(j) == 'gemma-12b' for j in SIDE), '/model to another local model carries them'
     r.set('opus')
-    assert (r.name_for('classify'), r.name_for('subagent')) == ('gpt-4.1', 'claude-sonnet-5'), 'and back to the cloud defaults'
+    assert (r.name_for('classify'), r.name_for('subagent')) == ('gpt-4.1', 'claude-sonnet-5-5'), 'and back to the cloud defaults'
 
 def test_an_explicit_job_setting_wins_over_a_local_turn(monkeypatch):
     no_model_env(monkeypatch)
@@ -585,7 +586,7 @@ def test_a_cloud_turn_keeps_the_defaults(monkeypatch):
     no_model_env(monkeypatch)
     for turn in (None, 'sonnet', 'gpt-mini'):
         r = Routing(turn=turn)
-        assert [r.name_for(j) for j in SIDE] == ['gpt-4.1'] * 5 + ['claude-sonnet-5'], turn
+        assert [r.name_for(j) for j in SIDE] == ['gpt-4.1'] * 5 + ['claude-sonnet-5-5'], turn
 
 def test_without_an_openai_key_small_jobs_fall_to_sonnet_and_say_so_once(monkeypatch):
     no_model_env(monkeypatch)
@@ -594,13 +595,42 @@ def test_without_an_openai_key_small_jobs_fall_to_sonnet_and_say_so_once(monkeyp
     notes = []
     h = MemHost(); h.note = notes.append
     a = Agent(h, extensions=False, subagents=False)
-    assert a.routing.spec('classify').name == 'claude-sonnet-5'
-    for job in ('classify', 'completion', 'summary', 'inline', 'classify'): assert a._be_or_none(job).spec.name == 'claude-sonnet-5'
+    assert a.routing.spec('classify').name == 'claude-sonnet-5-5'
+    for job in ('classify', 'completion', 'summary', 'inline', 'classify'): assert a._be_or_none(job).spec.name == 'claude-sonnet-5-5'
     said = [n for n in notes if 'gpt-4.1' in n]
-    assert said == ['gpt-4.1 unavailable (no OPENAI_API_KEY); small jobs use claude-sonnet-5'], notes
+    assert said == ['gpt-4.1 unavailable (no OPENAI_API_KEY); small jobs use claude-sonnet-5-5'], notes
 
 def test_with_neither_gpt_nor_sonnet_the_error_names_job_model_and_key(monkeypatch, hide_runtime):
     no_model_env(monkeypatch)
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
     hide_runtime('claude')
     with pytest.raises(core.AgentError, match=r'^classify job: gpt-4\.1 needs OPENAI_API_KEY'): Routing().spec('classify')
+
+
+def test_rishi_usage_is_cumulative_though_its_chat_counts_each_call_afresh():
+    """rishi's `Chat` starts a new `use` on every call, while `Agent._finish` diffs a running total.
+    A turn smaller than the one before therefore recorded nothing, and `turns` stuck at 0."""
+    from types import SimpleNamespace
+    from ramabana.core import ModelSpec
+    def use(i, o): return SimpleNamespace(model='m', prompt_tokens=i, completion_tokens=o, total_tokens=i + o,
+                                          cached_tokens=0, cache_creation_tokens=0, reasoning_tokens=0, cost=0.0, n=1)
+    b = RishiBackend(ModelSpec('claude/claude-opus-5-5', 'claude', 'claude-opus-5-5', 200_000))
+    b.chat = SimpleNamespace(use=use(100, 10))
+    b.use = b._usage()
+    assert b.used_tokens == 0, 'the usage baseline is not the window occupancy'
+    assert b._usage().input == 100, 'reading again counts the same call once'
+    b.chat.use = use(40, 4)                          # the next, smaller call
+    b.use = b._usage()
+    assert (b.use.input, b.use.turns) == (140, 2)
+
+
+def test_claude_turns_ask_for_high_effort_unless_told_otherwise(monkeypatch):
+    "Claude Code runs a model at its default effort when none is sent, which for Opus 5.5 is medium."
+    from ramabana.core import ModelSpec
+    spec = ModelSpec('claude/claude-opus-5-5', 'claude', 'claude-opus-5-5', 200_000)
+    monkeypatch.delenv('RAMABANA_EFFORT', raising=False)
+    assert RishiBackend(spec)._runtime_kw()['effort'] == 'high'
+    monkeypatch.setenv('RAMABANA_EFFORT', 'xhigh')
+    assert RishiBackend(spec)._runtime_kw()['effort'] == 'xhigh'
+    assert RishiBackend(spec, effort='low')._runtime_kw()['effort'] == 'low', 'a configured effort wins'
+    assert 'effort' not in RishiBackend(resolve('gemma-e4b'))._runtime_kw()

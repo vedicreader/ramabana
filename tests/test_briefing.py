@@ -359,9 +359,10 @@ def test_the_briefing_describes_only_the_tools_the_model_was_given():
     # The response-order rule and durable-memory rule are both included in the briefing.
     # lead with the answer, and look in durable memory before acting.
     rules = A.work_rules()
-    assert 'Start every response with what you plan to do.' in rules
-    assert 'Keep a plan small enough that every step has one independently verifiable outcome.' in rules
-    assert 'Before acting on a request, search Vishalakshi durable memory with `memory_search`' in rules
+    assert 'Keep a plan small enough that every step has one independently verifiable outcome' in rules
+    assert 'search Vishalakshi durable memory with `memory_search`' in rules
+    assert 'Before acting on a request' not in rules, 'memory is searched when it could matter, not on every request'
+    assert not any(x in rules for x in ('Start every response', 'eight words', 'most common way')), 'no opener, cap or warning'
 
     assert '`write_docs`' in A.work_rules(['read_skill']) and '`write_prose`' in A.work_rules(['read_skill'])
     assert '`write_docs`' not in A.work_rules(['view_file'])
@@ -385,26 +386,6 @@ def test_the_coding_standard_reaches_the_briefing_it_was_written_for(host):
     small = Agent(host, extensions=False, subagents=False)
     small.routing.spec = lambda job='turn', fallback=True: SMALL
     assert 'earn its place' not in small.system_prompt()   # the budget still decides
-
-
-def test_the_tags_channel_hears_the_output_contract_after_the_tool_protocol():
-    """Rishi appends the tag protocol *after* the briefing, so on that channel the last thing the
-    model reads is tool punctuation and the style rules are a whole briefing away. Riding out with
-    the turn is the only position later than that. Every other channel already has a system
-    message and is left alone."""
-    native = ModelSpec('gpt', 'remote', 'gpt-5.6', 200_000)
-    _output_contract_cases(native)
-
-    # It restates the briefing's own rule rather than introducing a second instruction system.
-    assert 'plain sentences' in A.work_rules() and 'plain sentences' in A.OUTPUT_CONTRACT
-
-
-def _output_contract_cases(native):
-    for spec, tagged in ((CLAUDE, True), (native, False)):
-        a, be = fake_agent(replies=['done'])
-        a.routing.spec = lambda job='turn', fallback=True, _s=spec: _s
-        a.ask('what does budget_for decide?')
-        assert ('<output-contract>' in str(be.sent[-1])) is tagged, spec.name
 
 
 def test_the_projects_own_instructions_are_read_marked_and_bounded():
@@ -455,7 +436,7 @@ def test_a_notice_fires_on_the_shape_of_the_prompt_not_on_a_model_call():
     a, be = fake_agent(replies=['because x'])
     a.ask('why does this break?')
     sent = str(be.sent[0])
-    assert 'route="direct"' in sent and '<system-reminder>' not in sent
+    assert '<tool-plan' not in sent and '<system-reminder>' not in sent
 
 
 def test_a_delegation_says_which_side_of_the_call_it_died_on(spec):
@@ -531,7 +512,7 @@ def test_the_friendly_claude_names_route_to_the_harness_not_the_mcp_transport():
     `claude/` route strips the harness back to a model, which is the one that answers.
     """
     from ramabana.core import MODELS
-    for name, mid in (('sonnet', 'claude-sonnet-5'), ('opus', 'claude-opus-5-5'),
+    for name, mid in (('sonnet', 'claude-sonnet-5-5'), ('opus', 'claude-opus-5-5'),
                       ('fable', 'claude-fable-5-1'), ('claude-sonnet-5', 'claude-sonnet-5')):
         assert MODELS[name] == ('claude', mid), f'{name} -> {MODELS[name]}'
     assert not any(str(mid).startswith('claude_code/') for _, mid in MODELS.values())
@@ -553,17 +534,17 @@ def test_a_harness_is_held_to_its_own_window_not_the_tables():
     what the model held -- at the tables' 1M figure ramabana compacted at 983,616 tokens and
     re-sent that much per turn, which was the hang.
 
-    Rishi resumes a Claude Code session now, so that reason has gone and the model's own window is
-    the honest number. The tables' figure is still refused: it is the model's, not the session's.
+    Rishi resumes a Claude Code session now, so that reason has gone and the session's window is
+    the honest number. Claude Code serves 200k under a model's plain id and 1M under `<id>[1m]`,
+    so the 5-series is asked for by that name and held to 1M; anything else keeps what it is served.
     """
-    from ramabana.core import DFLT_AGENT_CTX, _cloud_ctx, claude_ctx, resolve
-    assert _cloud_ctx('claude-sonnet-5')[0] > 200_000, 'the tables still know a bigger one'
-    for name in ('sonnet', 'opus', 'claude/claude-opus-5-5'):
-        assert resolve(name).ctx == 200_000, name
-        assert resolve(name).ctx < _cloud_ctx('claude-sonnet-5')[0], 'and it is not the tables\' figure'
+    from ramabana.core import DFLT_AGENT_CTX, claude_ctx, claude_wire, resolve
+    for name in ('sonnet', 'opus', 'haiku', 'fable', 'claude/claude-opus-5-5'):
+        assert resolve(name).ctx == 1_000_000, name
+        assert claude_wire(resolve(name).model_id) == resolve(name).model_id + '[1m]', name
+    assert claude_ctx('claude-opus-4-5') == 200_000 and claude_wire('claude-opus-4-5') == 'claude-opus-4-5'
     # a family whose window is not recorded here still gets the affordable ceiling
-    assert resolve('haiku').ctx == DFLT_AGENT_CTX
-    assert claude_ctx('claude-unreleased-9') == DFLT_AGENT_CTX
+    assert claude_ctx('claude-unreleased-9') == DFLT_AGENT_CTX and claude_wire('claude-unreleased-9') == 'claude-unreleased-9'
 
 
 def test_durable_notes_reach_the_model_through_a_seam_every_agent_answers():
@@ -603,3 +584,17 @@ def test_the_screenshot_rule_arrives_only_with_the_browser_group():
     assert rule in sp and 'page_text' in sp and 'cannot see pictures' in sp
     sp = A.system_prompt(b, tools=tools_for(b, optin=('browser',)))
     assert rule not in sp and 'arrives as an image' in sp and 'replays its path' in sp
+
+
+def test_the_model_chooses_its_tools_unless_the_user_names_one():
+    """A keyword router used to pick a route per turn and run its first tool up front: a pasted
+    handoff mentioning "today" was web-searched whole. Current models choose well; only a tool the
+    user names with `/tool` is put ahead of the turn."""
+    for spec in (CLAUDE, ModelSpec('gpt', 'remote', 'gpt-5.6', 200_000)):
+        a, be = fake_agent(replies=['done', 'done'])
+        a.routing.spec = lambda job='turn', fallback=True, _s=spec: _s
+        a.ask('what are the latest nbdev release notes? where is this repo configured?')
+        sent = str(be.sent[-1])
+        assert not any(x in sent for x in ('<tool-plan', '<preflight-tool', '<output-contract>')), spec.name
+        a.ask('find it /grep threshold')
+        assert '<tool-plan route="explicit">' in str(be.sent[-1])

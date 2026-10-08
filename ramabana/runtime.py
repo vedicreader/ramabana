@@ -8,12 +8,12 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
            'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM', 'ONESHOT_CUT',
-           'IMG_TOKENS', 'QUIET_RUNTIMES', 'STATUS_CHARS', 'CHILD_KEEP', 'CHAT_CALLBACKS', 'interesting', 'captured',
-           'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact', 'serialise', 'split_previous',
-           'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
-           'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
-           'use_chat', 'RishiBackend', 'make_backend', 'status_line', 'said_before_call', 'Run', 'current_run',
-           'run_context', 'TokenLogger']
+           'IMG_TOKENS', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'STATUS_CHARS', 'CHILD_KEEP', 'CHAT_CALLBACKS',
+           'interesting', 'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact',
+           'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient',
+           'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think',
+           'ThinkFilter', 'Usage', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'status_line',
+           'said_before_call', 'Run', 'current_run', 'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import contextvars, copy, math, os, re, sys, threading, time, uuid
@@ -21,7 +21,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from fastcore.basics import patch
 from urai import resp_text, tool_rows, strip_hist_media
-from .core import accepts, agent_err, env, force_tags, local_ctx, local_window, tool_channel
+from .core import accepts, agent_err, claude_wire, env, force_tags, local_ctx, local_window, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # bytes of tail kept per call
@@ -782,10 +782,12 @@ def use_chat(f):
 
 QUIET_RUNTIMES = frozenset({'litert'})   #: they run the tool loop inside the engine, so the text before a call never reaches us
 
+CLAUDE_EFFORT = 'high'   #: what a Claude turn asks for; Claude Code otherwise runs the model's default, medium on Opus 5.5
+
 class RishiBackend(Backend):
     kind='rishi'
     def __init__(self,*a,max_steps=MAX_STEPS,**kw):
-        self.max_steps,self._prefill=max_steps,None; super().__init__(*a,**kw)
+        self.max_steps,self._prefill,self._seen_use=max_steps,None,None; super().__init__(*a,**kw)
     @property
     def prefilled_think(self):
         "Whether this model's template opens a thinking block the model has to close."
@@ -802,6 +804,7 @@ class RishiBackend(Backend):
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime in ('llama','ollama'): kw.setdefault('n_ctx',self.spec.ctx)
+        if self.spec.runtime=='claude': kw.setdefault('effort',env('EFFORT',CLAUDE_EFFORT))
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
             if 'backend' not in eng and 'backend' not in kw and (backend := env('LITERT_BACKEND')):
@@ -822,7 +825,8 @@ class RishiBackend(Backend):
     def _start(self):
         from rishi import Chat
         self._measure()
-        return self._fitted((_MK_CHAT or Chat)(self.spec.model_id,runtime=self.spec.runtime,sp=self.sp,
+        mid=claude_wire(self.spec.model_id) if self.spec.runtime=='claude' else self.spec.model_id
+        return self._fitted((_MK_CHAT or Chat)(mid,runtime=self.spec.runtime,sp=self.sp,
                     tools=self.tools,approve=self.approve,tool_max_len=self.tool_max_len,
                     max_steps=self.max_steps,ctx_limit=self.spec.ctx,**self._runtime_kw()))
     def _fitted(self,chat):
@@ -900,8 +904,10 @@ class RishiBackend(Backend):
             raise RuntimeError(f'{type(self.chat).__name__} cannot have its history replaced')
         self.chat.hist[:]=self.chat.mk_msgs([summary,*keep]); self.chat._recreate_conv()
     def _usage(self):
+        "Cumulative, as `Backend.send` expects, though rishi's `Chat` starts a fresh `use` on every call."
         if (u:=getattr(self.chat,'use',None)) is None: return Usage(model=self.spec.model_id)
-        return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
+        if u is not self._seen_use: self._seen_use,self._use_base=u,self.use
+        return self._use_base+Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
                      total=u.total_tokens,cached=u.cached_tokens,cache_write=u.cache_creation_tokens,
                      reasoning=u.reasoning_tokens,cost=u.cost,turns=u.n)
     def _refresh(self): self.chat.reconfigure(sp=self.sp,tools=self.tools)

@@ -1,8 +1,9 @@
-"""A fresh session is seeded with dhrona's accepted rounds whose calls bind to its tools; nothing else is.
+"""Asked to (`--warm`), a fresh session is seeded with dhrona's accepted rounds whose calls bind to its tools.
 
 The rounds are worked examples of the tool dialect (search vs grep, a refused approval, a git flow).
-They cost a few hundred tokens and only pay on a conversation that has none yet, so a resumed
-session, a small window and `--no-warm` all get an empty chat.
+They are off unless asked for: each shows one call per message and a terse narration line, which a
+current model copies, and the briefing already says what they demonstrate. A resumed session and a
+small window get an empty chat even when asked.
 """
 import inspect
 import json
@@ -31,7 +32,7 @@ def _turn(session, prompt, reply, model='gpt-mini'):
 
 
 def test_a_fresh_session_is_seeded_once_with_rounds_whose_calls_bind_to_its_tools(tmp_path, full):
-    a, be = fake_agent(cfg=tmp_path, replies=['ok', 'ok'])
+    a, be = fake_agent(cfg=tmp_path, replies=['ok', 'ok'], warm=True)
     a.ask('hello')
     seeded = be.hist_[:-2]                                  # everything before this turn's user message and reply
     assert seeded and seeded[0]['role'] == 'user' and be.hist_[-2]['content'].startswith('hello')
@@ -48,7 +49,7 @@ def test_a_fresh_session_is_seeded_once_with_rounds_whose_calls_bind_to_its_tool
 
 
 def test_a_resumed_session_is_not_seeded(tmp_path, full):        # Review Focus 1
-    b, be2 = fake_agent(cfg=tmp_path, replies=['ok'])
+    b, be2 = fake_agent(cfg=tmp_path, replies=['ok'], warm=True)
     b.history = [_turn('s1', 'start', 'first')]              # a registered model name, as `test_resume` does
     b.resume_session('s1')
     b.ask('again')
@@ -63,7 +64,7 @@ def test_changing_the_model_before_the_first_prompt_still_seeds(tmp_path, full, 
     def build(spec, **kw):
         made.append(FakeBackend(spec, replies=['ok'], **kw)); return made[-1]
     monkeypatch.setattr(agent_mod, 'make_backend', build)
-    a = Agent(MemHost({'/proj/a.py': 'x = 1\n'}), model='gemma-e2b', cfg=tmp_path, extensions=False, subagents=False, profile='full')   # the small profile starts cold
+    a = Agent(MemHost({'/proj/a.py': 'x = 1\n'}), model='gemma-e2b', cfg=tmp_path, extensions=False, subagents=False, profile='full', warm=True)
     a.set_model('gemma-12b')                                 # a lazy backend: nothing has started yet
     assert a.warm_start(), 'a fresh session, whatever model it starts on'   # a frontend may seed before the first prompt
     a.ask('hello')
@@ -72,24 +73,25 @@ def test_changing_the_model_before_the_first_prompt_still_seeds(tmp_path, full, 
 
 
 def test_no_warm_and_no_dhrona_leave_the_chat_empty(monkeypatch, full):    # Review Focus 2
-    a, be = fake_agent(warm=False, replies=['ok']); a.ask('x')
-    assert len(be.hist_) == 2 and a.warm_start() == []
+    for kw in ({'warm': False}, {}):                       # off unless asked, in every profile
+        a, be = fake_agent(replies=['ok'], **kw); a.ask('x')
+        assert len(be.hist_) == 2 and a.warm_start() == [] and a.warm is False
     monkeypatch.setitem(sys.modules, 'dhrona', None); monkeypatch.setitem(sys.modules, 'dhrona.core', None)
     h = FullHost(files={'a.py': 'x = 1\n'})
-    a, be = fake_agent(h, replies=['ok']); a.ask('x')
+    a, be = fake_agent(h, replies=['ok'], warm=True); a.ask('x')
     assert len(be.hist_) == 2 and a.warm_start() == []
     assert any('no warm start' in n and 'dhrona' in n for n in h.notes), h.notes
 
 
 def test_a_small_window_skips_the_seeds():
-    a, be = fake_agent(replies=['ok'])
+    a, be = fake_agent(replies=['ok'], warm=True)
     assert not a.budget.inline                              # the fake `SPEC` is a 1k window
     a.ask('x')
     assert len(be.hist_) == 2 and a.warm_report['used'] == []
 
 
 def test_sub_agents_are_not_seeded(full):                    # Review Focus 3
-    a, be = fake_agent(replies=['ok']); a.ask('x')
+    a, be = fake_agent(replies=['ok'], warm=True); a.ask('x')
     tools = {t.__name__: t for t in a.tools}
     tools['delegate_search'](['q'])
     assert be.spawned and not names(be.spawned[0].hist_)

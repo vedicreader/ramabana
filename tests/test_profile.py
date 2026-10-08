@@ -101,17 +101,16 @@ def test_a_small_agent_gets_the_briefing_when_the_full_one_would_carry_a_plan(ho
 
 # -- warm start ---------------------------------------------------------------------------
 
-def test_a_small_profile_starts_cold_unless_asked(tmp_path):
-    "A small model copies an example's paths literally, so `warm=None` resolves to off for the small profile and on for the full one."
+def test_every_profile_starts_cold_unless_asked(tmp_path):
+    "`warm=None` resolves to off whatever the profile; `--warm` seeds the small profile as well as the full one."
     pytest.importorskip('dhrona')
     a, be = fake_agent(cfg=tmp_path, replies=['ok'], profile='auto')
     a.routing.spec = lambda job='turn', fallback=True: LOCAL
     assert a.profile == 'small' and a.warm is False and a.warm_choice is None
     a.ask('hello')
-    assert len(be.hist_) == 2 and a.warm_report['used'] == [] and 'small profile' in a.warm_report['note']
-    assert any('warm start off (small profile)' in n and '--warm' in n for n in a.host.notes) if hasattr(a.host, 'notes') else True
+    assert len(be.hist_) == 2 and a.warm_report['used'] == []
     full, _ = fake_agent(cfg=tmp_path, replies=['ok'])
-    assert full.warm is True and fake_agent(warm=False)[0].warm is False and fake_agent(profile='small', warm=True)[0].warm is True
+    assert full.warm is False and fake_agent(warm=True)[0].warm is True and fake_agent(warm=False)[0].warm is False and fake_agent(profile='small', warm=True)[0].warm is True
 
 
 def test_a_small_profile_asked_to_warm_gets_one_round_even_on_a_small_window(tmp_path):

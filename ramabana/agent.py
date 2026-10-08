@@ -8,15 +8,14 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES',
-           'PICTURE_RULE', 'RULES', 'OUTPUT_CONTRACT', 'SMALL_RULES', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES',
-           'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL',
-           'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'WARM_OFF_SMALL',
-           'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
-           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
-           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
-           'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives',
-           'project_context', 'work_rules', 'system_prompt', 'small_system_prompt', 'Todo', 'Plan', 'plan_tools',
-           'Agent', 'git_shell_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
+           'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK',
+           'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL',
+           'HISTORY_TURNS', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP',
+           'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER',
+           'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject',
+           'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'request_text',
+           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'small_system_prompt', 'Todo', 'Plan',
+           'plan_tools', 'Agent', 'git_shell_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -569,25 +568,6 @@ def inline_for(inline, names):
     "The skills to inline for a tool list: `exhash` only when `edit_file` is offered."
     return tuple(s for s in inline if s != 'exhash' or not names or 'edit_file' in names)
 
-
-def tool_plan(prompt):
-    "A small deterministic routing step before the model sees a turn. Never another model call."
-    p = str(prompt or '').lower()
-    repo = ('this repo', 'repository', 'codebase', 'implementation', 'implemented',
-            'default model', 'config', 'source code', 'where is', 'which file', ' method',
-            ' function', ' class')
-    current = ('latest', 'current docs', 'documentation says', 'release notes', 'on the web',
-               'today', 'recent version')
-    action = ('create', 'make', 'scale', 'run', 'execute', 'fix', 'change', 'add ', 'remove', 'rename')
-    if any(x in p for x in repo):
-        return ('repo', 'Use search_code first. Read the matching source if needed. '
-                        'Do not web-search a question about the open repository.')
-    if any(x in p for x in current):
-        return ('web', 'Use web_search, then read_url for the authoritative result.')
-    if p.strip().startswith(action) or ' as df_' in p:
-        return ('act', 'Use the execution/editing tool that produces the requested result, then verify it.')
-    return ('direct', 'Answer directly; use a tool only if the available context is insufficient.')
-
 # %% ../nbs/03_agent.ipynb #23d3d109
 def request_text(prompt):
     """The person's request, excluding notebook/screen context composed around it."""
@@ -651,16 +631,16 @@ RULES = (
     (None, 'Act on the user’s verb. “Create”, “run”, “fix”, “add” and “as NAME” request a\n'
            '  result, not a plan: use the tool that produces it, verify it, then report what exists.\n'
            '  Never stop at “I will…”.'),
-    (None, 'Start every response with what you plan to do. Before each tool call, write one line of at most\n'
-           '  eight words, in the -ing form, saying what you are doing: “Reading the config loader.” End with\n'
-           '  the result, conclusion, or what is needed.'),
+    (None, 'Before each tool call, write one short line in the -ing form saying what you are doing, so the\n'
+           '  user can follow the work: “Reading the config loader.” End with the result, conclusion, or what\n'
+           '  is needed.'),
     (None, 'Never claim a file changed, a command passed, or a test went green unless a tool\n'
            '  result in this conversation says so. If you did not run it, say you did not run it.'),
     (None, 'A tool result starting with ERROR: is a failure. Read it, fix the cause, and try a\n'
            '  different approach. Calling the same tool again unchanged is never the fix.'),
-    (None, 'Keep a plan small enough that every step has one independently verifiable outcome. Do not\n'
-           '  begin the next step until the current step is verified. If verification would widen the scope,\n'
-           '  split the step or stop and report the blocker.'),
+    (None, 'Keep a plan small enough that every step has one independently verifiable outcome, and verify\n'
+           '  a step before building on it. If verification would widen the scope, split the step or report\n'
+           '  the blocker.'),
     ('search_code', 'Use `search_code` for project behaviour, unfamiliar APIs, or uncertainty about an\n'
                     '  installed library -- the index covers this repo *and* every installed package. Do not\n'
                     '  search for routine Python you already know.'),
@@ -686,10 +666,10 @@ RULES = (
                    '  `inspect_python()` with no code first, then run only the transformation the user asked for.'),
     ('run_python', '`run_python` shares the user’s kernel namespace. Read anything; bind results to NEW\n'
                    '  names. You cannot rebind or delete the user’s variables, so do not try.'),
-    ('web_search', 'Use `web_search`/`read_url` only when the answer depends on current external\n'
-                   '  documentation -- not for questions about this repository.'),
-    ('memory_search', 'Before acting on a request, search Vishalakshi durable memory with `memory_search` when\n'
-                      '  that tool is available; use stored preferences and relevant prior context.'),
+    ('web_search', '`web_search` and `read_url` reach what is outside this machine: current documentation,\n'
+                   '  releases, news. The repository and its installed packages are answered locally.'),
+    ('memory_search', 'When prior context could change what you do -- a project you have worked on before, a\n'
+                      '  preference, an earlier decision -- search Vishalakshi durable memory with `memory_search`.'),
     ('read_skill', 'Before writing prose that ships with the work -- a docstring, a comment, a README, a\n'
                    '  commit message, a PR description, a message to a colleague -- read the `write_docs`\n'
                    '  skill. For narrative writing read `write_prose`, and for the design a codebase is\n'
@@ -715,17 +695,10 @@ RULES = (
     (None, 'Writes may be put to the user for approval. A refusal comes back with their reason --\n'
            '  read it and change the approach, do not retry the same call.'),
     (None, 'Write, edit and run only inside the folders above. Anything else is refused.'),
-    (None, 'Be concise. Report what you did and what it cost, not what you intend to do.'),
+    (None, 'Report what you did, what you found and what it cost, and cut what the reader does not need.'),
     (None, 'Answer in plain sentences. Headings, bullet lists and bold belong in a document the\n'
-           '  user asked for, not in a reply, and a code fence holds code rather than prose.\n'
-           '  Formatting a two-line answer as a report is the most common way this briefing is ignored.'),
+           '  user asked for, not in a reply, and a code fence holds code rather than prose.'),
 )
-
-
-#: re-asserted after the tag block, so the rules are read last
-OUTPUT_CONTRACT = ('\n\n<output-contract>Reply in plain sentences: no headings, no bullet list, no '
-                   'bold, no code fence around prose. Lead with the answer and stop. This outranks any '
-                   'formatting habit carried in from another harness.</output-contract>')
 
 
 SMALL_RULES = (
@@ -809,16 +782,16 @@ These apply on top of the rules above, and outrank them where they disagree.
 
 - The environment and the repository history are the user's. Do not install packages or change environment configuration. Looking at git is yours to do with `git_status`, `git_diff`, `git_log` and `git_divergence`; a git write -- `git_commit`, `git_checkout`, `git_stash`, `git_remote` -- needs the user's approval of that exact action in this conversation, and `run_shell` is never the way to do it.
 - Approval does not travel. Confirm before an action that is hard to reverse or that is visible outside this machine, and look at the target before you delete or overwrite it. If what you find contradicts how it was described, say that instead of proceeding.
-- There is no momentum. Never extend agreed work into new decisions, and when in doubt whether something was agreed, it was not. Approval for a downstream change does not cover an upstream one.
-- A question outranks the work in flight. Answer it in prose and end the turn. A question is never approval to continue and never an occasion to change code.
-- Never end a response by asking what to do next. Stating a recommendation or naming what remains undone is right; soliciting the next instruction takes agency from the user. Asking for their read on a direction is welcome; asking permission to proceed is not.
+- Do the work that was asked, fully, and leave new decisions to the user. When the task would grow into one -- another design, a change upstream of the one agreed -- name it and let them choose, because approval for one change does not cover another.
+- When the user asks a question, answer it, and investigate with tools as far as the answer needs. A question asks for an answer, not a change, so report what you found and leave the code as it is.
+- End with your recommendation or what remains undone rather than asking what to do next, so the user keeps the decision without being asked for the next instruction. Asking for their read on a direction is welcome.
 - Do not work around a problem. Fix it at its source, or say what is blocking and stop. A broken tool comes before the work in flight, because every later task pays for it.
 - Before a command that changes state -- a restart, a delete, a config edit -- check the evidence supports that exact action. A signal that matches a known failure may have another cause.
 - Correct the record. When an earlier claim of yours turns out to be wrong, say so plainly rather than moving quietly past it.
-- Before finalizing a turn, reflect on mistakes made during it. For each concrete mistake with a reusable correction, record the mistake and its fix in Vishalakshi with `remember`, so later work can avoid it.
+- When a turn involved a concrete mistake with a reusable correction, record the mistake and its fix in Vishalakshi with `remember`, so later work can avoid it.
 
 - Everything the user needs is in the final text of the turn, with no tool call after it. Text between tool calls may never reach them, so restate anything important that appeared only mid-run.
-- Lead with the outcome when the turn concludes: the first sentence says what happened or what you found. Keep the plan-first opener for a turn that will carry on working.
+- Lead with the outcome when the turn concludes: the first sentence says what happened or what you found.
 - No metadiscourse. Do not advertise the content ("the key point is", "what's interesting is"), and never end on a caveat or a note. A risk that could change the decision belongs in the body, beside the reasoning it affects.
 - Readable outranks concise. Shorten by cutting what the reader does not need, never by dropping into fragments, abbreviations, arrow chains or jargon. Write full sentences and spell the terms out.
 - Never hard-wrap prose: one paragraph is one line, and the display wraps it. To show markdown the user can copy, use a four-space indented block rather than a fence.
@@ -1046,7 +1019,7 @@ class Agent:
                  instruction_style='ramabana', # 'ramabana' | 'aai' compatibility profile
                  optin=(),                  # shalya's opt-in tool groups, see `OPTIN`
                  profile='auto',            # 'auto', 'small' or 'full'; see `profile_for`
-                 warm=None):                # seed with dhrona's examples; None: `full` only
+                 warm=None):                # seed with dhrona's examples; None: off
         self.host, self.cfg, self.inline_skills = host, cfg, inline_skills
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
         if profile not in PROFILES: raise ValueError(f'profile must be one of {", ".join(PROFILES)}, not {profile!r}')
@@ -1087,6 +1060,7 @@ class Agent:
         self.binary = set()      # paths whose pre-image would not decode
         self._walked = False
         self._tree = {}
+        self._too_big = ()       # the roots whose text is over `SHELL_SNAPSHOT`, so commands stop re-reading them
         self._tool_calls_turn = 0
         self.max_tool_calls = 80
         self.use = Usage()       # session total, across every model
@@ -1803,6 +1777,7 @@ def _action_meta(self:Agent, name, args):
 def snapshot_tree(self:Agent):
     "Read the open folders, so `settle_tree` can tell what the command about to run moved."
     if self._walked: return True
+    if self._too_big == tuple(self.host.roots): return False
     try: paths = [str(p) for p in self.host.walk()]
     except Exception as e:
         self.host.note(f'cannot watch what commands change: {agent_err(e)}')
@@ -1812,6 +1787,7 @@ def snapshot_tree(self:Agent):
         if (text := self.host.text_at(p)) is None: continue
         n += len(text)
         if n > SHELL_SNAPSHOT:
+            self._too_big = tuple(self.host.roots)
             self.host.note(f'not watching what commands change: the open folders hold over '
                            f'{SHELL_SNAPSHOT // 1_000_000}MB of text')
             return False
@@ -2064,22 +2040,17 @@ def watch_notice(self:Agent):
 # %% ../nbs/03_agent.ipynb #45435c30
 WARM_ROUNDS = 3   #: dhrona rounds seeded into a fresh session
 WARM_SMALL_CHARS = 2500   #: max chars of the small profile's one round
-WARM_OFF_SMALL = 'warm start off (small profile: a small model copies an example’s paths literally) — --warm to enable'
 
 @patch(as_prop=True)
 def warm(self:Agent):
-    "Whether a fresh session is seeded: `warm_choice`, else only for the full profile."
-    return self.profile != 'small' if self.warm_choice is None else bool(self.warm_choice)
+    "Whether a fresh session is seeded: only when asked, since each round shows one call per message and a model copies it."
+    return bool(self.warm_choice)
 
 @patch
 def warm_start(self:Agent):
     "Seed a fresh chat with dhrona's accepted rounds whose calls bind to the offered tools."
     if self._warmed: return []
-    if not self.warm:
-        if self.warm_choice is None and self.profile == 'small' and not self._warmed:
-            self._warmed, self.warm_report = True, {'used': [], 'skipped': [], 'note': WARM_OFF_SMALL}
-            self.host.note(WARM_OFF_SMALL)
-        return []
+    if not self.warm: return []
     b = self._be('turn')
     small = self.profile == 'small'
     if b.hist or b._resume_hist or not (self.budget.inline or small): return []   # an empty pending restore is still fresh
@@ -2176,23 +2147,16 @@ def _prepare(self:Agent, prompt):
     outgoing = _with_notices(prompt) if self.instruction_style == 'aai' else prompt
     request = request_text(prompt)
     requested, loaded = prompt_directives(request, self.tools, self.skills)
-    route, plan = tool_plan(request)
-    if requested:
-        route = 'explicit'
-        names = ', '.join(dict.fromkeys(name for name, _ in requested))
-        plan = f'The user explicitly selected these tools: {names}. Use them before completing the task.'
-    self._turn_plan = {'route': route, 'text': plan,
+    names = ', '.join(dict.fromkeys(name for name, _ in requested))
+    plan = f'The user explicitly selected these tools: {names}. Use them before completing the task.' if requested else ''
+    self._turn_plan = {'route': 'explicit' if requested else 'model', 'text': plan,
                        'tools': [name for name, _ in requested],
                        'skills': [skill.name for skill in loaded]}
     if seeded: self._turn_plan['warm'] = [r['name'] for r in self.warm_report['used']]
-    preflights = []
-    first = {'repo': 'search_code', 'web': 'web_search'}.get(route)
-    if first: preflights.append((first, request))
     eager = {'search_code', 'web_search', 'research', 'memory_search'}
-    preflights += [(name, query or request) for name, query in requested if name in eager]
+    preflights = [(name, query or request) for name, query in requested if name in eager]
     by_name = {getattr(t, '__name__', ''): t for t in self.tools}
-    outgoing = _append(outgoing, f'\n\n<tool-plan route="{route}">{plan}</tool-plan>')
-    if tool_channel(self.spec_or_none(), self.chat_or_none()) == 'tags': outgoing = _append(outgoing, OUTPUT_CONTRACT)
+    if plan: outgoing = _append(outgoing, f'\n\n<tool-plan route="explicit">{plan}</tool-plan>')
     for name, query in dict.fromkeys(preflights):
         tool = by_name.get(name)
         if tool is None: continue

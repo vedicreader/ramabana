@@ -44,18 +44,20 @@ def a_turn(u, steps, answer='## Answer\n\nBoth of them.\n'):
     return list(u.comp.blocks.values())
 
 
-def test_trace_replaces_interim_reply_prose(ui):
+def test_narration_stays_as_a_step_above_each_call(ui):
     blocks = a_turn(ui, [('Looking for it.\n', 'search_code', 'runtime.py:88'),
                          ('And the caller.\n', 'view_file', 'line 120'),
                          ('And the tests.\n', 'search_code', 'test_context.py:44')])
-    assert [b.tag for b in blocks] == ['tool', 'tool', 'tool', 'reply']
+    assert [b.tag for b in blocks] == ['step', 'tool', 'step', 'tool', 'step', 'tool', 'reply']
+    assert [ui.transcript.block_text(b) for b in blocks if b.tag == 'step'] == ['Looking for it.', 'And the caller.', 'And the tests.']
+    assert all(not b.collapsed for b in blocks if b.tag == 'step'), 'narration is there to be read'
     assert ui.transcript.block_text(blocks[-1]) == '## Answer\n\nBoth of them.\n'
     assert ui._reply == '## Answer\n\nBoth of them.\n'
 
 
-def test_the_reply_drops_prose_before_a_tool_call(ui):
+def test_the_reply_is_only_the_prose_after_the_last_call(ui):
     blocks = a_turn(ui, [('Looking.\n', 'search_code', 'hit')])
-    assert [b.tag for b in blocks] == ['tool', 'reply']
+    assert [b.tag for b in blocks] == ['step', 'tool', 'reply']
     answer = blocks[-1]
     assert ui.transcript.block_text(answer) == '## Answer\n\nBoth of them.\n'
     assert 'copied' in ui.copy_last('reply')
@@ -74,8 +76,9 @@ def test_a_status_block_stays_above_the_reply_when_streaming_resumes(ui):
 def test_trace_folds_to_one_row_and_the_reply_does_not(ui):
     long = 'Let me work through this.\n' + ''.join(f'thought {i}\n' for i in range(30))
     blocks = a_turn(ui, [(long, 'search_code', 'hit\n' * 40)])
-    tool, answer = blocks
+    step, tool, answer = blocks
     assert tool.collapsed and len(ui.comp._block_rows(tool)) == 1
+    assert not step.collapsed
     assert not answer.collapsed, 'the reply must never be born folded'
 
 
@@ -522,3 +525,35 @@ def test_a_failed_write_stays_open_and_whole(frozen):
     _, blk = a_call(frozen, 'edit_file', 'error: no match\n' * 30, ok=False)
     assert not blk.collapsed and len(plain_rows(frozen, blk)) == 32
 
+
+
+def test_a_turn_that_ends_during_a_poll_still_shows_its_answer(monkeypatch):
+    """The Claude tags channel hands over a step's whole text in one chunk, just before the run
+    finishes. A poll that timed out in that same tick saw `terminal` and left the chunk in the
+    queue, so the whole answer was lost from the screen though the history had it."""
+    from ramabana.agent import Agent
+    from ramabana.cli import run_turn
+    from ramabana.testing import MemHost, ScriptedBackend, Step
+    real, first = asyncio.wait_for, [True]
+    async def late_poll(aw, timeout):
+        if not first[0]: return await real(aw, timeout)
+        first[0] = False
+        await asyncio.sleep(.3)   # the loop is busy while the turn finishes
+        aw.close()
+        raise asyncio.TimeoutError
+    async def go():
+        tty = EmuTty(80, 24)
+        comp = Compositor(tty); comp._register_signals = lambda: None
+        await comp.start()
+        a = Agent(MemHost({'/proj/a.py': 'x = 1\n'}), extensions=False, subagents=False, profile='full')
+        be = ScriptedBackend(steps=[Step('THE WHOLE ANSWER')], token_delay=0, tools=a.tools)
+        a.routing.spec = lambda job='turn', fallback=True: be.spec
+        a._be = a._be_or_none = lambda job='turn': be
+        u = Ui(comp, a, loop=asyncio.get_running_loop())
+        monkeypatch.setattr(asyncio, 'wait_for', late_poll)
+        await run_turn(u, 'a question')
+        tty.close()
+        return u
+    u = asyncio.run(go())
+    assert u._reply.strip() == 'THE WHOLE ANSWER', repr(u._reply)
+    assert any(b.tag == 'reply' and u.transcript.block_text(b).strip() == 'THE WHOLE ANSWER' for b in u.comp.blocks.values())
