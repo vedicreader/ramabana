@@ -10,18 +10,18 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'ACTIVE_THEME', 'HL_THEMES', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'NOTIFY_EVERY',
            'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR',
            'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION',
-           'GUIDE', 'MEDIA', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM',
-           'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH',
-           'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'DIFF_LEXERS',
-           'BLOCK_START', 'PYREPL_MODULES', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key',
-           'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text',
-           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
-           'media_parts', 'media_note', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
-           'media_line', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu',
-           'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich', 'changed_table', 'opens', 'OpenDiff',
-           'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index',
-           'start_agent', 'off_loop', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd',
-           'MAX_MEDIA', 'MAX_ATTACH']
+           'GUIDE', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT',
+           'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE',
+           'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES',
+           'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme',
+           'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
+           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
+           'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich',
+           'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode',
+           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'amain', 'headless_prompt', 'ask_once',
+           'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media',
+           'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -459,119 +459,8 @@ def guide_text(text):
     return out
 
 # %% ../nbs/05_cli.ipynb #bffc3eec
-MEDIA = {
-    '.png': ('image', 'image/png'),   '.jpg':  ('image', 'image/jpeg'),
-    '.jpeg': ('image', 'image/jpeg'), '.gif':  ('image', 'image/gif'),
-    '.webp': ('image', 'image/webp'),
-    '.wav': ('audio', 'audio/wav'),   '.mp3':  ('audio', 'audio/mpeg'),
-    '.m4a': ('audio', 'audio/mp4'),   '.ogg':  ('audio', 'audio/ogg'),
-    '.flac': ('audio', 'audio/flac'), '.aac':  ('audio', 'audio/aac'),
-}
-
-from .tools import MAX_MEDIA, MAX_ATTACH
-_all_ = ['MAX_MEDIA', 'MAX_ATTACH']
-CLIP_IMAGE = (('pngpaste', '-'),
-              ('wl-paste', '--type', 'image/png'),
-              ('xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'))
-
-def _human(n):
-    "A byte count the way a person reads one."
-    if n < 1024: return f'{n}B'
-    for unit in ('KB', 'MB'):
-        n /= 1024
-        if n < 1024: return f'{n:.1f}{unit}'
-    return f'{n / 1024:.1f}GB'
-
-def media_path(s):
-    "One path in whatever shape a terminal delivered it, or None."
-    s = str(s).strip().strip('[]').strip()
-    if len(s) >= 2 and s[0] == s[-1] and s[0] in '"\'': s = s[1:-1]
-    if s.startswith('file://'): s = unquote(urlparse(s).path)
-    else: s = s.replace('\\ ', ' ')
-    if not s: return None
-    try: return Path(s).expanduser()
-    except RuntimeError: return None
-
-def is_media(p):
-    "Whether `p` names a media file that exists."
-    if p is None or p.suffix.lower() not in MEDIA: return False
-    try: return p.is_file()
-    except OSError: return False
-
-def media_paths(text):
-    "Every media file a paste names, or `[]` when it is anything else."
-    raw = str(text).strip().strip('[]').strip()
-    if not raw: return []
-    whole = media_path(raw)
-    if is_media(whole): return [whole]
-    try: toks = shlex.split(raw)
-    except ValueError: return []
-    paths = [media_path(t) for t in toks]
-    return paths if paths and all(is_media(p) for p in paths) else []
-
-ATTACH_REF = re.compile(r'(?<!\S)@(\S+)')
-
-TRAILING = '?!,;:.)]}\'"'
-
-def attach_refs(text):
-    "Media named `@path` in a prompt, trailing punctuation stripped."
-    out = []
-    for m in ATTACH_REF.finditer(str(text or '')):
-        tok = m.group(1)
-        while tok:
-            p = media_path(tok)
-            if is_media(p):
-                out.append(p)
-                break
-            if tok[-1] not in TRAILING: break
-            tok = tok[:-1]
-    return out
-
-def clipboard_png():
-    "The clipboard picture as PNG bytes, or None."
-    for cmd in CLIP_IMAGE:
-        if shutil.which(cmd[0]) is None: continue
-        try: out = subprocess.run(cmd, capture_output=True, timeout=5).stdout
-        except Exception: continue
-        if out[:8] == b'\x89PNG\r\n\x1a\n': return out
-    return None
-
-class Attachment:
-    "One media file for the next prompt, its bytes read once when attached."
-    def __init__(self, path):
-        self.path = Path(path).expanduser().resolve()
-        self.kind, self.mime = MEDIA[self.path.suffix.lower()]
-        self.data = self.path.read_bytes()
-
-    @property
-    def name(self): return self.path.name
-    def __len__(self): return len(self.data)
-    def label(self): return f'{self.name} ({_human(len(self))})'
-    def line(self): return f'{self.kind}  {self.path}  {self.mime}  {_human(len(self))}'
-    def __repr__(self): return f'Attachment({self.kind} {self.label()})'
-
-def sendable(atts, spec=None):
-    "The attachment kinds `spec`'s model accepts: images always, audio if it hears."
-    kinds = {'image'}
-    if spec is None or accepts(spec, 'audio'): kinds.add('audio')
-    return kinds
-
-def media_parts(atts, spec=None):
-    "The attachments that go out as model content parts."
-    ok = sendable(atts, spec)
-    return [a.data for a in atts if a.kind in ok]
-
-def media_note(atts, spec=None):
-    "What the message says about the files attached to it."
-    if not atts: return ''
-    ok = sendable(atts, spec)
-    rows, note = '\n'.join(a.line() for a in atts), ''
-    if any(a.kind == 'image' for a in atts): note += '\nThe images above are attached to this message.'
-    if any(a.kind == 'audio' for a in atts):
-        note += ('\nThe audio above is attached to this message.' if 'audio' in ok else
-                 '\nAudio is attached by path only -- this model does not accept audio input. '
-                 'Read it from the path above if you need its contents.')
-    return f'\n\n<attachments>\n{rows}\n</attachments>{note}'
+from .tools import (MAX_MEDIA, MAX_ATTACH, MEDIA, CLIP_IMAGE, media_path, is_media, media_paths, ATTACH_REF, TRAILING, attach_refs, clipboard_png, Attachment, sendable, media_parts, media_note, _human)
+_all_ = ['MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #e6190af7
 KITTY_ENV = ('KITTY_WINDOW_ID', 'GHOSTTY_RESOURCES_DIR')

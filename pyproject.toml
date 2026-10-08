@@ -18,8 +18,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.1.2",   # git_commit(path=), git_repo, restart_kernel, the browser opt-in
-    "uraiyadal>=0.0.9",   # a tagged call keeps its arguments, and a lost one is asked for again
+    "shalya>=0.1.3",   # Media results: screenshot and view_file on a picture
+    "uraiyadal>=0.0.10",   # tool results carry pictures to the model
     "gheasy>=0.0.10",
     "exhash>=0.4.11",
     "fastcore>=2.2.19",
@@ -36,7 +36,7 @@ search = ["vishalakshi>=0.1.17",   # note(key=), folder watches, age/stale
 python = ["dhrishti>=0.1.3", "jupyter-client>=8.10.0", "rich>=15.0.0"]
 serve = ["mcp>=1.29.1", "agent-client-protocol>=0.12.1"]
 dhrona = ["dhrona>=0.1.4"]
-cli = ["ramabana[search,python]", "teleprint>=0.1.3", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.2", "fastpylight>=0.1.18"]
+cli = ["ramabana[search,python]", "teleprint>=0.1.3,<0.1.4", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.3", "fastpylight>=0.1.18"]
 all = ["ramabana[search,python,serve,dhrona,cli]"]
 
 [project.urls]

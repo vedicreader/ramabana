@@ -131,3 +131,14 @@ def test_the_briefing_follows_whether_the_turn_model_sees_pictures(caps):
         a, _ = fake_agent(Browsing({'/proj/a.py': 'x\n'}), optin=('browser',))
         sp = a.system_prompt()
         assert rule.split('\n')[0] in sp and PICTURE_RULE[not ('image' in inp)].split('\n')[0] not in sp
+
+
+def test_attachments_load_without_the_terminal():
+    """Leela imported its media helpers from `ramabana.cli`, which patches teleprint on import, so a teleprint release broke every Leela session."""
+    import subprocess, sys
+    code = ("import sys; from ramabana.tools import MEDIA, Attachment, media_note, media_parts; "
+            "assert 'ramabana.cli' not in sys.modules and 'teleprint' not in sys.modules, sorted(m for m in sys.modules if 'tele' in m or m == 'ramabana.cli')")
+    subprocess.run([sys.executable, '-c', code], check=True)
+    from ramabana.cli import Attachment as A, media_note as n
+    from ramabana.tools import Attachment, media_note
+    assert A is Attachment and n is media_note, 'the terminal re-exports the same objects'

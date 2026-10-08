@@ -7,22 +7,23 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 # %% auto #0
 __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_TIMEOUT', 'SUB_SLOTS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP', 'SUB_SP',
            'SUB_NEST_SP', 'NO_SUB', 'PATH_WRITES', 'STATUS_NOTE', 'ASYNC_MAX', 'ASYNC_KEEP', 'MAX_MEDIA', 'MAX_ATTACH',
-           'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'small_tool', 'ToolEntry', 'ToolCatalog',
-           'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'keep_media', 'path_write', 'write_targets',
-           'status_tool', 'Slots', 'delegate', 'delegate_many', 'Background', 'named_skills', 'picture_mime',
-           'read_pictures', 'subagent_tools', 'parse_plan_items', 'mod_doc', 'API_VENDORS', 'Capability', 'DENY', 'ERR',
-           'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit',
-           'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API',
-           'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS',
-           'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill',
-           'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied',
-           'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools',
-           'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise',
-           'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost',
-           'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for',
-           'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index',
-           'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools', 'research_tools',
-           'author_tools', 'legacy_tools']
+           'MEDIA', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'NullHost', 'draws_itself', 'image_tools', 'tools_for',
+           'small_tool', 'ToolEntry', 'ToolCatalog', 'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'keep_media',
+           'path_write', 'write_targets', 'status_tool', 'Slots', 'delegate', 'delegate_many', 'Background',
+           'named_skills', 'picture_mime', 'read_pictures', 'subagent_tools', 'parse_plan_items', 'mod_doc',
+           'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES',
+           'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API',
+           'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
+           'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX',
+           'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools',
+           'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err',
+           'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write',
+           'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost',
+           'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost',
+           'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools',
+           'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt',
+           'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, contextvars, functools, json, re, threading, time, uuid
@@ -667,3 +668,119 @@ try:   # shalya's private helpers: if they move, listing keeps shalya's own impo
                      _text=lambda: importlib.import_module(modpath).__doc__ or '')
     shalya.skills._mod_skill = _mod_skill
 except ImportError: pass
+
+# %% ../nbs/02_tools.ipynb #7e327a30
+# attachments live here, not in the terminal module: a host that only sends files must not load the TUI
+import shlex, shutil, subprocess
+from urllib.parse import unquote, urlparse
+MEDIA = {
+    '.png': ('image', 'image/png'),   '.jpg':  ('image', 'image/jpeg'),
+    '.jpeg': ('image', 'image/jpeg'), '.gif':  ('image', 'image/gif'),
+    '.webp': ('image', 'image/webp'),
+    '.wav': ('audio', 'audio/wav'),   '.mp3':  ('audio', 'audio/mpeg'),
+    '.m4a': ('audio', 'audio/mp4'),   '.ogg':  ('audio', 'audio/ogg'),
+    '.flac': ('audio', 'audio/flac'), '.aac':  ('audio', 'audio/aac'),
+}
+
+CLIP_IMAGE = (('pngpaste', '-'),
+              ('wl-paste', '--type', 'image/png'),
+              ('xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'))
+
+def _human(n):
+    "A byte count the way a person reads one."
+    if n < 1024: return f'{n}B'
+    for unit in ('KB', 'MB'):
+        n /= 1024
+        if n < 1024: return f'{n:.1f}{unit}'
+    return f'{n / 1024:.1f}GB'
+
+def media_path(s):
+    "One path in whatever shape a terminal delivered it, or None."
+    s = str(s).strip().strip('[]').strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in '"\'': s = s[1:-1]
+    if s.startswith('file://'): s = unquote(urlparse(s).path)
+    else: s = s.replace('\\ ', ' ')
+    if not s: return None
+    try: return Path(s).expanduser()
+    except RuntimeError: return None
+
+def is_media(p):
+    "Whether `p` names a media file that exists."
+    if p is None or p.suffix.lower() not in MEDIA: return False
+    try: return p.is_file()
+    except OSError: return False
+
+def media_paths(text):
+    "Every media file a paste names, or `[]` when it is anything else."
+    raw = str(text).strip().strip('[]').strip()
+    if not raw: return []
+    whole = media_path(raw)
+    if is_media(whole): return [whole]
+    try: toks = shlex.split(raw)
+    except ValueError: return []
+    paths = [media_path(t) for t in toks]
+    return paths if paths and all(is_media(p) for p in paths) else []
+
+ATTACH_REF = re.compile(r'(?<!\S)@(\S+)')
+
+TRAILING = '?!,;:.)]}\'"'
+
+def attach_refs(text):
+    "Media named `@path` in a prompt, trailing punctuation stripped."
+    out = []
+    for m in ATTACH_REF.finditer(str(text or '')):
+        tok = m.group(1)
+        while tok:
+            p = media_path(tok)
+            if is_media(p):
+                out.append(p)
+                break
+            if tok[-1] not in TRAILING: break
+            tok = tok[:-1]
+    return out
+
+def clipboard_png():
+    "The clipboard picture as PNG bytes, or None."
+    for cmd in CLIP_IMAGE:
+        if shutil.which(cmd[0]) is None: continue
+        try: out = subprocess.run(cmd, capture_output=True, timeout=5).stdout
+        except Exception: continue
+        if out[:8] == b'\x89PNG\r\n\x1a\n': return out
+    return None
+
+class Attachment:
+    "One media file for the next prompt, its bytes read once when attached."
+    def __init__(self, path):
+        self.path = Path(path).expanduser().resolve()
+        self.kind, self.mime = MEDIA[self.path.suffix.lower()]
+        self.data = self.path.read_bytes()
+
+    @property
+    def name(self): return self.path.name
+    def __len__(self): return len(self.data)
+    def label(self): return f'{self.name} ({_human(len(self))})'
+    def line(self): return f'{self.kind}  {self.path}  {self.mime}  {_human(len(self))}'
+    def __repr__(self): return f'Attachment({self.kind} {self.label()})'
+
+def sendable(atts, spec=None):
+    "The attachment kinds `spec`'s model accepts: images always, audio if it hears."
+    kinds = {'image'}
+    if spec is None or accepts(spec, 'audio'): kinds.add('audio')
+    return kinds
+
+def media_parts(atts, spec=None):
+    "The attachments that go out as model content parts."
+    ok = sendable(atts, spec)
+    return [a.data for a in atts if a.kind in ok]
+
+def media_note(atts, spec=None):
+    "What the message says about the files attached to it."
+    if not atts: return ''
+    ok = sendable(atts, spec)
+    rows, note = '\n'.join(a.line() for a in atts), ''
+    if any(a.kind == 'image' for a in atts): note += '\nThe images above are attached to this message.'
+    if any(a.kind == 'audio' for a in atts):
+        note += ('\nThe audio above is attached to this message.' if 'audio' in ok else
+                 '\nAudio is attached by path only -- this model does not accept audio input. '
+                 'Read it from the path above if you need its contents.')
+    return f'\n\n<attachments>\n{rows}\n</attachments>{note}'
