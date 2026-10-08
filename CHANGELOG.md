@@ -2,6 +2,20 @@
 
 <!-- do not remove -->
 
+## 0.2.12
+
+- A turn's whole answer reaches the terminal. `run_turn` stopped reading once the run finished and dropped what was still queued; on the Claude backend, which hands over a step's text in one chunk, that was the entire answer.
+- Narration stays on screen: what a model writes before a call is kept as a `┆` step above the call instead of being removed. Ctrl-O and alt+1..9 still fold only the calls, and `/copy` copies the answer.
+- No keyword routing. The model picks its tools, including when to search the web, and only a tool named with `/tool` is put ahead of the turn. `tool_plan` is gone, and with it the `<tool-plan>` nudge on every turn and the preflight that web-searched a pasted document whole.
+- The briefing is written for current models: one short -ing line before a call instead of an eight-word cap and a plan-first opener, no output contract re-sent every turn, memory searched when prior context could change the work, and Claude's notes state goals with their reasons.
+- Claude turns ask Claude Code for `high` effort; `RAMABANA_EFFORT` overrides it. Opus 5.5 otherwise runs at medium.
+- The Claude 5 series runs with a 1M window: Claude Code is asked for `<id>[1m]`, which it needs to serve more than 200k, and compaction follows that window.
+- `sonnet` and `haiku` resolve to `claude-sonnet-5-5` and `claude-haiku-5-5`, and sub-agents default to `claude-sonnet-5-5`.
+- Open folders holding more text than `SHELL_SNAPSHOT` are measured once: `run_shell` no longer re-reads them before every command only to give up.
+- Usage on the Claude backend accumulates across calls, so a turn smaller than the one before no longer records 0.
+- dhrona's example rounds are off by default; `--warm` turns them on.
+- Requires uraiyadal 0.0.11, whose tag protocol asks for independent calls together.
+
 ## 0.2.11
 
 - The Claude Code and Anthropic catalogs list `claude-haiku-5-5`. The `haiku` alias still resolves to `claude-haiku-4-5-20251001` and `sonnet` to `claude-sonnet-5`.
