@@ -598,5 +598,6 @@ def test_the_screenshot_rule_arrives_only_with_the_browser_group():
     plain = FullHost(files={'a.py': 'x = 1\n'})
     assert rule not in A.system_prompt(plain, tools=tools_for(plain))
     b = Browsing(files={'a.py': 'x = 1\n'})
-    sp = A.system_prompt(b, tools=tools_for(b))
+    assert rule not in A.system_prompt(b, tools=tools_for(b)), 'the browser group is an opt-in'
+    sp = A.system_prompt(b, tools=tools_for(b, optin=('browser',)))
     assert rule in sp and 'page_text' in sp and 'cannot see pictures' in sp
