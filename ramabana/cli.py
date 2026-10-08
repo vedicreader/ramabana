@@ -371,7 +371,7 @@ options ↑/↓ move · enter choose · an option's own letter picks it · esc c
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
 extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
-subagent /subagents shows whether delegated work may write · /subagents on|off sets it for this session
+subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N, timeout S, nest N set the rest
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
 

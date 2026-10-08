@@ -9,20 +9,20 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES',
            'OUTPUT_CONTRACT', 'SMALL_RULES', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK',
-           'PLAN_TOOLS', 'ROOT_ONLY', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WARM_ROUNDS',
-           'WARM_SMALL_CHARS', 'WARM_OFF_SMALL', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK',
-           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
-           'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key',
-           'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text',
-           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'small_system_prompt', 'Todo', 'Plan',
-           'plan_tools', 'Agent', 'git_shell_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
+           'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL',
+           'HISTORY_TURNS', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'WARM_OFF_SMALL', 'REPLAYED', 'CHECKPOINT_BYTES',
+           'COMMIT_SP', 'PR_SP', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE',
+           'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
+           'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan',
+           'request_text', 'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'small_system_prompt',
+           'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
 from glob import escape as glob_escape
 from dataclasses import dataclass, field
 from pathlib import Path
-from fastcore.basics import first, patch
+from fastcore.basics import first, ifnone, patch
 from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name
@@ -33,7 +33,7 @@ from shalya.tools import OPTIN, group_of, git_repo
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool)
+                            tools_for, Background, Slots, SUB_MAX_STEPS, SUB_TIMEOUT, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool)
 from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -988,6 +988,16 @@ PLAN_TOOLS = frozenset(f.__name__ for f in plan_tools(list))
 ROOT_ONLY = NO_SUB | PLAN_TOOLS   #: the root turn's own tools, never handed to a sub-agent
 
 # %% ../nbs/03_agent.ipynb #baaf2f5e
+_TOOL_MIN, _TOOL_MAX = 20, 400
+_STEP_MIN, _STEP_MAX = 8, 80
+SUB_DEPTH_MAX = 2   #: most levels of sub-agents that may delegate again
+TREE_SPENT = ('Tool-call budget for this delegation tree is exhausted. Stop calling tools and '
+              'answer with the evidence you have.')
+
+def _sub_steps(n): return max(1, min(_STEP_MAX, int(n)))
+def _sub_timeout(s): return max(0., float(s or 0))
+def _sub_depth(n): return max(0, min(SUB_DEPTH_MAX, int(n)))
+
 class Agent:
     "The IDE's agent: a routed chat whose tools are the host's own capabilities."
 
@@ -1007,6 +1017,9 @@ class Agent:
                  inline_skills=INLINE_SKILLS,
                  subagents=True,
                  subagent_writes=False,     # sub-agents get write tools, behind the same approvals
+                 subagent_steps=SUB_MAX_STEPS, # steps a sub-agent may take; caps a delegation's `max_steps`
+                 subagent_timeout=SUB_TIMEOUT, # seconds before a delegation is stopped; 0 never
+                 subagent_depth=0,          # levels of sub-agents that may delegate again, at most `SUB_DEPTH_MAX`
                  readonly=False,            # withhold every tool that acts
                  readonly_calls=None,       # hard cap on read-only calls, when set
                  local_multimodal=False,       # load LiteRT vision/audio encoders for local models
@@ -1039,6 +1052,8 @@ class Agent:
         self.on_watch = None             # callable(target, log_path), instead of a tmux pane
         self.on_background_done = None   # callable(run, answer)
         self.subagent_writes = bool(subagent_writes)
+        self.subagent_steps, self.subagent_timeout, self.subagent_depth = _sub_steps(subagent_steps), _sub_timeout(subagent_timeout), _sub_depth(subagent_depth)
+        self.sub_slots = Slots()   # one bound on sub-agents at once, across every delegation tree
         self.readonly, self.readonly_calls = bool(readonly), readonly_calls
         self.local_multimodal = bool(local_multimodal)
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
@@ -1247,6 +1262,7 @@ def _record(self:Agent, f):
             if self.max_tool_calls is not None and self._tool_calls_turn > self.max_tool_calls:
                 return ('Tool-call budget exhausted for this turn. Stop calling tools and '
                         'summarise the evidence and unfinished work now.')
+        elif not self._draw(): return TREE_SPENT
         denied, rewritten = None, False
         for r in (self._deny_git_shell(name, args), *self.registry.fire('before_tool', self, name, args)):
             if isinstance(r, str): denied = denied or r
@@ -1310,19 +1326,29 @@ def _close_act(self:Agent, act, out):
 
 @patch
 def _observe(self:Agent, f):
-    "Show a read-only sub-agent tool's calls on the activity; no hooks, gate or budget."
+    "Show a read-only sub-agent tool's calls on the activity; no hooks or gate, only the tree's budget."
     name = getattr(f, '__name__', '?')
     @functools.wraps(f)
     def wrapper(*a, **kw):
+        if not self._draw(): return TREE_SPENT
         act = self._open_act(f, name, _named(f, a, kw))
+        if (nested := name in DELEGATE_TOOLS): token = self._nested.set(self._delegating + (act.id,))
         try: out = f(*a, **kw)
         except Exception as e:
             self.activity.finish(act, agent_err(e), ok=False)
             raise
+        finally:
+            if nested: self._nested.reset(token)
         return self._close_act(act, out)
     if (ro := getattr(f, 'read_only', None)) is not None: wrapper.read_only = self._observe(ro)
     return wrapper
 
+
+@patch
+def _draw(self:Agent):
+    "Count a sub-agent's call against its tree's share of the root's tool budget; False once spent."
+    run = current_run()
+    return run is None or run.draw(ifnone(self.max_tool_calls, _TOOL_MAX))
 
 @patch
 def _deny_git_shell(self:Agent, name, args):
@@ -1380,12 +1406,7 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
         if not small and 'memory' not in self.host.provides: extra += note_tools(self.note_memory)
         if full and not small:
             if self.subagents:
-                extra += subagent_tools(lambda: self._be_or_none('subagent'), self._sub_tools,
-                                        lambda: self.skills, self._cloud_backend_or_none,
-                                        lambda: self.subagent_writes,
-                                        lambda: self.approvals.gate if self.approvals is not None else None,
-                                        background=self.background, get_log_dir=lambda: self.runs_dir,
-                                        get_pictures=lambda ps: read_pictures(self.host, ps))
+                extra += self._delegation_tools(self._sub_tools, background=self.background)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
                           drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
@@ -1419,10 +1440,21 @@ def _sub_plain(self:Agent):
     return [t for t in tools if getattr(t, '__name__', '') not in ROOT_ONLY]
 
 @patch
-def _sub_tools(self:Agent):
-    "`_sub_plain` for a delegation, so a read-only sub-agent's calls reach the activity too."
+def _delegation_tools(self:Agent, get_tools, background=None):
+    "`subagent_tools` on this session's settings; `get_tools` alone decides what a sub-agent gets."
+    return subagent_tools(lambda: self._be_or_none('subagent'), get_tools, lambda: self.skills, self._cloud_backend_or_none,
+                          lambda: self.subagent_writes, lambda: self.approvals.gate if self.approvals is not None else None,
+                          background=background, get_log_dir=lambda: self.runs_dir, get_pictures=lambda ps: read_pictures(self.host, ps),
+                          get_steps=lambda: self.subagent_steps, get_timeout=lambda: self.subagent_timeout, slots=self.sub_slots, block=())
+
+@patch
+def _sub_tools(self:Agent, depth=0):
+    "What a sub-agent `depth` levels below the root's own gets: `_sub_plain`, observed, and `delegate_search` while `depth < subagent_depth`."
     tools = self._sub_plain()
-    return tools if self.subagent_writes else [self._observe(t) for t in tools]
+    tools = tools if self.subagent_writes else [self._observe(t) for t in tools]
+    if not self.subagents or depth >= self.subagent_depth: return tools
+    nest = first(t for t in self._delegation_tools(lambda: self._sub_tools(depth + 1)) if t.__name__ == 'delegate_search')
+    return tools + [self._observe(nest)]
 
 # %% ../nbs/03_agent.ipynb #76e57894
 @patch(as_prop=True)
@@ -1641,16 +1673,19 @@ def _run_store(self):
         self._runs, self._runs_lock, self._foreground = {}, threading.RLock(), ''
     return self._runs
 
+def _live(r): return not r.terminal or any(_live(c) for c in r.children)
+
 @patch
 def runs(self:Agent, active=False):
-    "Return registered root and child runs. `active` drops the ones that have finished."
-    def live(r): return not r.terminal or any(live(child) for child in r.children)
+    "Registered root, background and child runs. `active` drops the ones that have finished."
     def row(r):
         d = r.dict()
-        if active: d['children'] = [row(c) for c in r.children if live(c)]
+        if active: d['children'] = [row(c) for c in r.children if _live(c)]
         return d
-    with getattr(self, '_runs_lock', threading.RLock()):
-        return [row(r) for r in _run_store(self).values() if not active or live(r)]
+    with getattr(self, '_runs_lock', threading.RLock()): roots = list(_run_store(self).values())
+    if (bg := getattr(self, '_background', None)) is not None:
+        with bg.lock: roots += list(bg.runs.values())
+    return [row(r) for r in roots if not active or _live(r)]
 
 # %% ../nbs/03_agent.ipynb #95a69923
 @patch
@@ -1659,7 +1694,12 @@ def _side_runs(self:Agent):
     bg, out = getattr(self, '_background', None), []
     if bg is not None:
         with bg.lock: out += list(bg.runs.values())
-    with self.monitors.lock: return out + list(self.monitors.runs.values())
+    return out + self._monitor_runs()
+
+@patch
+def _monitor_runs(self:Agent):
+    "The monitors' review runs."
+    with self.monitors.lock: return list(self.monitors.runs.values())
 
 @patch
 def run(self:Agent, run_id=''):
@@ -1674,7 +1714,9 @@ def run(self:Agent, run_id=''):
 
 # %% ../nbs/03_agent.ipynb #4b5c9dc8
 @patch(as_prop=True)
-def busy(self:Agent): return bool(self.runs(active=True))
+def busy(self:Agent):
+    "Whether a foreground turn is live; background delegations never hold the session."
+    with getattr(self, '_runs_lock', threading.RLock()): return any(_live(r) for r in _run_store(self).values())
 
 @patch(as_prop=True)
 def status_line(self:Agent):
@@ -1894,6 +1936,38 @@ def set_subagent_writes(self:Agent, enabled):
     self.subagent_writes = enabled
     self.note = f'sub-agent writes {"on" if enabled else "off"}'
     return enabled
+
+@patch
+def _set_sub(self:Agent, attr, value, what):
+    "Change one sub-agent setting while idle, rebuilding the tools that carry it."
+    if value == getattr(self, attr): return value
+    if self.busy: raise RuntimeError(f'cannot change {what} while the assistant is working')
+    setattr(self, attr, value)
+    self._catalogs.clear(); self._views.clear(); self._tools = None
+    self.note = f'{what} {value}'
+    return value
+
+@patch
+def set_subagent_steps(self:Agent, n):
+    "Set the steps a sub-agent may take, which also caps a delegation's `max_steps`."
+    return self._set_sub('subagent_steps', _sub_steps(n), 'sub-agent steps')
+
+@patch
+def set_subagent_timeout(self:Agent, s):
+    "Set the seconds a delegation may run before it is stopped; 0 never stops it."
+    return self._set_sub('subagent_timeout', _sub_timeout(s), 'sub-agent timeout')
+
+@patch
+def set_subagent_depth(self:Agent, n):
+    "Set how many levels of sub-agents may delegate again, at most `SUB_DEPTH_MAX`."
+    return self._set_sub('subagent_depth', _sub_depth(n), 'sub-agent nesting')
+
+@patch(as_prop=True)
+def subagent_report(self:Agent):
+    "Every sub-agent setting, as `/subagents` reports it."
+    return (('sub-agents may write, run commands and run Python, behind this session\'s approvals'
+             if self.subagent_writes else 'sub-agents are read-only: they report what they found and change nothing') +
+            f"\nsteps {self.subagent_steps} · timeout {f'{self.subagent_timeout:g}s' if self.subagent_timeout else 'none'} · nest {self.subagent_depth}")
 
 # %% ../nbs/03_agent.ipynb #5c5649f0
 @patch
@@ -2775,13 +2849,14 @@ def command(self:Agent, line):
         width = max(len(r['value']) for r in rows)
         return '\n'.join(f"{'*' if r['value'] == self.model.name else ' '} {r['value']:<{width}}  {r['provider']:<12} {r['source']}" for r in rows)
     if name == 'subagents':
-        if arg:
-            want = arg.strip().lower()
-            if want not in ('on', 'off', 'read', 'write'): return "say /subagents on|off"
-            self.subagent_writes = want in ('on', 'write')
-        return ('sub-agents may write, run commands and run Python, behind this session\'s approvals'
-                if self.subagent_writes else
-                'sub-agents are read-only: they report what they found and change nothing')
+        w, sets = arg.lower().split(), {'steps': self.set_subagent_steps, 'timeout': self.set_subagent_timeout, 'nest': self.set_subagent_depth}
+        try:
+            if len(w) == 1 and w[0] in ('on', 'off', 'read', 'write'): self.set_subagent_writes(w[0] in ('on', 'write'))
+            elif len(w) == 2 and w[0] in sets: sets[w[0]](w[1])
+            elif w: raise ValueError(arg)
+        except RuntimeError as e: return str(e)
+        except ValueError: return 'say /subagents on|off, or /subagents steps N, timeout S or nest N'
+        return self.subagent_report
     if name == 'cost': return repr(self.use)
     if name == 'compact':
         t = self.compact(arg)
@@ -3014,7 +3089,7 @@ def watch(self:Agent, target=''):
     "Open a pane tailing a run's transcript or `monitors`; with no target, list what can be watched."
     if not target:
         rows = [f"{r['id']}  {r['state']:10} {r['question'][:50]}  {r.get('log') or ''}"
-                for r in self.runs(active=True) + [r.dict() for r in self._side_runs() if not r.terminal]]
+                for r in self.runs(active=True) + [r.dict() for r in self._monitor_runs() if not r.terminal]]
         self.monitors.sync()
         rows += [f'{w.id}  watching   {w.folder}  {w.reviews} review(s)' for w in self.monitors.all()]
         return '\n'.join(rows) or 'nothing is running or watched'
@@ -3173,10 +3248,6 @@ class Completer:
         return out
 
 # %% ../nbs/03_agent.ipynb #46f071e0
-_TOOL_MIN, _TOOL_MAX = 20, 400
-_STEP_MIN, _STEP_MAX = 8, 80
-
-
 def _limit(value, lo, hi, default):
     if str(value or '').lower() == 'auto': return 'auto'
     try: return max(lo, min(hi, int(value)))

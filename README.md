@@ -143,7 +143,7 @@ Type `/` and press tab to complete a command. The list holds this session’s co
 | `/plan`, `/todo ID done\|active\|pending\|cancelled` | the checklist the agent works through |
 | `/cost`, `/compact [NOTE]` | what the session has spent, and shortening the history |
 | `/tool-budget [auto\|20..400]`, `/steps [auto\|8..80]` | the per-turn budgets, and what the last turn used |
-| `/approve [off\|ask\|edits\|auto]`, `/subagents [on\|off]` | who may write, and whether delegates may |
+| `/approve [off\|ask\|edits\|auto]`, `/subagents [on\|off\|steps N\|timeout S\|nest N]` | who may write, whether delegates may, and their limits |
 | `/commit [FOLDER] [MESSAGE]`, `/pr [FOLDER] [TITLE]` | a commit or pull request drafted from the diff of the repository holding FOLDER (default the project), behind approval |
 | `/rewind [TURN] [files\|chat\|both]`, `/branches`, `/branch NAME` | undo a turn’s files or chat, and the conversation branches. Undo restores edits, undoes git writes, and removes created files still unchanged |
 | `/watch [RUN\|monitors]`, `/unwatch`, `/tell RUN TEXT` | a tmux pane on a run’s transcript, and a message to a running sub-agent |
@@ -218,6 +218,8 @@ ramabana --root .,~/notes,/srv/app
 Writes reach those folders and nowhere else. Reads start out in the same folders. `--read-outside` widens reads to any path on the machine and leaves writes where they were. `/root` prints the open folders, and `/root add PATH` opens another mid-session for reading and writing.
 
 Delegated sub-agents only look: they report what they found and change nothing. `--subagent-writes`, or `/subagents on`, lets them write, run commands and run Python behind this session’s approvals. Until then Ramabana refuses `delegate_async(writes=True)`, and the briefing says so.
+
+A sub-agent takes at most 12 steps and runs for at most 900 seconds; `/subagents steps N` and `/subagents timeout S` change either, and `timeout 0` removes the limit. A delegation’s `max_steps` can ask for fewer steps, never more. Sub-agents do not delegate again unless `/subagents nest 1` or `nest 2` allows it. A nested sub-agent gets only `delegate_search`, the sub-agents under one turn share one tool-call budget the size of the turn’s own, and at most four of them run at once.
 
 Every run keeps a transcript under `<cfg>/runs/<session>/`. Inside tmux:
 

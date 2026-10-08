@@ -8,8 +8,8 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
            'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM', 'ONESHOT_CUT',
-           'IMG_TOKENS', 'QUIET_RUNTIMES', 'STATUS_CHARS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture',
-           'estimate_tokens', 'halvings', 'threshold', 'should_compact', 'serialise', 'split_previous',
+           'IMG_TOKENS', 'QUIET_RUNTIMES', 'STATUS_CHARS', 'CHILD_KEEP', 'CHAT_CALLBACKS', 'interesting', 'captured',
+           'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact', 'serialise', 'split_previous',
            'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
            'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
            'use_chat', 'RishiBackend', 'make_backend', 'status_line', 'said_before_call', 'Run', 'current_run',
@@ -933,6 +933,8 @@ def said_before_call(hist):
     m = next((m for m in reversed(hist or ()) if isinstance(m, dict) and m.get('role') == 'assistant'), None)
     return resp_text(m) if m and m.get('tool_calls') else ''
 
+CHILD_KEEP = 50   #: finished children a run keeps; live ones are never dropped
+
 @dataclass
 class Run:
     "A foreground or delegated model call with bounded cancellation."
@@ -953,8 +955,24 @@ class Run:
     def __post_init__(self):
         self.children, self._lock, self._done, self.inbox, self._heard = [], threading.RLock(), threading.Event(), [], []
         self.key = uuid.uuid4().hex[:8]
-        if self.parent is not None: self.parent.children.append(self)
+        if self.parent is not None: self.parent._adopt(self)
         if self.log is None and getattr(self.parent, 'log', None) is not None: self.log = self.parent.log.parent/f'{self.id}.log'
+
+    def _adopt(self, child):
+        "Add `child`, dropping the oldest finished children beyond `CHILD_KEEP`."
+        with self._lock:
+            self.children.append(child)
+            if (n := len(self.children) - CHILD_KEEP) <= 0: return
+            old = [c for c in self.children if c.terminal][:n]
+            self.children = [c for c in self.children if all(c is not o for o in old)]
+
+    def draw(self, limit):
+        "Count one tool call against this run's whole tree; False once `limit` calls are spent."
+        root = self
+        while root.parent is not None: root = root.parent
+        with root._lock:
+            root.tree_calls = getattr(root, 'tree_calls', 0) + 1
+            return limit is None or root.tree_calls <= limit
 
     def write(self, line):
         "Append one transcript line, when this run keeps a transcript."
