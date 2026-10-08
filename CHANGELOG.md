@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.13
+
+- Library output no longer corrupts the terminal. While the TUI runs, Python's `sys.stderr` goes to `<cfg>/stderr.log`: kosha's index sync drew a tqdm bar from a background thread, and every update scrolled the screen under teleprint's frames, leaving a copy of the status bar behind each time. A session that wrote there says so on exit.
+- The pane keeps the model's running notes: what it said before each call, whole and timestamped (`Run.notes`, up to `NOTE_KEEP`). Each note folds to its time and first line and opens to every word; the newest starts open.
+
 ## 0.2.12
 
 - A turn's whole answer reaches the terminal. `run_turn` stopped reading once the run finished and dropped what was still queued; on the Claude backend, which hands over a step's text in one chunk, that was the entire answer.
