@@ -18,13 +18,13 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
            'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich',
            'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode',
-           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'amain', 'headless_prompt', 'ask_once',
-           'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media',
-           'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
-           'media_parts', 'media_note']
+           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'stderr_to', 'amain', 'headless_prompt',
+           'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path',
+           'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment',
+           'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
-import asyncio, concurrent.futures, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
+import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
 import json as _json
 from base64 import b64encode
 from dataclasses import dataclass
@@ -2171,6 +2171,12 @@ def begin(self:Ui):
     self.start_turn(self.warm_up())
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
+@contextlib.contextmanager
+def stderr_to(path):
+    "Python's `sys.stderr` into `path` while the TUI owns the screen: a bar or warning written to the terminal scrolls it under teleprint's frames."
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'w', buffering=1) as f, contextlib.redirect_stderr(f): yield f
+
 async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto'):
     "The tty loop: one terminal, one event loop, one keyboard owner."
     tty = RealTty()
@@ -2331,8 +2337,11 @@ def main(
         start_agent(agent)
         return sys.exit(ask_once(agent, prompt, as_json=json))
     hint = f"{', '.join(host.roots)} · /python · /help"
-    try: asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane))
+    log = Path(agent.cfg or tempfile.gettempdir())/'stderr.log'
+    try:
+        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane))
     except KeyboardInterrupt: pass
+    if log.exists() and log.stat().st_size: print(f'library output from the session is in {log}', file=sys.stderr)
 
 # %% ../nbs/05_cli.ipynb #240c918c
 @patch

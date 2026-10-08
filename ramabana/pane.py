@@ -107,7 +107,8 @@ def now_snapshot(agent):
             'plan': [{'text': t.text, 'status': t.status} for t in agent.plan.todos],
             'subs': [_sub(r, every, now) for r in kids + bg],
             'files': _files(agent, seen, every[mark:]),
-            'background': _background(agent, seen, bg, every, since, now)}
+            'background': _background(agent, seen, bg, every, since, now),
+            'notes': [{'at': t, 'text': s} for t, s in (root.notes if root else [])]}
 
 # %% ../nbs/18_pane.ipynb #22ae7faf
 def write_snapshot(agent, path):
@@ -193,6 +194,15 @@ def _bg_row(b, width, drift):
     head = Text(f'{mark} ', style=style) + Text(f"{b['kind']} ", style=PALETTE['gray'])
     return _row(width, head, _1(b['label'], 200), Text(f" · {b['state']}{clock}", style=PALETTE['gray']), PALETTE['fg1'])
 
+def _note_rows(n, width, opened):
+    "One note: `▸`, its time and first line; opened, `▾` and every word wrapped to the pane."
+    head = Text(('▾ ' if opened else '▸ ') + time.strftime('%H:%M ', time.localtime(n['at'])), style=PALETTE['gray'])
+    room, key = max(8, width - head.cell_len), ('note', n['at'])
+    if not opened: return [(key, head + _line(n['text'].splitlines()[0], PALETTE['fg1'], room))]
+    lines = [w for l in n['text'].splitlines() for w in textwrap.wrap(l, room) or ['']]
+    return [(key if i == 0 else None, (head if i == 0 else Text(' ' * head.cell_len)) + _line(l, PALETTE['fg1'], room))
+            for i, l in enumerate(lines)]
+
 def board(snap, width=40, now=None, open=(), err=''):
     "The pane for `snap` as `(key, row)` pairs, one per screen line; a row with a `key` opens and closes."
     warn = [(None, _line('⚠ ' + err, PALETTE['red'], width))] if err else []
@@ -205,6 +215,8 @@ def board(snap, width=40, now=None, open=(), err=''):
     section('Sub-agents', [r for s in snap['subs'] for r in _sub_rows(s, width, drift, ('sub', s['id']) in open)])
     section('Files', [r for f in snap['files'] for r in _file_rows(f, width, ('file', f['path']) in open)])
     section('Background', [(None, _bg_row(b, width, drift)) for b in snap['background']])
+    notes = snap.get('notes') or []   # newest first, and the newest starts open: toggling flips that
+    section('Notes', [r for i, n in enumerate(reversed(notes)) for r in _note_rows(n, width, (('note', n['at']) in open) != (i == 0))])
     return rows
 
 def render(snap, width=40, now=None, open=()):

@@ -256,7 +256,7 @@ def test_a_resumed_turn_replays_only_the_root_calls():
     assert out.count('view_file(') == 1 and 'delegate_search(' in out
 
 
-V2 = {'at', 'busy', 'root', 'plan', 'subs', 'files', 'background'}
+V2 = {'at', 'busy', 'root', 'plan', 'subs', 'files', 'background', 'notes'}
 
 
 def test_a_v2_snapshot_has_the_plan_the_files_and_every_sub_agent_call():
@@ -419,3 +419,21 @@ def test_an_error_before_the_first_snapshot_still_shows_and_each_line_is_erased_
     assert '⚠ boom' in ''.join(t.plain for _, t in board(None, 40, err='boom'))
     v, _ = _viewer(tmp_path, _board(time.time()))
     assert '\x1b[1;1H\x1b[K\x1b[' in v.tty.writes[-1], 'CSI K comes before the text, so a pending wrap keeps the last cell'
+
+
+def test_notes_fold_to_a_line_each_and_the_newest_starts_open():
+    now = time.time()
+    old, new = {'at': now - 60, 'text': 'Reading the loader first, because it decides which model takes the turn.'}, \
+               {'at': now, 'text': 'The loader picks the model from the routing table, so the tests go next.'}
+    snap = {**_board(now), 'notes': [old, new]}
+    def notes(open=()):
+        rows = _text(snap, width=40, now=now, open=open).splitlines()
+        return rows[rows.index('Notes') + 1:]
+    shut = notes()
+    assert '▾' in shut[0] and 'routing' in ' '.join(shut[:4]), 'the newest is open, wrapped to the pane'
+    assert sum('▸' in r for r in shut) == 1 and 'decides which model' not in ' '.join(shut), 'an older note is one clipped line'
+    assert max(len(r) for r in shut) <= 40
+    both = notes(open={('note', old['at'])})
+    assert 'decides which model' in ' '.join(both) and '▸' not in ' '.join(both), 'opening an older note shows all of it'
+    assert '▾' not in ' '.join(notes(open={('note', new['at'])})), 'and the newest closes like any other row'
+    assert 'Notes' not in _text(_board(now), now=now), 'a snapshot without notes draws no section'

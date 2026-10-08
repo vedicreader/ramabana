@@ -282,3 +282,20 @@ def test_a_failed_start_still_syncs_the_index_after_the_attempt(tmp_path, how):
     assert order == ['start', 'sync']
     order.clear()
     assert cli.start_agent(a, closed=lambda: True) is None and order == ['start']
+
+
+def test_library_output_goes_to_a_log_while_the_tui_owns_the_screen(tmp_path):
+    """kosha's index sync draws a tqdm bar from a background thread. Written to the terminal, every
+    bar landed between teleprint's frames, and each repaint of the status bar became a new line."""
+    import sys, threading
+    from tqdm import tqdm
+    from ramabana.cli import stderr_to
+    real, log = sys.stderr, tmp_path/'stderr.log'
+    with stderr_to(log):
+        # an earlier `sync_index` may have set TQDM_DISABLE before tqdm's import, so this bar asks to be drawn
+        t = threading.Thread(target=lambda: list(tqdm(range(3), 'parse files from /proj', disable=False)))
+        t.start(); t.join()
+        print('a stray warning', file=sys.stderr)
+    assert sys.stderr is real
+    text = log.read_text()
+    assert 'parse files from /proj' in text and 'a stray warning' in text

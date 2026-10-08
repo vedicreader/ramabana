@@ -8,7 +8,7 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
            'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM', 'ONESHOT_CUT',
-           'IMG_TOKENS', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'STATUS_CHARS', 'CHILD_KEEP', 'CHAT_CALLBACKS',
+           'IMG_TOKENS', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'STATUS_CHARS', 'CHILD_KEEP', 'NOTE_KEEP', 'CHAT_CALLBACKS',
            'interesting', 'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact',
            'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient',
            'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think',
@@ -939,7 +939,12 @@ def said_before_call(hist):
     m = next((m for m in reversed(hist or ()) if isinstance(m, dict) and m.get('role') == 'assistant'), None)
     return resp_text(m) if m and m.get('tool_calls') else ''
 
+def _note(text):
+    "What `text` said, for the pane's notes: no thinking quotes, fences or blank lines."
+    return '\n'.join(l.rstrip() for l in str(text or '').splitlines() if not _NOT_SAID.match(l)).strip()
+
 CHILD_KEEP = 50   #: finished children a run keeps; live ones are never dropped
+NOTE_KEEP = 100   #: narration notes a run keeps for the pane
 
 @dataclass
 class Run:
@@ -959,7 +964,7 @@ class Run:
     answer: str = ''          # the reply it finished with
 
     def __post_init__(self):
-        self.children, self._lock, self._done, self.inbox, self._heard = [], threading.RLock(), threading.Event(), [], []
+        self.children, self._lock, self._done, self.inbox, self._heard, self.notes = [], threading.RLock(), threading.Event(), [], [], []
         self.key = uuid.uuid4().hex[:8]
         if self.parent is not None: self.parent._adopt(self)
         if self.log is None and getattr(self.parent, 'log', None) is not None: self.log = self.parent.log.parent/f'{self.id}.log'
@@ -1010,7 +1015,10 @@ class Run:
     def on_call(self):
         "A call is starting: what was streamed since the last, else the message that made it, becomes the status."
         with self._lock: said, self._heard = ''.join(self._heard), []
-        return self.set_status(status_line(said) or said_before_call(getattr(self.backend, 'hist', None)))
+        if not status_line(said): said = said_before_call(getattr(self.backend, 'hist', None))
+        if (n := _note(said)):
+            with self._lock: self.notes = [*self.notes, (time.time(), n)][-NOTE_KEEP:]
+        return self.set_status(said)
 
     @property
     def terminal(self): return self.state in ('completed', 'cancelled', 'detached', 'terminated', 'failed')

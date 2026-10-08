@@ -178,3 +178,17 @@ def test_a_root_on_a_backend_that_hides_its_text_gets_the_status_tool():
     assert a.status_line == 'Reading the tests' and not a.activity.acts, 'display-only: no act'
     b, _ = fake_agent()
     assert 'status' not in {t.__name__ for t in b.tools}
+
+
+def test_each_narration_is_kept_whole_as_a_note_for_the_pane():
+    "The status line keeps a clipped last line; the pane's notes keep what the model said, minus its thinking quotes."
+    from ramabana.pane import now_snapshot
+    a, _ = fake_agent()
+    long = 'Reading the module now, because the loader decides the default.\nThen the tests.'
+    be = ScriptedBackend(steps=[Step(long), Step(tool=READ), Step('> **🧠 Thinking**\n>\n> hmm\nChecking again.'), Step(tool=READ), Step('done')],
+                         token_delay=0, tools=a.tools, sp=a.system_prompt())
+    a._be = a._be_or_none = lambda job='turn': be
+    list(a.stream('go'))
+    notes = [t for _, t in a.run().notes]
+    assert [n.strip() for n in notes] == [long, 'Checking again.'], notes
+    assert [n['text'].strip() for n in now_snapshot(a)['notes']] == [long, 'Checking again.']
