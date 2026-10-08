@@ -3972,9 +3972,9 @@ requires-dist = [
     { name = "rich", marker = "extra == 'cli'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'python'", specifier = ">=15.0.0" },
     { name = "rishi", specifier = ">=0.1.39" },
-    { name = "shalya", specifier = ">=0.1.1" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.1" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.1" },
+    { name = "shalya", specifier = ">=0.1.2" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.2" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.2" },
     { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.3" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.3" },
     { name = "uraiyadal", specifier = ">=0.0.9" },
@@ -4403,7 +4403,7 @@ wheels = [
 
 [[package]]
 name = "shalya"
-version = "0.1.1"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dhrishti" },
@@ -4416,9 +4416,9 @@ dependencies = [
     { name = "litesearch" },
     { name = "vishalakshi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ae/cb/38293da2a814b6ad4773784dea4d8bc3cda3377695ff0e814c9ffbcb61b5/shalya-0.1.1.tar.gz", hash = "sha256:e0468270640653a6b1cd50b8adf59c42069a1fbe967272a0eba695dba4e50765", size = 52168, upload-time = "2026-09-28T05:18:35.109Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/b7/233a876cb65166a16b4283aabc0c6450034b95ce769bd6bf1e4953e46d7a/shalya-0.1.2.tar.gz", hash = "sha256:eb4bce122934b973938c1951fa5dcf912527a6945cfe575ea9cefab649e3d3ac", size = 53814, upload-time = "2026-10-08T00:59:07.933Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/95/2f6cc4c207978baa454ece01648a81f8c3cc3e4d5a17bfe5bed1e0450c42/shalya-0.1.1-py3-none-any.whl", hash = "sha256:2fcdfbd5c622416c389a043d5ad841c9b6196a7124381b95d6f94d57f5b23a7e", size = 55690, upload-time = "2026-09-28T05:18:33.752Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/f8/c5a8a451da73193e5d5369f5ac1e8bba6e302fa3c8452044e69294ddcf47/shalya-0.1.2-py3-none-any.whl", hash = "sha256:246852e0ee4ec3526dda612ab3d91626e6dcba9d9b68d36b66ea587da981f9bd", size = 57331, upload-time = "2026-10-08T00:59:06.724Z" },
 ]
 
 [package.optional-dependencies]

@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.2.8
+
+- Git writes, commits and rewinds act in the repository a call names: `/commit FOLDER MESSAGE`, `/pr FOLDER TITLE`, and `/rewind` undoes a git change where it happened. A git write with `path=` snapshots the tree rather than recording the folder as a file.
+- `restart_kernel` and `page_eval` always ask.
+- Sub-agents: `subagent_steps` (1–80, `/subagents steps N`), `subagent_timeout` (seconds, 0 for none, `/subagents timeout S`) and opt-in nesting `subagent_depth` (0–2, `/subagents nest N`). A nested sub-agent gets only synchronous `delegate_search`. One tool-call budget covers the whole tree, and at most four sub-agents run at once. The setters refuse while busy.
+- `runs(active=True)` includes background runs; `busy` counts foreground runs only. Finished run children are pruned past 50.
+- With the browser opt-in, the briefing says how to look at a screenshot: `delegate_search(questions, images=[path])`.
+- Requires `shalya>=0.1.2`.
+
 ## 0.2.7
 
 - `resume_session(keep_model=True)` resumes on the turn model in use. The default still adopts the conversation's last model, and the note names the model actually in use.
