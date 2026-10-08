@@ -3459,6 +3459,8 @@ def _index_turn(agent, turn, start, end):
     if not sid: return
     rows = _session_rows(agent)
     if rows is None: return
+    # a line that does not follow the indexed end: another writer or an untagged turn came between
+    if _index_start(agent, rows) != start: return agent.rebuild_index()
     row = dict(rows.get(sid) or {})
     row['turns'] = int(row.get('turns', 0)) + 1
     row['last_at'], row['last_offset'] = turn.get('at', 0), end
@@ -3469,21 +3471,30 @@ def _index_turn(agent, turn, start, end):
     rows[sid] = {'version': _SESSION_META_VERSION, **_SESSION_DEFAULTS} | row
     _write_session_rows(agent, rows)
 
-def _index_stale(agent, rows):
-    "Whether the index has to be built again rather than trusted."
-    if not rows: return True
-    if any(int(r.get('version', 0)) < _SESSION_META_VERSION or 'last_offset' not in r
-           for r in rows.values()): return True
-    p = agent.history_path
-    if p is None or not p.exists(): return False
-    # smaller than a recorded offset: rotated or replaced
-    return p.stat().st_size < max((int(r.get('last_offset', 0)) for r in rows.values()), default=0)
+_INDEX_KEYS = ('turns', 'first_at', 'first_offset', 'first_prompt', 'last_at', 'last_offset', 'model')
 
-def _index_from_log(p):
-    "Stream the log a line at a time and describe every conversation in it, with its byte range."
-    found, legacy_n, legacy_last, offset = {}, 0, None, 0
+def _index_start(agent, rows):
+    "Where the log has to be read from: None when the index covers it, 0 to rebuild, else where the index ends."
+    # a title set before any turn names no bytes, so only rows with turns say what is indexed
+    logged = [r for r in rows.values() if r.get('turns')]
+    if not logged or any(int(r.get('version', 0)) < _SESSION_META_VERSION or 'last_offset' not in r for r in logged): return 0
+    end, size = max(int(r['last_offset']) for r in logged), agent.history_path.stat().st_size
+    if size == end: return None
+    # smaller than a recorded offset: rotated or replaced
+    return 0 if size < end else end
+
+def _legacy_seed(rows):
+    "The newest `legacy-N` and when it ended, so a catch-up numbers untagged turns as a full read would."
+    n = max((int(s[7:]) for s in rows if s.startswith('legacy-') and s[7:].isdigit()), default=0)
+    return n, (float(rows[f'legacy-{n}'].get('last_at') or 0) if n else None)
+
+def _index_from_log(p, offset=0, legacy_n=0, legacy_last=None):
+    "Stream the log from `offset` a line at a time and describe every conversation in it, with its byte range."
+    found = {}
     with p.open('rb') as f:
+        f.seek(offset)
         for raw in f:
+            if not raw.endswith(b'\n'): break  # still being written: the next catch-up reads it
             start, offset = offset, offset + len(raw)
             line = raw.decode('utf-8', 'replace').strip()
             if not line: continue
@@ -3522,14 +3533,21 @@ def rebuild_index(self:Agent, force=False):
         if rows is None: return {}
         p = self.history_path
         logged = p is not None and p.exists()
-        if logged and not force and not _index_stale(self, rows): return rows
-        found = _index_from_log(p) if logged else _index_from_history(self)
+        start = _index_start(self, rows) if logged and not force else 0
+        if start is None: return rows
+        if start and not (found := _index_from_log(p, start, *_legacy_seed(rows))): return rows
+        if not start: found = _index_from_log(p) if logged else _index_from_history(self)
+        for sid, row in found.items():
+            if start and (old := rows.get(sid) or {}).get('turns'):
+                found[sid] = old | row | {k: old[k] for k in ('first_at', 'first_offset', 'first_prompt') if k in old} | {'turns': int(old['turns']) + row['turns']}
         out = {sid: {'version': _SESSION_META_VERSION, **_SESSION_DEFAULTS}
                     | {k: v for k, v in (rows.get(sid) or {}).items() if k in _SESSION_DEFAULTS}
                     | row
                for sid, row in found.items()}
         for sid, row in rows.items():
-            if sid not in out: out[sid] = {**row, 'version': _SESSION_META_VERSION}
+            if sid in out: continue
+            # a full read that did not find it: its offsets name bytes that are gone, its title is still the person's
+            out[sid] = {k: v for k, v in row.items() if start or not logged or k not in _INDEX_KEYS} | {'version': _SESSION_META_VERSION}
         if logged: _write_session_rows(self, out)
         return out
 
