@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.10
+
+- The conversation index no longer rescans the whole log on every read. A title-only row, for a conversation that never logged a turn, used to mark the index stale forever. When the log has only grown, the index reads just the new tail. A full rebuild happens only when the log shrank, a row is from an older index version, or there is no index.
+- `_index_turn` catches up first when its line does not follow the indexed end, and a last line without a newline waits for the next read.
+
 ## 0.2.9
 
 - Tool results carry pictures to the turn model: a `screenshot` or a `view_file` on a picture arrives as an image when the model takes images and the transport carries them. Otherwise a note names the path. Sub-agents follow their own model.
