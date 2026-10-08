@@ -7,15 +7,16 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
-           'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'RULES',
-           'OUTPUT_CONTRACT', 'SMALL_RULES', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK',
-           'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL',
-           'HISTORY_TURNS', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'WARM_OFF_SMALL', 'REPLAYED', 'CHECKPOINT_BYTES',
-           'COMMIT_SP', 'PR_SP', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE',
-           'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
-           'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'tool_plan',
-           'request_text', 'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'small_system_prompt',
-           'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
+           'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES',
+           'PICTURE_RULE', 'RULES', 'OUTPUT_CONTRACT', 'SMALL_RULES', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES',
+           'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL',
+           'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'WARM_OFF_SMALL',
+           'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
+           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
+           'applied', 'apply', 'note', 'inline_for', 'tool_plan', 'request_text', 'prompt_directives',
+           'project_context', 'work_rules', 'system_prompt', 'small_system_prompt', 'Todo', 'Plan', 'plan_tools',
+           'Agent', 'git_shell_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -25,15 +26,15 @@ from pathlib import Path
 from fastcore.basics import first, ifnone, patch
 from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
-from urai import parse_args, tc_name
-from .core import AgentError, agent_err, available_models, missing_key, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
+from urai import parse_args, tc_name, tool_media
+from .core import accepts, AgentError, agent_err, available_models, missing_key, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .runtime import QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, Slots, SUB_MAX_STEPS, SUB_TIMEOUT, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool)
+                            tools_for, Background, Slots, SUB_MAX_STEPS, SUB_TIMEOUT, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
 from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -637,6 +638,15 @@ def project_context(host, mx=MAX_CONTEXT_FILE, cfg=None):
             'override the general guidance above where they disagree.\n\n' + '\n\n'.join(out) +
             '\n</project_context>')
 
+#: the screenshot rule, keyed on whether the turn model sees a picture a tool returns
+PICTURE_RULE = {
+    True: ('A picture a tool returns (`screenshot`, `view_file` on an image) arrives as an image right after\n'
+           '  the tool results; look at it directly. A resumed conversation replays its path, not the picture,\n'
+           '  so call the tool again to see it.'),
+    False: ('This model cannot see pictures, so `screenshot` and `view_file` on an image give a path. To look at\n'
+            '  one, call `delegate_search(questions, images=[path])`. If that is refused because the sub-agent\n'
+            '  model cannot see pictures either, say so and read the page with `page_text` instead.')}
+
 RULES = (
     (None, 'Act on the user’s verb. “Create”, “run”, “fix”, “add” and “as NAME” request a\n'
            '  result, not a plan: use the tool that produces it, verify it, then report what exists.\n'
@@ -695,9 +705,7 @@ RULES = (
                         '  next step rests on. Verify those and only those.'),
     ('delegate_search', 'When two or more questions are independent and each would take several tool calls,\n'
                         '  pass them together as `questions` rather than working through them yourself.'),
-    ('screenshot', 'A tool result is text, so `screenshot` returns a path, not the picture. To look at it, call\n'
-                   '  `delegate_search(questions, images=[path])`. If that is refused because the sub-agent model\n'
-                   '  cannot see pictures, say so and read the page with `page_text` instead.'),
+    ('screenshot', PICTURE_RULE),
     ('watch', '`watch(target, kind=\'folder\', instructions=…)` is for work happening beside this conversation:\n'
               '  another agent editing the repo, a build writing output. `instructions` are the whole brief the\n'
               '  reviewer gets, so write them self-contained; `pattern` narrows the files. Reviews arrive at the\n'
@@ -740,13 +748,16 @@ SMALL_RULES = (
 )
 
 
-def work_rules(names=(), rules=RULES):
+def work_rules(names=(), rules=RULES, pictures=True):
     "The briefing's rules, keeping those whose tool is on the table. Empty `names` filters nothing."
     names = set(names or ())
-    return '\n'.join(f'- {text}' for tool, text in rules if not names or tool is None or tool in names)
+    return '\n'.join(f'- {text[bool(pictures)] if isinstance(text, dict) else text}' for tool, text in rules
+                     if not names or tool is None or tool in names)
 
 
-def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=(), cfg=None):
+def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=(), cfg=None,
+                  pictures=True):   # does the turn model see a picture a tool returns
+
     "The agent's briefing: what it is, where it is, how to work, and what it knows."
     names = {getattr(t, '__name__', '') for t in tools or ()}
     roots = '\n'.join(f'  {r}' for r in host.roots) or '  (no folder open)'
@@ -769,7 +780,7 @@ files, run commands in the project, run Python in the user's live kernel namespa
 the web, and read skills that describe the tools already installed here.
 
 How to work:
-{work_rules(names)}{live}"""
+{work_rules(names, pictures=pictures)}{live}"""
     idx = skill_index(skills)
     if idx: sp += idx
     for name in inline or ():
@@ -1302,7 +1313,7 @@ def _record(self:Agent, f):
             if nested: self._nested.reset(token)
             if shelled: self.settle_tree()
         for r in self.registry.fire('after_tool', self, name, out):
-            if isinstance(r, str): out = r
+            if isinstance(r, str): out = keep_media(r, out)
         if failed(out):
             for p in fresh: self.before.pop(p, None); self.new.discard(p); self.binary.discard(p)
         if name in GIT_WRITE_TOOLS and not failed(out): self._keep_undo(name, out)
@@ -1324,6 +1335,7 @@ def _open_act(self:Agent, f, name, args):
 def _close_act(self:Agent, act, out):
     "Finish `act` with `out`, and return `out`."
     self.activity.finish(act, out, ok=not failed(out))
+    if (m := tool_media(out)) and not failed(out): self._drew(m)   # a tool's pictures draw inline, like a generated one
     if (run := current_run()) is not None: run.write(f"< {act.tool} {'ok' if not failed(out) else 'ERR'} {_1(out, 200)}")
     return out
 
@@ -1522,7 +1534,9 @@ def system_prompt(self:Agent):
         parts.append('## Current plan\n\n' + self.plan.md() +
                      '\n\nWork the active todo; mark it done when finished; after a stop, '
                      'resume from the active item rather than rewriting the plan.')
-    return system_prompt(self.host, self.skills, inline, tools=self._plain, extra='\n\n'.join(parts), cfg=self.cfg) + note
+    s = self.spec_or_none('turn')   # not `_be`: building the backend asks for this briefing
+    pics = s is None or (be.takes_pictures if (be := self._backends.get((s.backend, s.model_id))) is not None else accepts(s, 'image'))
+    return system_prompt(self.host, self.skills, inline, tools=self._plain, extra='\n\n'.join(parts), cfg=self.cfg, pictures=pics) + note
 
 # %% ../nbs/03_agent.ipynb #bf85c66d
 MEMORY_CHARS = 4000
@@ -1613,11 +1627,11 @@ def _load_plan(self:Agent):
 @patch
 def _drew(self: Agent, paths):
     "Record pictures a tool wrote this turn, and hand the frontend the paths at once."
-    paths = list(paths)
+    paths = list(paths)                # a tool's `Media` may hand bytes; `on_media` gets only paths
     self._drawn = drawn = getattr(self, '_drawn', [])
     drawn.extend(paths)                # in place: sub-agents may draw on two threads
     if self.on_media:
-        try: self.on_media(paths)
+        try: self.on_media([p for p in paths if not isinstance(p, (bytes, bytearray))])
         except Exception: pass
 
 @patch(as_prop=True)
@@ -1633,6 +1647,7 @@ def last_media(self: Agent):
     "Images from the latest turn, the model's or its tools', as `{'mime','data'}` dicts."
     out = self.resp_media
     for p in getattr(self, '_drawn', []):
+        if isinstance(p, (bytes, bytearray)): out.append({'mime': picture_mime(p[:16]) or 'image/png', 'data': bytes(p)}); continue
         p = Path(p)
         try: out.append({'mime': mime_for(p), 'data': p.read_bytes()})
         except OSError: pass

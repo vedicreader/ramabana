@@ -14,7 +14,7 @@ def test_claude_md_and_the_users_agents_md_reach_the_briefing(tmp_path):
     sp = a.system_prompt()
     assert sp.index('USER RULE') < sp.index('PROJECT RULE')
     assert CLAUDE_NOTES not in sp
-    a.spec_or_none = lambda job='turn': type('S', (), {'runtime': 'claude', 'model_id': 'opus'})()
+    a.spec_or_none = lambda job='turn': type('S', (), {'runtime': 'claude', 'model_id': 'opus', 'backend': 'claude', 'local': False})()
     assert CLAUDE_NOTES in a.system_prompt()
 
 

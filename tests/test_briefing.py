@@ -584,7 +584,7 @@ def test_durable_notes_reach_the_model_through_a_seam_every_agent_answers():
 
 
 def test_the_screenshot_rule_arrives_only_with_the_browser_group():
-    "A tool result is text; the briefing names the one way to look at a screenshot, and only to a model that can take one."
+    "The briefing says how to look at a screenshot, only with the browser group, and by whether the turn model sees pictures."
     from shalya.host import BrowserHost
     class Browsing(FullHost, BrowserHost):
         def browse(self, url): return 'p1 Page'
@@ -599,5 +599,7 @@ def test_the_screenshot_rule_arrives_only_with_the_browser_group():
     assert rule not in A.system_prompt(plain, tools=tools_for(plain))
     b = Browsing(files={'a.py': 'x = 1\n'})
     assert rule not in A.system_prompt(b, tools=tools_for(b)), 'the browser group is an opt-in'
-    sp = A.system_prompt(b, tools=tools_for(b, optin=('browser',)))
+    sp = A.system_prompt(b, tools=tools_for(b, optin=('browser',)), pictures=False)
     assert rule in sp and 'page_text' in sp and 'cannot see pictures' in sp
+    sp = A.system_prompt(b, tools=tools_for(b, optin=('browser',)))
+    assert rule not in sp and 'arrives as an image' in sp and 'replays its path' in sp

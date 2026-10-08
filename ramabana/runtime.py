@@ -20,8 +20,8 @@ import contextvars, copy, math, os, re, sys, threading, time, uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fastcore.basics import patch
-from urai import resp_text, tool_rows
-from .core import agent_err, env, force_tags, local_ctx, local_window, tool_channel
+from urai import resp_text, tool_rows, strip_hist_media
+from .core import accepts, agent_err, env, force_tags, local_ctx, local_window, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # bytes of tail kept per call
@@ -706,9 +706,9 @@ class Backend:
         self._replace_hist(summary,list(keep)); return self
     
     def snapshot_hist(self):
-        "A detached model-history checkpoint suitable for an in-process branch, pending history included."
+        "A detached model-history checkpoint suitable for an in-process branch, pending history included; pictures become placeholders."
         # a backend that has not started holds a resumed conversation in `_resume_hist`, not `hist`
-        return copy.deepcopy(list(self.hist if self.chat else (self._resume_hist or [])))
+        return strip_hist_media(copy.deepcopy(list(self.hist if self.chat else (self._resume_hist or []))))
     
     def resume_hist(self,hist):
         "Restore canonical history now, or after this backend starts lazily."
@@ -1121,6 +1121,17 @@ def add_cb(self:Backend, cb):
 @patch
 def _start_callbacks(self:Backend): self._sync_callbacks()
 
+@patch(as_prop=True)
+def takes_pictures(self:Backend):
+    "Does a picture a tool returns reach this model: it takes images and its transport carries them?"
+    c = self.chat
+    return bool(accepts(self.spec, 'image') and (c is None or c is self or getattr(c, '_media_ok', True)))
+
+@patch
+def _gate_media(self:Backend):
+    "Set the chat's `media_in`, so a model that cannot see pictures gets urai's note instead."
+    if (c := self.chat) is not None and c is not self and hasattr(c, '_media_ok'): c.media_in = self.takes_pictures
+
 @patch
 def start(self:Backend):
     if self._tried: return self.chat
@@ -1128,6 +1139,7 @@ def start(self:Backend):
     try:
         self.chat = self._start()
         self._start_callbacks()
+        self._gate_media()
         if self._resume_hist is not None:
             self.restore_hist(self._resume_hist); self._resume_hist = None
         self.note = f'{len(self.tools)} tools'

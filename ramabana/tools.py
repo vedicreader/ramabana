@@ -8,20 +8,21 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_TIMEOUT', 'SUB_SLOTS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP', 'SUB_SP',
            'SUB_NEST_SP', 'NO_SUB', 'PATH_WRITES', 'STATUS_NOTE', 'ASYNC_MAX', 'ASYNC_KEEP', 'MAX_MEDIA', 'MAX_ATTACH',
            'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'small_tool', 'ToolEntry', 'ToolCatalog',
-           'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'path_write', 'write_targets', 'status_tool', 'Slots',
-           'delegate', 'delegate_many', 'Background', 'named_skills', 'picture_mime', 'read_pictures', 'subagent_tools',
-           'parse_plan_items', 'mod_doc', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES',
-           'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API',
-           'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
-           'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX',
-           'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools',
-           'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err',
-           'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write',
-           'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost',
-           'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost',
-           'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools',
-           'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt',
-           'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
+           'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'keep_media', 'path_write', 'write_targets',
+           'status_tool', 'Slots', 'delegate', 'delegate_many', 'Background', 'named_skills', 'picture_mime',
+           'read_pictures', 'subagent_tools', 'parse_plan_items', 'mod_doc', 'API_VENDORS', 'Capability', 'DENY', 'ERR',
+           'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit',
+           'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API',
+           'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS',
+           'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill',
+           'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied',
+           'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools',
+           'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise',
+           'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost',
+           'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for',
+           'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index',
+           'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools', 'research_tools',
+           'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, contextvars, functools, json, re, threading, time, uuid
@@ -36,6 +37,8 @@ import shalya as _shalya
 from shalya import (MAX_TOOL_CHARS, Host, HostError, NO_ROOTS, implemented, image_available,
                     group_of, is_write, has_effect, summarise, read_only, clip, err, find,
                     acts, summary, cmds, edits, apply_edits, diff_text)
+from shalya.core import Media
+from urai import tool_media
 from shalya.core import one_line as _1
 from shalya.host import LocalHost, _fuse
 from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for, mime_for
@@ -230,6 +233,10 @@ def _model_refused(sub, reply):
     problems = getattr(sub, 'problems', None) or []
     return bool(problems) and str(reply or '').strip() == str(problems[-1]).strip()
 
+def keep_media(new, old):
+    "`new`, carrying `old`'s pictures when a wrapper or hook rewrote a tool result as text."
+    return Media(new, tool_media(old)) if isinstance(new, str) and tool_media(old) and not tool_media(new) else new
+
 def _inboxed(f, run, heard=None):
     "The tool, taking `run`'s status as it starts, with any user message for `run` appended to its result and passed to `heard`."
     @functools.wraps(f)
@@ -237,7 +244,7 @@ def _inboxed(f, run, heard=None):
         if (r := run() if callable(run) else run) is not None: r.on_call()
         out = f(*a, **kw)
         if isinstance(out, str) and r is not None and (msgs := r.drain_inbox()):
-            out += f'\n\n<user-message key="{r.key}">\n' + '\n'.join(msgs) + '\n</user-message>'
+            out = keep_media(out + f'\n\n<user-message key="{r.key}">\n' + '\n'.join(msgs) + '\n</user-message>', out)
             if heard: heard(msgs)
         return out
     return call
