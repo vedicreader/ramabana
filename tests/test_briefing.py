@@ -581,3 +581,22 @@ def test_durable_notes_reach_the_model_through_a_seam_every_agent_answers():
     p = Completer(a)._prompt('x = ', 4, 'python')
     assert asked == [('completion', 6000)], asked
     assert '<user_memory>\nNOTE-X\n</user_memory>' in p, p
+
+
+def test_the_screenshot_rule_arrives_only_with_the_browser_group():
+    "A tool result is text; the briefing names the one way to look at a screenshot, and only to a model that can take one."
+    from shalya.host import BrowserHost
+    class Browsing(FullHost, BrowserHost):
+        def browse(self, url): return 'p1 Page'
+        def screenshot(self, page=''): return '/tmp/p1.png'
+        def page_text(self, page=''): return '# Page'
+        def page_reload(self, page=''): return 'Page'
+        def page_click(self, page, x, y): return 'clicked'
+        def page_type(self, page, text): return 'typed'
+        def page_eval(self, page, js): return '1'
+    rule = 'delegate_search(questions, images=[path])'
+    plain = FullHost(files={'a.py': 'x = 1\n'})
+    assert rule not in A.system_prompt(plain, tools=tools_for(plain))
+    b = Browsing(files={'a.py': 'x = 1\n'})
+    sp = A.system_prompt(b, tools=tools_for(b))
+    assert rule in sp and 'page_text' in sp and 'cannot see pictures' in sp

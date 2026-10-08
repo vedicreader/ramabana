@@ -340,7 +340,7 @@ def answer_md(ask):
 
 # %% ../nbs/03_agent.ipynb #ca1437e3
 EDIT_GROUPS = ('file', 'notebook')
-ALWAYS_ASK = ('add_root', 'restart_kernel')   #: asked in every mode short of `auto`
+ALWAYS_ASK = ('add_root', 'restart_kernel', 'page_eval')   #: asked in every mode short of `auto`
 REMOVED_TOOLS = frozenset({'add_todo', 'list_plan', 'delegate_parallel', 'delegate_status', 'remember_note',
                            'watch_folder', 'list_folder_watches', 'cancel_folder_watch', 'check_folders', 'memory_topics', 'poll_watches'})
 DOOM_LOOP = 3                      #: identical gated calls that force an ask
@@ -695,6 +695,9 @@ RULES = (
                         '  next step rests on. Verify those and only those.'),
     ('delegate_search', 'When two or more questions are independent and each would take several tool calls,\n'
                         '  pass them together as `questions` rather than working through them yourself.'),
+    ('screenshot', 'A tool result is text, so `screenshot` returns a path, not the picture. To look at it, call\n'
+                   '  `delegate_search(questions, images=[path])`. If that is refused because the sub-agent model\n'
+                   '  cannot see pictures, say so and read the page with `page_text` instead.'),
     ('watch', '`watch(target, kind=\'folder\', instructions=…)` is for work happening beside this conversation:\n'
               '  another agent editing the repo, a build writing output. `instructions` are the whole brief the\n'
               '  reviewer gets, so write them self-contained; `pattern` narrows the files. Reviews arrive at the\n'

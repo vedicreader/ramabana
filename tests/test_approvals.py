@@ -38,7 +38,7 @@ def test_the_gate_draws_its_line_around_the_write_tools_and_answers_as_a_bool():
     from ramabana.tools import GIT_READ_TOOLS, GIT_WRITE_TOOLS
     assert {'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell', 'run_python',
             'run_shell', 'run_shell_bg', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add',
-            'cart_remove', 'add_root', 'restart_kernel'} | GIT_WRITE_TOOLS == set(WRITE_TOOLS)
+            'cart_remove', 'add_root', 'restart_kernel', 'page_click', 'page_type', 'page_eval'} | GIT_WRITE_TOOLS == set(WRITE_TOOLS)
     assert not (set(GIT_READ_TOOLS) & set(WRITE_TOOLS)), 'rehearsing a merge is not approving one'
 
     ap = agent.Approvals(tools={'edit_file'}, mode='auto')
@@ -354,3 +354,12 @@ def test_every_session_host_implementer_has_restart_kernel():
         def inspect_python(self, code, scope='isolated'): return ''
         def list_vars(self): return ''
     with pytest.raises(TypeError, match='restart_kernel'): Half(['/x'])
+
+
+def test_page_eval_always_asks():
+    "Script in a page can do whatever the page can: `edits` mode never covers it, and only `auto` runs it unasked."
+    from shalya.tools import group_of
+    assert 'page_eval' in agent.ALWAYS_ASK and group_of('page_eval') == 'browser'
+    assert not agent.Approvals.edits_cover('page_eval')
+    for mode in ('ask', 'edits'):
+        assert agent.Approvals(tools=WRITE_TOOLS, mode=mode).decide('page_eval', {}) is None, mode

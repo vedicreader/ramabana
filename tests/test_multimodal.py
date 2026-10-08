@@ -835,3 +835,19 @@ def test_a_turn_model_change_rebuilds_the_tools_even_when_the_budget_is_the_same
     assert a.tools and a._tools is not None
     a.set_model(two.name)
     assert a._tools is None, 'the tools were kept across a turn-model change'
+
+
+def test_a_screenshot_sent_to_a_sub_agent_without_vision_is_refused_by_name(tmp_path, caps):
+    "The browser rule falls back to `page_text` on this refusal, so it must arrive before any model is spawned."
+    from shalya.core import failed
+    from ramabana.testing import FakeBackend
+    from ramabana.tools import Background, LocalHost, read_pictures, subagent_tools
+    (tmp_path/'shot.png').write_bytes(_png(2, 2))
+    h, be = LocalHost([tmp_path], index=False), FakeBackend()
+    t = {f.__name__: f for f in subagent_tools(lambda: be, lambda: [], None, lambda m: None, background=Background(),
+                                               get_pictures=lambda ps: read_pictures(h, ps))}
+    caps(_Caps(inp=('text',)))
+    r = t['delegate_search'](['what does the page show'], images=['shot.png'])
+    assert failed(r) and 'cannot be sent pictures' in r and not be.spawned, r
+    caps(_Caps(inp=('text', 'image')))
+    assert 'sub answer' in t['delegate_search'](['what does the page show'], images=['shot.png'])
