@@ -13,8 +13,8 @@ from fastcore.all import Path
 
 # %% ../nbs/01b_models.ipynb #49247004
 CATALOG = {
-    'claude': ('fable', 'opus', 'sonnet', 'haiku', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001'),
-    'anthropic': ('claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001'),
+    'claude': ('fable', 'opus', 'sonnet', 'haiku', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001', 'claude-haiku-5-5'),
+    'anthropic': ('claude-fable-5-1', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-haiku-4-5-20251001', 'claude-haiku-5-5'),
     'openai': ('gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna', 'gpt-5.4', 'gpt-5.4-mini'),
     'codex': ('gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna', 'gpt-5.5'),
     'gemini': ('gemini-3.5-flash', 'gemini-3.1-flash-lite'),
@@ -54,7 +54,7 @@ def codex_ids():
     except Exception: return []
     return [m['slug'] for m in models if m.get('visibility') == 'list' and m.get('slug')]
 
-LIVE = {'openai': openai_ids, 'anthropic': anthropic_ids, 'codex': codex_ids}
+LIVE = {'openai': openai_ids, 'anthropic': anthropic_ids, 'codex': codex_ids, 'claude': anthropic_ids}
 
 # %% ../nbs/01b_models.ipynb #ad2610e2
 _HIDE = re.compile(r'-20\d\d-\d\d-\d\d|-\d{4}$|:|(?:^|-)(?:realtime|audio|image|transcribe|tts|live|instruct)(?:-|$)|embedding|moderation|dall-e|whisper|davinci|babbage|sora|computer-use|search-(?:api|preview)|deep-research')
@@ -68,7 +68,9 @@ def _current(provider, mid, legacy=False):
 def provider_models(p, legacy=False, ttl=300):
     "Ids a picker offers for provider `p`: the curated ones in their order, then what live discovery adds."
     from ramabana.core import probed
-    try: live = probed(f'{p}-models', lambda: LIVE[p](), ttl=ttl, disk=False) if p in LIVE else []
+    src = next((q for q, f in LIVE.items() if f is LIVE.get(p)), p)
+    try: live = probed(f'{src}-models', lambda: LIVE[p](), ttl=ttl, disk=False) if p in LIVE else []
     except Exception: live = []
     newest = lambda m: (tuple(map(int, re.findall(r'\d+', m))), m)
-    return list(dict.fromkeys([*CATALOG.get(p, ()), *sorted((m for m in live if _current(p, m, legacy)), key=newest, reverse=True)]))
+    live = (m for m in live if _current(p, m, legacy) and not re.search(r'-20\d{6}$', m))
+    return list(dict.fromkeys([*CATALOG.get(p, ()), *sorted(live, key=newest, reverse=True)]))
