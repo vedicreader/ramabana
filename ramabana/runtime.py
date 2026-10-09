@@ -1016,8 +1016,8 @@ class Run:
         "A call is starting: what was streamed since the last, else the message that made it, becomes the status."
         with self._lock: said, self._heard = ''.join(self._heard), []
         if not status_line(said): said = said_before_call(getattr(self.backend, 'hist', None))
-        if (n := _note(said)):
-            with self._lock: self.notes = [*self.notes, (time.time(), n)][-NOTE_KEEP:]
+        with self._lock:   # a message making several calls starts each one here, and is still one note
+            if (n := _note(said)) and not (self.notes and self.notes[-1][1] == n): self.notes = [*self.notes, (time.time(), n)][-NOTE_KEEP:]
         return self.set_status(said)
 
     @property

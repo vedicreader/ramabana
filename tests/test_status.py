@@ -192,3 +192,14 @@ def test_each_narration_is_kept_whole_as_a_note_for_the_pane():
     notes = [t for _, t in a.run().notes]
     assert [n.strip() for n in notes] == [long, 'Checking again.'], notes
     assert [n['text'].strip() for n in now_snapshot(a)['notes']] == [long, 'Checking again.']
+
+
+def test_one_message_making_several_calls_is_one_note():
+    "Batched calls each start through `on_call`; the later ones fall back to the same message, which is not a new note."
+    from types import SimpleNamespace
+    r = Run('run_batch')
+    r.backend = SimpleNamespace(hist=[{'role': 'assistant', 'content': 'Reading both files.', 'tool_calls': [{'id': 'a'}, {'id': 'b'}, {'id': 'c'}]}])
+    r.hear('Reading both files.')
+    for _ in range(3): r.on_call()
+    r.hear('Now the tests.'); r.on_call()
+    assert [t for _, t in r.notes] == ['Reading both files.', 'Now the tests.'], r.notes
