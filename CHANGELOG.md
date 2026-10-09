@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.15
+
+- Background rows in the pane open: a `run_shell_bg` command to its last `SHELL_LINES` lines of output, fetched no more often than its state already was; a folder watch to its pattern, review count and last review (`FolderWatch.last_review`); a background delegation to its sub-agent's calls and answer.
+
 ## 0.2.14
 
 - One message is one note, however many calls it makes. Each of a batch's calls starts through `Run.on_call`, and the later ones fell back to the same message, so the pane showed it once per call.
