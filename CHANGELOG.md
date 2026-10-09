@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.14
+
+- One message is one note, however many calls it makes. Each of a batch's calls starts through `Run.on_call`, and the later ones fell back to the same message, so the pane showed it once per call.
+
 ## 0.2.13
 
 - Library output no longer corrupts the terminal. While the TUI runs, Python's `sys.stderr` goes to `<cfg>/stderr.log`: kosha's index sync drew a tqdm bar from a background thread, and every update scrolled the screen under teleprint's frames, leaving a copy of the status bar behind each time. A session that wrote there says so on exit.
