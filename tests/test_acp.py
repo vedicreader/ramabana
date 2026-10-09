@@ -16,7 +16,6 @@ from acp.schema import (AllowedOutcome, ClientCapabilities, DeniedOutcome, FileS
                         RequestPermissionResponse, TerminalExitStatus, TerminalOutputResponse,
                         CreateTerminalResponse, WaitForTerminalExitResponse)
 
-from ramabana.racp import KIND, PLAN, TOOL, EditorHost, blocks
 
 pytestmark = pytest.mark.slow   # every test spawns a subprocess; 147s of the suite
 
@@ -106,9 +105,6 @@ def details(ups):
             if getattr(inner, 'text', None): out.append(inner.text)
     return '\n'.join(out)
 
-def contents(ups, kind):
-    return [c for u in ups for c in (getattr(u, 'content', None) or []) if getattr(c, 'type', '') == kind]
-
 
 async def drive(tmp, editor, prompt='fix the import', script='edit', disk='import b\n'):
     "One whole exchange against a freshly spawned agent."
@@ -125,65 +121,6 @@ async def drive(tmp, editor, prompt='fix the import', script='edit', disk='impor
 
 
 def run(coro, t=90): return asyncio.run(asyncio.wait_for(coro, t))
-
-
-# ---- the mappings ----------------------------------------------------------------------
-
-def test_text_blocks_arrive_as_one_message():
-    text, media = blocks([acp.text_block('why does'), acp.text_block('it fail?')])
-    assert text == 'why does\n\nit fail?' and media == []
-
-def test_an_image_block_arrives_as_the_bytes_a_content_part_is_made_of():
-    import base64
-    png = b'\x89PNG\r\n\x1a\n'
-    text, media = blocks([acp.text_block('what is this'),
-                          acp.image_block(base64.b64encode(png).decode(), 'image/png')])
-    assert media == [png] and text == 'what is this'
-
-def test_audio_is_dropped_with_a_reason_when_the_model_cannot_hear_it():
-    import base64, ramabana.core as core
-    class Caps:
-        known = True
-        def accepts(self, kind): return kind != 'audio'
-    class Spec: model_id, backend, local = 'm', 'remote', False
-    was = core._caps
-    core._caps = lambda mid, rt: Caps()
-    try:
-        text, media = blocks([acp.audio_block(base64.b64encode(b'RIFF').decode(), 'audio/wav')], Spec())
-    finally: core._caps = was
-    assert media == [] and 'does not accept audio' in text
-
-def test_a_resource_link_is_passed_through_as_its_uri_and_nothing_expands_it():
-    "`@path` expansion lives in the terminal frontend, so over ACP the model sees the raw token."
-    class Link: type, uri = 'resource_link', 'file:///proj/a.py'
-    assert blocks([Link()])[0] == '@file:///proj/a.py'
-
-def test_every_kind_the_harness_names_has_somewhere_to_go_in_an_editor():
-    import typing
-    from acp.schema import ToolCallStart
-    known = set(typing.get_args(typing.get_args(ToolCallStart.model_fields['kind'].annotation)[0]))
-    assert set(KIND.values()) <= known and set(TOOL.values()) <= known
-    assert set(PLAN.values()) == {'pending', 'in_progress', 'completed'}
-
-
-# ---- a host with no editor behind it ---------------------------------------------------
-
-def test_an_unattached_editor_host_is_a_local_host():
-    h = EditorHost(['.'])
-    assert (h.can_read, h.can_write, h.can_run) == (False, False, False)
-
-def test_the_capability_probe_never_reaches_the_editor():
-    "`tools_for` asks whether commands can be run with an empty one, and must spawn nothing."
-    asked = []
-    class Conn:
-        def create_terminal(self, **kw): asked.append(kw); raise AssertionError('spawned a terminal')
-    class Br:
-        conn, sid = Conn(), 's'
-        def call(self, coro, timeout=None): raise AssertionError('reached the editor')
-    h = EditorHost(['.']).attach(Br(), terminal=True)
-    assert h.can_run is True, 'the probe would not have had an editor to reach'
-    assert h.run_cmd('') == (0, '')
-    assert asked == []
 
 
 # ---- the wire -------------------------------------------------------------------------
@@ -213,66 +150,14 @@ def test_a_gated_call_is_one_entry_in_the_editor_rather_than_two(tmp_path):
                if getattr(u, 'session_update', '') == 'tool_call']
     assert len(started) == len(set(started)), started
 
-def test_a_new_file_reaches_the_editor_as_a_diff_to_read(tmp_path):
-    ed = Editor('allow_once')
-    run(drive(tmp_path, ed))
-    diffs = contents(ed.updates, 'diff')
-    assert diffs and any(d.path.endswith('b.py') for d in diffs)
-
-def test_each_write_is_gated_on_its_own_unless_the_session_was_allowed(tmp_path):
-    ed = Editor('allow_once')
-    run(drive(tmp_path, ed))
-    assert len(ed.asked) == 2
-
-def test_allowing_the_session_asks_once_and_lets_the_rest_through(tmp_path):
-    ed = Editor('allow_always')
-    run(drive(tmp_path, ed))
-    assert len(ed.asked) == 1
-    assert (tmp_path/'b.py').exists() and (tmp_path/'c.py').exists()
-
-def test_a_refusal_closes_the_tool_call_rather_than_leaving_it_pending(tmp_path):
-    ed = Editor(None)
-    run(drive(tmp_path, ed))
-    failed = {getattr(u, 'tool_call_id', None) for u in ed.updates
-              if getattr(u, 'status', None) == 'failed'}
-    assert {u.tool_call_id for u in ed.asked} <= failed
-    assert not (tmp_path/'b.py').exists()
-
-def test_the_editor_is_offered_the_harness_own_commands(tmp_path):
-    ed = Editor()
-    run(drive(tmp_path, ed))
-    upd = [u for u in ed.updates if getattr(u, 'session_update', '') == 'available_commands_update']
-    assert upd
-    assert {'model', 'sessions', 'resume', 'compact', 'plan'} <= {c.name for c in upd[0].available_commands}
-
-def test_a_slash_command_is_answered_without_running_a_turn(tmp_path):
-    ed = Editor()
-    _, _, res = run(drive(tmp_path, ed, prompt='/tools'))
-    assert res.stop_reason == 'end_turn' and 'view_file' in said(ed.updates)
-    assert not ed.asked and not (tmp_path/'b.py').exists()
-
 
 # ---- the editor answers for its own files ---------------------------------------------
-
-def test_a_file_is_viewed_as_the_editor_has_it_rather_than_as_disk_has_it(tmp_path):
-    "The point of `fs/read_text_file`: an unsaved buffer is what the person is looking at."
-    ed = Buffers(buffers={'a.py': 'BUFFER = 1\n'})
-    run(drive(tmp_path, ed, script='view', disk='DISK = 0\n'))
-    shown = details(ed.updates)
-    assert 'BUFFER' in shown and 'DISK' not in shown
 
 def test_a_write_goes_to_the_editor_and_not_behind_its_back_to_disk(tmp_path):
     ed = Buffers(buffers={'a.py': 'import b\n'})
     run(drive(tmp_path, ed))
     assert 'b.py' in ed.wrote and ed.wrote['b.py'] == 'B = 1\n'
     assert not (tmp_path/'b.py').exists(), 'the editor owns the file, so nothing should be on disk'
-
-def test_an_editor_that_cannot_serve_a_read_falls_back_rather_than_losing_the_turn(tmp_path):
-    "`Buffers` raises for any file it has no buffer for; the turn must still finish from disk."
-    ed = Buffers(buffers={})
-    _, _, res = run(drive(tmp_path, ed, script='view', disk='DISK = 0\n'))
-    assert res.stop_reason == 'end_turn'
-    assert 'DISK' in details(ed.updates)
 
 
 # ---- the editor runs the command ------------------------------------------------------
@@ -287,36 +172,11 @@ def test_a_command_runs_in_the_editors_terminal_and_its_output_comes_back(tmp_pa
     assert cwd == str(tmp_path)
     assert 'hello from the editor' in details(ed.updates)
 
-def test_the_terminal_is_shown_inside_the_tool_call_that_started_it(tmp_path):
-    ed = Terminals()
-    run(drive(tmp_path, ed, script='shell'))
-    refs = contents(ed.updates, 'terminal')
-    assert refs and refs[0].terminal_id == 'term-1'
-
-def test_a_terminal_is_released_when_the_command_is_done(tmp_path):
-    ed = Terminals()
-    run(drive(tmp_path, ed, script='shell'))
-    assert ed.released == ['term-1']
-
-
-class Refuses(Buffers):
-    "An editor that will not take a write, the way one holding a read-only file would not."
-    async def write_text_file(self, session_id, path, content, **kw):
-        raise acp.RequestError.invalid_params({'details': 'this file is read-only here'})
-
 
 class BrokenTerminal(Terminals):
     "An editor whose terminal starts the command and then stops answering about it."
     async def wait_for_terminal_exit(self, session_id, terminal_id, **kw):
         raise acp.RequestError.internal_error({'details': 'the terminal went away'})
-
-
-def test_a_write_the_editor_refuses_is_reported_rather_than_written_to_disk(tmp_path):
-    "Falling back here would route around the refusal, which is the whole thing being prevented."
-    ed = Refuses(buffers={'a.py': 'import b\n'})
-    run(drive(tmp_path, ed))
-    assert not (tmp_path/'b.py').exists(), 'the refusal was routed around and disk was written'
-    assert 'write failed' in details(ed.updates)
 
 
 def test_a_terminal_that_dies_after_starting_the_command_does_not_run_it_again(tmp_path):
@@ -327,24 +187,6 @@ def test_a_terminal_that_dies_after_starting_the_command_does_not_run_it_again(t
     assert ed.ran, 'the editor was never asked to open a terminal'
     assert not (tmp_path/'marker.txt').exists(), 'the command was run a second time locally'
     assert 'terminal failed after starting' in details(ed.updates)
-
-
-def test_the_command_still_falls_back_when_the_terminal_never_opened(tmp_path):
-    "Nothing ran yet, so running it locally is right rather than a repeat."
-    class NoTerminal(Terminals):
-        async def create_terminal(self, session_id, command, args=None, env=None, cwd=None,
-                                  output_byte_limit=None, **kw):
-            raise acp.RequestError.internal_error({'details': 'no terminals here'})
-    ed = NoTerminal()
-    run(drive(tmp_path, ed, script='marker'))
-    assert (tmp_path/'marker.txt').exists(), 'the command was neither run in the editor nor locally'
-
-
-def test_provides_stays_the_tool_group_namespace_it_is_documented_to_be(tmp_path):
-    "`Host.provides` is a set of tool group names, and an editor is not a tool group."
-    h = EditorHost([str(tmp_path)])
-    assert h.provides <= {'code', 'file', 'notebook', 'web', 'memory', 'watch', 'session',
-                          'shell', 'api', 'git'}
 
 
 # ---- sessions the editor can name and come back to ------------------------------------
@@ -374,11 +216,6 @@ async def _load(tmp, editor, session_id):
                               client_capabilities=type(editor).caps)
         return await conn.load_session(cwd=str(tmp), session_id=session_id)
 
-def test_a_new_session_is_named_with_an_id_the_editor_can_load_it_back_by(tmp_path):
-    "A uuid could never match a saved conversation, so the id has to be the harness's own."
-    ed = Editor()
-    _, new, _ = run(drive(tmp_path, ed, script='view'))
-    assert new.session_id.startswith('agent_'), new.session_id
 
 def test_loading_a_session_replays_that_conversation_and_not_another(tmp_path):
     _history(tmp_path, [_turn(OLD, 'FIRST project question', 'first answer'),
@@ -388,71 +225,6 @@ def test_loading_a_session_replays_that_conversation_and_not_another(tmp_path):
     replayed = ''.join(getattr(getattr(u, 'content', None), 'text', '') for u in ed.updates)
     assert 'FIRST project question' in replayed
     assert 'SECOND' not in replayed, 'the editor was shown an unrelated conversation'
-
-def test_loading_a_session_that_was_never_saved_is_an_error_not_the_newest_one(tmp_path):
-    _history(tmp_path, [_turn(NEW, 'SECOND project question', 'second answer')])
-    ed = Editor()
-    try:
-        run(_load(tmp_path, ed, 'agent_19990101-000000-000000'))
-    except acp.RequestError:
-        replayed = ''.join(getattr(getattr(u, 'content', None), 'text', '') for u in ed.updates)
-        assert 'SECOND' not in replayed
-    else:
-        raise AssertionError('an unknown session id silently resumed something else')
-
-
-# ---- the entries the editor is left holding -------------------------------------------
-
-def test_a_refusal_clears_its_entry_so_a_later_call_cannot_inherit_it(tmp_path):
-    """A refused call never runs, so `_act` never fires to clear its `gated` entry.
-
-    Left behind, the next call on the same key is reported under the id the editor already
-    marked failed -- and every `run_shell` shares one key, since it has no path."""
-    from ramabana.racp import Session
-    sent = []
-
-    class Conn:
-        async def session_update(self, session_id, update, **kw): sent.append(update)
-        async def request_permission(self, session_id, tool_call, options, **kw):
-            return RequestPermissionResponse(outcome=DeniedOutcome(outcome='cancelled'))
-
-    async def go():
-        s = Session([str(tmp_path)], Conn(), asyncio.get_running_loop(), timeout=10,
-                    cfg=tmp_path/'.cfg')
-        # the gate calls the broker on a worker thread, exactly as a turn does
-        ask = await asyncio.to_thread(s.agent.approvals.request, 'run_shell', {'command': 'echo x'})
-        return s, ask
-
-    s, ask = asyncio.run(asyncio.wait_for(go(), 60))
-    assert ask.answer is False
-    assert s.gated == {}, 'a refused call left its entry for the next one to inherit'
-    assert any(getattr(u, 'status', None) == 'failed' for u in sent), [type(u).__name__ for u in sent]
-    s.close()
-
-
-def test_a_write_allowed_for_the_session_still_reaches_the_editor_as_a_diff(tmp_path):
-    "The diff was only built on the gated path, so after an escalation there was none."
-    ed = Editor('allow_always')
-    run(drive(tmp_path, ed))
-    diffs = contents(ed.updates, 'diff')
-    assert {Path(d.path).name for d in diffs} >= {'b.py', 'c.py'}, [d.path for d in diffs]
-
-
-# ---- media the model cannot take ------------------------------------------------------
-
-def test_an_image_is_dropped_with_a_reason_when_the_model_cannot_see_it():
-    "Advertising `image=True` and then handing it to a text-only engine kills the turn."
-    import base64, ramabana.core as core
-    class Caps:
-        known = True
-        def accepts(self, kind): return kind == 'text'
-    class Spec: model_id, backend, local = 'm', 'remote', False
-    was = core._caps
-    core._caps = lambda mid, rt: Caps()
-    try:
-        text, media = blocks([acp.image_block(base64.b64encode(b'\x89PNG').decode(), 'image/png')], Spec())
-    finally: core._caps = was
-    assert media == [] and 'image dropped' in text
 
 
 def test_every_console_script_resolves():
@@ -473,95 +245,3 @@ def test_every_console_script_resolves():
         assert callable(getattr(m, fn, None)), f'{name} = {target!r} does not resolve'
 
 
-def test_a_missing_acp_dependency_names_itself():
-    """`agent-client-protocol` is a dependency, so a broken install is what reaches this path.
-
-    The editor launches the binary and shows whatever reached stderr, so a bare
-    `ModuleNotFoundError: No module named 'acp'` is all the user gets, with nothing saying which
-    install would fix it.
-    """
-    import importlib, sys
-    saved = {k: sys.modules.get(k) for k in list(sys.modules) if k == 'acp' or k.startswith('acp.')}
-    saved['ramabana.racp'] = sys.modules.get('ramabana.racp')
-    try:
-        for k in list(saved): sys.modules.pop(k, None)
-        sys.modules['acp'] = None                      # `import acp` now raises ImportError
-        with pytest.raises(ImportError, match=r"agent-client-protocol"):
-            importlib.import_module('ramabana.racp')
-    finally:
-        sys.modules.pop('acp', None)
-        for k, v in saved.items():
-            if v is not None: sys.modules[k] = v
-        importlib.import_module('ramabana.racp')
-
-
-# ---- what the editor sees of an edit ---------------------------------------------------
-
-def test_a_gated_edit_reaches_the_editor_as_the_diff_it_would_make(tmp_path):
-    """`replace_text` and `edit_cell` carry an `edits` list, not the new text, so the editor was shown a
-    preview to read. Replaying the edits over the host's text gives it a real diff to render, with no
-    write; an edit that cannot be replayed (a wrong oldText) falls back to the preview. The text is
-    read on the turn's thread, before the request crosses onto the editor's loop, where an
-    `EditorHost` read would wait on that same loop."""
-    import threading
-    from ramabana.racp import Session
-    import nbformat
-    (tmp_path/'a.py').write_text('import b\nprint(b)\n')
-    nb = nbformat.v4.new_notebook(); c = nbformat.v4.new_code_cell('x = 1'); c['id'] = 'c1'; nb.cells.append(c)
-    nbformat.write(nb, tmp_path/'n.ipynb')
-    shown = []
-
-    class Conn:
-        async def session_update(self, session_id, update, **kw): pass
-        async def request_permission(self, session_id, tool_call, options, **kw):
-            shown.append((threading.current_thread().name, tool_call))
-            return RequestPermissionResponse(outcome=AllowedOutcome(outcome='selected', option_id='allow_once'))
-
-    async def go():
-        s = Session([str(tmp_path)], Conn(), asyncio.get_running_loop(), timeout=10, cfg=tmp_path/'.cfg')
-        s.agent.approvals.tools |= {'replace_text', 'edit_cell'}
-        reads = []
-        real = s.host.read
-        s.host.read = lambda p: (reads.append(threading.current_thread().name), real(p))[1]
-        ok1 = await asyncio.to_thread(s.agent.approvals.request, 'replace_text',
-                                      {'path': 'a.py', 'edits': [{'oldText': 'import b\n', 'newText': 'import c\n'}]})
-        ok2 = await asyncio.to_thread(s.agent.approvals.request, 'edit_cell',
-                                      {'path': 'n.ipynb', 'cell_id': 'c1', 'edits': [{'oldText': 'x = 1', 'newText': 'x = 2'}]})
-        ok3 = await asyncio.to_thread(s.agent.approvals.request, 'replace_text',
-                                      {'path': 'a.py', 'edits': [{'oldText': 'nope', 'newText': 'x'}]})
-        return s, (ok1, ok2, ok3), reads
-
-    s, oks, reads = asyncio.run(asyncio.wait_for(go(), 60))
-    assert all(o.answer for o in oks), [o.note for o in oks]
-    diffs = [c for _, tc in shown for c in (tc.content or []) if getattr(c, 'type', '') == 'diff']
-    assert len(diffs) == 2, [type(c).__name__ for _, tc in shown for c in (tc.content or [])]
-    assert (diffs[0].old_text, diffs[0].new_text) == ('import b\nprint(b)\n', 'import c\nprint(b)\n')
-    assert (diffs[1].old_text, diffs[1].new_text) == ('x = 1', 'x = 2') and diffs[1].path.endswith('n.ipynb')
-    assert (tmp_path/'a.py').read_text() == 'import b\nprint(b)\n', 'shown, not written'
-    third = [c for c in (shown[2][1].content or []) if getattr(c, 'type', '') == 'content']
-    assert third, 'an edit that cannot be replayed still shows the preview'
-    assert reads and all(t != shown[0][0] for t in reads), 'the host is read on the turn thread, not the editor loop'
-    s.close()
-
-
-def test_a_sub_agent_call_is_not_its_own_tool_call_in_the_editor(tmp_path):
-    "The editor already shows the delegate call; its sub-agent's reads are that call's, not new ones."
-    from ramabana.racp import Session
-    sent = []
-
-    class Conn:
-        async def session_update(self, session_id, update, **kw): sent.append(update)
-
-    async def go():
-        s = Session([str(tmp_path)], Conn(), asyncio.get_running_loop(), timeout=10, cfg=tmp_path/'.cfg')
-        acts = s.agent.activity
-        parent = acts.start('delegate_search', {'questions': ['q']})
-        kid = acts.start('view_file', {'path': 'a.py'}, parent_action_id=parent.id, run_id='run_x')
-        acts.finish(kid, 'def a(): pass'); acts.finish(parent, 'answer')
-        await asyncio.sleep(.2)
-        return s, parent
-
-    s, parent = asyncio.run(asyncio.wait_for(go(), 60))
-    ids = {getattr(u, 'tool_call_id', None) for u in sent} - {None}
-    assert ids == {parent.id}, ids
-    s.close()

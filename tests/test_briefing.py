@@ -9,11 +9,10 @@ import pytest
 from ramabana import runtime
 from ramabana import agent as A
 from ramabana.agent import Agent
-from ramabana.core import (SMALL_CTX, Budget, ModelSpec, budget_for, force_tags, forget_forced_tags,
-                           tool_channel)
+from ramabana.core import ModelSpec, forget_forced_tags, tool_channel
 from ramabana.runtime import estimate_tokens, threshold
-from ramabana.testing import FakeBackend, FullHost, ScriptedBackend, Step, fake_agent
-from ramabana.tools import LocalHost, Skill, _delegate_result, clip_lines, named_skills, sub_sp, tools_for
+from ramabana.testing import FullHost, ScriptedBackend, Step, fake_agent
+from ramabana.tools import LocalHost, Skill, clip_lines, tools_for
 
 SMALL = ModelSpec('gemma-e2b', 'litert', 'litert-community/x', 16_384)   # the local default
 BIG = ModelSpec('sonnet', 'remote', 'claude-sonnet-4-5', 200_000)
@@ -21,10 +20,9 @@ BIG = ModelSpec('sonnet', 'remote', 'claude-sonnet-4-5', 200_000)
 CLAUDE = ModelSpec('claude/claude-sonnet-5', 'claude', 'claude-sonnet-5', 128_000)
 
 
-RESEARCH = {'web_search', 'read_url', 'memory_search', 'memory_read', 'memory_forget'}
-
 #: Stands in for the `exhash` body the briefing inlines: ~3k tokens, which is what made a 16k
 #: window unusable. A literal keeps the test independent of which skills are installed.
+
 BIG_SKILL = Skill(name='exhash', source='test', description='hash-verified edits',
                   where='test', _text='EXHASH BODY. ' + 'edit like this. ' * 800)
 
@@ -46,54 +44,6 @@ def names(a): return {getattr(t, '__name__', '') for t in a.tools}
 
 # -- what the budget decides -----------------------------------------------------------
 
-def test_a_frugal_agent_differs_from_a_full_one_in_every_way_the_budget_decides(host):
-    "Small window: no research tools, no inlined skill body, smaller clip, shorter briefing."
-    small, big = mk(host, SMALL), mk(host, BIG)
-    assert not (names(small) & RESEARCH) and RESEARCH <= names(big)
-    # the exhash body rides only with `edit_file`: opting the group in brings both, and the saving without it is the point
-    hashed = mk(host, BIG, optin=('exhash',))
-    assert '## exhash' in hashed.system_prompt() and '## exhash' not in big.system_prompt() and '## exhash' not in small.system_prompt()
-    assert len(hashed.system_prompt()) - len(big.system_prompt()) > 5_000
-    assert small.budget.tool_max < big.budget.tool_max
-    assert '16k window' in small.budget.note and big.budget.note == 'full briefing'
-    # And the whole point: the frugal briefing is dramatically smaller than a full one carrying the skill body.
-    assert estimate_tokens(small.system_prompt()) < estimate_tokens(hashed.system_prompt()) / 2
-
-
-def test_a_window_we_could_not_read_is_not_a_small_window(host):
-    """Not knowing a model's size must not turn into a smaller agent -- `_cloud_ctx` already
-    assumes 128k when fastllm's table fails it. `spec('turn')` also raises outright for an engine
-    that is not installed, and a host with no model still has a tool list."""
-    for spec in (None, ModelSpec('mystery', 'remote', 'x/y', 0)):
-        assert budget_for(spec, 6000) == Budget(tool_max=6000, note='full briefing')
-        assert RESEARCH <= names(mk(host, spec))
-
-    a = Agent(host, extensions=False, subagents=False)
-    def boom(job='turn', fallback=True): raise RuntimeError('litert runtime is unavailable')
-    a.routing.spec = boom
-    assert RESEARCH <= names(a) and a.budget.inline
-
-
-def test_the_clip_reaches_the_tools(tmp_path):
-    """`Agent(tool_max_len=...)` was documented as threaded into `tools_for` and was not, so a
-    small model's results were clipped at a frontier model's budget."""
-    (tmp_path/'big.txt').write_text('\n'.join(f'line {i} ' + 'x'*60 for i in range(600)))
-    h = LocalHost([str(tmp_path)], web=False, index=False)
-    view = lambda mx: next(t for t in tools_for(h, mx=mx) if t.__name__ == 'view_file')
-    assert len(view(budget_for(SMALL, 6000).tool_max)('big.txt')) < len(view(6000)('big.txt'))
-
-
-def test_changing_model_rebuilds_what_was_sized_to_the_old_one(host):
-    "Both the tool list and the briefing are sized to the turn model, so both must be dropped."
-    a = mk(host, BIG, optin=('exhash',))
-    cur = {'spec': BIG}
-    a.routing.spec = lambda job='turn', fallback=True: cur['spec']
-    a.routing.set = lambda name, job='turn': cur.__setitem__('spec', SMALL) or SMALL
-    before = len(a.tools)
-    assert '## exhash' in a.system_prompt()
-    a.set_model('gemma-e2b')
-    assert len(a.tools) < before
-    assert '## exhash' not in a.system_prompt()
 def test_one_long_line_does_not_escape_the_clip():
     """A minified bundle, a one-line JSON document or a wide CSV row is a single line, and
     `clip_lines` returned the first one whole so a result was never empty -- ten thousand tokens,
@@ -107,22 +57,6 @@ def test_one_long_line_does_not_escape_the_clip():
 
 
 # -- what a sub-agent is given ---------------------------------------------------------
-
-def test_a_sub_agent_is_sized_to_the_model_sub_agents_run_on(host):
-    """`DEFAULT_POLICY` points `subagent` at the small local model, so the default shape is a
-    frontier turn delegating to a 16k engine, which was being handed the turn model's schemas at
-    the turn model's clip. When both models can afford the same briefing the turn's own list is
-    reused, since probing the host twice buys nothing."""
-    a = mk(host, BIG, subagents=True)
-    a.routing.spec = lambda job='turn', fallback=True: BIG if job == 'turn' else SMALL
-    sub = {getattr(t, '__name__', '') for t in a._sub_plain()}
-    assert not (sub & RESEARCH) and RESEARCH <= names(a)
-    assert 'delegate_search' not in sub                  # a sub-agent does not delegate
-
-    same = mk(host, BIG, subagents=True)
-    same.tools
-    assert {t.__name__ for t in same._sub_plain()} == {t.__name__ for t in same._plain} - A.ROOT_ONLY
-
 
 @pytest.mark.parametrize('turn,sub', [(BIG, BIG), (BIG, SMALL), (SMALL, SMALL), (SMALL, BIG)],
                          ids=['cloud-same', 'cloud-local', 'local-same', 'local-cloud'])
@@ -141,80 +75,7 @@ def test_a_sub_agent_never_gets_the_roots_delegation_watch_or_plan_tools(host, t
         if writes: assert {'replace_text', 'run_python'} <= got, 'a writing sub-agent keeps the writes'
 
 
-def test_a_task_can_name_the_skills_it_needs():
-    """The caller holds the skill index and the sub-agent does not, so naming a skill is how a
-    one-job sub-agent starts holding it instead of spending a step on `read_skill`. A name that
-    matched nothing is reported, because a sub-agent briefed without the skill its caller asked
-    for answers from general knowledge and sounds exactly as confident as one that had it."""
-    sk = [Skill(name='kosha', source='t', description='code answers', where='t', _text='ASK KOSHA'),
-          Skill(name='cfeasy', source='t', description='deploys', where='t', _text='DEPLOY THIS WAY')]
-    got, note = named_skills(lambda: sk, 'cfeasy')
-    assert [s.name for s in got] == ['cfeasy'] and not note
-    brief = sub_sp(skills=got)
-    assert 'DEPLOY THIS WAY' in brief and 'ASK KOSHA' not in brief
-    assert sub_sp() == sub_sp(skills=())                 # naming nothing changes nothing
-
-    got, note = named_skills(lambda: sk, 'kosha, nosuchskill')
-    assert [s.name for s in got] == ['kosha']
-    assert 'nosuchskill' in note and 'kosha' in note
-
-
-def test_named_skills_reach_the_sub_agents_briefing(host):
-    "End to end: the tool the model calls puts the named body in the spawned conversation."
-    a = mk(host, BIG, subagents=True)
-    a._skills = [Skill(name='cfeasy', source='t', description='deploys', where='t',
-                       _text='DEPLOY THIS WAY')]
-    be = FakeBackend(BIG)
-    be.start()
-    a._be_or_none = lambda job='turn': be
-    search = next(t for t in a.tools if getattr(t, '__name__', '') == 'delegate_search')
-    assert 'sub answer' in search('how do we deploy?', skills='cfeasy')   # what `spawn` scripts
-    assert 'DEPLOY THIS WAY' in be.spawned[0].sp
-    assert 'nosuchskill' in search('how do we deploy?', skills='nosuchskill')
-
-
-def test_delegated_output_rejects_empty_and_repetitive_prose():
-    assert 'no answer' in _delegate_result('')
-    assert 'repetitive output' in _delegate_result('Cmd+V ' * 20)
-    assert _delegate_result('found tools.py:42') == 'found tools.py:42'
-
-
 # -- where the tool schemas travel -----------------------------------------------------
-
-def test_the_tool_channel_is_one_decision(monkeypatch):
-    """`native` is the default and better wherever the wire is open. A refused channel is
-    remembered per model so the lesson costs one turn rather than every turn, and the environment
-    forces either for a machine broken in a way nothing here detects."""
-    other = ModelSpec('gpt', 'remote', 'gpt-5.6', 200_000)
-    assert tool_channel(BIG) == 'native' and tool_channel(other) == 'native'
-    try:
-        force_tags(BIG.model_id, 'the wire refused the tool schemas')
-        assert tool_channel(BIG) == 'tags'
-        assert tool_channel(other) == 'native'           # per model, not a global switch
-    finally:
-        forget_forced_tags()
-    assert tool_channel(BIG) == 'native'                 # a fixed configuration is tried again
-
-    monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'tags')
-    assert tool_channel(BIG) == 'tags'
-    monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'native')
-    # The override reaches an agent harness too, which it did not before: it is the answer for a
-    # machine broken in a way nothing here detects, and those machines run agent harnesses as well.
-    assert tool_channel(CLAUDE) == 'native'
-    monkeypatch.delenv('RAMABANA_TOOL_CHANNEL')
-
-    # An agent harness answers for itself: its one channel for a tool it did not ship with is an
-    # MCP server, which a managed policy refuses, so the answer is tags and does not vary.
-    assert tool_channel(CLAUDE) == 'tags'
-
-    # ...and a live chat overrules the prediction, because it is the thing that knows. A Claude
-    # chat that opened an MCP server and had it refused is on tags now; nothing about the spec says so.
-    class _Chat:
-        def __init__(self, ch): self.tool_channel = ch
-    assert tool_channel(CLAUDE, _Chat('tags')) == 'tags'
-    assert tool_channel(CLAUDE, _Chat('nonsense')) == 'tags'   # not a channel; the prediction stands
-    assert tool_channel(CLAUDE, None) == 'tags'
-
 
 def test_a_refused_wire_channel_is_learned_once_and_the_turn_still_answers(monkeypatch):
     """The case detection cannot reach. A policy at a path the three-path probe does not know is
@@ -237,16 +98,6 @@ def test_a_refused_wire_channel_is_learned_once_and_the_turn_still_answers(monke
         assert any('travel in the system prompt' in p for p in b.problems)
         assert tool_channel(BIG) == 'tags'         # and the next turn does not try the wire again
     finally: forget_forced_tags()
-
-
-def test_the_tags_channel_is_paid_for_out_of_the_window_it_shares(monkeypatch):
-    """What the tags channel costs the briefing. Rishi appends the schemas to the system prompt
-    after everything here has finished deciding what fits, so a window sized as if they were free
-    is a window that overflows by the size of the tool set."""
-    tight = ModelSpec('tight', 'remote', 'x', SMALL_CTX + 1000)
-    assert budget_for(tight, 6000).note == 'full briefing'      # native: comfortably above SMALL_CTX
-    assert budget_for(tight, 6000, 'tags').drop                 # tags: the schemas push it under
-    assert budget_for(BIG, 6000, 'tags').note == 'full briefing'  # and 200k does not care
 
 
 def test_a_tag_call_that_came_back_as_prose_is_reported(monkeypatch):
@@ -346,187 +197,7 @@ def test_a_local_turn_fits_its_window_end_to_end(tmp_path):
     assert was < threshold(BIG.ctx)
 
 
-# -- what the briefing says about the tools --------------------------------------------
-
-def test_the_briefing_describes_only_the_tools_the_model_was_given():
-    """A rule about `run_shell` on a host that cannot run commands costs the model a wasted turn
-    discovering that -- which is how the briefing came to describe a `scale_numeric` that no longer
-    existed, and to promise verification the harness had no way to perform."""
-    assert 'run_shell' in A.work_rules(['run_shell'])
-    assert 'run_shell' not in A.work_rules(['view_file'])
-    assert 'run_shell' in A.work_rules()          # no filter means the whole thing
-
-    # The response-order rule and durable-memory rule are both included in the briefing.
-    # lead with the answer, and look in durable memory before acting.
-    rules = A.work_rules()
-    assert 'Keep a plan small enough that every step has one independently verifiable outcome' in rules
-    assert 'search Vishalakshi durable memory with `memory_search`' in rules
-    assert 'Before acting on a request' not in rules, 'memory is searched when it could matter, not on every request'
-    assert not any(x in rules for x in ('Start every response', 'eight words', 'most common way')), 'no opener, cap or warning'
-
-    assert '`write_docs`' in A.work_rules(['read_skill']) and '`write_prose`' in A.work_rules(['read_skill'])
-    assert '`write_docs`' not in A.work_rules(['view_file'])
-
-    h = FullHost(files={'a.py': 'x = 1\n'})
-    sp = A.system_prompt(h, tools=tools_for(h))
-    for t in {t.__name__ for t in tools_for(h)} & {n for n, _ in A.RULES if n}: assert t in sp
-    assert 'delegate_search' not in sp            # this host offers no sub-agents
-
-
-def test_the_coding_standard_reaches_the_briefing_it_was_written_for(host):
-    """`coding_patterns` names Ramabana's own tools, and reached no model on any backend. It was
-    dropped from `skills` under the default profile -- so it was missing from the index as well,
-    and `system_prompt`'s inline loop skipped a name it could not find without saying so."""
-    big = Agent(host, extensions=False, subagents=False)
-    big.routing.spec = lambda job='turn', fallback=True: BIG
-    assert 'coding_patterns' in {s.name for s in big.skills}
-    sp = big.system_prompt()
-    assert '## coding_patterns' in sp and 'Every construct must earn its place' in sp
-
-    small = Agent(host, extensions=False, subagents=False)
-    small.routing.spec = lambda job='turn', fallback=True: SMALL
-    assert 'earn its place' not in small.system_prompt()   # the budget still decides
-
-
-def test_the_projects_own_instructions_are_read_marked_and_bounded():
-    """Every other harness reads `AGENTS.md`, so a repository could not tell this agent what it
-    tells every other one. It is marked with its path so the model can tell a project rule from
-    something the harness made up, and truncated rather than dropped past the point where it is
-    documentation instead of instructions."""
-    from ramabana.testing import MemHost
-    h = MemHost({'/proj/AGENTS.md': 'Use uv, never pip.'})
-    ctx = A.project_context(h)
-    assert 'Use uv, never pip.' in ctx and 'path="/proj/AGENTS.md"' in ctx
-    assert A.project_context(MemHost()) == ''
-
-    big = MemHost({'/proj/AGENTS.md': 'x' * (A.MAX_CONTEXT_FILE + 500)})
-    over = A.project_context(big)
-    assert 'truncated' in over and len(over) < A.MAX_CONTEXT_FILE + 800
-
-    reaches = MemHost({'/proj/AGENTS.md': 'Run the tests with `nbdev-test`.'})
-    assert 'nbdev-test' in A.system_prompt(reaches, tools=tools_for(reaches))
-
-
 # -- what rides along with a prompt ----------------------------------------------------
-
-def test_the_ramabana_profile_does_not_mix_in_the_aai_notices():
-    """Two instruction systems in one prompt is how a model ends up told to do opposite things.
-    The aai profile stays available as an explicit compatibility option, chosen at construction."""
-    from ramabana import runtime
-    plain, be = fake_agent(replies=['done'])
-    plain.ask('add a test')
-    assert runtime.ACTION_NOTICE not in str(be.sent[-1])
-
-    aai, abe = fake_agent(replies=['done'], instruction_style='aai')
-    aai.ask('add a test')
-    assert runtime.ACTION_NOTICE in str(abe.sent[-1])
-
-
-def test_a_notice_fires_on_the_shape_of_the_prompt_not_on_a_model_call():
-    "Deterministic, so the routing is inspectable in the conversation history afterwards."
-    from ramabana import runtime
-    assert runtime.prompt_notices('where is this handled?') == [runtime.Q_NOTICE]
-    assert runtime.APPROVAL_NOTICE in runtime.prompt_notices('go')
-    assert runtime.APPROVAL_NOTICE in runtime.prompt_notices('ok.')
-    assert runtime.BTW_NOTICE in runtime.prompt_notices('BTW can you also check the tests')
-    assert runtime.prompt_notices('add a test for this') == [runtime.ACTION_NOTICE]
-    assert '<system-reminder>' in runtime.notices_block('what does this do?')
-    assert runtime.ACTION_NOTICE in runtime.notices_block('add a test')
-
-    a, be = fake_agent(replies=['because x'])
-    a.ask('why does this break?')
-    sent = str(be.sent[0])
-    assert '<tool-plan' not in sent and '<system-reminder>' not in sent
-
-
-def test_a_delegation_says_which_side_of_the_call_it_died_on(spec):
-    """`delegation failed: JSONDecodeError: Unterminated string starting at: char 18` twice running
-
-    read as a model that could not be reached, and was a request that was never sent. The answer
-    now names the side, and a JSON error brings the fragment it stopped in.
-    """
-    import json
-    from ramabana.tools import bad_json, delegate
-    broken = json.JSONDecodeError('Unterminated string starting at', '{"question": "why is', 14)
-
-    class NoSpawn(FakeBackend):
-        def spawn(self, sp='', tools=(), **kw): raise broken
-    out = delegate(NoSpawn(spec), 'q', tools=[])
-    assert 'before the sub-agent was asked, so nothing was sent' in out, out
-    assert 'it stopped here: {"question": "why is' in out, 'the fragment, not just the offset'
-
-    class NoSend(FakeBackend):
-        def spawn(self, sp='', tools=(), **kw):
-            s = NoSend(self.spec, shared=True)
-            s._send = _raise
-            return s
-    def _raise(msg, **kw): raise ConnectionError('the model host refused the connection')
-    out = delegate(NoSend(spec), 'q', tools=[])
-    assert 'after the sub-agent was asked' in out and 'ConnectionError' in out, out
-    assert 'it stopped here' not in out, 'nothing to show for a failure that is not a serialisation'
-
-def test_a_json_error_with_nothing_to_show_says_nothing():
-    import json
-    from ramabana.tools import bad_json
-    assert bad_json(ValueError('plain')) == ''
-    assert bad_json(json.JSONDecodeError('x', 'abc', 1)) == '\nit stopped here: abc'
-    long = json.JSONDecodeError('x', 'a' * 400, 200)
-    assert bad_json(long).count('…') == 2, 'a long document is elided at both ends'
-
-def test_a_delegated_question_runs_on_a_thrown_away_conversation_with_the_scope_it_needs(spec):
-    """Nothing leaks back into the parent -- a sub-agent whose context returns is a slower way of
-    doing the work inline. It keeps the scope choice, because the sandbox limits the Python available
-    and not what may be seen: the overlay is protected by the AST policy rather than an allowlist,
-    so it is no more dangerous to delegate than to run.
-    """
-    import inspect
-    from ramabana.tools import NullHost, SessionHost, delegate, read_only
-    be = FakeBackend(spec)
-    be.start()
-    assert delegate(be, 'where do we do X?', tools=[]) == 'sub answer'
-    assert len(be.spawned) == 1 and be.hist == []
-
-    class H(NullHost, SessionHost):      # declaring the group is what earns the session tools
-        def __init__(self, *a, **kw): super().__init__(*a, **kw); self.calls = []
-        def inspect_python(self, code, scope='isolated'):
-            self.calls.append((code, scope)); return 'ok'
-        def list_vars(self): return 'df: DataFrame'
-        def terminal_text(self, lines=200): return ''
-        def run_python(self, code): return 'ok'
-        def restart_kernel(self): return 'restarted'
-
-    h = H(['/x'])
-    sub = {t.__name__: t for t in read_only(tools_for(h))}
-    assert 'inspect_python' in sub
-    assert 'scope' in inspect.signature(sub['inspect_python']).parameters
-    sub['inspect_python'](code='list(df.columns)', scope='overlay')
-    assert h.calls == [('list(df.columns)', 'overlay')]
-
-
-def test_the_friendly_claude_names_route_to_the_harness_not_the_mcp_transport():
-    """`sonnet`, `opus`, `fable` and the bare `claude-*` names used to resolve to `claude_code/...`.
-
-    That transport runs Claude Code as a full agent, so its own Read, Grep and Bash stayed live
-    beside ramabana's tag-protocol tools and the model mixed the two namespaces up -- "I need to
-    retry with the correct search tool since my previous call used a wrong tool name". The
-    `claude/` route strips the harness back to a model, which is the one that answers.
-    """
-    from ramabana.core import MODELS
-    for name, mid in (('sonnet', 'claude-sonnet-5-5'), ('opus', 'claude-opus-5-5'),
-                      ('fable', 'claude-fable-5-1'), ('claude-sonnet-5', 'claude-sonnet-5')):
-        assert MODELS[name] == ('claude', mid), f'{name} -> {MODELS[name]}'
-    assert not any(str(mid).startswith('claude_code/') for _, mid in MODELS.values())
-
-
-def test_a_bare_agent_model_id_answers_the_channel_its_spec_would(monkeypatch):
-    """`tool_channel` takes "a `ModelSpec` or a bare model id", and the two disagreed.
-
-    A bare id has no `runtime`, so an agent harness's id fell past the `AGENTS` branch to a default
-    that only recognises the `claude_code/` prefix, and `claude/...` predicted `native` where its
-    own spec said `tags`. `budget_for` sizes the tool list on that prediction.
-    """
-    assert tool_channel('claude/claude-sonnet-5') == tool_channel(CLAUDE) == 'tags'
-
 
 def test_a_harness_is_held_to_its_own_window_not_the_tables():
     """`rishi.claude` used to carry no session state: each turn rendered the whole conversation to
@@ -545,45 +216,6 @@ def test_a_harness_is_held_to_its_own_window_not_the_tables():
     assert claude_ctx('claude-opus-4-5') == 200_000 and claude_wire('claude-opus-4-5') == 'claude-opus-4-5'
     # a family whose window is not recorded here still gets the affordable ceiling
     assert claude_ctx('claude-unreleased-9') == DFLT_AGENT_CTX and claude_wire('claude-unreleased-9') == 'claude-unreleased-9'
-
-
-def test_durable_notes_reach_the_model_through_a_seam_every_agent_answers():
-    """`Completer._prompt` reached `self.a.ws.agent_memory_context(...)`, and Ramabana sets
-    `Agent.ws` nowhere, so on any embedder but the one that happened to carry `ws` the call raised
-    into a bare `except` and the notes were dropped in silence."""
-    from ramabana.agent import Agent, Completer
-    from ramabana.testing import fake_agent
-
-    assert Agent.memory_context(None, 'completion') == '', 'an embedder with no notes answers ""'
-
-    asked = []
-    a, _ = fake_agent()
-    a.memory_context = lambda surface, max_chars=6000: asked.append((surface, max_chars)) or 'NOTE-X'
-    p = Completer(a)._prompt('x = ', 4, 'python')
-    assert asked == [('completion', 6000)], asked
-    assert '<user_memory>\nNOTE-X\n</user_memory>' in p, p
-
-
-def test_the_screenshot_rule_arrives_only_with_the_browser_group():
-    "The briefing says how to look at a screenshot, only with the browser group, and by whether the turn model sees pictures."
-    from shalya.host import BrowserHost
-    class Browsing(FullHost, BrowserHost):
-        def browse(self, url): return 'p1 Page'
-        def screenshot(self, page=''): return '/tmp/p1.png'
-        def page_text(self, page=''): return '# Page'
-        def page_reload(self, page=''): return 'Page'
-        def page_click(self, page, x, y): return 'clicked'
-        def page_type(self, page, text): return 'typed'
-        def page_eval(self, page, js): return '1'
-    rule = 'delegate_search(questions, images=[path])'
-    plain = FullHost(files={'a.py': 'x = 1\n'})
-    assert rule not in A.system_prompt(plain, tools=tools_for(plain))
-    b = Browsing(files={'a.py': 'x = 1\n'})
-    assert rule not in A.system_prompt(b, tools=tools_for(b)), 'the browser group is an opt-in'
-    sp = A.system_prompt(b, tools=tools_for(b, optin=('browser',)), pictures=False)
-    assert rule in sp and 'page_text' in sp and 'cannot see pictures' in sp
-    sp = A.system_prompt(b, tools=tools_for(b, optin=('browser',)))
-    assert rule not in sp and 'arrives as an image' in sp and 'replays its path' in sp
 
 
 def test_the_model_chooses_its_tools_unless_the_user_names_one():

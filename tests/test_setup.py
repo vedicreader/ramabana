@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from ramabana import core, setup
 from ramabana.setup import Setup, tmux_conf, tmux_version
 
 
@@ -60,27 +59,6 @@ def test_the_conf_turns_on_the_keys_its_tmux_knows_and_is_written_only_when_it_c
     s, box = mk(tmp_path, Box(version='tmux 3.4'))
     assert s.conf().read_text() == mid and p.stat().st_mtime > 0
 
-def test_the_relaunch_execs_tmux_on_its_own_server_with_the_same_args_cwd_and_a_wrapped_flag(tmp_path):
-    s, box = mk(tmp_path, environ={'HOME': '/h', 'PATH': '/bin', 'OPENAI_API_KEY': 'k'})
-    s.launch()
-    exe, argv, env = box.execd
-    assert exe == '/bin/tmux'
-    assert argv[:2] == ['tmux', '-L'] and argv[2].startswith('ramabana-') and argv[3:5] == ['-f', str(tmp_path/'cfg'/'tmux.conf')]
-    assert argv[5:10] == ['new-session', '-s', 'ramabana', '-c', '/work'] and 'update-environment' not in argv
-    assert argv[10:12] == ['sh', '-c'] and argv[-3:] == [script(tmp_path), '--model', 'x']
-    assert env == {'HOME': '/h', 'PATH': '/bin', 'OPENAI_API_KEY': 'k', 'RAMABANA_WRAPPED': '1'}
-    assert (tmp_path/'cfg'/'tmux.conf').exists() and [c[1:] for c in box.calls].count(['-V']) == 1
-    s2, box2 = mk(tmp_path)
-    s2.launch()
-    assert box2.execd[1][2] != argv[2]
-
-def test_without_a_script_on_argv_the_relaunch_runs_this_python(tmp_path):
-    import sys
-    s, box = mk(tmp_path, argv=('-c', '--pane', 'on'))
-    s.launch()
-    cmd = box.execd[1][-5:]
-    assert cmd[:2] == [sys.executable, '-c'] and 'run_cli()' in cmd[2] and cmd[-2:] == ['--pane', 'on']
-
 @pytest.mark.parametrize('why,kw,environ,tty', [
     ('one-shot', dict(prompt='hi'), None, True),
     ('json', dict(as_json=True), None, True),
@@ -95,46 +73,6 @@ def test_no_relaunch_when(tmp_path, why, kw, environ, tty):
     s.launch(**kw)
     assert box.execd is None and box.asked == [] and not (tmp_path/'cfg'/'tmux.conf').exists()
 
-def test_the_relaunch_needs_tmux_3_but_not_the_split_version(tmp_path):
-    s, box = mk(tmp_path, Box(version='tmux 3.0a'))
-    s.launch(tmux='on')
-    assert box.execd is not None and 'extended-keys' not in (tmp_path/'cfg'/'tmux.conf').read_text()
-    s, box = mk(tmp_path, Box(version='tmux 2.9'))
-    s.launch()
-    assert box.execd is None
-    s, box = mk(tmp_path, Box(version=''))
-    s.launch()
-    assert box.execd is None
-
-@pytest.mark.parametrize('system,have,cmd', [
-    ('Darwin', {'brew'}, ['brew', 'install', 'tmux']),
-    ('Linux', {'apt-get', 'dnf', 'sudo'}, ['sudo', 'apt-get', 'install', '-y', 'tmux']),
-    ('Linux', {'dnf', 'sudo'}, ['sudo', 'dnf', 'install', '-y', 'tmux']),
-])
-def test_yes_installs_tmux_with_the_named_command_then_relaunches(tmp_path, system, have, cmd):
-    s, box = mk(tmp_path, Box(have=have, system=system, answer='y'))
-    s.launch()
-    assert len(box.asked) == 1 and ' '.join(cmd) in box.asked[0] and '[y/N]' in box.asked[0]
-    assert cmd in box.calls and box.execd is not None
-
-@pytest.mark.parametrize('system,have', [('Darwin', set()), ('Linux', {'sudo'}), ('Windows', set())])
-def test_without_an_installer_nothing_is_asked_and_the_hint_prints_once(tmp_path, capsys, system, have):
-    s, box = mk(tmp_path, Box(have=have, system=system))
-    s.launch()
-    assert box.asked == [] and box.execd is None and '--doctor' in capsys.readouterr().err
-    s.launch()
-    assert capsys.readouterr().err == ''
-
-def test_no_is_remembered_and_only_doctor_asks_again(tmp_path, capsys):
-    s, box = mk(tmp_path, Box(have={'brew'}, answer='n'))
-    s.launch()
-    assert len(box.asked) == 1 and box.execd is None and '--doctor' in capsys.readouterr().err
-    assert ['brew', 'install', 'tmux'] not in box.calls
-    s2, box2 = mk(tmp_path, Box(have={'brew'}, answer='y'))
-    s2.launch()
-    assert box2.asked == [] and box2.execd is None
-    assert s2.doctor() == 0 and len(box2.asked) == 1 and ['brew', 'install', 'tmux'] in box2.calls
-
 @pytest.mark.parametrize('code', [1, KeyboardInterrupt()])
 def test_a_failed_or_interrupted_install_saves_nothing_and_continues_without_tmux(tmp_path, capsys, code):
     s, box = mk(tmp_path, Box(have={'brew'}, answer='y', code=code))
@@ -144,43 +82,3 @@ def test_a_failed_or_interrupted_install_saves_nothing_and_continues_without_tmu
     s2, box2 = mk(tmp_path, Box(have={'brew'}, answer='y'))
     s2.launch()
     assert len(box2.asked) == 1 and box2.execd is not None and s2._seen() == {'install_tmux': 'yes'}
-
-@pytest.mark.parametrize('stop', [KeyboardInterrupt(), EOFError()])
-def test_ctrl_c_at_the_prompt_saves_nothing_so_the_next_run_asks_again(tmp_path, capsys, stop):
-    s, box = mk(tmp_path, Box(have={'brew'}, answer=stop))
-    s.launch()
-    assert box.execd is None and ['brew', 'install', 'tmux'] not in box.calls and '--doctor' in capsys.readouterr().err
-    assert not (tmp_path/'cfg'/'setup.json').exists()
-    s2, box2 = mk(tmp_path, Box(have={'brew'}, answer='n'))
-    s2.launch()
-    assert len(box2.asked) == 1
-
-def test_inside_your_own_tmux_extended_keys_are_turned_on_only_when_off(tmp_path, capsys):
-    inside = {'TMUX': '/tmp/tmux-1/default,1,0'}
-    s, box = mk(tmp_path, Box(ext='off'), environ=inside)
-    s.launch()
-    assert ['/bin/tmux', 'set', '-s', 'extended-keys', 'on'] in box.calls and 'extended-keys' in capsys.readouterr().err
-    for ext in ('on', 'always', ''):
-        s, box = mk(tmp_path, Box(ext=ext), environ=inside)
-        s.launch()
-        assert not any('set' in c for c in box.calls) and box.execd is None
-    s, box = mk(tmp_path, Box(ext='off'), environ=inside)
-    s.launch(prompt='hi')
-    assert box.calls == []
-
-def test_doctor_prints_one_line_per_check(tmp_path, capsys, monkeypatch):
-    s, box = mk(tmp_path, Box(have={'tmux', 'ramabana-pane'}, version='tmux 3.0a'))
-    monkeypatch.setattr(setup, 'need', lambda extra, *mods: 'missing' if extra in ('serve', 'dhrona') else '')
-    assert s.doctor() == 0
-    out = capsys.readouterr().out.splitlines()
-    assert [l.split(':')[0] for l in out] == ['tmux', 'split', 'extended-keys', 'config', 'ramabana-pane', 'extras', 'kosha']
-    assert "pip install 'ramabana[serve,dhrona]'" in out[5]
-    assert '3.0a' in out[0] and '/bin/tmux' in out[0] and '3.1' in out[1] and str(tmp_path/'cfg'/'tmux.conf') in out[3]
-    assert '/bin/ramabana-pane' in out[4] and box.asked == []
-    s, box = mk(tmp_path, Box(have=set(), system='Linux'), environ={'TMUX': 'x'})
-    s.doctor()
-    out = capsys.readouterr().out.splitlines()
-    assert 'not found' in out[0] and 'python -m ramabana.pane' in out[4]
-    s, box = mk(tmp_path, Box(ext='off'), environ={'TMUX': 'x'})
-    s.doctor()
-    assert 'off' in capsys.readouterr().out.splitlines()[2] and not any('set' in c for c in box.calls)

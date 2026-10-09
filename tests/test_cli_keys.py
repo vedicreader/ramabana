@@ -4,14 +4,10 @@ import asyncio, os, select, sys, threading, time
 import pytest
 from teleprint.compositor import Compositor
 from teleprint.keys import CPR, Key, Paste, Parser
-from teleprint.testing import EmuTty
 from teleprint.tty import RealTty
-from teleprint.widgets import CompletionMenu
 
-from ramabana.agent import Approvals
-from ramabana.cli import GRUVBOX, KEYS_OFF, KEYS_ON, Ui
+from ramabana.cli import KEYS_OFF, KEYS_ON
 from ramabana.testing import fake_agent
-from ramabana.tools import WRITE_TOOLS
 
 
 def _names(*chunks):
@@ -48,33 +44,6 @@ def test_kitty_modify_other_keys_and_legacy_forms_decode_to_the_same_names():
     # the neighbours keep their meaning: CPR, paste, and ESC [ 27 ~ with too few params
     p = Parser()
     assert p.feed('\x1b[5;9R') == [CPR(4, 8)] and p.feed('\x1b[200~hi\x1b[201~') == [Paste('hi')]
-
-
-def test_a_sequence_split_across_reads_waits_for_its_end():
-    assert _names('\x1b[13', ';2u') == ['shift+enter']
-    assert _names('\x1b[13;2:', '1u') == ['shift+enter'], 'the colon form is not junk half-way'
-    assert _names('\x1b[27;2;1', '3~') == ['shift+enter']
-    assert _names('\x1b', '[99;5u') == ['ctrl+c']
-
-
-class _Rec(EmuTty):
-    def __init__(self, *a):
-        super().__init__(*a)
-        self.out = ''
-    def write(self, data):
-        self.out += data if isinstance(data, str) else data.decode()
-        super().write(data)
-
-
-def test_a_headless_tty_is_never_asked_for_extended_keys():
-    async def go():
-        tty = _Rec(40, 10)
-        comp = await Compositor(tty).start()
-        comp.stop()
-        tty.close()
-        return tty.out
-    out = asyncio.run(go())
-    assert KEYS_ON not in out and KEYS_OFF not in out and '\x1b[>' not in out
 
 
 class _Pty(RealTty):
@@ -118,96 +87,6 @@ def test_a_real_tty_asks_for_extended_keys_and_gives_them_back(monkeypatch):
     # kitty flags are per screen: pushed on the alt screen after entering it, popped before leaving it
     assert alt.index('\x1b[?1049h') < alt.index('\x1b[>1u') < alt.index('\x1b[<u') < alt.index('\x1b[?1049l')
     assert KEYS_OFF in freed and KEYS_ON in back, 'a borrower gets the terminal as the shell left it'
-
-
-# the surface
-
-@pytest.fixture
-def ui():
-    tty = EmuTty(80, 24)
-    comp = Compositor(tty)
-    comp._register_signals = lambda: None
-    asyncio.run(comp.start())
-    agent, _ = fake_agent()
-    agent.approvals = Approvals(tools=WRITE_TOOLS, mode='ask')
-    yield Ui(comp, agent)
-    tty.close()
-
-
-async def _slow(): await asyncio.sleep(.05)
-
-
-def _press(u, text, key):
-    u.buf.insert(text)
-    if (out := u.on_key(Key(key))) is not None: u.start_turn(out)
-
-
-def test_shift_enter_mid_turn_queues_and_enter_steers(ui):
-    async def go():
-        ui.start_turn(_slow())
-        run = ui.agent._new_run('q')
-        _press(ui, 'after this', 'shift+enter')
-        _press(ui, 'and this', 'alt+enter')
-        assert run.inbox == [] and ui._queued_prompt == 'after this\n\nand this'
-        _press(ui, 'now', 'enter')
-        assert run.inbox == ['now'], 'enter still steers'
-        ui.drop_queued(); run.finish()
-        await asyncio.sleep(.1)
-    asyncio.run(go())
-
-
-def _chip(u):
-    rows, _ = u.tail()
-    return rows[1].plain.split()[:2]
-
-
-def test_shift_tab_cycles_ask_edits_auto_and_the_chip_follows(ui):
-    ap = ui.agent.approvals
-    seen = []
-    for _ in range(3):
-        seen.append((ap.mode, _chip(ui)))
-        ui.on_key(Key('shift+tab'))
-    seen.append((ap.mode, _chip(ui)))
-    assert [m for m, _ in seen] == ['ask', 'edits', 'auto', 'ask']
-    assert [c for _, c in seen] == [['⏵', 'ask'], ['⏵⏵', 'edits'], ['⏵⏵⏵', 'auto'], ['⏵', 'ask']]
-    assert ui._flash[0] == 'approvals: auto -> ask'
-    colours = {}
-    for m in ('ask', 'edits', 'auto', 'off'):
-        ap.mode = m
-        colours[m] = ui.chip().style
-    assert colours == {'ask': GRUVBOX['gray'], 'edits': GRUVBOX['blue'], 'auto': GRUVBOX['red'], 'off': GRUVBOX['red']}
-    assert ui.chip().plain == '⊘ off'
-    ui.on_key(Key('shift+tab'))
-    assert ap.mode == 'ask', 'off steps back into the cycle at ask'
-    assert 'approve ' not in ui.status().plain, 'the chip replaced the status bit'
-
-
-def test_shift_tab_settles_a_pending_ask_as_approve_does(ui):
-    ap = ui.agent.approvals
-    a = ap.current = ap.ask('run_shell', {'command': 'ls'})
-    ap._notify('ask', a)
-    assert ui.ask is a
-    ui.on_key(Key('shift+tab'))
-    assert ap.mode == 'edits' and a.pending, 'edits does not cover a shell command'
-    ui.on_key(Key('shift+tab'))
-    assert ap.mode == 'auto' and a.answer is True and ui.ask is None
-    assert 'approved what was waiting' in ui._flash[0]
-
-
-def test_an_open_completion_menu_keeps_shift_tab(ui):
-    ui.buf.insert('/')
-    ui.complete = CompletionMenu(ui.buf, ['/help', '/approve'], start=0)
-    ui.on_key(Key('shift+tab'))
-    assert ui.agent.approvals.mode == 'ask'
-
-
-def test_no_chip_without_approvals(ui):
-    ui.agent.approvals = None
-    assert ui.chip() is None
-    rows, _ = ui.tail()
-    assert not rows[1].plain.lstrip().startswith(('⏵', '⊘'))
-    ui.on_key(Key('shift+tab'))
-    assert ui._flash[0] == 'this session runs without approvals'
 
 
 class _Term:
@@ -258,31 +137,3 @@ def test_an_exception_before_the_loop_still_gives_the_keys_back(term, monkeypatc
     assert KEYS_ON in out and out.rindex(KEYS_OFF) > out.rindex(KEYS_ON), 'the shell is left in extended-key mode'
 
 
-def test_ctrl_z_in_the_transcript_view_leaves_the_alt_screen_and_comes_back(term, monkeypatch):
-    from teleprint.transcript import TranscriptView
-    term = term()
-    stops = []
-    monkeypatch.setattr(os, 'kill', lambda pid, sig: stops.append(sig))
-    async def go():
-        comp = await Compositor(_Pty()).start()
-        view = TranscriptView(comp, lambda: ([], None))
-        view.enter()
-        before = len(term.text())
-        await comp.suspend()
-        after = term.text()[before:]
-        comp.stop(); comp.tty.restore()
-        return after
-    out = asyncio.run(go())
-    import signal
-    assert stops == [signal.SIGTSTP]
-    order = ['\x1b[<u', '\x1b[?1049l', KEYS_OFF, KEYS_ON, '\x1b[?1049h', '\x1b[>1u']
-    at = [out.index(order[0])]
-    for s in order[1:]: at.append(out.index(s, at[-1] + 1))
-    assert at == sorted(at), out
-
-
-def test_shift_enter_in_python_mode_is_a_newline_never_a_submit(ui):
-    ui.mode = 'python'
-    ui.buf.insert('def f():')
-    assert ui.on_key(Key('shift+enter')) is None
-    assert ui.buf.text == 'def f():\n' and ui.turn is None

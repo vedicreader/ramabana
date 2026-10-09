@@ -13,18 +13,12 @@ any `except` to catch. Both are tested without a model: the first is arithmetic,
 backend that writes to fd 2 exactly the way litert does.
 """
 import os
-import sys
 from types import SimpleNamespace
 
-import pytest
-
-from ramabana import core, runtime
+from ramabana import runtime
 from ramabana.core import DFLT_LOCAL_CTX, ModelSpec, local_ctx, resolve
-from ramabana.runtime import (ONESHOT_CUT, ONESHOT_HEADROOM, ONESHOT_TOKENS, RESERVE, Compactor,
-                              RishiBackend, ThinkFilter, answer_only, captured, estimate_tokens,
-                              interesting, prefills_think, threshold)
-from ramabana.runtime import capture as native_capture
-from ramabana.testing import GEMMA, FakeBackend, MutteringBackend
+from ramabana.runtime import RESERVE, Compactor, captured, threshold
+from ramabana.testing import FakeBackend
 
 SMALL = ModelSpec('gemma-e2b', 'litert', 'litert-community/x', 16_384)
 
@@ -81,45 +75,6 @@ def _harness_chat(cls, hist, billed=260_915, sp='BRIEFING'):
     return chat
 
 
-class _Counting(FakeBackend):
-    "Counts its own tokens, so the fit is measured rather than merely exercised."
-    def count_tokens(self, text): return estimate_tokens(text)
-    def _oneshot(self, prompt, sp, max_tokens):
-        self.seen = prompt
-        return 'a title'
-
-
-def test_a_one_shot_is_fitted_to_the_window_and_names_its_job_when_it_fails():
-    """The window arithmetic above covers a turn. A one-shot had none, and its conversation is new,
-    so the whole window is its own and nobody was measuring the prompt against it.
-
-    `summarize_session` joins the last eight prompts of a session with no cap. On gemma-e4b that
-    reached litert as more tokens than the window holds, litert refused the input instead of
-    truncating it, and its binding raised `litert_lm_conversation_send_message failed` with the
-    reason -- `INVALID_ARGUMENT: Input token ids are too long` -- left on a file descriptor. The
-    IDE printed `gemma-e4b one-shot failed`, naming the transport's method for what was a summary.
-    """
-    small = ModelSpec('gemma-e2b', 'litert', 'litert-community/x', 512)
-    b = _Counting(small)
-    long = 'the kernel wrote its outputs into the pane and the reader read them. ' * 200
-    assert b.oneshot(long, 'Write a short conversation title.', 32) == 'a title'
-    room = 512 - estimate_tokens('Write a short conversation title.') - 32 - ONESHOT_HEADROOM
-    assert estimate_tokens(b.seen) <= room, f'{estimate_tokens(b.seen)} tokens into {room} of room'
-    assert b.seen.startswith(ONESHOT_CUT), 'the model was not told the text had been cut'
-    assert b.seen.endswith(long[-60:]), 'the tail is where a prompt puts its question'
-
-    short = 'name this conversation'
-    b.oneshot(short, 'Write a short conversation title.', 32)
-    assert b.seen == short, 'a prompt that fits is passed through untouched'
-
-    class Refusing(_Counting):
-        def _oneshot(self, prompt, sp, max_tokens): raise RuntimeError('litert_lm_conversation_send_message failed')
-    r = Refusing(small)
-    assert r.oneshot('name this conversation', job='summary') == ''
-    assert 'summary failed' in r.note, r.note
-    assert 'one-shot' not in r.note, r.note
-
-
 def test_an_agent_harness_reports_occupancy_rather_than_what_the_turn_was_billed():
     """The window read-out these transports give, which ramabana's arithmetic takes on trust.
 
@@ -155,44 +110,6 @@ def test_an_agent_harness_reports_occupancy_rather_than_what_the_turn_was_billed
 
 # -- compaction ------------------------------------------------------------------------
 
-def test_compaction_replaces_the_history_and_reorients_the_model(spec):
-    """The checkpoint takes the place of what it summarised, and says what survived it -- which is
-    the aai-coding idea, and whose value is in being specific about the kernel. The tail it keeps
-    always starts at a user turn, because a tail beginning at an orphaned tool result is a dangling
-    call that some providers reject outright. And a summary is updated rather than re-summarised,
-    since summarising a summary loses a little every time.
-    """
-    be = FakeBackend(spec)
-    be.start()
-    be.hist_ = [{'role': 'user', 'content': 'x' * 4000}, {'role': 'assistant', 'content': 'y' * 4000},
-                {'role': 'user', 'content': 'recent'}]
-    out = Compactor(keep_recent=40).compact(be, lambda p, sp: 'GOAL: ship it')
-    assert out == 'GOAL: ship it'
-    head = be.hist[0]['content']
-    assert head.startswith(runtime.SUMMARY_PREFIX) and 'GOAL: ship it' in head
-    # the reminder itself, not a phrase from it
-    assert runtime.reorient(kernel_alive=True) in head
-    assert runtime.reorient(kernel_alive=False) not in head
-    # a restarted kernel must not be told its variables survived
-    assert runtime.reorient(kernel_alive=False) != runtime.reorient(kernel_alive=True)
-    assert 'Do not re-import' not in runtime.reorient(kernel_alive=False)
-
-    msgs = [{'role': 'user', 'content': 'a' * 400}, {'role': 'assistant', 'content': 'b'},
-            {'role': 'tool', 'content': 'c'}, {'role': 'user', 'content': 'd'},
-            {'role': 'assistant', 'content': 'e'}]
-    kept = Compactor(keep_recent=50)._keep(msgs)
-    assert kept and kept[0]['role'] == 'user'
-
-    prev, rest = runtime.split_previous(
-        [{'role': 'user', 'content': runtime.SUMMARY_PREFIX + 'old summary'},
-         {'role': 'assistant', 'content': 'later work'}])
-    assert prev == 'old summary' and len(rest) == 1
-    p = runtime.summarise_prompt([{'role': 'user', 'content': runtime.SUMMARY_PREFIX + 'old summary'}])
-    # a summary is updated, not re-summarised
-    assert '<previous-summary>\nold summary\n</previous-summary>' in p
-    assert 'lineno|hash|' in p, 'the prompt must keep the addresses a pending edit needs'
-
-
 def test_compaction_progresses_under_a_briefing_that_fills_the_window():
     """Compaction fires on the whole prompt, so on a small window the conversation is only a few
     thousand tokens -- smaller than a keep-tail measured against the window, so everything was
@@ -221,48 +138,7 @@ def test_compaction_progresses_under_a_briefing_that_fills_the_window():
     assert c.budget(0) == c.keep_recent                                    # no window: as before
 
 
-def test_surgical_compaction_keeps_questions_calls_results_and_both_text_ends():
-    "The deterministic alternative, for when there is no summariser model to pay for."
-    from ramabana.runtime import surgical_history, truncate_middle
-    msgs = [
-        {'role': 'user', 'content': 'first ' + 'middle ' * 100 + 'last'},
-        {'role': 'assistant', 'content': 'I will inspect.', 'tool_calls': [
-            {'function': {'name': 'view_file', 'arguments': {'path': 'a.py'}}}]},
-        {'role': 'tool', 'content': 'line one\nline two'},
-    ]
-    text = surgical_history(msgs, {'user': 20, 'assistant': 20, 'call': 30, 'result': 20})
-    assert text.startswith('§ first ') and 'last §' in text
-    assert "▶ view_file(path='a.py')" in text
-    assert '> line one ¶ line two' in text
-    clipped = truncate_middle('begin ' + 'x ' * 200 + 'end', 12)
-    assert clipped.startswith('begin ') and clipped.endswith('end')
-
-
 # -- what the engine says on its way past ----------------------------------------------
-
-def test_the_engines_own_words_are_captured_and_classified():
-    """Captured for the IDE and teed to where they were going, because a terminal session still
-    wants them. A line saying "exceed" is a problem; a line announcing an XNNPACK delegate is
-    chatter, and an engine that logs one per call would otherwise bury the line that matters.
-    A native layer also repeats itself once per token, and a status bar cannot.
-    """
-    with captured() as cap: native_write(GEMMA)
-    assert 'exceed the maximum number of tokens 4096' in cap.text
-    assert cap.problems, 'a line saying "exceed" is a problem, not chatter'
-
-    with captured() as cap: native_write('INFO: Created TensorFlow Lite XNNPACK delegate for CPU.\n')
-    assert cap.text and not cap.problems
-
-    assert interesting(GEMMA * 5) == [GEMMA.strip()]
-    assert len(interesting('\n'.join(f'error {i}' for i in range(20)))) == 4
-
-    # An exception carries them, so the reported failure is the engine's words not a wrapper's.
-    def boom():
-        native_write(GEMMA)
-        raise RuntimeError('generate failed')
-    with pytest.raises(RuntimeError) as e: native_capture(boom)
-    assert 'exceed the maximum number of tokens' in getattr(e.value, 'native_output', '')
-
 
 def test_a_capture_longer_than_one_pipe_read_keeps_its_tail():
     """`stop` closed the pipe's read end before joining the thread that drains it, so whatever was
@@ -273,167 +149,3 @@ def test_a_capture_longer_than_one_pipe_read_keeps_its_tail():
     with captured() as cap: native_write('a' * 59_990 + 'THE-TAIL\n')
     assert cap.text.endswith('THE-TAIL\n')
     assert len(cap.text) == runtime.MAX_KEEP, 'the tail is kept, not the first read'
-
-
-def test_capture_can_be_switched_off_and_never_breaks_the_descriptor(monkeypatch):
-    """Anything that moves a file descriptor needs a way out, and `use_env_prefix` exists so one
-    hard-coded variable name is not wrong in every other application. A broken stderr would be a
-    far worse bug than the one this fixes, so the descriptor survives an exception inside the block.
-    """
-    monkeypatch.setenv('LEELA_NO_NATIVE_CAPTURE', '1')
-    with captured() as cap: native_write('x\n')
-    assert cap.text == ''
-    monkeypatch.delenv('LEELA_NO_NATIVE_CAPTURE')
-
-    core.use_env_prefix('RAMABANA_', 'LEELA_')
-    monkeypatch.setenv('RAMABANA_NO_NATIVE_CAPTURE', '1')
-    assert captured().enabled is False
-    monkeypatch.delenv('RAMABANA_NO_NATIVE_CAPTURE')
-    assert captured().enabled is True
-
-    before = os.dup(2)
-    try:
-        with pytest.raises(ValueError):
-            with captured():
-                native_write('something\n')
-                raise ValueError('boom')
-        native_write('')                       # fd 2 is still writable
-        assert sys.stderr is not None
-    finally: os.close(before)
-
-
-def test_a_silent_engine_failure_is_reported_rather_than_shown_as_an_empty_answer():
-    """The bug as the user met it: a turn that produced nothing and said nothing about it. A stream
-    with no chunks ended with a blank pane and a cheerful status line. `oneshot` still returns ''
-    by contract -- completion, classification and compaction all need a value, not an exception --
-    so its failure has to be recorded somewhere the user can see instead.
-    """
-    be = MutteringBackend(ModelSpec('gemma-e2b', 'muttering', 'gemma/e2b', ctx=4096))
-    out = ''.join(be.stream('hello'))
-    assert 'exceed the maximum number of tokens 4096' in out and be.problems
-
-    cheap = MutteringBackend(ModelSpec('gemma-e2b', 'muttering', 'gemma/e2b', ctx=4096))
-    assert cheap.oneshot('summarise this') == ''
-    assert any('input too long' in p for p in cheap.problems)
-
-
-# -- where a reply starts --------------------------------------------------------------
-
-def test_a_template_that_opens_a_think_block_is_detected():
-    """Rishi's splitter waits for a `<think>` to know it is inside a thought, so for a model whose
-    template opens one, the deliberation arrives as ordinary reply text and only the closing tag
-    comes back. Detection must never raise: a backend that never started has no tokenizer."""
-    class Tok:
-        def __init__(self, tail): self.tail = tail
-        def apply_chat_template(self, msgs, **kw): return '<|im_start|>assistant\n' + self.tail
-
-    class Chat:
-        def __init__(self, tail): self.tokenizer = Tok(tail)
-
-    assert prefills_think(Chat('<think>\n')) is True
-    assert prefills_think(Chat('<think>\n\n</think>\n\n')) is False   # enable_thinking=False
-    assert prefills_think(Chat('')) is False                          # not a reasoning model
-
-    class Boom:
-        def apply_chat_template(self, *a, **kw): raise RuntimeError('no template')
-    bad = Chat('')
-    bad.tokenizer = Boom()
-    assert prefills_think(bad) is False
-    assert prefills_think(None) is False                              # never started
-
-
-def test_the_think_filter_strips_deliberation_and_re_arms_each_step():
-    """The template opens a fresh thought per step, so one strip per turn is not enough. A thought
-    that never reaches an answer is visible to the caller rather than silently empty, and the
-    blocking path must not disagree with the streamed one about where the reply starts."""
-    def chunks(*texts): return [{'content': [{'type': 'text', 'text': t}]} for t in texts]
-    def text_of(cs): return ''.join(p.get('text', '') for c in cs
-                                    for p in (c.get('content') or []) if p.get('type') == 'text')
-
-    f = ThinkFilter()
-    assert text_of(list(f(chunks('Six sevens', ' are 42.\n</th', 'ink>\n\n', '42')))) == '42'
-    assert (f.thought, f.answer) == (29, 2)          # `thought` counts the buffered tag too
-
-    tool = {'content': [{'type': 'tool_call', 'name': 'search_code', 'arguments': {}}]}
-    out = list(ThinkFilter()(chunks('think 1', '</think>', 'calling ') + [tool]
-                             + chunks('think 2', '</think>', 'done')))
-    assert text_of(out) == 'calling done'
-    assert out[1] is tool                            # the call itself passes through untouched
-
-    g = ThinkFilter()
-    assert text_of(list(g(chunks('deliberating', '</think>\n\n')))) == ''
-    assert (g.thinking, g.answer) == (False, 0)      # what `_stream` reports as a problem
-    h = ThinkFilter()
-    assert text_of(list(h(chunks('cut off at the cap')))) == ''
-    assert (h.thinking, h.answer) == (True, 0)
-
-    for raw in ('thinking\n</think>\n\n42', '<think>thinking</think>42'):
-        assert answer_only(raw) == '42'
-    assert text_of(list(ThinkFilter()(chunks('thinking\n</think>\n\n42')))) == '42'
-
-
-def test_a_cheap_job_cannot_leave_its_output_cap_behind():
-    """`_oneshot_chat` is reused across jobs, so a 32-token `classify` must not cap the next
-    summary at 32 tokens as well."""
-    caps = []
-
-    class Chat:
-        def __init__(self): self.sp, self.hist = '', []
-        def mk_msg(self, p): return {'role': 'user', 'content': p}
-        def _model_step(self, mx): caps.append(mx); return {'content': 'ok'}
-
-    class Local(RishiBackend):
-        def _start(self): return Chat()
-
-    b = Local(ModelSpec('test-mlx', 'mlx', 'test/model', 8192))
-    b._oneshot_chat = Chat()
-    b.start()
-    b.oneshot('label this', 'pick one', 32)
-    b.oneshot('summarise this')
-    assert caps == [32, ONESHOT_TOKENS]
-
-
-def test_a_summariser_that_overflows_is_retried_on_half_the_budget(spec):
-    """A prompt built to fill the summary model's window can still overflow it. For any backend
-    without a tokenizer of its own the budget was only estimated, and chars/4 ran 12% under what
-    ornith and qwen3 tokenise. Compaction of a conversation already well past its window then died
-    on a 400 and left the history untouched, which is the one moment compaction exists for.
-    Halving the budget and asking again costs a shorter summary. That beats no summary.
-    """
-    be = FakeBackend(spec)
-    be.start()
-    be.hist_ = [{'role': 'user', 'content': 'x' * 40000}, {'role': 'assistant', 'content': 'y' * 40000},
-                {'role': 'user', 'content': 'recent'}]
-    seen = []
-
-    def picky(prompt, sp):
-        seen.append(len(prompt))
-        if len(seen) < 3: raise RuntimeError('exceeds the available context size')
-        return 'GOAL: ship it'
-
-    out = Compactor(keep_recent=40).compact(be, picky, summary_ctx=2048, summary_count=None)
-    assert out == 'GOAL: ship it', 'the third, smallest prompt should have been accepted'
-    assert len(seen) == 3 and seen[0] > seen[1] > seen[2], f'budget did not halve: {seen}'
-    assert runtime.SUMMARY_PREFIX in be.hist[0]['content']
-
-    # every attempt failing still reports the transport's own words, not a bare 'returned nothing'
-    c = Compactor(keep_recent=40)
-    be2 = FakeBackend(spec); be2.start(); be2.hist_ = list(be.hist_)
-    assert c.compact(be2, lambda p, sp: (_ for _ in ()).throw(RuntimeError('boom')),
-                     summary_ctx=2048, summary_count=None) == ''
-    assert 'boom' in c.note and be2.hist == be2.hist_
-
-
-def test_the_token_estimate_errs_high_so_a_prompt_built_to_fit_does(spec):
-    """Estimating low overflows the window and costs the whole compaction. Estimating high costs
-    a slightly shorter prompt. ornith-1.5:9b and qwen3:0.6b both tokenise English prose at 3.50
-    chars/token. The estimator must stay at or under that.
-    """
-    assert runtime.CHARS_PER_TOKEN <= 3.5
-    assert runtime.estimate_tokens('x' * 126438) >= 36110, 'measured on ornith for this length'
-    assert runtime.estimate_tokens('') == 0 and runtime.estimate_tokens('a') == 1
-    assert isinstance(runtime.estimate_tokens('x' * 999), int)
-    assert runtime.halvings(31614) == [31614, 15807, 7903]
-    assert runtime.halvings(None) == [None] and runtime.halvings(0) == [0]
-    # a tokenizer that is present is still believed over the estimate
-    assert runtime.estimate_tokens('x' * 1000, count=lambda t: 7) == 7

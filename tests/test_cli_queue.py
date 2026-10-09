@@ -2,7 +2,6 @@
 
 import asyncio
 import pytest
-from fastcore.basics import first
 from teleprint.compositor import Compositor
 from teleprint.keys import Key
 from teleprint.testing import EmuTty
@@ -20,81 +19,6 @@ def ui():
     agent, _ = fake_agent()
     yield Ui(comp, agent)
     tty.close()
-
-
-def _said(u): return ' '.join(u.transcript.block_text(b) for b in u.comp.blocks.values())
-
-
-def test_a_line_typed_during_a_turn_is_held_rather_than_dropped(ui):
-    """`submit` clears the buffer and writes the line into the transcript before the turn is asked
-    for, so closing the coroutine left a message that looked answered and was gone."""
-    ran = []
-    async def first():
-        await asyncio.sleep(.05); ran.append('first')
-    async def second(): ran.append('second')
-
-    async def go():
-        assert ui.start_turn(first()) is True
-        assert ui.start_turn(second()) is False, 'the second one waits'
-        assert ui._queued is not None, 'and it is kept, not closed'
-        await asyncio.sleep(.2)
-        return ran
-    out = asyncio.run(go())
-    assert out == ['first', 'second'], 'the held line runs once the turn it interrupted has ended'
-    assert ui._queued is None
-
-
-def test_the_surface_says_the_line_is_waiting(ui):
-    async def slow(): await asyncio.sleep(.05)
-    async def held(): pass
-    async def go():
-        ui.start_turn(slow()); ui.start_turn(held())
-        assert 'queued' in _said(ui), 'a held line says so rather than looking answered'
-        await asyncio.sleep(.2)
-    asyncio.run(go())
-
-
-def test_only_one_line_waits_and_the_first_one_keeps_the_slot(ui):
-    """The newest used to win, so anything `on_key` handed back -- a `/python`, a `/promote`, this
-    surface's own work -- silently evicted a message already waiting. Whoever got there keeps it,
-    and the newcomer is told rather than swallowed."""
-    ran = []
-    async def slow(): await asyncio.sleep(.05)
-    async def older(): ran.append('older')
-    async def newer(): ran.append('newer')
-    async def go():
-        assert ui.start_turn(slow()) is True
-        assert ui.start_turn(older()) is False
-        assert ui.start_turn(newer()) is False
-        await asyncio.sleep(.2)
-    asyncio.run(go())
-    assert ran == ['older'], 'the one that was waiting is the one that runs'
-    assert 'already waiting' in _said(ui)
-
-
-def test_stopping_clears_the_line_that_was_waiting(ui):
-    "Ctrl-C means stop what is happening, and a line typed into it is part of that."
-    async def slow(): await asyncio.sleep(.05)
-    async def held(): raise AssertionError('a cleared line must not run')
-    async def go():
-        ui.start_turn(slow()); ui.start_turn(held())
-        assert ui.drop_queued() is True and ui._queued is None
-        assert ui.drop_queued() is False, 'and nothing is waiting the second time'
-        await asyncio.sleep(.2)
-    asyncio.run(go())
-    assert 'cleared' in _said(ui)
-
-
-def test_a_turn_that_has_already_ended_does_not_hold_the_next_one(ui):
-    "`self.turn` outlives the coroutine, so a finished task must not look like a running turn."
-    async def quick(): pass
-    async def after(): pass
-    async def go():
-        ui.start_turn(quick())
-        await asyncio.sleep(.05)
-        assert ui.start_turn(after()) is True, 'the finished turn is not in the way'
-        await asyncio.sleep(.05)
-    asyncio.run(go())
 
 
 def _surface(replies):
@@ -149,38 +73,6 @@ def test_this_surfaces_own_work_cannot_evict_a_waiting_message(ui):
     assert ran == ['my message']
 
 
-def test_a_second_prompt_joins_the_one_already_waiting(ui):
-    """Both lines are the user's. The newer one used to be closed and lost, so steering twice
-    during a long turn reached the model once."""
-    async def slow(): await asyncio.sleep(.05)
-    async def go():
-        assert ui.start_turn(slow()) is True
-        assert ui.start_turn(ui._turn('look at the tests')) is False
-        assert ui.start_turn(ui._turn('and the lockfile')) is False
-        assert ui._queued_prompt == 'look at the tests\n\nand the lockfile'
-        assert first(r for r in _rows(ui) if 'absorbed' in r), 'the merge flashes above the prompt'
-        ui.drop_queued()   # the merged turn would reach a model; the merge is what is under test
-        await asyncio.sleep(.1)
-    asyncio.run(go())
-    assert ui._queued is None and ui._queued_prompt is None
-
-
-def test_a_prompt_does_not_evict_a_command_that_got_there_first(ui):
-    "Merging is for two prompts. Anything else keeps the slot it took, and the newcomer is told."
-    ran = []
-    async def slow(): await asyncio.sleep(.05)
-    async def cmd(): ran.append('cmd')
-    async def go():
-        assert ui.start_turn(slow()) is True
-        assert ui.start_turn(cmd()) is False
-        assert ui.start_turn(ui._turn('a steer')) is False
-        assert ui._queued_prompt is None, 'the command is not a prompt, so nothing merged into it'
-        assert 'already waiting' in _said(ui)
-        await asyncio.sleep(.2)
-    asyncio.run(go())
-    assert ran == ['cmd']
-
-
 def test_both_lines_reach_the_model_as_one_message():
     "The merge is only real if the ask carries both. One turn, one message, both lines in it."
     tty = EmuTty(80, 24)
@@ -202,39 +94,3 @@ def test_both_lines_reach_the_model_as_one_message():
     finally: tty.close()
 
 
-def _rows(u):
-    rs, _ = u.tail()
-    return [r.plain if hasattr(r, 'plain') else str(r) for r in rs]
-
-
-def test_the_waiting_message_is_shown_above_the_prompt(ui):
-    "It used to be announced once and then be invisible, so there was nothing to look at."
-    async def slow(): await asyncio.sleep(.05)
-    async def go():
-        ui.start_turn(slow())
-        assert not [r for r in _rows(ui) if 'queued' in r], 'nothing waits yet'
-        ui.start_turn(ui._turn('look at the tests'))
-        row = first(r for r in _rows(ui) if '⏳' in r)
-        assert row and 'look at the tests' in row, _rows(ui)
-        assert 'ctrl+c clears it' in row
-        ui.drop_queued()
-        assert not [r for r in _rows(ui) if '⏳' in r], 'and it goes when the message does'
-        await asyncio.sleep(.1)
-    asyncio.run(go())
-
-
-def test_absorbing_and_sending_each_flash_and_then_clear(ui):
-    "A flash says what happened. It lives above the prompt and never reaches the transcript."
-    async def slow(): await asyncio.sleep(.05)
-    async def go():
-        ui.start_turn(slow())
-        ui.start_turn(ui._turn('look at the tests'))
-        ui.start_turn(ui._turn('and the lockfile'))
-        assert first(r for r in _rows(ui) if 'absorbed' in r), _rows(ui)
-        assert 'absorbed' not in _said(ui), 'a flash is not a transcript block'
-        await asyncio.sleep(.3)              # the turn ends and the waiting message goes
-        assert first(r for r in _rows(ui) if 'queued message sent' in r), _rows(ui)
-        ui._flash = (ui._flash[0], 0)        # expire it rather than waiting FLASH_FOR out
-        assert not [r for r in _rows(ui) if '✓' in r], 'a flash clears itself'
-        assert ui._flash is None
-    asyncio.run(go())

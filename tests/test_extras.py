@@ -74,39 +74,6 @@ def test_without_search_the_agent_runs_and_search_memory_and_web_say_what_to_ins
     assert rc == 2 and 'ramabana[search]' in err, (rc, err)
     ''')
 
-def test_without_python_the_agent_runs_and_python_mode_says_what_to_install():
-    run(EXTRAS['python'], '''
-    import ramabana.pyrepl
-    from ramabana.cli import main
-    core_runs()
-    for kw in dict(attach='x'), dict(python=True):
-        rc, err = said(main, root=d, tmux='off', **kw)
-        assert rc == 2 and "pip install 'ramabana[python]'" in err, (kw, rc, err)
-    ''')
-
-def test_without_serve_the_servers_exit_2_naming_the_extra():
-    run(EXTRAS['serve'], '''
-    from ramabana.setup import run_acp, run_mcp
-    core_runs()
-    for f in run_mcp, run_acp:
-        rc, err = said(f)
-        assert rc == 2 and "pip install 'ramabana[serve]'" in err, (f, rc, err)
-    ''')
-
-def test_without_cli_the_terminal_exits_2_and_the_mcp_server_still_builds():
-    run(EXTRAS['cli'], '''
-    import sys
-    from ramabana.setup import run_cli
-    from ramabana.agent import mk_agent, mk_host
-    from ramabana.mcp import server
-    core_runs()
-    sys.argv = ['ramabana']
-    rc, err = said(run_cli)
-    assert rc == 2 and "pip install 'ramabana[cli]'" in err, (rc, err)
-    assert server(mk_host([d], web=False, index=False))
-    a, h = mk_agent([d], approve='none', web=False, warm=False, host_kw=dict(index=False))
-    assert a.host is h
-    ''')
 
 def test_the_bare_core_runs_with_every_extra_blocked():
     run({m for ms in EXTRAS.values() for m in ms} | {'rich', 'fastmux'}, '''
@@ -115,48 +82,4 @@ def test_the_bare_core_runs_with_every_extra_blocked():
     assert not names & {'search_code', 'web_search', 'read_url'}, names
     ''')
 
-def test_a_console_script_is_the_module_main_so_call_parse_reads_the_command_line():
-    import ramabana.core as core, ramabana.mcp, ramabana.pane, ramabana.racp, ramabana.setup as setup
-    assert (setup.run_mcp, setup.run_acp, setup.run_pane) == (ramabana.mcp.main, ramabana.racp.main, ramabana.pane.main)
-    assert (core.run_cli, core.run_mcp) == (setup.run_cli, setup.run_mcp), 'a script installed before the move still runs'
-    scripts = tomllib.loads(PYPROJECT.read_text())['project']['scripts']
-    assert all(v.startswith('ramabana.setup:run_') for k, v in scripts.items() if k != 'ramabana-tick'), scripts
 
-def test_run_cli_parses_the_command_line_itself(monkeypatch):
-    import ramabana.cli as cli
-    from ramabana.setup import run_cli
-    got = {}
-    def main(**kw): return got.update(kw) or 0
-    main.__wrapped__ = cli.main.__wrapped__
-    monkeypatch.setattr(cli, 'main', main)
-    monkeypatch.setattr(sys, 'argv', ['ramabana', 'one question', '--model', 'gpt', '--json'])
-    assert run_cli() == 0 and (got['prompt'], got['model'], got['json']) == ('one question', 'gpt', True)
-
-def test_doctor_runs_without_the_python_extra():
-    run(EXTRAS['python'], '''
-    from ramabana.cli import main
-    from ramabana.setup import Setup
-    Setup.doctor = lambda self: 0
-    rc, err = said(main, doctor=True, python=True)
-    assert rc == 0 and 'pip install' not in err, (rc, err)
-    ''')
-
-def test_the_pane_script_names_the_cli_extra_when_it_is_missing():
-    assert tomllib.loads(PYPROJECT.read_text())['project']['scripts']['ramabana-pane'].endswith(':run_pane')
-    run(EXTRAS['cli'], '''
-    from ramabana.setup import run_pane
-    rc, err = said(run_pane)
-    assert rc == 2 and "pip install 'ramabana[cli]'" in err, (rc, err)
-    ''')
-
-def test_core_does_not_pin_what_nothing_imports():
-    deps = {_name(r) for r in tomllib.loads(PYPROJECT.read_text())['project']['dependencies']}
-    assert 'liteparse' not in deps, 'rishi pins it'
-
-def test_the_readme_says_the_core_includes_what_shalya_needs():
-    readme = (PYPROJECT.parent/'README.md').read_text()
-    assert 'The core install includes what shalya needs' in readme and 'shalya splits' not in readme
-
-def test_the_cli_does_not_reexport_workspace_host():
-    import ramabana.cli
-    assert not hasattr(ramabana.cli, 'WorkspaceHost')

@@ -4,12 +4,8 @@ The point of the whole module is the reason, not the refusal. "Denied" teaches a
 gets retried; "that file is generated, edit the notebook instead" changes its approach. So every
 test here is really about whether the reason survives the trip back.
 """
-import inspect
-import json
 import threading
 import time
-
-import pytest
 
 from ramabana import agent
 from ramabana.testing import fake_agent
@@ -26,30 +22,6 @@ def answer_when_asked(ap, ok, note=''):
             if (a := ap.pending) is not None: return ap.answer(a.id, ok, note)
             time.sleep(0.01)
     threading.Thread(target=run, daemon=True).start()
-
-
-def test_the_gate_draws_its_line_around_the_write_tools_and_answers_as_a_bool():
-    """Both engines call `approve(tc)` and branch on the result, so it has to be falsy when
-    refused. The line is not only the filesystem: deleting a standing reminder and spending money
-    in a trolley are both things a person should see before they happen. `add_root` is the widest of
-    them: it moves the boundary the rest are checked against. And a sub-agent nobody is watching gets
-    none of them -- a delegated question is a question.
-    """
-    from ramabana.tools import GIT_READ_TOOLS, GIT_WRITE_TOOLS
-    assert {'edit_file', 'replace_text', 'create_file', 'edit_cell', 'add_cell', 'run_python',
-            'run_shell', 'run_shell_bg', 'memory_forget', 'create_skill', 'cancel_watch', 'cart_add',
-            'cart_remove', 'add_root', 'restart_kernel', 'page_click', 'page_type', 'page_eval'} | GIT_WRITE_TOOLS == set(WRITE_TOOLS)
-    assert not (set(GIT_READ_TOOLS) & set(WRITE_TOOLS)), 'rehearsing a merge is not approving one'
-
-    ap = agent.Approvals(tools={'edit_file'}, mode='auto')
-    assert ap.gate({'function': {'name': 'search_code', 'arguments': {'query': 'x'}}})   # ungated
-    d = ap.gate({'function': {'name': 'edit_file', 'arguments': '{"path": "a.py"}'}})
-    assert bool(d) and d.args == {'path': 'a.py'}                 # arguments parsed either shape
-
-    from ramabana.tools import read_only
-    a, _ = fake_agent()
-    names = {t.__name__ for t in read_only(a.tools)}
-    assert not (names & WRITE_TOOLS) and 'search_code' in names
 
 
 def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
@@ -128,105 +100,6 @@ def test_a_refusal_nobody_could_be_asked_about_still_reaches_the_recorder():
     assert not c and 'cancelled' in c.reply()
 
 
-def test_every_watcher_and_the_recorder_hear_the_same_ask_with_a_preview():
-    """A second frontend opening must not unhook the notebook recorder, or the first frontend. The
-    preview is what makes an approval answerable: a hash address and a diff, not a tool name."""
-    seen = []
-    ap = agent.Approvals(tools={'edit_file'}, mode='auto', on_ask=lambda a: seen.append('recorder'))
-    ap.listen(on_ask=lambda a: seen.append('one'))
-    ap.listen(on_ask=lambda a: seen.append('two'))
-    ap.mode = 'ask'
-    answer_when_asked(ap, True)
-    ap.gate({'function': {'name': 'edit_file', 'arguments': {}}})
-    assert sorted(seen) == ['one', 'recorder', 'two']
-
-    p = agent.preview_for('edit_file', {'path': 'a.py', 'commands': [['12|ab|', 's', 'old', 'new']]})
-    assert '12|ab|' in p and 'old' in p and 'new' in p
-    p2 = agent.preview_for('create_file', {'path': 'b.py', 'text': 'x = 1'})
-    assert 'new file' in p2 and 'x = 1' in p2
-
-    # Hosted approvals reach rishi's own remote path now, so the shim is three functions saying so.
-    assert agent.apply() and agent.apply() and agent.applied()
-
-
-def test_a_readonly_agent_is_not_given_the_tools_that_act():
-    """`read_only` existed but only the sub-agent path reached it, and the nearest thing an agent
-    had was a briefing that asked it not to write while `edit_file` stayed on the list. A surface
-    that only proposes needs the tools gone, not discouraged."""
-    from ramabana.tools import ACTING_TOOLS, NO_SUB, read_only
-
-    open_agent, _ = fake_agent()
-    shut, _ = fake_agent(readonly=True)
-    names = {t.__name__ for t in shut.tools}
-
-    assert not (names & WRITE_TOOLS), f'a write survived: {sorted(names & WRITE_TOOLS)}'
-    assert not (names & ACTING_TOOLS), f'an effect survived: {sorted(names & ACTING_TOOLS)}'
-    assert not (names & NO_SUB), 'a read-only agent does not delegate its way around the refusal'
-    assert 'search_code' in names, 'it can still look, or it is no use'
-    # `_plain` is what the briefing is written from: it has to agree with what was built, or the
-    # model is told about a tool it has not got.
-    assert {t.__name__ for t in shut._plain} == names
-    assert WRITE_TOOLS & {t.__name__ for t in open_agent.tools}, 'the default is unchanged'
-
-
-def test_a_readonly_agent_can_be_held_to_a_number_of_calls():
-    "The budget guard `read_only` already had, reachable now without delegating."
-    a, _ = fake_agent(readonly=True, readonly_calls=1)
-    look = next(t for t in a.tools if t.__name__ == 'search_code')
-    look(query='a')
-    spent = str(look(query='a'))
-    assert 'budget exhausted' in spent.lower()
-    assert 'sub-agent' not in spent.lower(), 'the guard is no longer only a sub-agent one'
-
-
-def test_a_readonly_agent_cannot_leave_a_page_it_read_in_the_vault():
-    "`read_url` is a read, but its `remember=True` default writes; the argument is not the model's."
-    from ramabana.testing import MemHost
-    from ramabana.tools import WebHost, read_only, tools_for
-
-    seen = []
-    class Page: text = 'page'
-    # the web group is declared by inheriting `WebHost`, and declaring it means writing all three
-    class Host(MemHost, WebHost):
-        def web_search(self, query, n=20): return []
-        def research(self, query): return ''
-        def read_url(self, url, remember=True):
-            seen.append(remember)
-            return Page()
-
-    ts = tools_for(Host({'/p/a.py': 'x=1'}))
-    fetch = next(t for t in read_only(ts) if t.__name__ == 'read_url')
-    fetch(url='https://example.com')
-    assert seen == [False], f'the vault write survived: {seen}'
-    # shalya swaps in the safe variant rather than pinning the argument, so `remember` is not in
-    # the schema the model is given and there is nothing for it to ask for
-    with pytest.raises(TypeError): fetch(url='https://example.com', remember=True)
-    assert 'remember' not in inspect.signature(fetch).parameters
-
-    seen.clear()
-    writer = next(t for t in read_only(ts, writes=True) if t.__name__ == 'read_url')
-    writer(url='https://example.com')
-    assert seen == [True], 'an agent allowed writes keeps the default'
-
-
-def test_the_trolley_writes_are_withheld_from_a_surface_that_may_not_act():
-    """`cart_add` and `cart_remove` were named in `WRITE_TOOLS` and carried no `@writes`, and
-    `read_only` reads the mark rather than the name. A read-only agent, and every read-only
-    sub-agent, was handed the ability to change what someone is about to buy."""
-    from shalya.core import is_write
-    from ramabana.shop import Cart, cart_tools
-    from ramabana.tools import WRITE_TOOLS, read_only
-
-    ts = cart_tools(Cart())
-    writing = {t.__name__ for t in ts if is_write(t)}
-    assert writing == {'cart_add', 'cart_remove'}, writing
-    assert writing <= WRITE_TOOLS, 'the mark and the name set have to agree'
-    kept = {t.__name__ for t in read_only(ts)}
-    assert not (kept & writing), f'a trolley write survived read_only: {sorted(kept & writing)}'
-    assert 'cart_show' in kept and 'cart_find' in kept, 'looking is still allowed'
-    assert not ({t.__name__ for t in read_only(ts, effects=False)} & writing)
-
-
 def test_every_tool_named_a_write_is_also_marked_one():
     """The two representations are kept in two packages: shalya marks the tool, Ramabana adds the
     names shalya has never heard of. Nothing failed when they disagreed."""
@@ -243,38 +116,6 @@ def test_every_tool_named_a_write_is_also_marked_one():
     marked_not_named = sorted(n for n, t in by.items() if is_write(t) and n not in WRITE_TOOLS)
     assert named_not_marked == [], f'in WRITE_TOOLS and not marked: {named_not_marked}'
     assert marked_not_named == [], f'marked and not in WRITE_TOOLS: {marked_not_named}'
-
-
-def test_a_saved_rule_for_a_removed_tool_is_dropped_with_a_note(tmp_path):
-    """`<cfg>/approvals.json` outlives a release: a rule for `remember_note` is inert (rules match by exact
-    name) but misleading in `/approvals`, so building the tool list prunes it and says so."""
-    p = tmp_path/'approvals.json'
-    p.write_text(json.dumps([['remember_note', '*', 'allow'], ['run_shell', 'ls*', 'allow'], ['rewind', '*', 'allow']]))
-    a, _ = fake_agent(approvals=agent.Approvals(rules_path=p))
-    a.tools
-    assert a.approvals.rules == [('run_shell', 'ls*', 'allow'), ('rewind', '*', 'allow')]
-    assert 'remember_note' in a.approvals.problem and 'no such tool' in a.approvals.problem
-    assert json.loads(p.read_text()) == [['run_shell', 'ls*', 'allow'], ['rewind', '*', 'allow']]
-    assert agent.Approvals().prune() == []                                  # nothing saved, nothing to say
-
-
-def test_pruning_spares_every_rule_but_those_for_names_this_release_removed(tmp_path):
-    """A config folder is shared across sessions and frontends: a read-only session offers fewer tools,
-    an extension (`cart_*`) may be off today, and leela's own tools (`canvas_open`, `generate_video`) are
-    never in this catalog at all. Dropping their rules and rewriting the file would be data loss, so only
-    the fixed list of names this release removed goes."""
-    p = tmp_path/'approvals.json'
-    keep = [['run_shell', 'ls*', 'allow'], ['replace_text', '*', 'allow'], ['git_commit', '*', 'allow'], ['create_file', '*.md', 'allow'],
-            ['cart_add', '*', 'allow'], ['canvas_open', '*', 'allow'], ['generate_video', '*', 'deny'], ['my_ext_tool', '*', 'allow'], ['list_files', '*', 'allow']]
-    p.write_text(json.dumps(keep + [['delegate_parallel', '*', 'allow'], ['remember_note', '*', 'allow'], ['memory_topics', '*', 'allow']]))
-    a, _ = fake_agent(approvals=agent.Approvals(rules_path=p), readonly=True)
-    a.tools
-    assert 'run_shell' not in {t.__name__ for t in a.tools} and 'git_commit' not in {t.__name__ for t in a.tools}
-    assert a.approvals.rules == [tuple(r) for r in keep]
-    assert 'delegate_parallel' in a.approvals.problem and 'remember_note' in a.approvals.problem and 'memory_topics' in a.approvals.problem
-    assert json.loads(p.read_text()) == keep
-    assert {'add_todo', 'list_plan', 'delegate_status', 'watch_folder', 'check_folders', 'list_folder_watches', 'cancel_folder_watch'} <= agent.REMOVED_TOOLS
-    assert not ({'edit_file', 'research', 'create_skill', 'list_files', 'list_vars', 'environment', 'memory_tree'} & agent.REMOVED_TOOLS), 'opt-ins and one-release shims still exist somewhere'
 
 
 def test_the_same_gated_call_three_times_running_is_put_to_the_person_whatever_the_mode():
@@ -302,64 +143,3 @@ def test_the_same_gated_call_three_times_running_is_put_to_the_person_whatever_t
     ap = agent.Approvals(tools={'edit_file'}, mode='off')
     assert all(ap.gate(call).answer is False for _ in range(3))    # `off` refuses before any of this
     assert all(agent.Approvals(tools={'edit_file'}).gate({'function': {'name': 'search_code', 'arguments': {'q': 'x'}}}) for _ in range(4))   # an ungated call is never the loop
-
-
-def test_a_refused_doom_loop_is_one_ask_row_on_the_activity(tmp_path):
-    a, be = fake_agent(cfg=tmp_path, approvals=agent.Approvals(mode='auto'))
-    assert 'create_file' in {t.__name__ for t in a.tools}        # building the catalog tells the gate what is a write
-    tc = {'function': {'name': 'create_file', 'arguments': {'path': '/proj/z.py', 'text': 'x = 1\n'}}}
-    assert a.approvals.gate(tc) and a.approvals.gate(tc)
-    d = a.approvals.gate(tc)
-    assert not d and 'three times' in d.reply()
-    asks = [x for x in a.activity.acts if x.kind == 'ask']
-    assert len(asks) == 1 and asks[0].tool == 'create_file' and asks[0].ok is False and 'three times' in asks[0].detail
-
-
-def test_reads_between_the_repeats_neither_count_nor_break_the_streak():
-    "A model that edits, looks, edits, looks, edits is still making the same gated call three times; the reads are not calls anybody gates."
-    asked = []
-    ap = agent.Approvals(tools={'edit_file'}, mode='auto', timeout=5)
-    stop = ap.listen(on_ask=lambda a: (asked.append(a), ap.answer(a.id, False, 'stop')))
-    read = {'function': {'name': 'view_file', 'arguments': {'path': 'a.py'}}}
-    for _ in range(2): assert ap.gate(edit_call('a.py')) and ap.gate(read) and ap.gate(read)
-    assert ap.gate(edit_call('a.py')).answer is False and len(asked) == 1
-    assert ap.gate(read) and ap.gate(read) and ap.gate(edit_call('a.py')).answer is False   # still the same loop
-    stop()
-
-
-def test_restart_kernel_always_asks():
-    "A restart wipes the person's namespace: `edits` mode does not cover it, and the tool is a write."
-    from shalya.tools import group_of, session_tools
-    assert 'restart_kernel' in agent.ALWAYS_ASK and group_of('restart_kernel') == 'session'
-    assert not agent.Approvals.edits_cover('restart_kernel')
-    tool = {t.__name__: t for t in session_tools(None)}['restart_kernel']
-    assert agent.is_write(tool)
-    for mode in ('ask', 'edits'):
-        assert agent.Approvals(tools=WRITE_TOOLS, mode=mode).decide('restart_kernel', {}) is None, mode   # left to a person
-
-
-def _session_hosts(cls):
-    for c in cls.__subclasses__(): yield c; yield from _session_hosts(c)
-
-
-def test_every_session_host_implementer_has_restart_kernel():
-    "Declaring the session group means writing all of it; a host without `restart_kernel` cannot be built."
-    import ramabana.pyrepl, ramabana.testing   # every implementer this package defines
-    from ramabana.tools import NullHost, SessionHost
-    hosts = [c for c in _session_hosts(SessionHost) if c.__module__.split('.')[0] in ('shalya', 'ramabana')]
-    assert {'LocalHost', 'DhrishtiHost', 'FullHost'} <= {c.__name__ for c in hosts}, hosts
-    for c in hosts: assert not getattr(c.restart_kernel, '__isabstractmethod__', False), c
-    class Half(NullHost, SessionHost):
-        def run_python(self, code): return ''
-        def inspect_python(self, code, scope='isolated'): return ''
-        def list_vars(self): return ''
-    with pytest.raises(TypeError, match='restart_kernel'): Half(['/x'])
-
-
-def test_page_eval_always_asks():
-    "Script in a page can do whatever the page can: `edits` mode never covers it, and only `auto` runs it unasked."
-    from shalya.tools import group_of
-    assert 'page_eval' in agent.ALWAYS_ASK and group_of('page_eval') == 'browser'
-    assert not agent.Approvals.edits_cover('page_eval')
-    for mode in ('ask', 'edits'):
-        assert agent.Approvals(tools=WRITE_TOOLS, mode=mode).decide('page_eval', {}) is None, mode

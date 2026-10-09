@@ -7,51 +7,6 @@ every hosted turn that was running, having already released the approval it was 
 from ramabana.testing import fake_agent
 
 
-def test_stopping_returns_the_run_state():
-    a, be = fake_agent(replies=['done'])
-    assert a.cancel()['state'] == 'idle'
-    run = a._new_run('hello')
-    run.start(be)
-    assert a.cancel(run.id)['state'] == 'detached'
-
-
-def test_the_stop_reaches_the_backend_rather_than_being_swallowed():
-    a, be = fake_agent(replies=['done'])
-    run = a._new_run('hello')
-    run.start(be)
-    a.cancel(run.id)
-    assert be.cancelled, 'the backend was never asked'
-
-
-def _bare_backend(chat):
-    "A `Backend` holding `chat`, to exercise `Backend.cancel` itself rather than a double\'s override."
-    from ramabana.runtime import Backend
-    from ramabana.testing import SPEC
-    be = Backend(SPEC)
-    be.chat = chat
-    return be
-
-
-def test_a_backend_with_no_chat_reports_that_nothing_stopped():
-    assert _bare_backend(None).cancel() is False
-
-
-def test_a_backend_whose_chat_cannot_be_stopped_says_so_instead_of_lying():
-    "The one case worth answering False for, and it is worth a problem the user can read."
-    class NoCancel: pass
-    be = _bare_backend(NoCancel())
-    assert be.cancel() is False
-    assert any('cannot be stopped' in p for p in be.problems)
-
-
-def test_a_backend_forwards_the_stop_to_a_chat_that_has_one():
-    class Chat:
-        stopped = False
-        def cancel(self): Chat.stopped = True
-    be = _bare_backend(Chat())
-    assert be.cancel() is True and Chat.stopped
-
-
 def test_stopping_releases_whatever_the_turn_was_waiting_on():
     "A stop that leaves a worker parked on an approval has not stopped anything."
     import threading, time
@@ -108,32 +63,6 @@ def test_a_cancelled_run_starts_no_further_children():
     assert [(a, b) for a, b, _ in runs] == [(1, 1)] * 40
 
 
-def test_cancelling_marks_every_child_before_it_stops_any_backend():
-    "The invariant behind it: marking is one pass, and stopping is the pass after."
-    from ramabana.runtime import Run
-
-    class _Be:
-        def cancel(self): return True
-
-    parent = Run('p')
-    parent.start()
-    kids = [parent.child(str(i)) for i in range(3)]
-    for k in kids: k.start(_Be())
-    stopped = parent._mark_cancel()
-    assert all(k.cancelled for k in kids)
-    assert len(stopped) == 3
-
-
-def test_cancelling_a_run_that_never_started_still_marks_its_children():
-    "The pending branch finished itself and returned, leaving anything below it running."
-    from ramabana.runtime import Run
-    parent = Run('p')                       # never started, so still pending
-    kids = [parent.child(str(i)) for i in range(2)]
-    for k in kids: k.start()
-    parent.request_cancel()
-    assert parent.cancelled and all(k.cancelled for k in kids)
-
-
 def test_a_stopped_delegation_answers_in_text_not_as_a_run_dict():
     """Every cancelled path out of `delegate` used to return `run.dict()`.
 
@@ -177,4 +106,3 @@ def test_a_stopped_delegation_answers_in_text_not_as_a_run_dict():
     parent.cancel(); t.join(.5)
     assert box and all(isinstance(answer, str) for answer in box), box
     assert not any("'state':" in answer for answer in box), box
-

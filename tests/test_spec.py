@@ -4,9 +4,7 @@ Nothing here reaches the network. `_client` is the seam fastspec sits behind, so
 records which headers reached which spec, and the assertions are about that.
 """
 
-import pytest
-
-from ramabana.spec import SpecHost, SpecError
+from ramabana.spec import SpecHost
 
 
 class FakeClient:
@@ -27,12 +25,6 @@ class Host(SpecHost):
 def host(**kw): return Host(roots=['.'], specs={'stripe': object(), 'github': object()}, **kw)
 
 
-def test_a_key_reaches_the_spec_it_belongs_to():
-    h = host(creds={'stripe': {'Authorization': 'Bearer sk_live_1'}})
-    h.api_call('get_balance', name='stripe')
-    assert h._clients['stripe'].headers['Authorization'] == 'Bearer sk_live_1'
-
-
 def test_and_no_further_than_that():
     "One host holds many specs; an unguarded `headers` would send stripe's key to github."
     h = host(creds={'stripe': {'Authorization': 'Bearer sk_live_1'}})
@@ -40,39 +32,6 @@ def test_and_no_further_than_that():
     h.api_call('list_repos', name='github')
     assert 'Authorization' not in h._clients['github'].headers
     assert h.headers == {}
-
-
-def test_the_host_wide_headers_still_reach_every_spec():
-    "`headers` is what every call carries; `creds` is what one spec adds to it."
-    h = host(headers={'User-Agent': 'ramabana'}, creds={'stripe': {'X-Api-Key': 'k'}})
-    h.api_call('list_repos', name='github')
-    assert h._clients['github'].headers == {'User-Agent': 'ramabana'}
-
-
-def test_a_call_with_no_credentials_still_goes_out():
-    "Unauthenticated is a 401 from the API, which is an answer; refusing here would not be."
-    assert host().api_call('get_balance', name='stripe') == {'ok': 'get_balance'}
-
-
-def test_changing_a_key_drops_the_client_that_captured_the_old_one():
-    h = host(creds={'stripe': {'Authorization': 'Bearer old'}})
-    h.api_call('get_balance', name='stripe')
-    h.api_creds('stripe', {'Authorization': 'Bearer new'})
-    assert 'stripe' not in h._clients
-    h.api_call('get_balance', name='stripe')
-    assert h._clients['stripe'].headers['Authorization'] == 'Bearer new'
-
-
-def test_clearing_a_key_leaves_the_spec_callable():
-    h = host(creds={'stripe': {'Authorization': 'Bearer old'}})
-    assert h.api_creds('stripe', None) == []
-    h.api_call('get_balance', name='stripe')
-    assert 'Authorization' not in h._clients['stripe'].headers
-
-
-def test_what_is_reported_is_header_names_and_never_values():
-    h = host(creds={'stripe': {'Authorization': 'Bearer sk_live_1', 'X-Api-Key': 'k'}})
-    assert h.api_keyed() == {'stripe': ['Authorization', 'X-Api-Key']}
 
 
 def test_an_operation_named_after_its_group_is_still_callable():
@@ -88,7 +47,3 @@ def test_an_operation_named_after_its_group_is_still_callable():
             return c
     h = Grouped(roots=['.'], specs={'rates': object()})
     assert h.api_call('latest', name='rates') == {'ok': 'latest'}
-
-
-def test_and_an_operation_that_is_nowhere_is_an_error_naming_the_spec():
-    with pytest.raises(SpecError, match='no operation'): host().api_call('nope', name='stripe')

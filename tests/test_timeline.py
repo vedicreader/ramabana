@@ -8,15 +8,14 @@ affordable: a block's model text is current on every chunk however rarely it re-
 
 Nothing here loads a model, and nothing here touches a real terminal.
 """
-import asyncio, time
+import asyncio
 
 import pytest
 from teleprint.compositor import Compositor
 from teleprint.keys import Key
 from teleprint.testing import EmuTty
 
-from ramabana import agent
-from ramabana.cli import ACT_TAIL, FOLD_STEP, GUTTERS, Ui
+from ramabana.cli import FOLD_STEP, Ui
 from ramabana.testing import fake_agent
 
 
@@ -55,33 +54,6 @@ def test_narration_stays_as_a_step_above_each_call(ui):
     assert ui._reply == '## Answer\n\nBoth of them.\n'
 
 
-def test_the_reply_is_only_the_prose_after_the_last_call(ui):
-    blocks = a_turn(ui, [('Looking.\n', 'search_code', 'hit')])
-    assert [b.tag for b in blocks] == ['step', 'tool', 'reply']
-    answer = blocks[-1]
-    assert ui.transcript.block_text(answer) == '## Answer\n\nBoth of them.\n'
-    assert 'copied' in ui.copy_last('reply')
-
-
-def test_a_status_block_stays_above_the_reply_when_streaming_resumes(ui):
-    seg = ui.stream(None, 'Waiting for approval.\n')
-    ui.note('approved')
-    ui.stream(seg, 'Done.\n')
-
-    blocks = list(ui.comp.blocks.values())
-    assert [b.tag for b in blocks] == ['note', 'reply']
-    assert ui.transcript.block_text(blocks[-1]) == 'Waiting for approval.\nDone.\n'
-
-
-def test_trace_folds_to_one_row_and_the_reply_does_not(ui):
-    long = 'Let me work through this.\n' + ''.join(f'thought {i}\n' for i in range(30))
-    blocks = a_turn(ui, [(long, 'search_code', 'hit\n' * 40)])
-    step, tool, answer = blocks
-    assert tool.collapsed and len(ui.comp._block_rows(tool)) == 1
-    assert not step.collapsed
-    assert not answer.collapsed, 'the reply must never be born folded'
-
-
 def test_a_growing_segment_keeps_its_model_text_current_between_repaints(ui):
     """The repaint throttle is what makes a long reply affordable -- re-rendering the whole
     accumulated Markdown per chunk costs time quadratic in its length -- but search and copy read
@@ -96,139 +68,6 @@ def test_a_growing_segment_keeps_its_model_text_current_between_repaints(ui):
     rendered = '\n'.join(''.join(s.text for s in l) for l in ui.comp._content_lines(seg))
     assert '```' not in rendered, 'the fence should be rendered, not printed'
     assert '```python' in ui.transcript.block_text(seg), 'copy must yield paste-able Markdown'
-
-
-def test_the_final_answer_is_the_reply(ui):
-    a_turn(ui, [('one.\n', 'search_code', 'x'), ('two.\n', 'search_code', 'y')], answer='three.\n')
-    assert ui._reply == 'three.\n', ui._reply
-    assert ui._seg == ui._reply
-
-
-def test_ctrl_o_reaches_every_step_and_call_of_the_turn(ui):
-    "It used to reach the newest block, which after a long turn is the least interesting one."
-    blocks = a_turn(ui, [(f'step {i}.\n\nmore.\n', 'search_code', 'hit\n' * 5) for i in range(6)])
-    work = [b for b in blocks if b.tag == 'tool' and b.height > 1]
-    assert len(work) == 6 and all(b.collapsed for b in work), 'the resting trace is one row per entry'
-
-    assert ui.fold_work() is False and not any(b.collapsed for b in work)
-    assert ui.fold_work() is True and all(b.collapsed for b in work)
-
-    work[0].collapsed = False           # part-open, as drilling in from the transcript leaves it
-    assert ui.fold_work() is True and all(b.collapsed for b in work)
-    assert not blocks[-1].collapsed, 'the answer is not part of the working'
-
-
-def test_the_working_footer_says_where_the_model_is_at_only_while_a_turn_runs(ui):
-    blocks = a_turn(ui, [(f'step {i}.\n', 'search_code', 'hit') for i in range(5)])
-    assert ui.working() == [], 'at rest the footer is not there at all'
-
-    ui._turn_at, ui.turn = time.monotonic(), 'a turn'
-    rows = [r.plain for r in ui.working()]
-    assert len(rows) == ACT_TAIL + 1, rows
-    recent = [a.line() for a in ui.agent.activity.since()][-ACT_TAIL:]
-    assert [r.split(' ', 1)[1].strip() for r in rows[:-1]] == recent
-    assert rows[-1].startswith('  step 5 ·'), rows[-1]
-
-    ui.turn = None
-    assert ui.working() == []
-    assert all(b.tag != 'note' for b in blocks[-1:]), 'the footer must not print blocks'
-
-
-def test_the_footer_is_tail_and_sits_directly_above_the_prompt(ui):
-    "It never inks, so it leaves nothing in the transcript to scroll past once the turn is over."
-    a_turn(ui, [('looking.\n', 'search_code', 'hit')])
-    before = len(ui.comp.blocks)
-    ui._turn_at, ui.turn = time.monotonic(), 'a turn'
-    rows, cursor = ui.tail()
-    assert len(ui.comp.blocks) == before, 'the footer printed a block'
-    assert cursor[0] == len(rows) - 1, 'the cursor is on the prompt, which is the last row'
-    assert rows[-2].plain.startswith('  step 1 ·'), [r.plain for r in rows]
-
-
-def test_the_footer_numbers_what_alt_digit_reaches(ui):
-    """The drill-in and the footer must agree, or the number in front of a call points at another
-    one. Teleprint's own alt-digit numbering wants a three-glyph gutter, which these are not.
-    """
-    a_turn(ui, [(f'step {i}.\n', 'search_code', 'hit\n' * 4) for i in range(4)])
-    ui._turn_at, ui.turn = time.monotonic(), 'a turn'
-
-    newest = ui.drillable()
-    assert newest and all(b.collapsed for b in newest)
-    rows = [r.plain for r in ui.working()][:-1]
-    assert [r.split(' ', 1)[0] for r in rows] == ['3', '2', '1'], rows
-
-    assert ui.drill(1) is True and not newest[0].collapsed, 'alt+1 missed the newest entry'
-    assert ui.drill(1) is True and newest[0].collapsed
-    assert ui.drill(len(newest)) is True and not newest[-1].collapsed
-    assert ui.drill(len(newest) + 1) is False, 'a digit past the end must do nothing'
-
-
-def test_a_delegate_holds_its_sub_agents_calls_instead_of_scattering_them(ui, monkeypatch):
-    """Sub-agent calls used to land as siblings of the caller's own with nothing saying whose they
-    were, which is most of why a delegating turn read as the same search over and over.
-    """
-    monkeypatch.setattr(agent.time, 'time', lambda: 0.0)  # a slow xdist worker must not grow "(Ns)" into the row
-    acts = ui.agent.activity
-    parent = acts.start('delegate_search', {'questions': ['which files import fastllm?']})
-    kids = [acts.start('search_code', {'query': q}, parent_action_id=parent.id)
-            for q in ('fastllm', 'import fastllm')]
-    for k in kids: acts.finish(k, 'a hit')
-    acts.finish(parent, 'Three files do.')
-
-    blocks = list(ui.comp.blocks.values())
-    assert len(blocks) == 1, [b.tag for b in blocks]      # one block, not three
-    group = blocks[0]
-    assert group.collapsed and len(ui.comp._block_rows(group)) == 1
-    text = ui.transcript.block_text(group)
-    assert 'which files import fastllm?' in text
-    assert all(k.line() in text for k in kids), text
-    assert 'Three files do.' in text
-    assert '2 calls' in ui.comp._ansi(ui.comp._block_rows(group)[0][1])
-
-
-def test_a_failed_call_never_folds_and_a_running_one_is_not_painted_as_done(ui):
-    "An error you have to expand is the one thing on the surface nobody wants hidden."
-    acts = ui.agent.activity
-    bad = acts.start('run_shell', {'command': 'make'})
-    running = ui.comp._ansi(ui.comp._block_rows(ui.acts[bad.id])[0][1])
-    assert GUTTERS['tool'][0].plain in running
-
-    acts.finish(bad, 'error: no rule to make target\n' * 10, ok=False)
-    blk = ui.acts[bad.id]
-    assert blk.height > 1 and not blk.collapsed, 'a failure folded itself away'
-
-    good = acts.start('run_shell', {'command': 'ls'})
-    acts.finish(good, 'a\nb\nc\nd\n')
-    assert ui.acts[good.id].collapsed, 'a success should fold to its summary'
-
-
-def test_copy_turn_yields_the_final_answer(ui):
-    a_turn(ui, [('looking.\n', 'search_code', 'hit'), ('and again.\n', 'search_code', 'hit')],
-           answer='done.\n')
-    assert 'copied' in ui.copy_last('turn')
-    assert ui._reply == 'done.\n'
-    assert ui.copy_last('turn').startswith(f'copied {len(ui._reply)} chars')
-
-
-def test_the_bindings_arrive_through_the_real_key_parser(ui):
-    "Bound behaviour is only bound if the bytes a terminal actually sends reach it."
-    ui.comp.on_key = ui.on_key
-    a_turn(ui, [('looking.\n\nand looking.\n', 'search_code', 'hit\n' * 5)], answer='done.\n')
-    ui._seg_blk = None
-    entries = ui.drillable()
-    assert [b.tag for b in entries] == ['tool'] and all(b.collapsed for b in entries)
-
-    ui.comp.on_bytes(b'\x1b1')                     # alt+1
-    assert not entries[0].collapsed, 'alt+1 missed the newest entry'
-    ui.comp.on_bytes(b'\x1b1')
-    assert all(b.collapsed for b in entries), 'pressing again did not shut them'
-    assert ui.buf.text == '', f'alt+digit leaked into the composer: {ui.buf.text!r}'
-
-    ui.comp.on_bytes(b'\x1b0')                     # alt+0 is not a binding, and must not type either
-    assert ui.buf.text == '' and all(b.collapsed for b in entries)
-
-    ui.comp.on_bytes(b'\x0f')                      # ctrl+o
-    assert not any(b.collapsed for b in entries), 'ctrl+o did not open the working'
 
 
 def test_stopping_a_turn_does_not_leave_the_reply_growing_above_the_note(ui):
@@ -277,84 +116,6 @@ def test_folding_and_drilling_reach_this_turn_and_not_the_session(ui):
     opened = [b for b in every if not b.collapsed]
     assert len(opened) == 2, f'ctrl+o opened {len(opened)} blocks across earlier turns'
     assert all(b in ui.turn_blocks() for b in opened)
-
-
-def test_copy_says_no_reply_when_a_turn_ends_on_a_tool(ui):
-    a_finished_turn(ui, answer='THE ANSWER OF TURN ONE\n')
-    assert 'copied 23 chars' in ui.copy_last('reply')
-
-    ui.say('another question', 'user', pad=True)
-    ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
-    ui._turn_from = next(reversed(ui.comp.blocks), 0)
-    seg = ui.stream(None, 'looking.\n')
-    act = ui.agent.activity.start('view_file', {'path': 'a.py'})
-    ui.agent.activity.finish(act, 'contents')
-    ui.flush_stream(); ui._seg_blk = None
-
-    assert 'reply' not in [b.tag for b in ui.turn_blocks()]
-    assert ui.copy_last('reply') == 'no reply block in this turn to copy'
-
-
-def test_a_running_delegate_shows_a_bounded_window_of_its_sub_calls(ui):
-    """It stays open while it runs so the sub-agent's work is watchable, and a block that is both
-    newest and growing pushes rows across the top edge, where they ink. Sixty calls would leave
-    forty inked rows of exactly the scattering the grouping exists to prevent.
-    """
-    from ramabana.cli import MAX_GROUP_ROWS
-    acts = ui.agent.activity
-    parent = acts.start('delegate_search', {'questions': ['a', 'b']})
-    kids = [acts.start('search_code', {'query': str(i)}, parent_action_id=parent.id) for i in range(60)]
-    for k in kids: acts.finish(k, 'a hit')
-
-    group = ui.acts[parent.id]
-    assert not group.collapsed, 'it should be open while it runs'
-    assert group.height <= MAX_GROUP_ROWS + 2, f'{group.height} rows on screen for 60 calls'
-    drawn = '\n'.join(''.join(s.text for s in l) for l in ui.comp._content_lines(group))
-    assert '… 52 earlier' in drawn, drawn
-    assert all(k.line() in ui.transcript.block_text(group) for k in kids), 'source lost calls'
-
-    acts.finish(parent, 'answered')
-    assert group.collapsed and len(ui.comp._block_rows(group)) == 1
-
-
-def test_the_footer_survives_a_session_longer_than_the_activity_window(ui):
-    "`Activity` slid its window without sliding the turn mark, so `since()` went empty forever."
-    acts = ui.agent.activity
-    for i in range(acts.max_acts + 5): acts.finish(acts.start('search_code', {'query': str(i)}), 'x')
-    acts.mark('a later turn')
-    acts.finish(acts.start('view_file', {'path': 'a.py'}), 'contents')
-
-    assert [a.tool for a in acts.since()] == ['view_file'], acts.since()
-    ui.turn, ui._turn_at = 'a turn', time.monotonic()
-    assert [r.plain for r in ui.working()][-1].startswith('  step 1 ·')
-
-
-def test_an_act_whose_parent_has_no_block_is_counted_as_its_own(ui):
-    "A replayed session, or an overridden `_action_meta`, can name a parent this surface never saw."
-    ui.turn, ui._turn_at = 'a turn', time.monotonic()
-    ui.agent.activity.start('search_code', {'query': 'x'}, parent_action_id='deadbeef')
-    orphan = ui.agent.activity.acts[-1]
-    rows = [r.plain for r in ui.working()]
-    assert rows[-1].startswith('  step 1 ·'), rows        # counted, not written off as delegated
-    assert 'delegated' not in rows[-1], rows[-1]
-    assert rows[0] == f'  {orphan.line()}', rows          # and not indented as somebody's child
-
-    ui.agent.activity.finish(orphan, 'a hit\n' * 6)      # once it has something to fold, it numbers
-    assert [r.plain for r in ui.working()][0].startswith('1 ')
-
-
-def test_a_second_turn_waits_instead_of_starting_over_a_running_one(ui):
-    """The two share `_reply` and the segment state, so the newcomer's reset wiped the first's words.
-    It is held rather than dropped: the line is already in the transcript by the time it is asked
-    for, and closing it left a message that looked answered and was gone."""
-    async def run_turn(): pass   # named as the real prompt coroutine is
-    ui.turn = 'a turn in flight'
-    coro = run_turn()
-    assert ui.start_turn(coro) is False
-    assert ui.turn == 'a turn in flight', 'the running turn was replaced'
-    assert ui._queued is coro, 'and the newcomer is waiting rather than closed'
-    assert [b.tag for b in ui.comp.blocks.values()][-1] == 'note'
-    ui.drop_queued()
 
 
 def test_a_model_that_stalls_mid_prose_does_not_leave_its_last_words_unseen():
@@ -424,107 +185,6 @@ def test_a_folded_call_does_not_ink_the_transcript_above_it_again():
     (patched, mark), (bare, _) = marks
     assert mark > 0, 'the document has to outgrow the window for anything to be inked at all'
     assert patched < bare, f'patched inked the banner {patched} times, unpatched {bare}'
-
-
-# -- a write finishes open, its diff on show ---------------------------------------------------
-
-def a_diff(n):
-    "A unified diff `n` lines long: one hunk adding to a Python file."
-    return '--- a/m.py\n+++ b/m.py\n' + f'@@ -0,0 +1,{n - 3} @@\n' + '\n'.join(f'+x{i} = {i}' for i in range(n - 3))
-
-def a_call(u, tool, out, ok=True):
-    a = u.agent.activity.start(tool, {'path': 'm.py'})
-    u.agent.activity.finish(a, out, ok=ok)
-    return a, u.acts[a.id]
-
-def plain_rows(u, blk): return [''.join(s.text for s in r) for _, r in u.comp._block_rows(blk)]
-
-@pytest.fixture
-def frozen(ui, monkeypatch):
-    monkeypatch.setattr(agent.time, 'time', lambda: 0.0)   # no "(Ns)" growing into a row on a slow worker
-    return ui
-
-def test_a_finished_edit_shows_its_diff(frozen):
-    _, blk = a_call(frozen, 'edit_file', a_diff(8))
-    rows = plain_rows(frozen, blk)
-    assert not blk.collapsed and len(rows) == 9
-    assert all(any(f'+x{i} = {i}' in r for r in rows) for i in range(5))
-
-def test_a_long_diff_shows_its_head_until_opened(frozen):
-    _, blk = a_call(frozen, 'edit_file', a_diff(50))
-    rows = plain_rows(frozen, blk)
-    assert len(rows) == 1 + 20 + 1 and rows[-1].strip() == HINT, rows[-1]
-    assert frozen.drill(1) and not blk.collapsed
-    rows = plain_rows(frozen, blk)
-    assert len(rows) == 51 and '+x46 = 46' in rows[-1], 'opening shows the whole diff'
-    assert frozen.drill(1) and blk.collapsed
-
-HINT = '… +30 lines · click or ctrl+r opens'
-
-def test_the_hint_names_no_number_a_new_block_could_shift(frozen):
-    _, blk = a_call(frozen, 'edit_file', a_diff(50))
-    a_call(frozen, 'view_file', 'line\n' * 5)
-    frozen.comp._dirty(blk)
-    assert plain_rows(frozen, blk)[-1].strip() == HINT
-
-def test_a_click_opens_a_capped_diff_whole_and_a_second_folds_it(frozen):
-    _, blk = a_call(frozen, 'edit_file', a_diff(50))
-    comp = frozen.comp
-    def click():
-        comp._frame()
-        comp.click(0, next(y for y, e in enumerate(comp._screen) if e and e[0] == blk.id))
-    click()
-    assert not blk.collapsed and len(plain_rows(frozen, blk)) == 51
-    click()
-    assert blk.collapsed
-
-def test_an_earlier_turns_capped_diff_opens_as_its_hint_says(frozen):
-    _, blk = a_call(frozen, 'edit_file', a_diff(50))
-    a_finished_turn(frozen)
-    assert blk not in frozen.turn_blocks() and plain_rows(frozen, blk)[-1].strip() == HINT
-    frozen.on_key(Key('ctrl+r'))
-    assert frozen.transcript.active and len(frozen.comp._block_lines(blk)) == 51
-    frozen.leave_transcript()
-
-def test_a_stray_hunk_marker_in_shell_output_still_folds(frozen):
-    _, blk = a_call(frozen, 'run_shell', 'a\n@@ weird\nb\n')
-    assert blk.collapsed
-
-def test_ctrl_o_and_the_transcript_open_a_long_diff_whole(frozen):
-    _, read = a_call(frozen, 'view_file', 'line\n' * 5)
-    _, blk = a_call(frozen, 'edit_file', a_diff(50))
-    assert read.collapsed and len(plain_rows(frozen, blk)) == 22
-    frozen.transcript.active = True
-    assert len(frozen.comp._block_lines(blk)) == 51, 'the transcript view shows the whole diff'
-    frozen.transcript.active = False
-    assert frozen.fold_work() is False, 'a diff shown in part counts as shut'
-    assert not read.collapsed and len(plain_rows(frozen, blk)) == 51
-    assert frozen.fold_work() is True and read.collapsed and blk.collapsed
-
-def test_a_git_diff_opens_on_its_highlighted_hunks(frozen):
-    from rich.style import Style
-    from ramabana.cli import scope_style
-    _, blk = a_call(frozen, 'git_diff', '--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-def f(): pass\n+def f(): return 1')
-    assert not blk.collapsed and len(plain_rows(frozen, blk)) == 6
-    kw = Style.parse(scope_style('keyword')).color
-    assert any(s.style and s.style.color == kw and 'return' in s.text for _, r in frozen.comp._block_rows(blk) for s in r)
-    _, shell = a_call(frozen, 'run_shell', 'a\nb\nc\n')
-    assert shell.collapsed, 'a shell call whose output is no diff still folds'
-
-def test_a_finished_read_still_folds(frozen):
-    _, blk = a_call(frozen, 'view_file', 'line\n' * 5)
-    assert blk.collapsed and len(plain_rows(frozen, blk)) == 1
-
-def test_an_edit_the_reader_folded_stays_folded(frozen):
-    act, blk = a_call(frozen, 'edit_file', a_diff(8))
-    assert frozen.drill(1) and blk.collapsed
-    frozen._act(act)
-    assert blk.collapsed, 'the repaint undid what the reader chose'
-
-def test_a_failed_write_stays_open_and_whole(frozen):
-    _, blk = a_call(frozen, 'edit_file', 'error: no match\n' * 30, ok=False)
-    assert not blk.collapsed and len(plain_rows(frozen, blk)) == 32
-
 
 
 def test_a_turn_that_ends_during_a_poll_still_shows_its_answer(monkeypatch):

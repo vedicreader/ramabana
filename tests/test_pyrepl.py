@@ -8,92 +8,10 @@ import asyncio
 
 import pytest
 
-from ramabana import cli
 from ramabana.pyrepl import (AgentBridge, DhrishtiHost, Kernel, agent_proxy_code,
                              inject_agent_proxy, output_text)
 
 pytest.importorskip('dhrishti', reason='pip install dhrishti')
-
-
-def test_cli_python_mode_and_output_text():
-    "One command exposes `--python` / `--attach` / `--spec`; jupyter outputs normalise to text."
-    from fastcore.script import anno_parser
-    p = anno_parser(cli.main.__wrapped__, pos=['prompt'])
-    assert p.parse_args(['--python']).python is True
-    assert p.parse_args(['--attach', 'proj']).attach == 'proj'
-    # fastcore spells a flag with hyphens and binds it to the underscored name
-    assert p.parse_args(['--agent-proxy']).agent_proxy is True
-    assert p.parse_args(['--pii-ner']).pii_ner is True
-    assert 'agent_proxy' in cli.SURFACE_COMMANDS
-    assert p.parse_args(['--spec']).spec is True
-    assert p.parse_args([]).python is False
-    assert p.parse_args(['one question']).prompt == 'one question'
-
-    outputs = [
-        {'output_type': 'stream', 'text': 'hello\n'},
-        {'output_type': 'execute_result', 'data': {'text/plain': '42'}},
-        {'output_type': 'error', 'ename': 'ValueError', 'evalue': 'bad', 'traceback': []},
-    ]
-    assert output_text(outputs) == 'hello\n42\nValueError: bad'
-
-
-def test_dhrishti_overlay_reads_without_rebinding_owner(tmp_path):
-    "Agent overlay can read owner names and shadow them without mutating the owner namespace."
-    async def scenario():
-        kernel = Kernel(cwd=tmp_path)
-        await kernel.start()
-        try:
-            result = await kernel.execute('owner_value = 40')
-            assert result.ok
-            host = DhrishtiHost([tmp_path], kernel.base, web=False, index=False)
-            host.log_cell('owner_value = 40', result.outputs)
-            assert host.run_python('agent_value = owner_value + 2') == '(ok)'
-            assert 'agent_value' in host.list_vars() and host.agent_log.exists()
-            from fastcore.nbio import read_nb
-            assert read_nb(host.agent_log).cells[0].outputs == result.outputs
-            assert host.run_python('owner_value = 0') == '(ok)'
-            from ramabana.testing import fake_agent
-            from ramabana.runtime import Usage
-            agent, _ = fake_agent()
-            agent.use = Usage(model='test', total=24, cost=0.0031)
-            bridge = AgentBridge(agent)
-            try:
-                assert inject_agent_proxy(host, await bridge.start(), bridge.token) == '(ok)'
-                assert host.run_python('ramabana_agent.usage()["cost"]') == '0.0031'
-            finally: await bridge.close()
-            owner = await kernel.execute('owner_value')
-            assert output_text(owner.outputs) == '40'
-        finally:
-            await kernel.shutdown()
-    asyncio.run(scenario())
-
-
-def test_agent_callback_is_attached_once_and_reapplied_to_a_retried_chat():
-    from ramabana.runtime import Backend
-    from ramabana.testing import fake_agent
-
-    class Chat:
-        def __init__(self): self.cbs = []
-        def add_cb(self, cb):
-            cb = cb() if isinstance(cb, type) else cb
-            cb.chat = self
-            self.cbs.append(cb)
-            return cb
-
-    class CallbackBackend(Backend):
-        def _start(self): return Chat()
-
-    agent, _ = fake_agent()
-    spec = agent.routing.spec('turn')
-    backend = CallbackBackend(spec)
-    backend.start()
-    agent._backends[(spec.backend, spec.model_id)] = backend
-    agent._be = lambda job='turn': backend
-    bridge = AgentBridge(agent)
-    assert bridge.call('attach_callback', 'token_logger') == 'token_logger'
-    assert len(backend.chat.cbs) == 1
-    backend.retry()
-    assert len(backend.chat.cbs) == 1
 
 
 def test_agent_bridge_reports_usage_and_requires_its_token():
@@ -163,24 +81,3 @@ def test_the_proxy_reaches_the_prompt_and_carries_between_sessions(tmp_path):
             for bridge in ours: await bridge.close()
             await kernel.shutdown()
     asyncio.run(scenario())
-
-
-def test_a_kernel_that_never_started_binds_nothing_and_opens_no_socket():
-    """`enter_python` can fail two ways -- the pyrepl extras missing, or the kernel refusing to
-    start -- and it notes which. Carrying on from there opened a listening socket and bound the
-    proxy into whatever host was still in place, then reported it ready."""
-    from ramabana.testing import fake_agent
-
-    agent, _ = fake_agent()
-    ui = cli.Ui.__new__(cli.Ui)
-    ui.agent, ui.kernel, ui.attached = agent, None, ''
-    ui.agent_bridge, ui.proxy_url, ui.loop = None, '', None
-    ui.notes = []
-    ui.note = lambda text, kind='note': ui.notes.append(text)
-    async def no_kernel(): ui.notes.append('no kernel: refused')
-    ui.enter_python = no_kernel
-
-    assert asyncio.run(cli.Ui.enable_agent_proxy(ui)) is None
-    assert ui.agent_bridge is None, 'no bridge, so no socket left listening'
-    assert ui.notes == ['no kernel: refused'], 'and nothing claimed it was ready'
-

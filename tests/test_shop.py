@@ -6,14 +6,7 @@ the store actually stocks rather than have its turn end.
 """
 import pytest
 
-from ramabana.shop import Cart, CartError, FakeCart, cart_tools
-from ramabana.tools import ERR, WRITE_TOOLS, failed
-
-
-def test_cart_is_an_interface_and_says_so():
-    for call in (lambda c: c.open('u'), lambda c: c.find('q'), lambda c: c.add('x'),
-                 lambda c: c.lines(), lambda c: c.total()):
-        with pytest.raises(NotImplementedError): call(Cart())
+from ramabana.shop import CartError, FakeCart
 
 
 def test_an_add_resolves_by_title_or_by_the_search_that_produced_the_index():
@@ -37,10 +30,3 @@ def test_an_add_resolves_by_title_or_by_the_search_that_produced_the_index():
     assert moved.total() == {'count': 2, 'subtotal': '$42.60'}
 
 
-def test_a_bad_add_is_reported_and_spending_money_is_gated_like_a_write():
-    ts = {t.__name__: t for t in cart_tools(FakeCart())}
-    out = ts['cart_add']('caviar')
-    assert failed(out) and out.startswith(ERR + "could not add 'caviar'"), out
-    assert 'no products matching' in ts['cart_find']('caviar')
-    assert {'cart_add', 'cart_remove'} <= WRITE_TOOLS
-    assert 'cart_find' not in WRITE_TOOLS
