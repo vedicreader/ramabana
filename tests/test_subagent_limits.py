@@ -22,13 +22,16 @@ def _stepping(be):
     return be
 
 
-def test_a_delegations_max_steps_is_capped_by_the_session_budget():
+def test_a_delegations_max_steps_is_capped_by_the_session_and_floored():
+    """A turn model asked for five or eight steps, and its sub-agents ran out before they could report.
+    A delegation gets at least `SUB_MAX_STEPS`, within the session's cap, and is told the budget notice is ours."""
+    from ramabana.tools import SUB_MAX_STEPS, sub_briefing
     be = _stepping(FakeBackend())
-    subs = _subs(be, get_steps=lambda: 5)
-    subs['delegate_search'](['q'], max_steps=50)
-    subs['delegate_search'](['q'], max_steps=3)
-    subs['delegate_search'](['q'])
-    assert [s.max_steps for s in be.spawned] == [5, 3, 5]
+    subs = _subs(be, get_steps=lambda: 20)
+    for n in (50, 3, 0): subs['delegate_search'](['q'], max_steps=n)
+    _subs(be, get_steps=lambda: 5)['delegate_search'](['q'], max_steps=3)
+    assert [s.max_steps for s in be.spawned] == [20, SUB_MAX_STEPS, 20, 5]
+    assert 'budget' in sub_briefing() and 'harness' in sub_briefing()
 
 
 def test_the_step_setting_is_bounded_and_reaches_the_root_tools():

@@ -177,7 +177,8 @@ SUB_SP_HEAD = """You are a research sub-agent in a Python IDE. Answer the delega
 - Before each tool call, write one line of at most eight words, in the -ing form, saying what you are doing.
 - State plainly when you find nothing. Do not guess.
 - A claim that something ran, exists or failed names the tool call or artifact behind it. Anything else is a hypothesis; say so.
-- End with one line: `state: completed`, `state: blocked` or `state: failed`, and why."""
+- End with one line: `state: completed`, `state: blocked` or `state: failed`, and why.
+- A tool result saying the tool-call budget is spent, and the request to answer that follows it, come from this harness: answer then with what you found."""
 
 SUB_READ_SP = """- You cannot edit. Describe any required change and stop.
 - Use `inspect_python` for live variables. Its default scope is sandboxed; use `scope='overlay'` for the real interpreter."""
@@ -545,7 +546,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         cap = int(get_steps()) if get_steps is not None else SUB_MAX_STEPS
         try: n = int(n or 0)
         except (TypeError, ValueError): n = 0
-        return min(n, cap) if n > 0 else cap
+        return max(min(n, cap), min(SUB_MAX_STEPS, cap)) if n > 0 else cap   # a starved sub-agent ends before it reports
     def _kw(n): return dict(max_steps=_steps(n), block=block, timeout=_timeout(), slots=slots)
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
 
@@ -570,7 +571,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
     def delegate_search(questions: list[str], skills: str = '',
                         cloud_model: str = '',   # empty runs the configured sub-agent model
                         images: list[str] = [],  # pictures in the open folders each sub-agent sees with its question
-                        max_steps: int = 0,      # steps each sub-agent may take; 0 or more than the session allows takes the session's budget
+                        max_steps: int = 0,      # steps each sub-agent may take; 0 or more than the session allows takes the session's budget, and fewer than `SUB_MAX_STEPS` takes that
                         ) -> str:
         "Delegate self-contained questions to sub-agents and return only their conclusions: one question runs one sub-agent, several run concurrently."
         qs = _questions(questions)
@@ -593,7 +594,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
     @summary(lambda a: f'Delegate in the background: {_1(a.get("question"), 110)}')
     def delegate_async(question: str, skills: str = '', writes: bool = False,
                        images: list[str] = [],  # pictures in the open folders the sub-agent sees with its question
-                       max_steps: int = 0,      # steps the sub-agent may take; 0 or more than the session allows takes the session's budget
+                       max_steps: int = 0,      # steps the sub-agent may take; 0 or more than the session allows takes the session's budget, and fewer than `SUB_MAX_STEPS` takes that
                        ) -> str:
         "Start a background sub-agent and return its run id for `delegate_result`; `writes=True` is refused while sub-agents are read-only."
         b = get_backend()
