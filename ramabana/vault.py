@@ -9,7 +9,7 @@ Docs: https://vedicreader.github.io/ramabana/vault.html.md"""
 __all__ = ['DFLT_VAULT', 'MEM_SECTIONS', 'TOC_DEPTH', 'safe_shelf', 'VaultHost', 'WorkspaceHost', 'LazyIndex']
 
 # %% ../nbs/07_vault.ipynb #bcb01f4f
-import json, re, threading, time
+import json, os, re, threading, time
 from pathlib import Path
 from fastcore.basics import AttrDict, patch
 from fastcore.meta import delegates
@@ -64,7 +64,7 @@ class VaultHost(LocalHost):
                  remember_reads=True,   # file what `read_url` fetches
                  warm=True,             # open the vault in the background
                  mk_chat=None,          # builds the vault's chats; None -> vishalakshi's
-                 graph_chat=None,       # entity graph's chat; None -> local default
+                 graph_chat=None,       # entity graph's chat; None builds no graph unless $VISHALAKSHI_MODEL names a model
                  pii=None,              # `off|redact|refuse`, or a callable
                  pii_ner=None,          # gate titled names too; callable read per call
                  **kwargs):             # forwarded to `LocalHost`
@@ -119,13 +119,14 @@ class VaultHost(LocalHost):
         return v
 
     def connect(self, wait=False):
-        "Rebuild the entity graph in a background thread, on `graph_chat`."
+        "Rebuild the topic nodes, and the entity graph on `graph_chat`, in a background thread."
         if self._cthread is None or not self._cthread.is_alive():
             def run():
                 root = self.vault
                 v = self._worker_vault()
                 # never the lent `mk_chat`: it may be hosted
-                try: v.connect(chat=self.graph_chat)
+                # no model chosen for the graph means none: vishalakshi's default is a local model to load
+                try: v.connect(graph=self.graph_chat is not None or bool(os.environ.get('VISHALAKSHI_MODEL')), chat=self.graph_chat)
                 except Exception as e: self.note(f'could not rebuild the memory graph: {agent_err(e)}')
                 finally:
                     if v is not root: v.db.conn.close()

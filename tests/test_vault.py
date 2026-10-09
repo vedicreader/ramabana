@@ -134,3 +134,18 @@ def test_mk_host_carries_pii_into_every_vault_read(own_vault, mode):
     assert 'ada@example.com' not in got and '020 7946 0958' not in got
 
 
+
+
+def test_the_entity_graph_waits_for_a_model_chosen_for_it(tmp_path, monkeypatch):
+    """With no graph model, vishalakshi built its graph on its local default, so a session using only
+    cloud models loaded Gemma 4 on LiteRT mid-turn. Topic nodes need no model and still update."""
+    import vishalakshi
+    monkeypatch.delenv('VISHALAKSHI_MODEL', raising=False)
+    built = []
+    monkeypatch.setattr(vishalakshi.Vault, 'build_graph', lambda self, chat=None, **kw: built.append(chat) or dict(entities=0, mentions=0, edges=0, new=0))
+    h = private_host(tmp_path)
+    h.connect(wait=True)
+    assert built == [], 'no graph model was chosen, so no local model is loaded'
+    h.graph_chat = chat = object()
+    h.connect(wait=True)
+    assert built == [chat]
