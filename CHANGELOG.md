@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.20
+
+- No local model loads unless one is chosen. With a vault open, rebuilding its entity graph used vishalakshi's default chat, a local Gemma 4 on LiteRT, so a session on cloud models loaded it mid-turn. The graph is built only when `graph_chat` is given or `$VISHALAKSHI_MODEL` names a model; topic nodes need no model and still update.
+
 ## 0.2.19
 
 - Default turns use `claude-opus-5-5` and sub-agents use `claude-sonnet-5-5`. Classification and completion use `claude-haiku-5-5`. Oneshot, inline and summary jobs use `gpt-6.1-luna`.
