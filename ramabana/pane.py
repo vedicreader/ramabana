@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/pane.html.md"""
 # %% ../nbs/18_pane.ipynb #dcfdb8be
 from __future__ import annotations
 
-import io, json, os, re, select, signal, textwrap, time, weakref
+import io, json, os, re, select, shlex, signal, subprocess, textwrap, time, weakref
 from pathlib import Path
 
 from fastcore.basics import first
@@ -23,8 +23,8 @@ from .monitor import _counts, _rel
 
 # %% auto #0
 __all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'SHELL_LINES', 'PALETTE', 'ENTER', 'LEAVE',
-           'WHEEL', 'now_snapshot', 'write_snapshot', 'read_snapshot', 'board', 'render', 'quit_mark', 'PaneTty',
-           'Viewer', 'main']
+           'WHEEL', 'HINT', 'now_snapshot', 'write_snapshot', 'read_snapshot', 'board', 'render', 'quit_mark',
+           'PaneTty', 'Viewer', 'main']
 
 # %% ../nbs/18_pane.ipynb #d2a80a47
 CALLS_KEPT = 8       #: a sub-agent's latest calls in a snapshot
@@ -88,8 +88,10 @@ def _shells(agent, seen, every, since, now):
         if a.started < since and seen.shells.get(m[1], ('running',))[0] != 'running': continue
         state, text = _shell_state(agent, seen, m[1], now)
         if state and (state == 'running' or a.started >= since):
-            out.append({'kind': 'shell', 'id': m[1], 'label': _1(a.args.get('command'), 120), 'state': state,
-                        'elapsed': round(now - a.started, 1) if state == 'running' else None, 'detail': text})
+            r, cmd = getattr(agent.host, '_bg', {}).get(m[1]), str(a.args.get('command') or '')
+            out.append({'kind': 'shell', 'id': m[1], 'label': _1(cmd, 120), 'state': state,
+                        'elapsed': round(now - a.started, 1) if state == 'running' else None,
+                        'detail': f"$ {cmd}\n{text or '(no output yet)'}", 'log': str(r[1]) if isinstance(r, tuple) else ''})
     return out
 
 def _background(agent, seen, bg, every, since, now):
@@ -201,7 +203,8 @@ def _bg_rows(b, width, drift, opened, subs):
     out = [(('bg', b['id']), _row(width, head, _1(b['label'], 200), Text(f" · {b['state']}{clock}", style=PALETTE['gray']), PALETTE['fg1']))]
     if not opened: return out
     if (s := next((s for s in subs if s['id'] == b['id']), None)) is not None: return out + _sub_rows(s, width, drift, True)[1:]
-    return out + [(None, _line(l, PALETTE['fg1'], width, '  ')) for l in (b.get('detail') or '').splitlines()]
+    lines = [w for l in (b.get('detail') or '').splitlines() for w in textwrap.wrap(l, max(8, width - 2)) or ['']]
+    return out + [(None, _line(l, PALETTE['fg1'], width, '  ')) for l in lines]
 
 def _note_rows(n, width, opened):
     "One note: `▸`, its time and first line; opened, `▾` and every word wrapped to the pane."
@@ -256,6 +259,8 @@ class PaneTty(RealTty):
 
 def _leave(sig, frame): raise SystemExit(0)
 
+HINT = 'click opens · p tails a shell · q quits'   #: the board's last line, short enough for a narrow pane
+
 class Viewer:
     "The board for the snapshot at `path`, drawn on `tty`: the last good snapshot, the open rows, the cursor and the scroll."
     def __init__(self, path, tty):
@@ -273,9 +278,17 @@ class Viewer:
 
     def toggle(self, key): self.open ^= {key}
 
+    def follow(self, key):
+        "Open the shell row `key` in a tmux pane below this one, following its log until `q`."
+        b = next((b for b in (self.snap or {}).get('background', []) if ('bg', b['id']) == key and b.get('log')), None)
+        if b is None: return False
+        subprocess.Popen(['tmux', 'split-window', '-v', '-t', os.environ.get('TMUX_PANE', ''), f"less -R +F {shlex.quote(b['log'])}"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+
     def move(self, key):
         "Put the cursor on `key` and scroll just enough to show it."
-        self.cursor, h = key, self.size[1]
+        self.cursor, h = key, self.size[1] - 1   # the last line is the hint
         y = next(i for i, (k, _) in enumerate(self.rows) if k == key)
         self.top = y if y < self.top else y - h + 1 if y >= self.top + h else self.top
 
@@ -301,14 +314,16 @@ class Viewer:
             if i > 0: self.move(keys[i - 1])
             else: self.top -= 1
         elif n in ('enter', ' ') and i >= 0: self.toggle(self.cursor)
+        elif n == 'p' and i >= 0: self.follow(self.cursor)
 
     def paint(self, now=None):
         "Draw the board at the terminal's size, writing only the lines that changed; a new size redraws all."
         w, h = self.tty.size
         if (w, h) != self.size: self.size, self.shown = (w, h), None
         self.rows = board(self.snap, w, now, self.open, self.err)
-        self.top = max(0, min(self.top, len(self.rows) - h))
-        texts = [_lit(t, w) if k and k == self.cursor else t for k, t in self.rows[self.top:self.top + h]]
+        self.top = max(0, min(self.top, len(self.rows) - (h - 1)))
+        texts = [_lit(t, w) if k and k == self.cursor else t for k, t in self.rows[self.top:self.top + h - 1]]
+        texts += [Text('')] * (h - 1 - len(texts)) + [_line(HINT, PALETTE['gray'], w)]
         con = Console(file=io.StringIO(), width=w, force_terminal=True, color_system='truecolor', highlight=False)
         with con.capture() as cap: con.print(Group(*texts))
         lines, old = cap.get().split('\n')[:-1], self.shown

@@ -253,6 +253,16 @@ class WorkspaceHost(VaultHost, SpecHost):
             self.without = self.without | {'memory', 'ask', 'watch'}
         if not (self._spec_enabled or inherited_apis is not None):
             self.without = self.without | {'api'}
+
+    def run_cmd_bg(self, command, cwd=None):
+        "Start `command` in its own process group, logging to a file and reading nothing from the terminal: never a tmux pane, since several stacked under the chat. The pane's Background rows show it."
+        import subprocess, tempfile, uuid
+        d, rid = self._cwd(cwd), f'cmd_{uuid.uuid4().hex[:8]}'
+        log = tempfile.NamedTemporaryFile('w', prefix='ramabana-bg-', suffix='.log', delete=False)
+        p = subprocess.Popen(str(command), shell=True, cwd=str(d), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        log.close()
+        self._bg[rid] = (p, Path(log.name))
+        return rid
         if not self._vault_enabled: del self.mk_chat, self.pii, self.pii_ner
 
     def _memory_call(self, name, *args, **kwargs):

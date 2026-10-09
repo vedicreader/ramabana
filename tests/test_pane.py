@@ -3,7 +3,7 @@
 import json, time
 from rich.console import Console
 
-from ramabana.pane import now_snapshot, render
+from ramabana.pane import Viewer, now_snapshot, render
 from ramabana.runtime import current_run
 from ramabana.testing import ScriptedBackend, Step, fake_agent
 
@@ -109,7 +109,7 @@ def test_background_lists_delegations_shells_and_folder_watches(monkeypatch):
     monkeypatch.setattr(a.host, 'cmd_output', out, raising=False)
     w = FolderWatch('/proj', 'review it'); a.monitors.watches[w.id] = w
     bg = now_snapshot(a)['background']
-    assert all(set(r) == {'kind', 'id', 'label', 'state', 'elapsed', 'detail'} for r in bg)
+    assert all({'kind', 'id', 'label', 'state', 'elapsed', 'detail'} <= set(r) for r in bg)
     kinds = {r['kind']: r for r in bg}
     assert set(kinds) == {'delegate', 'shell', 'watch'}, 'a shell the host no longer knows is left out'
     assert kinds['delegate']['state'] == 'completed' and kinds['delegate']['label'].startswith('what does a.py')
@@ -164,3 +164,53 @@ def test_a_background_row_opens_to_its_output_review_or_sub_agent():
     opened = _text(snap, width=60, now=now, open={('bg', 'cmd_1234abcd'), ('bg', 'w_1'), ('bg', 'run_bbb')})
     assert '3 passed' in opened and 'looks fine' in opened
     assert opened.count('Yes: tests/test_pane.py covers render') == 1, 'a delegation opens to its sub-agent detail; its sub-agent row stays shut'
+
+
+def test_a_background_command_logs_instead_of_splitting_the_chat(tmp_path):
+    "Each `run_shell_bg` split a tmux pane under the chat; four at once squeezed it out of view."
+    from ramabana.vault import WorkspaceHost
+    h = WorkspaceHost([str(tmp_path)])
+    h._pane = object()                      # inside tmux: splitting this would raise
+    rid = h.run_cmd_bg('echo hi; read x || echo no-terminal')
+    end = time.monotonic() + 10
+    while h.cmd_output(rid)[0] == 'running' and time.monotonic() < end: time.sleep(.05)
+    state, out = h.cmd_output(rid)
+    assert state == 'exit 0' and out.split() == ['hi', 'no-terminal'], (state, out)   # its stdin is not the terminal
+    h.close()
+
+
+class Tty:
+    "The pane's terminal: scripted input chunks, a size, and every write kept."
+    def __init__(self, *input, size=(40, 30)): self.input, self.size, self.writes, self.restored = list(input), size, [], False
+    def read(self, timeout=0):
+        x = self.input.pop(0) if self.input else b''
+        return x.encode() if isinstance(x, str) else x
+    def write(self, s): self.writes.append(s)
+    def restore(self): self.restored = True
+
+def _viewer(tmp_path, snap, **kw):
+    (p := tmp_path/'now.json').write_text(json.dumps(snap))
+    v = Viewer(p, Tty(**kw))
+    v.tick()
+    return v, p
+
+def _feed(v, *data):
+    v.tty.input += data
+    for _ in data: v.tick()
+
+
+def test_a_shell_row_opens_to_its_command_and_p_follows_it_in_a_pane(tmp_path, monkeypatch):
+    import ramabana.pane as pane
+    now = time.time()
+    cmd = 'uv run --env-file .env-dev --env-file /tmp/nosync.env vr-meaning cat=kaappiyam shard=0,4 usage=on'
+    snap = {**_board(now), 'background': [{'kind': 'shell', 'id': 'cmd_1', 'label': cmd[:40], 'state': 'running', 'elapsed': 5,
+                                           'detail': f'$ {cmd}\n(no output yet)', 'log': str(tmp_path/'cmd_1.log')}]}
+    opened = _text(snap, width=50, now=now, open={('bg', 'cmd_1')})
+    assert 'usage=on' in opened and '(no output yet)' in opened, 'the full command wraps rather than being cut'
+    ran = []
+    monkeypatch.setattr(pane.subprocess, 'Popen', lambda args, **kw: ran.append(args))
+    v, _ = _viewer(tmp_path, snap)
+    v.tick(now=now)
+    _feed(v, 'G', 'p')
+    assert ran and ran[0][:2] == ['tmux', 'split-window'] and str(tmp_path/'cmd_1.log') in ran[0][-1], ran
+    assert pane.HINT in ''.join(v.tty.writes), 'the keys are explained on screen'

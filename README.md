@@ -122,7 +122,7 @@ The one-turn form prints each problem on stderr and exits 1 when the turn model 
 | `--kernels` | off | list live Python sessions and exit |
 | `--json` | off | with a prompt: reply, usage, changes, activity, problems and session as JSON |
 | `--no-bell` | bell on | no terminal bell when a turn ends or an approval waits |
-| `--tmux MODE` | `auto` | `on` or `off`: read the sibling panes and run background commands in panes. `off`, like `RAMABANA_TMUX=off`, also keeps the session out of ramabana’s own tmux |
+| `--tmux MODE` | `auto` | `on` or `off`: read the sibling panes and open the side pane. `off`, like `RAMABANA_TMUX=off`, also keeps the session out of ramabana’s own tmux |
 | `--pane MODE` | `auto` | `on` or `off`: the now pane at startup. `auto` opens it only inside tmux |
 | `--doctor` | off | check tmux and the now pane, offer to install tmux, and exit |
 | `--optin A,B` | none | extra tool groups: `exhash` (the hash-addressed `edit_file`), `research`, `author`, `legacy` |
@@ -227,7 +227,7 @@ Every run keeps a transcript under `<cfg>/runs/<session>/`. Inside tmux:
 - `/watch monitors` tails the folder reviews.
 - `/tell RUN TEXT` sends a running sub-agent a message. It gets the message with its next tool result.
 - `read_terminal` reads the sibling panes.
-- `run_shell_bg` runs in a pane of its own.
+- `run_shell_bg` logs to a file rather than opening a pane. The side pane’s Background rows show its output, and `p` on one follows it in a tmux pane.
 
 `/pane` opens the now pane in a split on the right. It shows the turn, the call it is on, and each sub-agent run with its own calls. The split needs tmux 3.1 or later, and `--pane on` opens it at startup. Without tmux, or with `--tmux off`, `/pane` prints the `ramabana-pane` command to run in another terminal instead.
 

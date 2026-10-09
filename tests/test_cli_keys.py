@@ -128,7 +128,7 @@ def test_an_exception_before_the_loop_still_gives_the_keys_back(term, monkeypatc
     from ramabana import cli
     term = term()
     tty = _Pty()
-    monkeypatch.setattr(cli, 'RealTty', lambda: tty)
+    monkeypatch.setattr(cli, 'AppTty', lambda: tty)
     def broken(*a, **kw): raise RuntimeError('no such session')
     monkeypatch.setattr(cli, 'Ui', broken)
     agent, _ = fake_agent()

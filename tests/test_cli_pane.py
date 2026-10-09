@@ -73,7 +73,7 @@ class PipeTty(EmuTty):
 
 def test_the_session_opens_the_pane_in_tmux_and_quitting_closes_it(tmp_path, monkeypatch):
     tty = PipeTty(80, 24)
-    monkeypatch.setattr(cli, 'RealTty', lambda: tty)
+    monkeypatch.setattr(cli, 'AppTty', lambda: tty)
     monkeypatch.setattr(Compositor, '_register_signals', lambda self: None)
     agent = fake_agent(cfg=tmp_path)[0]
     me = agent.host.tmux_pane = Me()

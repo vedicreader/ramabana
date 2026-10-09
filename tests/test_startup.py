@@ -128,3 +128,20 @@ def test_library_output_goes_to_a_log_while_the_tui_owns_the_screen(tmp_path):
     assert sys.stderr is real
     text = log.read_text()
     assert 'parse files from /proj' in text and 'a stray warning' in text
+
+
+def test_a_hung_up_terminal_ends_the_read_instead_of_spinning():
+    """A session whose terminal closed sat at 100% CPU: `RealTty.read` loops while `select` reports the
+    dead fd readable and `os.read` returns nothing. The CLI's tty stops there and marks itself gone,
+    and writing to it or restoring it no longer raises, so teardown reaches the background shells."""
+    import os, pty, threading
+    from ramabana.cli import AppTty
+    master, slave = pty.openpty()
+    t = AppTty.__new__(AppTty); t.fd, t._saved = slave, __import__('termios').tcgetattr(slave)
+    os.close(master)
+    got = []
+    th = threading.Thread(target=lambda: got.append(t.read(timeout=0)), daemon=True)
+    th.start(); th.join(2)
+    assert not th.is_alive() and got == [b''] and t.gone, 'the read spun on the hung-up terminal'
+    t.write('bye'); t.restore()
+    os.close(slave)

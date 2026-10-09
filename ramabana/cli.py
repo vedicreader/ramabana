@@ -18,13 +18,13 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
            'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich',
            'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode',
-           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'stderr_to', 'amain', 'headless_prompt',
-           'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path',
-           'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment',
-           'sendable', 'media_parts', 'media_note']
+           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'amain',
+           'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA',
+           'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs',
+           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
-import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
+import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
 import json as _json
 from base64 import b64encode
 from dataclasses import dataclass
@@ -2171,6 +2171,25 @@ def begin(self:Ui):
     self.start_turn(self.warm_up())
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
+class AppTty(RealTty):
+    "`RealTty` that notices a hung-up terminal: `read` stops at the end of input, where `RealTty.read` spins, and writes and restores to a dead one are dropped."
+    gone = False
+    def read(self, timeout=0.02):
+        out = b''
+        while not self.gone and select.select([self.fd], [], [], timeout)[0]:
+            try: b = os.read(self.fd, 1024)
+            except OSError: b = b''
+            if not b: self.gone = True
+            out, timeout = out + b, 0.005
+        return out
+    def write(self, data):
+        if self.gone: return
+        try: super().write(data)
+        except OSError: self.gone = True
+    def restore(self):
+        try: super().restore()
+        except (termios.error, OSError): pass
+
 @contextlib.contextmanager
 def stderr_to(path):
     "Python's `sys.stderr` into `path` while the TUI owns the screen: a bar or warning written to the terminal scrolls it under teleprint's frames."
@@ -2179,12 +2198,13 @@ def stderr_to(path):
 
 async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto'):
     "The tty loop: one terminal, one event loop, one keyboard owner."
-    tty = RealTty()
+    tty = AppTty()
     tty.write('\x1b[?2004h')
     done = asyncio.Event()
     ui = None
     try:
         comp = await Compositor(tty).start()
+        comp._fatal = lambda sig: done.set()   # TERM or HUP quits through the teardown, which stops the background shells
         ui = Ui(comp, agent, loop=asyncio.get_running_loop())
         ui.bell = bell
         ui.hint = hint
@@ -2213,7 +2233,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         ui.start_pane(pane)
         ui.paint()
         loop = asyncio.get_running_loop()
-        loop.add_reader(tty.fd, lambda: comp.on_bytes(tty.read(timeout=0)))
+        loop.add_reader(tty.fd, lambda: (comp.on_bytes(tty.read(timeout=0)), tty.gone and done.set()))   # a closed terminal quits
         try:
             while not done.is_set():
                 try: await asyncio.wait_for(done.wait(), 0.2)
