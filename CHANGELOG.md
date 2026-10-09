@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.16
+
+- Sub-agents report back. Three causes, fixed together:
+  - A delegation gets at least `SUB_MAX_STEPS`, within the session's cap. A turn model asking for five or eight steps left its sub-agent out of budget before it could report.
+  - The sub-agent briefing says the budget notice and the request to answer come from the harness. A Claude sub-agent took them for injected text, refused them, and ended with nothing.
+  - Requires rishi 0.1.41 and uraiyadal 0.0.12. A Claude sub-agent that wrote its calls in its own `<invoke>` dialect had them dropped and returned only its opening line; those are read now, and a call nothing can read is asked for again.
+
 ## 0.2.15
 
 - Background rows in the pane open: a `run_shell_bg` command to its last `SHELL_LINES` lines of output, fetched no more often than its state already was; a folder watch to its pattern, review count and last review (`FolderWatch.last_review`); a background delegation to its sub-agent's calls and answer.
