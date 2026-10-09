@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.18
+
+- A line with attachments steers the running turn instead of waiting in the queue; each attachment goes by path for the model to read with `view_file`, since a tool result carries no picture.
+- Enter on an empty line hands the queued line to the running turn. The queued row says so.
+
 ## 0.2.17
 
 - A session whose terminal closed exits cleanly. `RealTty.read` spun at 100% CPU on a hung-up terminal, and teleprint's TERM/HUP handler raised while restoring a dead terminal, so the process ignored a polite stop. The CLI's `AppTty` stops reading at the end of input, a closed terminal or TERM/HUP quits through the teardown, and the teardown stops background shells and kernels.
