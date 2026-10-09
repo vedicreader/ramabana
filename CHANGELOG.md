@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.17
+
+- A session whose terminal closed exits cleanly. `RealTty.read` spun at 100% CPU on a hung-up terminal, and teleprint's TERM/HUP handler raised while restoring a dead terminal, so the process ignored a polite stop. The CLI's `AppTty` stops reading at the end of input, a closed terminal or TERM/HUP quits through the teardown, and the teardown stops background shells and kernels.
+- Background commands no longer open tmux panes. `run_shell_bg` logs to a file with its input detached from the terminal; several at once used to stack panes under the chat until it disappeared.
+- In the side pane, a background shell opens to its full command and its last lines, or "(no output yet)". `p` on one opens a tmux pane following its log (`less +F`, closed with `q`). The pane's last line lists the keys.
+
 ## 0.2.16
 
 - Sub-agents report back. Three causes, fixed together:
