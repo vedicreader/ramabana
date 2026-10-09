@@ -157,7 +157,7 @@ class FolderWatch:
         self.settle = secs(settle)
         self.snap = {}
         self.reviewed = None
-        self.reviews, self.last_status = 0, ''
+        self.reviews, self.last_status, self.last_review = 0, '', ''
         self.vaulted = False
 
     def __repr__(self): return f'FolderWatch({self.id} {self.folder} {len(self.snap)} files)'
@@ -259,7 +259,7 @@ def _review(self: Monitors, w, chg):
                           sp=REVIEW_SP, max_steps=REVIEW_MAX_STEPS, run=run)
         rec = self._record(w, 'ok', review=answer, run_id=rid, **kw)
     w.reviews += 1
-    w.last_status = rec['status']
+    w.last_status, w.last_review = rec['status'], rec['review'] or rec['summary']
     return rec
 
 

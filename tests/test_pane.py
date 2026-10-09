@@ -133,7 +133,7 @@ def test_the_board_draws_each_section_collapsed_and_opens_a_row_on_request():
     assert 'import fastllm' not in out and 'covers render' not in out, 'a closed row hides its calls and answer'
     f = next(l for l in rows if 'ramabana/pane.py' in l)
     assert f.startswith('▸') and '+120' in f and '−40' in f and 'Parser' not in out
-    sh = next(l for l in rows if 'pytest -x tests' in l)
+    sh = next(l for l in rows if 'pytest -x' in l)
     assert 'shell' in sh and 'running' in sh and '35s' in sh
     assert 'watching' in out and all(len(l) <= 40 for l in rows), 'long lines are cut, not wrapped'
 
@@ -179,7 +179,7 @@ def test_a_click_opens_the_row_under_it_and_keys_move_and_toggle(tmp_path):
     assert v.open == set(), 'a second click closes it; a click on the header does nothing'
     moves = []
     for k in ('j', 'j', 'k', '\x1b[B', '\x1b[A', 'G', 'g'): _feed(v, k); moves.append(v.cursor)
-    assert moves == [('sub', 'run_bbb'), FILE, ('sub', 'run_bbb'), FILE, ('sub', 'run_bbb'), ('file', 'tests/test_pane.py'), SUB]
+    assert moves == [('sub', 'run_bbb'), FILE, ('sub', 'run_bbb'), FILE, ('sub', 'run_bbb'), ('bg', 'w_1'), SUB]
     _feed(v, '\r'); assert v.open == {SUB}
     _feed(v, ' '); assert v.open == set()
     _feed(v, 'q'); assert v.done
@@ -194,7 +194,7 @@ def test_open_rows_and_the_cursor_survive_a_new_snapshot(tmp_path):
     later['subs'][0]['calls'].append({'line': 'Read ramabana/fresh.py', 'ok': True, 'done': True, 'out': ''})
     p.write_text(json.dumps(later))
     v.tick()
-    assert v.snap['at'] == now + 1 and v.open == {SUB} and v.cursor == ('file', 'tests/test_pane.py')
+    assert v.snap['at'] == now + 1 and v.open == {SUB} and v.cursor == ('bg', 'w_1')
     assert 'Read ramabana/fresh.py' in ''.join(v.tty.writes)
 
 def test_only_changed_lines_are_written_and_a_resize_repaints_all(tmp_path):
@@ -309,16 +309,17 @@ def test_background_lists_delegations_shells_and_folder_watches(monkeypatch):
     a.activity.finish(gone, "started cmd_00000000; read it with shell_output('cmd_00000000')")
     def out(rid, tail=200):
         if rid != 'cmd_1234abcd': raise KeyError(rid)
-        return 'running', ''
+        return 'running', 'collected 12 items\n3 passed'
     monkeypatch.setattr(a.host, 'cmd_output', out, raising=False)
     w = FolderWatch('/proj', 'review it'); a.monitors.watches[w.id] = w
     bg = now_snapshot(a)['background']
-    assert all(set(r) == {'kind', 'id', 'label', 'state', 'elapsed'} for r in bg)
+    assert all(set(r) == {'kind', 'id', 'label', 'state', 'elapsed', 'detail'} for r in bg)
     kinds = {r['kind']: r for r in bg}
     assert set(kinds) == {'delegate', 'shell', 'watch'}, 'a shell the host no longer knows is left out'
     assert kinds['delegate']['state'] == 'completed' and kinds['delegate']['label'].startswith('what does a.py')
     assert (kinds['shell']['id'], kinds['shell']['label'], kinds['shell']['state']) == ('cmd_1234abcd', 'pytest -x tests', 'running')
     assert kinds['watch']['id'] == w.id and '/proj' in kinds['watch']['label']
+    assert kinds['shell']['detail'].endswith('3 passed') and 'all files · 0 reviews' == kinds['watch']['detail'], 'a row opens to what it has to show'
     assert now_snapshot(a)['subs'][0]['id'] == kinds['delegate']['id'], 'a background delegation is a sub-agent too'
     json.dumps(bg)
 
@@ -382,9 +383,9 @@ def test_every_row_of_a_board_taller_than_the_pane_can_be_reached(tmp_path):
     v, _ = _viewer(tmp_path, _board(now), size=(40, 12))
     _feed(v, 'j', '\r', 'j', '\r', 'j', '\r')
     n, seen = len(v.rows), set()
-    assert n > 30 and v.rows[-1][1].plain.startswith('▶ watch'), 'three rows open; Background, with no keys, is last'
+    assert n > 30 and v.rows[-1][1].plain.startswith('▸ ▶ watch'), 'three rows open; Background is last'
     for _ in range(n): _feed(v, 'j'); seen |= set(range(v.top, v.top + 12))
-    assert max(seen) == n - 1 and v.cursor == ('file', 'tests/test_pane.py'), 'j scrolls on past the last key'
+    assert max(seen) == n - 1 and v.cursor == ('bg', 'w_1'), 'j reaches every row'
     for _ in range(n): _feed(v, 'k'); seen |= set(range(v.top, v.top + 12))
     assert seen == set(range(n)) and v.top == 0 and v.cursor == SUB, 'and k past the first'
     _feed(v, 'G'); assert v.top == n - 12 and 'watch' in ''.join(v.tty.writes[-1:])
@@ -437,3 +438,16 @@ def test_notes_fold_to_a_line_each_and_the_newest_starts_open():
     assert 'decides which model' in ' '.join(both) and '▸' not in ' '.join(both), 'opening an older note shows all of it'
     assert '▾' not in ' '.join(notes(open={('note', new['at'])})), 'and the newest closes like any other row'
     assert 'Notes' not in _text(_board(now), now=now), 'a snapshot without notes draws no section'
+
+
+def test_a_background_row_opens_to_its_output_review_or_sub_agent():
+    now = time.time()
+    snap = _board(now)
+    snap['background'] = [{'kind': 'shell', 'id': 'cmd_1234abcd', 'label': 'pytest -x tests', 'state': 'running', 'elapsed': 30, 'detail': 'collected 12 items\n3 passed'},
+                          {'kind': 'watch', 'id': 'w_1', 'label': '/proj', 'state': 'ok', 'elapsed': None, 'detail': 'all files · 1 review\nlooks fine'},
+                          {'kind': 'delegate', 'id': 'run_bbb', 'label': 'is the pane tested?', 'state': 'completed', 'elapsed': 8, 'detail': ''}]
+    shut = _text(snap, width=60, now=now)
+    assert '3 passed' not in shut and 'looks fine' not in shut and '▸ ✓ delegate' in shut, 'rows start shut'
+    opened = _text(snap, width=60, now=now, open={('bg', 'cmd_1234abcd'), ('bg', 'w_1'), ('bg', 'run_bbb')})
+    assert '3 passed' in opened and 'looks fine' in opened
+    assert opened.count('Yes: tests/test_pane.py covers render') == 1, 'a delegation opens to its sub-agent detail; its sub-agent row stays shut'

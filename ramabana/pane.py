@@ -22,9 +22,9 @@ from shalya.core import clip, diff_text, one_line as _1
 from .monitor import _counts, _rel
 
 # %% auto #0
-__all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'PALETTE', 'ENTER', 'LEAVE', 'WHEEL',
-           'now_snapshot', 'write_snapshot', 'read_snapshot', 'board', 'render', 'quit_mark', 'PaneTty', 'Viewer',
-           'main']
+__all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'SHELL_LINES', 'PALETTE', 'ENTER', 'LEAVE',
+           'WHEEL', 'now_snapshot', 'write_snapshot', 'read_snapshot', 'board', 'render', 'quit_mark', 'PaneTty',
+           'Viewer', 'main']
 
 # %% ../nbs/18_pane.ipynb #d2a80a47
 CALLS_KEPT = 8       #: a sub-agent's latest calls in a snapshot
@@ -69,14 +69,16 @@ def _files(agent, seen, turn):
 
 _STARTED = re.compile(r'started (cmd_\w+)')
 
+SHELL_LINES = 20   #: output lines a background shell's row opens to
+
 def _shell_state(agent, seen, rid, now):
-    "`rid`'s state, asked of the host at most every `SHELL_EVERY` while it runs and never again once it has ended; '' when unknown."
-    state, at = seen.shells.get(rid, (None, 0))
-    if state is not None and (state != 'running' or now - at < SHELL_EVERY): return state
-    try: state = agent.host.cmd_output(rid, 1)[0]
-    except Exception: state = ''   # a host that runs no background commands, or has forgotten this one
-    seen.shells[rid] = state, now
-    return state
+    "`rid`'s state and last `SHELL_LINES` lines, asked of the host at most every `SHELL_EVERY` while it runs and never again once it has ended; state '' when unknown."
+    state, out, at = seen.shells.get(rid, (None, '', 0))
+    if state is not None and (state != 'running' or now - at < SHELL_EVERY): return state, out
+    try: state, out = agent.host.cmd_output(rid, SHELL_LINES)
+    except Exception: state, out = '', ''   # a host that runs no background commands, or has forgotten this one
+    seen.shells[rid] = state, out, now
+    return state, out
 
 def _shells(agent, seen, every, since, now):
     "`run_shell_bg` commands the host still knows: live ones, and those started since `since`."
@@ -84,16 +86,19 @@ def _shells(agent, seen, every, since, now):
     for a in every:
         if a.tool != 'run_shell_bg' or not (m := _STARTED.match(a.detail)): continue
         if a.started < since and seen.shells.get(m[1], ('running',))[0] != 'running': continue
-        if (state := _shell_state(agent, seen, m[1], now)) and (state == 'running' or a.started >= since):
+        state, text = _shell_state(agent, seen, m[1], now)
+        if state and (state == 'running' or a.started >= since):
             out.append({'kind': 'shell', 'id': m[1], 'label': _1(a.args.get('command'), 120), 'state': state,
-                        'elapsed': round(now - a.started, 1) if state == 'running' else None})
+                        'elapsed': round(now - a.started, 1) if state == 'running' else None, 'detail': text})
     return out
 
 def _background(agent, seen, bg, every, since, now):
     "Background delegations, shells and folder watches, one row each."
-    return ([{'kind': 'delegate', 'id': r.id, 'label': _1(r.question, 120), 'state': r.state, 'elapsed': _secs(r, now)} for r in bg]
+    watch = lambda w: f"{w.pattern or 'all files'} · {w.reviews} review{'' if w.reviews == 1 else 's'}" + (f'\n{w.last_review}' if w.last_review else '')
+    return ([{'kind': 'delegate', 'id': r.id, 'label': _1(r.question, 120), 'state': r.state, 'elapsed': _secs(r, now), 'detail': ''} for r in bg]
             + _shells(agent, seen, every, since, now)
-            + [{'kind': 'watch', 'id': w.id, 'label': w.folder, 'state': w.last_status or 'watching', 'elapsed': None} for w in agent.monitors.all()])
+            + [{'kind': 'watch', 'id': w.id, 'label': w.folder, 'state': w.last_status or 'watching', 'elapsed': None, 'detail': watch(w)}
+               for w in agent.monitors.all()])
 
 def now_snapshot(agent):
     "The foreground turn, its plan, sub-agents, writes and background work, as a JSON-able dict."
@@ -188,11 +193,15 @@ def _file_rows(f, width, opened):
     out = [(('file', f['path']), _row(width, Text('▾ ' if opened else '▸ ', style=PALETTE['gray']), f['path'], tail, PALETTE['fg0'], left=True))]
     return out + [(None, _line(l, _diff_style(l), width, '  ')) for l in f['diff'].splitlines()] if opened else out
 
-def _bg_row(b, width, drift):
+def _bg_rows(b, width, drift, opened, subs):
+    "One background row, opening to a shell's output, a watch's last review, or a delegation's sub-agent detail."
     mark, style = _mark(b['state'])
     clock = f" · {_clock(b['elapsed'], b['state'], drift)}" if b['elapsed'] is not None else ''
-    head = Text(f'{mark} ', style=style) + Text(f"{b['kind']} ", style=PALETTE['gray'])
-    return _row(width, head, _1(b['label'], 200), Text(f" · {b['state']}{clock}", style=PALETTE['gray']), PALETTE['fg1'])
+    head = Text('▾ ' if opened else '▸ ', style=PALETTE['gray']) + Text(f'{mark} ', style=style) + Text(f"{b['kind']} ", style=PALETTE['gray'])
+    out = [(('bg', b['id']), _row(width, head, _1(b['label'], 200), Text(f" · {b['state']}{clock}", style=PALETTE['gray']), PALETTE['fg1']))]
+    if not opened: return out
+    if (s := next((s for s in subs if s['id'] == b['id']), None)) is not None: return out + _sub_rows(s, width, drift, True)[1:]
+    return out + [(None, _line(l, PALETTE['fg1'], width, '  ')) for l in (b.get('detail') or '').splitlines()]
 
 def _note_rows(n, width, opened):
     "One note: `▸`, its time and first line; opened, `▾` and every word wrapped to the pane."
@@ -214,7 +223,7 @@ def board(snap, width=40, now=None, open=(), err=''):
     section('Plan', [(None, _todo(t, width)) for t in snap['plan']])
     section('Sub-agents', [r for s in snap['subs'] for r in _sub_rows(s, width, drift, ('sub', s['id']) in open)])
     section('Files', [r for f in snap['files'] for r in _file_rows(f, width, ('file', f['path']) in open)])
-    section('Background', [(None, _bg_row(b, width, drift)) for b in snap['background']])
+    section('Background', [r for b in snap['background'] for r in _bg_rows(b, width, drift, ('bg', b['id']) in open, snap['subs'])])
     notes = snap.get('notes') or []   # newest first, and the newest starts open: toggling flips that
     section('Notes', [r for i, n in enumerate(reversed(notes)) for r in _note_rows(n, width, (('note', n['at']) in open) != (i == 0))])
     return rows
