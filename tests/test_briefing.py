@@ -66,7 +66,7 @@ def test_a_sub_agent_never_gets_the_roots_delegation_watch_or_plan_tools(host, t
     sub-agent could delegate, watch and rewrite the root's plan. Every path, and the monitors'
     reviewer, takes `_sub_plain`; the root keeps its own tools."""
     host.without = frozenset({'ask', 'api'})   # the watches too
-    a = mk(host, turn, subagents=True, subagent_writes=writes, profile='full')
+    a = mk(host, turn, subagents=True, subagent_writes=writes, subagent_depth=0, profile='full')
     a.routing.spec = lambda job='turn', fallback=True: turn if job == 'turn' else sub
     assert A.ROOT_ONLY <= names(a), 'the root keeps delegation, watches and the plan'
     for tools in (a._sub_plain(), a._sub_tools(), a.monitors.get_tools()):

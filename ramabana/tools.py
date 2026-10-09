@@ -167,8 +167,8 @@ class ToolCatalog:
 
 
 # %% ../nbs/02_tools.ipynb #e3b29ea1
-SUB_MAX_STEPS = 12
-SUB_TIMEOUT = 900   #: seconds a delegation may run before it is stopped; 0 never stops it
+SUB_MAX_STEPS = 60
+SUB_TIMEOUT = 1800   #: seconds a delegation may run before it is stopped; 0 never stops it
 SUB_SLOTS = 4       #: sub-agents working at once across one agent's whole delegation tree
 
 #: the half both briefings share

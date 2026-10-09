@@ -8,7 +8,7 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE_ALIASES', 'CLAUDE', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
            'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PROBE_TTL', 'PROBE_DIR', 'HARNESS',
-           'DFLT_TURN', 'DFLT_SMALL', 'DFLT_SUBAGENT', 'DFLT_LOCAL', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
+           'DFLT_TURN', 'DFLT_SMALL', 'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
            'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS',
            'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS', 'MODEL_ALIASES', 'TOOL_CHANNELS', 'KEY_ENVS',
            'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'claude_wire', 'probe_path', 'probed',
@@ -54,7 +54,7 @@ ONESHOT_JOBS = ('oneshot', 'completion', 'classify', 'inline')
 LOCAL = {'gemma-e2b': 'litert-community/gemma-4-E2B-it-litert-lm','gemma-e4b': 'litert-community/gemma-4-E4B-it-litert-lm','gemma-12b': 'litert-community/gemma-4-12B-it-litert-lm'}
 MLX = {'qwen-4b': 'mlx-community/Qwen3.5-4B-MLX-4bit','mini-coder-4b': 'mlx-community/mini-coder-4b-OptiQ-4bit','ornith-9b': 'mlx-community/Ornith-1.0-9B-8bit'}
 LLAMA = {'llama-qwen-0.6b': 'Qwen/Qwen3-0.6B-GGUF','llama-qwen-1.7b': 'Qwen/Qwen3-1.7B-GGUF','llama-qwen-4b': 'Qwen/Qwen3-4B-GGUF'}
-GPT = {name: f'openai/{name}' for name in ('gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano','gpt-5.4', 'gpt-5.4-mini', 'gpt-5.6', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra')}
+GPT = {name: f'openai/{name}' for name in ('gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano','gpt-5.4', 'gpt-5.4-mini', 'gpt-5.6', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6.1-luna')}
 GPT.update({name: f'codex/{name}' for name in ('gpt-5.3-codex-spark', 'gpt-5.5')})
 CLOUD = {**GPT, 'gpt': GPT['gpt-5.6-terra'],'gpt-mini': GPT['gpt-5.6-luna'], 'gpt-sol': GPT['gpt-5.6-sol']}
 CLAUDE_MODELS = claude_ids()
@@ -282,11 +282,12 @@ def available_models(include_legacy=False):
     return out
 
 # %% ../nbs/00_core.ipynb #70d7dfa3
-DFLT_TURN, DFLT_SMALL, DFLT_SUBAGENT = 'claude-opus-5-5', 'gpt-4.1', 'claude-sonnet-5-5'
-DFLT_LOCAL = 'gemma-e4b'   #: the local model to suggest; never a route unless named
+DFLT_TURN, DFLT_SMALL, DFLT_SUBAGENT = 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-sonnet-5-5'
+DFLT_MEDIUM = 'gpt-6.1-luna'
+DFLT_LOCAL = 'qwen-4b'   #: the local model to suggest; never a route unless named
 LOCAL_RUNTIMES = ('litert', 'mlx', 'llama', 'ollama')
 
-DEFAULT_POLICY = {'turn': None, 'oneshot': DFLT_SMALL, 'inline': None, 'completion': None, 'classify': None, 'summary': DFLT_SMALL, 'subagent': DFLT_SUBAGENT}
+DEFAULT_POLICY = {'turn': None, 'oneshot': DFLT_MEDIUM, 'inline': None, 'completion': DFLT_SMALL, 'classify': DFLT_SMALL, 'summary': DFLT_MEDIUM, 'subagent': DFLT_SUBAGENT}
 _LOCAL_CTX = {'gemma-e2b': 16_384, 'gemma-e4b': 16_384, 'gemma-12b': 16_384, 'qwen-4b': 32_768, 'mini-coder-4b': 32_768, 'ornith-9b': 32_768, 'llama-qwen-0.6b': 32_768, 'llama-qwen-1.7b': 32_768, 'llama-qwen-4b': 32_768}
 DFLT_LOCAL_CTX = 32_768
 

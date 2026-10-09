@@ -30,11 +30,11 @@ def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
     toggle's to close.
     """
     from ramabana.tools import NO_SUB, SUB_READ_SP, SUB_WRITE_SP, read_only, sub_briefing
-    a, be = fake_agent(approvals=agent.Approvals(tools=WRITE_TOOLS, mode='auto'))
+    a, be = fake_agent(approvals=agent.Approvals(tools=WRITE_TOOLS, mode='auto'), subagent_depth=0)
     search = next(t for t in a.tools if getattr(t, '__name__', '') == 'delegate_search')
 
-    assert a.subagent_writes is False
-    assert {t.__name__ for t in a._sub_plain()} == {t.__name__ for t in a._plain} - agent.ROOT_ONLY
+    assert a.subagent_writes is True
+    assert {t.__name__ for t in a._sub_plain()} == {t.__name__ for t in a.tools} - agent.ROOT_ONLY
     assert not ({t.__name__ for t in read_only(a.tools)} & WRITE_TOOLS)
 
     a.command('/subagents on')

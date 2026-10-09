@@ -1,4 +1,4 @@
-"""Sub-agent limits: steps, a wall clock, opt-in nesting, background runs in `runs`, and pruned run children."""
+"""Sub-agent limits: steps, a wall clock, bounded nesting, background runs in `runs`, and pruned run children."""
 import threading, time
 from fastcore.basics import AttrDict
 from ramabana.runtime import Run
@@ -29,7 +29,8 @@ def test_a_delegations_max_steps_is_capped_by_the_session_and_floored():
     subs = _subs(be, get_steps=lambda: 20)
     for n in (50, 3, 0): subs['delegate_search'](['q'], max_steps=n)
     _subs(be, get_steps=lambda: 5)['delegate_search'](['q'], max_steps=3)
-    assert [s.max_steps for s in be.spawned] == [20, SUB_MAX_STEPS, 20, 5]
+    _subs(be, get_steps=lambda: 80)['delegate_search'](['q'], max_steps=3)
+    assert [s.max_steps for s in be.spawned] == [20, min(SUB_MAX_STEPS, 20), 20, 5, SUB_MAX_STEPS]
     assert 'budget' in sub_briefing() and 'harness' in sub_briefing()
 
 

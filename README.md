@@ -72,7 +72,7 @@ export RAMABANA_MODEL=sonnet    # the same choice in every session
 
 `/models` lists what this machine can reach and marks the one running. `/model NAME` changes model without ending the session. `/model` alone prints the routing summary.
 
-Short jobs route away from the turn model. Completions, inline edits, classification, summaries and other one-shot work run on `gpt-4.1`. Delegated sub-agents run on `claude-sonnet-5-5`. When the turn model is local, every job without a model of its own stays on it, so nothing leaves the machine. When a job’s model cannot run, because its key is unset or `claude` is missing, the job moves to another cloud route: without `OPENAI_API_KEY` the `gpt-4.1` jobs use `claude-sonnet-5`, and the session says so once. With none left, the error names the job, the model and the key or CLI it needs.
+Short jobs route away from the turn model. Completions and classification run on `claude-haiku-5-5`. Inline edits, summaries and other one-shot work run on `gpt-6.1-luna`. Delegated sub-agents run on `claude-sonnet-5-5`. When the turn model is local, every job without a model of its own stays on it. When a job’s model cannot run, the job moves to another cloud route. Without `OPENAI_API_KEY`, the default Luna jobs fall back to the turn model. The session reports the fallback once. With no route left, the error names the job, the model and the key or CLI it needs.
 
 `$RAMABANA_MODEL_<JOB>` overrides one job. `<JOB>` is `ONESHOT`, `INLINE`, `COMPLETION`, `CLASSIFY`, `SUMMARY` or `SUBAGENT`. The turn model uses `$RAMABANA_MODEL` and has no `_TURN` variable. `/model JOB NAME` sets one job inside a session:
 
@@ -106,7 +106,7 @@ The one-turn form prints each problem on stderr and exits 1 when the turn model 
 | `--approve MODE` | `ask` | `ask`, `edits`, `auto`, `off` or `none`. `edits` lets file and notebook edits through and asks for the rest |
 | `--no-web` | web on | takes the network away from the web tools |
 | `--read-outside` | off | reads may name any path. Writes stay inside `--root` |
-| `--subagent-writes` | off | delegated sub-agents may write, run commands and run Python |
+| `--no-subagent-writes` | writes on | restrict delegated sub-agents to read-only tools |
 | `--vault` | off | keeps what the agent reads in a vishalakshi vault |
 | `--pii MODE` | `off` | `redact` or `refuse` for what the vault hands back |
 | `--pii-ner` | off | `--pii` gates titled names too, not only patterns |
@@ -217,9 +217,9 @@ ramabana --root .,~/notes,/srv/app
 
 Writes reach those folders and nowhere else. Reads start out in the same folders. `--read-outside` widens reads to any path on the machine and leaves writes where they were. `/root` prints the open folders, and `/root add PATH` opens another mid-session for reading and writing.
 
-Delegated sub-agents only look: they report what they found and change nothing. `--subagent-writes`, or `/subagents on`, lets them write, run commands and run Python behind this session’s approvals. Until then Ramabana refuses `delegate_async(writes=True)`, and the briefing says so.
+Delegated sub-agents may write, run commands and run Python by default. Every write remains behind this session’s approvals. `--no-subagent-writes` or `/subagents off` restricts them to read-only tools. A read-only session refuses `delegate_async(writes=True)`.
 
-A sub-agent takes at most 12 steps and runs for at most 900 seconds; `/subagents steps N` and `/subagents timeout S` change either, and `timeout 0` removes the limit. A delegation’s `max_steps` can ask for fewer steps, never more. Sub-agents do not delegate again unless `/subagents nest 1` or `nest 2` allows it. A nested sub-agent gets only `delegate_search`, the sub-agents under one turn share one tool-call budget the size of the turn’s own, and at most four of them run at once.
+A sub-agent takes at most 60 steps and runs for at most 1800 seconds by default. `/subagents steps N` and `/subagents timeout S` change those limits. `timeout 0` removes the time limit. A delegation’s `max_steps` stays within the session cap and has a floor of 60 steps unless the session cap is lower. Two levels of sub-agents may delegate again by default. `/subagents nest 0` disables nesting. A nested sub-agent gets only `delegate_search`. The sub-agents under one turn share one tool-call budget the size of the turn’s own. At most four run at once.
 
 Every run keeps a transcript under `<cfg>/runs/<session>/`. Inside tmux:
 

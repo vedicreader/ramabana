@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.19
+
+- Default turns use `claude-opus-5-5` and sub-agents use `claude-sonnet-5-5`. Classification and completion use `claude-haiku-5-5`. Oneshot, inline and summary jobs use `gpt-6.1-luna`.
+- Gemma is no longer the suggested local model. Explicitly selected local models remain supported.
+- Sub-agents may write by default behind the session's approval gate. `--no-subagent-writes` or `/subagents off` makes them read-only.
+- Sub-agents default to 60 steps, a 1800-second timeout and two levels of nesting.
+
 ## 0.2.18
 
 - A line with attachments steers the running turn instead of waiting in the queue; each attachment goes by path for the model to read with `view_file`, since a tool result carries no picture.

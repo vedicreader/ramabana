@@ -1003,10 +1003,10 @@ class Agent:
                  ext_paths=(),
                  inline_skills=INLINE_SKILLS,
                  subagents=True,
-                 subagent_writes=False,     # sub-agents get write tools, behind the same approvals
+                 subagent_writes=True,     # sub-agents get write tools, behind the same approvals
                  subagent_steps=SUB_MAX_STEPS, # steps a sub-agent may take; caps a delegation's `max_steps`
                  subagent_timeout=SUB_TIMEOUT, # seconds before a delegation is stopped; 0 never
-                 subagent_depth=0,          # levels of sub-agents that may delegate again, at most `SUB_DEPTH_MAX`
+                 subagent_depth=2,          # levels of sub-agents that may delegate again, at most `SUB_DEPTH_MAX`
                  readonly=False,            # withhold every tool that acts
                  readonly_calls=None,       # hard cap on read-only calls, when set
                  local_multimodal=False,       # load LiteRT vision/audio encoders for local models

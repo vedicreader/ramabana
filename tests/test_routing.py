@@ -20,8 +20,8 @@ def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runt
     r = Routing(turn='gpt-mini')
     r.policy['oneshot'] = 'mlx/not-installed-here'
     with pytest.raises(Exception): r.spec('oneshot', fallback=False)
-    assert r.spec('classify').name == 'gpt-mini'       # the turn model, which is by definition here
-    assert 'unavailable' in r.notes['classify']
+    assert r.spec('inline').name == 'gpt-mini'       # the turn model, which is by definition here
+    assert 'unavailable' in r.notes['inline']
 
     with pytest.raises(Exception): Routing(turn='mlx/not-installed-here').spec('turn')
 
@@ -200,19 +200,19 @@ def no_model_env(monkeypatch):
         for j in ('', *(f'_{j.upper()}' for j in core.JOBS)): monkeypatch.delenv(f'{p}MODEL{j}', raising=False)
 
 
-# -- a local turn keeps its side jobs; a missing OpenAI key falls to Sonnet ---------------
+# -- a missing OpenAI key falls back without moving Claude jobs -------------------------
 
-def test_without_an_openai_key_small_jobs_fall_to_sonnet_and_say_so_once(monkeypatch):
+def test_without_an_openai_key_medium_jobs_fall_back_and_say_so_once(monkeypatch):
     no_model_env(monkeypatch)
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
     monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: FakeBackend(spec, **kw))
     notes = []
     h = MemHost(); h.note = notes.append
     a = Agent(h, extensions=False, subagents=False)
-    assert a.routing.spec('classify').name == 'claude-sonnet-5-5'
-    for job in ('classify', 'completion', 'summary', 'inline', 'classify'): assert a._be_or_none(job).spec.name == 'claude-sonnet-5-5'
-    said = [n for n in notes if 'gpt-4.1' in n]
-    assert said == ['gpt-4.1 unavailable (no OPENAI_API_KEY); small jobs use claude-sonnet-5-5'], notes
+    for job in ('classify', 'completion'): assert a.routing.spec(job).name == 'claude-haiku-5-5'
+    for job in ('oneshot', 'summary', 'inline', 'summary'): assert a._be_or_none(job).spec.name == 'claude-opus-5-5'
+    said = [n for n in notes if 'gpt-6.1-luna' in n]
+    assert len(said) == 1 and 'OPENAI_API_KEY' in said[0] and 'claude-opus-5-5' in said[0], notes
 
 def test_rishi_usage_is_cumulative_though_its_chat_counts_each_call_afresh():
     """rishi's `Chat` starts a new `use` on every call, while `Agent._finish` diffs a running total.

@@ -2300,7 +2300,7 @@ def main(
     approve: str = 'ask',                # ask | edits | auto | off | none (no gate)
     web: bool = True,                    # --no-web takes the web tools offline
     read_outside: bool = False,          # reads reach any path; writes need --root
-    subagent_writes: bool = False,       # let sub-agents write, run commands and Python
+    subagent_writes: bool = True,       # --no-subagent-writes restricts delegates to read-only tools
     vault: bool = False,                 # vishalakshi vault for reads; not in python mode
     pii: str = PII_OFF,                  # off | redact | refuse PII from the vault
     pii_ner: bool = False,               # --pii also gates titled names
