@@ -110,3 +110,35 @@ def test_enter_during_a_real_turn_lands_in_its_next_tool_result():
         assert _tool_results(be)[0].endswith(_tag(agent, 'and mention b.py'))
         assert len(be.sent) == 1, 'read in the turn, not run as another'
     finally: tty.close()
+
+
+def test_an_attached_line_steers_and_enter_on_an_empty_line_steers_the_queued_one(tmp_path):
+    """A pasted picture sent the line to the queue, where it waited out a forty-minute turn, and a
+    queued line had no way into the running turn. The picture travels by path; Enter on an empty
+    line hands the queued line to the turn."""
+    from ramabana.tools import Attachment
+    (pic := tmp_path/'shot.png').write_bytes(b'\x89PNG\r\n\x1a\n' + b'0' * 20)
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    agent, be = _scripted(Step('looking'), Step(tool=READ, pause=.5), Step(tool=READ, pause=.5), Step('done'))
+    async def go():
+        await comp.start()
+        u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        _type(u, 'read a.py')
+        for _ in range(40):
+            await asyncio.sleep(.02)
+            if (r := agent.run()) is not None and not r.terminal: break
+        u.attachments.append(Attachment(pic))
+        assert _type(u, 'look at this too') is None and u._queued is None and u.attachments == [], 'steered, not queued'
+        _type(u, 'and then b.py', 'alt+enter')
+        assert u._queued is not None
+        assert _type(u, '') is None and u._queued is None, 'enter on an empty line steers the queued line'
+        for _ in range(100):
+            await asyncio.sleep(.05)
+            if u.turn is None: break
+    try:
+        asyncio.run(go())
+        read = '\n'.join(_tool_results(be))
+        assert 'look at this too' in read and str(pic) in read and 'and then b.py' in read
+        assert len(be.sent) == 1, 'read in the turn, not run as another'
+    finally: tty.close()

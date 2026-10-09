@@ -15,10 +15,10 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES',
            'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme',
            'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
-           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'file_refs', 'FileAttachment', 'file_note',
-           'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich',
-           'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode',
-           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'amain',
+           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
+           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff',
+           'diff_rich', 'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang',
+           'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'amain',
            'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA',
            'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs',
            'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
@@ -358,7 +358,7 @@ MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
                     'join', 'kernels', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
 
-HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · shift+tab cycle approvals · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
+HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · enter on an empty line steers the queued one · shift+tab cycle approvals · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
 transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
 edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
@@ -420,7 +420,8 @@ READING A TURN
   ctrl+r browses, searches and copies blocks; /mouse to click them.
 WORK
   /plan  /todo  /sessions  /resume [ID|latest]  /model [NAME]
-  enter mid-turn steers the turn; shift+enter queues the next one.
+  enter mid-turn steers the turn, attachments and all; shift+enter queues
+  the next one, and enter on an empty line steers the queued one in.
   shift+tab cycles approvals: ask, edits, auto.
   Outside tmux it starts in its own; --tmux off stays out.
   /pane shows the turn and its sub-agents; /pane off closes it.
@@ -550,6 +551,12 @@ def media_line(path):
 
 # %% ../nbs/05_cli.ipynb #2a893877
 MAX_FILE_ATTACH = 120_000  # characters
+def steer_note(atts):
+    "What a steered line says about its attachments: a tool result carries no picture, so each goes by path."
+    if not atts: return ''
+    rows = '\n'.join(a.line() if hasattr(a, 'line') else str(a.path) for a in atts)
+    return f'\n\n<attachments>\n{rows}\n</attachments>\nThese came with this message by path: read each with view_file, which shows a picture.'
+
 def file_refs(text):
     "Relative paths named as `@path` in a prompt, with sentence punctuation removed."
     out = []
@@ -1159,12 +1166,20 @@ class Ui:
         return True
 
     def steer(self, line):
-        "Send `line` into the running turn; False if none listens or it has files."
-        if self.turn is None or self.attachments or file_refs(line) or not self.agent.steer(line): return False
+        "Send `line` into the running turn, what is attached named by path for the model to read; False if no turn listens."
+        if self.turn is None or not self.agent.steer(line + steer_note(self.attachments)): return False
+        names, self.attachments = ', '.join(a.name for a in self.attachments), []
         self._retract()
-        self._echo(Text('↪ ' + line), 'user', pad=True)
+        self._echo(Text('↪ ' + line + (f'  [{names}]' if names else '')), 'user', pad=True)
         self._echoed = []
         self.flash('sent · read after the current call')
+        return True
+
+    def steer_queued(self):
+        "Hand the queued line to the running turn now; False when nothing waits or no turn listens."
+        if self._queued is None or self._queued_prompt is None or not self.steer(self._queued_prompt): return False
+        self._queued.close()
+        self._queued, self._queued_prompt, self._queued_echo = None, None, []
         return True
 
     def _turn_over(self):
@@ -1343,7 +1358,7 @@ class Ui:
         what = ' '.join((self._queued_prompt or '').split()) or 'a command'
         row = Text(' \u23f3 queued  ', style=GRUVBOX['yellow'])
         row.append(what[:79] + '\u2026' if len(what) > 80 else what, style=GRUVBOX['fg0'])
-        row.append('   ctrl+c clears it', style=GRUVBOX['gray'])
+        row.append('   enter steers it into this turn · ctrl+c clears it', style=GRUVBOX['gray'])
         return row
 
     def copy_last(self, tag='reply'):
@@ -1402,7 +1417,9 @@ class Ui:
         self.complete, self.desc = None, []
         self._echoed = []
         self.buf.clear()
-        if not line: return None
+        if not line:
+            if not self._hold: self.steer_queued()   # enter on an empty line steers the queued one
+            return None
         if line in ('/agent_proxy', '/agent-proxy'): return self.enable_agent_proxy()
         if line in ('/python', '/py'): return self.enter_python()
         if line in ('/agent', '/a'):
