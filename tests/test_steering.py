@@ -142,3 +142,80 @@ def test_an_attached_line_steers_and_enter_on_an_empty_line_steers_the_queued_on
         assert 'look at this too' in read and str(pic) in read and 'and then b.py' in read
         assert len(be.sent) == 1, 'read in the turn, not run as another'
     finally: tty.close()
+
+
+# read receipts
+
+
+def _src(blk): return blk.source or ''
+
+
+def test_a_steered_line_gets_its_receipt_only_after_it_left_the_inbox():
+    "The echo says sent; a check mark waits until the model's call drained it from the run's inbox."
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    agent, be = fake_agent(replies=['after'])
+    async def go():
+        await comp.start()
+        u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        u.start_turn(_slow())
+        run = agent._new_run('q')
+        _type(u, 'check the tests too')
+        (_, blk), = u._steered
+        assert '✓' not in _src(blk), 'sent is not read'
+        u.mark_read()
+        assert '✓' not in _src(blk) and len(u._steered) == 1, 'still in the inbox: still unread'
+        assert run.drain_inbox() == ['check the tests too']      # what the root tool result does
+        _type(u, 'check the tests too')
+        _, later = u._steered[-1]
+        u.mark_read()
+        assert '✓' in _src(blk) and '✓' not in _src(later)
+        assert len(u._steered) == 1
+        run.drain_inbox()
+        u.mark_read()
+        assert '✓' in _src(later) and u._steered == []
+    try: asyncio.run(go())
+    finally: tty.close()
+
+
+def test_a_line_the_turn_ended_without_reading_never_gets_a_receipt():
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    agent, be = fake_agent(replies=['after'])
+    async def go():
+        await comp.start()
+        u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        u.start_turn(_slow())
+        agent._new_run('q')
+        _type(u, 'too late')
+        (_, blk), = u._steered
+        u.mark_read(final=True)                       # the turn is over and the line is still in the inbox
+        assert '✓' not in _src(blk) and u._steered == []
+        assert agent.leftovers() == ['too late']
+    try: asyncio.run(go())
+    finally: tty.close()
+
+
+def test_a_real_turn_marks_the_steered_line_read():
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    agent, be = _scripted(Step('looking'), Step(tool=READ, pause=.3), Step('done'))
+    async def go():
+        await comp.start()
+        u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        _type(u, 'read a.py')
+        for _ in range(40):
+            await asyncio.sleep(.02)
+            if (r := agent.run()) is not None and not r.terminal: break
+        assert _type(u, 'and mention b.py') is None
+        (_, blk), = u._steered
+        assert '✓' not in _src(blk)
+        for _ in range(100):
+            await asyncio.sleep(.05)
+            if u.turn is None: break
+        return blk
+    try:
+        blk = asyncio.run(go())
+        assert _tool_results(be)[0].endswith(_tag(agent, 'and mention b.py'))
+        assert '✓' in _src(blk)
+    finally: tty.close()

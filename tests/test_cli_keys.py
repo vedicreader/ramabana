@@ -29,7 +29,7 @@ KITTY = {'\x1b[57414u': 'enter', '\x1b[57399u': '0', '\x1b[57408u': '9', '\x1b[5
 XTERM = {'\x1b[27;2;13~': 'shift+enter', '\x1b[27;3;13~': 'alt+enter', '\x1b[27;5;99~': 'ctrl+c',
          '\x1b[27;2;9~': 'shift+tab', '\x1b[27;3;49~': 'alt+1', '\x1b[27;5;103~': 'ctrl+g', '\x1b[27;5;100~': 'ctrl+d'}
 LEGACY = {'\r': 'enter', '\t': 'tab', '\x1b[Z': 'shift+tab', '\x03': 'ctrl+c', '\x04': 'ctrl+d', '\x07': 'ctrl+g',
-          '\x1b1': 'alt+1', '\x1b\r': 'alt+enter', '\x1b[A': 'up', '\x1b[1;5A': 'ctrl+up', '\x1b[3~': 'delete',
+          '\x1b1': 'alt+1', '\x1b\r': 'alt+enter', '\x1b[A': 'up', '\x1b[1;5A': 'ctrl+up', '\x1b[1;3A': 'alt+up', '\x1b[3~': 'delete',
           '\x1b[5;2~': 'shift+pageup', 'a': 'a', '\x7f': 'backspace'}
 
 
@@ -135,5 +135,29 @@ def test_an_exception_before_the_loop_still_gives_the_keys_back(term, monkeypatc
     with pytest.raises(RuntimeError): asyncio.run(cli.amain(agent))
     out = term.text()
     assert KEYS_ON in out and out.rindex(KEYS_OFF) > out.rindex(KEYS_ON), 'the shell is left in extended-key mode'
+
+
+def test_alt_o_folds_and_opens_every_tool_block_in_the_whole_transcript():
+    "ctrl+o reaches the turn on screen; alt+o reaches every call, including turns already scrolled away."
+    from rich.text import Text
+    from teleprint.testing import EmuTty
+    from ramabana.cli import HELP, Ui
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    agent, _ = fake_agent()
+    async def go():
+        await comp.start()
+        u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        old = u.say(Text('call one\nits result'), 'tool', fold=None)
+        old.committed = True                      # a turn long gone into the scrollback
+        new = u.say(Text('call two\nits result'), 'tool', fold=None)
+        reply = u.say(Text('prose\nmore prose'), 'reply', fold=None)
+        assert 'alt+o' in HELP
+        u.on_key(Key('alt+o'))
+        assert old.collapsed and new.collapsed and not reply.collapsed
+        u.on_key(Key('alt+o'))
+        assert not old.collapsed and not new.collapsed
+    try: asyncio.run(go())
+    finally: tty.close()
 
 

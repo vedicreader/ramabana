@@ -8,12 +8,13 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
            'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM', 'ONESHOT_CUT',
-           'IMG_TOKENS', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'STATUS_CHARS', 'CHILD_KEEP', 'NOTE_KEEP', 'CHAT_CALLBACKS',
-           'interesting', 'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact',
-           'serialise', 'split_previous', 'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient',
-           'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think',
-           'ThinkFilter', 'Usage', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'status_line',
-           'said_before_call', 'Run', 'current_run', 'run_context', 'TokenLogger']
+           'IMG_TOKENS', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'ROUTINE_CBS', 'STATUS_CHARS', 'CHILD_KEEP', 'NOTE_KEEP',
+           'AIR_CALLS', 'AIR_CHARS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture', 'estimate_tokens',
+           'halvings', 'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt',
+           'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
+           'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
+           'use_chat', 'RishiBackend', 'make_backend', 'status_line', 'said_before_call', 'Run', 'current_run',
+           'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import contextvars, copy, math, os, re, sys, threading, time, uuid
@@ -323,6 +324,12 @@ _APPROVALS = ('go', 'ok', 'okay', 'yes', 'yep', 'sure', 'do it', 'go ahead', 'pr
 def prompt_notices(prompt):
     "Notices a submitted prompt earns, from aai-coding's `UserPromptSubmit` hook."
     p = (prompt or '').strip()
+    shortcuts = {
+        '.': 'Continue the current agreed task. This does not approve additional scope.',
+        ';': 'Restate the previous answer in simpler language. Do not change code.',
+        ',': 'List the information and questions the user needs to answer next. Do not change code.',
+    }
+    if p in shortcuts: return [shortcuts[p]]
     out = []
     if p.endswith('?'): out.append(Q_NOTICE)
     if re.search(r'\b(please read|read the|have a look at)\b', p.lower()): out.append(READ_NOTICE)
@@ -784,6 +791,8 @@ QUIET_RUNTIMES = frozenset({'litert'})   #: they run the tool loop inside the en
 
 CLAUDE_EFFORT = 'high'   #: what a Claude turn asks for; Claude Code otherwise runs the model's default, medium on Opus 5.5
 
+ROUTINE_CBS = frozenset({'ToolReminderCallback','_ToolReminderCallback','SlidingWindowCallback'})   #: rishi's defaults (litert has its own reminder): a nag on every message, and a window that forgets with no summary
+
 class RishiBackend(Backend):
     kind='rishi'
     def __init__(self,*a,max_steps=MAX_STEPS,**kw):
@@ -826,9 +835,14 @@ class RishiBackend(Backend):
         from rishi import Chat
         self._measure()
         mid=claude_wire(self.spec.model_id) if self.spec.runtime=='claude' else self.spec.model_id
-        return self._fitted((_MK_CHAT or Chat)(mid,runtime=self.spec.runtime,sp=self.sp,
+        return self._lean(self._fitted((_MK_CHAT or Chat)(mid,runtime=self.spec.runtime,sp=self.sp,
                     tools=self.tools,approve=self.approve,tool_max_len=self.tool_max_len,
-                    max_steps=self.max_steps,ctx_limit=self.spec.ctx,**self._runtime_kw()))
+                    max_steps=self.max_steps,ctx_limit=self.spec.ctx,**self._runtime_kw())))
+    def _lean(self,chat):
+        "Leave compaction to `Compactor`: drop rishi's per-message reminder and its summary-less window, keep usage."
+        if (drop:=getattr(chat,'remove_cb',None)) is None: return chat
+        for c in [c for c in getattr(chat,'cbs',()) if type(c).__name__ in ROUTINE_CBS]: drop(c)
+        return chat
     def _fitted(self,chat):
         "Take the window from the engine."
         try: real=int(chat.engine.n_ctx())
@@ -945,6 +959,8 @@ def _note(text):
 
 CHILD_KEEP = 50   #: finished children a run keeps; live ones are never dropped
 NOTE_KEEP = 100   #: narration notes a run keeps for the pane
+AIR_CALLS = 8     #: calls in a row with nothing said before the model is reminded to tell the user where it is
+AIR_CHARS = 100   #: what a model must say before a call for the call to count as telling the user
 
 @dataclass
 class Run:
@@ -965,7 +981,7 @@ class Run:
 
     def __post_init__(self):
         self.children, self._lock, self._done, self.inbox, self._heard, self.notes = [], threading.RLock(), threading.Event(), [], [], []
-        self.key = uuid.uuid4().hex[:8]
+        self.key, self.silent = uuid.uuid4().hex[:8], 0
         if self.parent is not None: self.parent._adopt(self)
         if self.log is None and getattr(self.parent, 'log', None) is not None: self.log = self.parent.log.parent/f'{self.id}.log'
 
@@ -1018,7 +1034,17 @@ class Run:
         if not status_line(said): said = said_before_call(getattr(self.backend, 'hist', None))
         with self._lock:   # a message making several calls starts each one here, and is still one note
             if (n := _note(said)) and not (self.notes and self.notes[-1][1] == n): self.notes = [*self.notes, (time.time(), n)][-NOTE_KEEP:]
+            self.silent = 0 if len(n) >= AIR_CHARS else self.silent + 1
         return self.set_status(said)
+
+    def air(self):
+        "A reminder to tell the user where the work is, once `AIR_CALLS` calls in a row went by with nothing said; else ''."
+        with self._lock:
+            if self.silent < AIR_CALLS: return ''
+            n, self.silent = self.silent, 0
+        asked = ' '.join(str(self.question).split())[:300]
+        return (f'{n} tool calls have gone by without a message to the user. Before the next call, tell them in a few '
+                f'sentences what you have found and what you are doing next. Their request was: "{asked}"')
 
     @property
     def terminal(self): return self.state in ('completed', 'cancelled', 'detached', 'terminated', 'failed')

@@ -149,3 +149,15 @@ def test_a_capture_longer_than_one_pipe_read_keeps_its_tail():
     with captured() as cap: native_write('a' * 59_990 + 'THE-TAIL\n')
     assert cap.text.endswith('THE-TAIL\n')
     assert len(cap.text) == runtime.MAX_KEEP, 'the tail is kept, not the first read'
+
+
+def test_a_chat_built_for_ramabana_keeps_its_usage_but_not_rishis_reminder_or_window():
+    """rishi's loop defaults are a reminder appended to every user message and a sliding window that
+    drops the middle of the history without a summary. Ramabana compacts with a summary at its own
+    threshold, so the reminder only rewrites every prompt and the window forgets what compaction keeps."""
+    from ramabana.runtime import RishiBackend
+    be = RishiBackend(ModelSpec('m', 'remote', 'm', 32_768), api_key='x')
+    assert be.start() is not None, be.note
+    names = {type(c).__name__ for c in be.chat.cbs}
+    assert 'UsageCallback' in names, 'the token accounting stays'
+    assert not names & {'ToolReminderCallback', 'SlidingWindowCallback'}, names

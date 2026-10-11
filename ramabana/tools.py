@@ -26,7 +26,7 @@ __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_TIMEOUT', 'SUB_SLOTS', 'SUB_SP_H
            'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
-import concurrent.futures, contextvars, functools, json, re, threading, time, uuid
+import concurrent.futures, contextvars, functools, json, re, tempfile, threading, time, uuid
 from collections import Counter
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
@@ -248,6 +248,8 @@ def _inboxed(f, run, heard=None):
         if isinstance(out, str) and r is not None and (msgs := r.drain_inbox()):
             out = keep_media(out + f'\n\n<user-message key="{r.key}">\n' + '\n'.join(msgs) + '\n</user-message>', out)
             if heard: heard(msgs)
+        if isinstance(out, str) and r is not None and (nudge := r.air()):
+            out = keep_media(out + f'\n\n<system-reminder>\n{nudge}\n</system-reminder>', out)
         return out
     return call
 
@@ -536,6 +538,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
                    get_pictures=None,   # callable paths -> `(bytes, err)`; see `read_pictures`
                    get_steps=None,      # callable -> the step budget, which also caps a call's `max_steps`
                    get_timeout=None,    # callable -> seconds each delegation may run; 0 never stops it
+                   get_max=None,        # callable -> chars one result may spend, notes included; `MAX_TOOL_CHARS` when None
                    slots=None,          # a shared `Slots` bounding sub-agents at once
                    block=NO_SUB):       # names withheld from the sub-agent, when `get_tools` does not decide
     "The delegation tools, routed to the configured sub-agent backend. Arguments are callables, read per call."
@@ -549,6 +552,31 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         return max(min(n, cap), min(SUB_MAX_STEPS, cap)) if n > 0 else cap   # a starved sub-agent ends before it reports
     def _kw(n): return dict(max_steps=_steps(n), block=block, timeout=_timeout(), slots=slots)
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
+    def _max(): return int(get_max()) if get_max is not None else MAX_TOOL_CHARS
+
+    spill = []   # the temp folder answers go in when the session has no log folder, made on first use
+
+    def _keep(text):
+        "Save `text` whole in the log folder, else a private temp folder for this session; its path, or None if it cannot be written."
+        d = get_log_dir() if get_log_dir is not None else None
+        if d is None:
+            if not spill: spill.append(tempfile.mkdtemp(prefix='ramabana-answers-'))
+            d = spill[0]
+        p = Path(d)/f'answer_{uuid.uuid4().hex[:12]}.txt'
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text)
+        except OSError: return None
+        return p
+
+    def _fit(text, n):
+        "`text` within `n` chars; when it is cut, the whole is saved and the note names the file."
+        text = str(text)
+        if len(text) <= n: return text
+        p = _keep(text)
+        note = f'…[full answer saved to {p}; read it with view_file]' if p else '…[answer truncated; saving failed]'
+        if len(note) >= n: return note[:n]
+        return text[:n - len(note)] + note
 
     def _questions(qs):
         "Non-empty question texts from a list or its JSON text; any other string is one question."
@@ -574,7 +602,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
                         max_steps: int = 0,      # steps each sub-agent may take; 0 or more than the session allows takes the session's budget, and fewer than `SUB_MAX_STEPS` takes that
                         ) -> str:
         "Delegate self-contained questions to sub-agents and return only their conclusions: one question runs one sub-agent, several run concurrently."
-        qs = _questions(questions)
+        qs, mx = _questions(questions), _max()
         if not qs: return 'no questions given'
         b = get_cloud_backend(cloud_model) if cloud_model and get_cloud_backend is not None else get_backend()
         if b is None: return (f'no model is available to delegate to ({cloud_model}); leave `cloud_model` empty to use the sub-agent model'
@@ -586,9 +614,12 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         sk, note = named_skills(get_skills, skills)
         with slots.lend(current_run()) if slots is not None else nullcontext():
             if len(qs) == 1:
-                return clip(delegate(b, qs[0] + seen, get_tools(), skills=sk, writes=_writes(), approve=_approve(), images=pics, **_kw(max_steps)), MAX_TOOL_CHARS) + note
+                return _fit(delegate(b, qs[0] + seen, get_tools(), skills=sk, writes=_writes(), approve=_approve(), images=pics, **_kw(max_steps)), mx - len(note)) + note
             answers = delegate_many(b, [q + seen for q in qs], get_tools(), skills=sk, writes=_writes(), approve=_approve(), images=pics, **_kw(max_steps))
-        return clip('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)), MAX_TOOL_CHARS * 2) + note
+        share = (mx - len(note) - 2 * (len(qs) - 1)) // len(qs)
+        if share < 400:
+            return _fit('\n\n'.join(f'### {q}\n{a}' for q, a in zip(qs, answers)) + note, mx)
+        return '\n\n'.join(f'### {q[:100]}\n' + _fit(a, share - len(q[:100]) - 5) for q, a in zip(qs, answers)) + note
 
     @acts
     @summary(lambda a: f'Delegate in the background: {_1(a.get("question"), 110)}')
@@ -614,13 +645,22 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
     @acts
     @summary(lambda a: f'Collect delegation {a["run_id"]}' if a.get('run_id') else 'List the background delegations')
-    def delegate_result(run_id: str = '') -> str:
-        "The answer a background delegation left, or what it is still doing; with no `run_id`, every delegation started this session and its state."
-        if run_id: return clip(bg.result(run_id), MAX_TOOL_CHARS)
+    def delegate_result(run_id: str = '',
+                        offset: int = 0,   # characters of a long answer already read; the truncation note names the offset that continues
+                        ) -> str:
+        "The answer a background delegation left, or what it is still doing; a long answer comes in pages, read on with `offset`. With no `run_id`, every delegation started this session and its state."
+        mx = _max()
+        if run_id:
+            text, start = bg.result(run_id), max(0, int(offset or 0))
+            if start and start >= len(text): return f'offset {start} is past the end of the answer, which is {len(text)} chars'
+            if len(text) - start <= mx: return text[start:]
+            reserve = len(f'…[chars {start}-{len(text)} of {len(text)}; continue with offset={len(text)}]')
+            end = start + mx - reserve
+            return f'{text[start:end]}…[chars {start}-{end} of {len(text)}; continue with offset={end}]'
         rows = bg.status('')
         if isinstance(rows, str): return rows
         if not rows: return 'nothing has been delegated in the background'
-        return clip('\n'.join(f"{r['id']}  {r['state']:10} {r['question'][:80]}" for r in rows), MAX_TOOL_CHARS)
+        return clip('\n'.join(f"{r['id']}  {r['state']:10} {r['question'][:80]}" for r in rows), mx)
 
     @acts
     @summary(lambda a: f'Cancel delegation {a.get("run_id","?")}')

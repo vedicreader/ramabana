@@ -94,3 +94,74 @@ def test_both_lines_reach_the_model_as_one_message():
     finally: tty.close()
 
 
+def _type(u, text, key='enter'):
+    "Type a line and press `key`, handing any coroutine to `start_turn` as the main loop does."
+    u.buf.insert(text)
+    if (out := u.on_key(Key(key))) is not None: u.start_turn(out)
+    return out
+
+
+async def _slow(): await asyncio.sleep(.05)
+
+
+def _scene(body):
+    "Run `await body(ui, agent)` on a live loop over an emulated terminal; its asserts surface here."
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    agent, _ = fake_agent()
+    async def go():
+        await comp.start()
+        u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        await body(u, agent)
+    try: asyncio.run(go())
+    finally: tty.close()
+
+
+def test_stop_returns_unread_steering_queued_lines_and_the_draft_to_the_composer():
+    "Ctrl-C used to wipe all three; the user typed them, so they come back in the order they were said."
+    async def body(u, agent):
+        u.start_turn(_slow())
+        agent._new_run('q')
+        _type(u, 'steer that was never read')
+        _type(u, 'first queued', 'alt+enter')
+        _type(u, 'second queued', 'alt+enter')
+        u.buf.insert('half typed')
+        u.stop()
+        assert u.buf.text == 'steer that was never read\n\nfirst queued\n\nsecond queued\n\nhalf typed'
+        assert u._queued is None and u._queued_prompt is None and agent.leftovers() == []
+    _scene(body)
+
+
+def test_ctrl_c_keeps_the_draft_in_the_composer():
+    async def body(u, agent):
+        u.start_turn(_slow())
+        agent._new_run('q')
+        u.buf.insert('half typed')
+        u.on_key(Key('ctrl+c'))
+        assert u.buf.text == 'half typed'
+    _scene(body)
+
+
+def test_alt_up_pulls_the_queued_text_back_and_the_turn_keeps_running():
+    async def body(u, agent):
+        u.start_turn(_slow())
+        _type(u, 'first queued', 'alt+enter')
+        _type(u, 'second queued', 'alt+enter')
+        assert len([r for r in u.queued_rows()]) == 2, 'one row per queued line'
+        u.buf.insert('draft')
+        assert u.on_key(Key('alt+up')) is None
+        assert u.buf.text == 'first queued\n\nsecond queued\n\ndraft'
+        assert u._queued is None and u.queued_rows() == [] and u.turn is not None
+    _scene(body)
+
+
+def test_a_refused_slash_command_stays_in_the_composer():
+    "The line was cleared from the buffer before the loop learned the slot was taken, so its text was lost."
+    async def body(u, agent):
+        u.start_turn(_slow())
+        _type(u, 'first', 'alt+enter')
+        assert _type(u, '/python') is not None
+        assert u.buf.text == '/python' and u._queued_prompt == 'first'
+    _scene(body)
+
+

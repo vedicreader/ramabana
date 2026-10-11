@@ -106,3 +106,67 @@ def test_a_stopped_delegation_answers_in_text_not_as_a_run_dict():
     parent.cancel(); t.join(.5)
     assert box and all(isinstance(answer, str) for answer in box), box
     assert not any("'state':" in answer for answer in box), box
+
+
+# narration reaches the notebook log
+
+
+def _logged_turn(agent, cancel_at=None, prompt='go'):
+    "Run one turn on a real `Ui`; the assistant text its log got, one string per log cell. `cancel_at` cancels the task once it is true of the Ui."
+    import asyncio
+    from teleprint.compositor import Compositor
+    from teleprint.testing import EmuTty
+    from ramabana.cli import Ui, run_turn
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    logged = []
+    async def go():
+        await comp.start()
+        u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        u.log_cell = lambda source, outputs=None, cell_type='code': logged.append(source)
+        task = asyncio.ensure_future(run_turn(u, prompt))
+        if cancel_at is not None:
+            for _ in range(200):
+                await asyncio.sleep(.02)
+                if cancel_at(u): break
+            task.cancel()
+        try: await task
+        except asyncio.CancelledError: pass
+    try: asyncio.run(go())
+    finally: tty.close()
+    return [s for s in logged if s.startswith('**assistant**')]
+
+
+def _scripted_agent(*steps):
+    from ramabana.testing import ScriptedBackend
+    a, _ = fake_agent()
+    be = ScriptedBackend(steps=list(steps), token_delay=0, tools=a.tools, sp=a.system_prompt())
+    a._be = a._be_or_none = lambda job='turn': be
+    return a
+
+
+def test_narration_before_a_tool_call_reaches_the_notebook_log():
+    "The log kept only the text after the last call: `_close_seg` reset what it read."
+    from ramabana.testing import Step
+    a = _scripted_agent(Step('first I will look'), Step(tool=('view_file', {'path': '/proj/a.py'})), Step('and the answer'))
+    (cell,) = _logged_turn(a)
+    assert 'first I will look' in cell and 'and the answer' in cell
+    assert cell.index('first I will look') < cell.index('and the answer')
+
+
+def test_a_cancelled_turn_still_logs_its_partial_text():
+    "A task-level cancel skipped the log line, which sat after the `finally`."
+    from ramabana.testing import Step
+    a = _scripted_agent(Step('partial thought'), Step(tool=('view_file', {'path': '/proj/a.py'})), Step('never reached', pause=.6))
+    cells = _logged_turn(a, cancel_at=lambda u: bool(u.acts))
+    assert len(cells) == 1 and 'partial thought' in cells[0] and 'never reached' not in cells[0]
+
+
+def test_the_chunk_in_hand_is_rendered_and_logged_when_cancel_lands():
+    "The cancelled check ran before the chunk was drawn, so the last words were dropped."
+    from types import SimpleNamespace
+    a, _ = fake_agent()
+    a.stream_with = lambda ask, image=None: iter(['last words'])
+    a.run = lambda run_id='': SimpleNamespace(cancelled=True, terminal=False, state='running')
+    (cell,) = _logged_turn(a)
+    assert 'last words' in cell

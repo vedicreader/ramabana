@@ -433,8 +433,9 @@ class Budget:
     note: str = ''           # why, for a status bar
 
 def budget_for(spec, tool_max, channel='native'):
-    "A `Budget` sized to `spec`'s window, never above `tool_max`."
+    "A window-sized budget; `tool_max=None` selects an automatic cap up to 32000 characters."
     ctx = getattr(spec, 'ctx', 0) or 0
+    if tool_max is None: tool_max = min(32000, max(6000, ctx // 4)) if ctx else 6000
     if ctx > 0 and channel == 'tags': ctx = max(1, ctx - TAGS_SCHEMA_TOKENS)
     if ctx <= 0 or ctx > SMALL_CTX: return Budget(tool_max=tool_max, note='full briefing')
     mx = min(tool_max, max(TOOL_MAX_FLOOR, (ctx//16)*4))

@@ -33,6 +33,15 @@ def test_the_key_never_reaches_a_looser_mode_however_often_it_is_pressed(ui):
     assert ui.agent.approvals.mode == 'off'
 
 
+def test_shift_tab_steps_from_auto_into_plan_mode_and_out_to_ask(ui):
+    "As in Claude Code, plan mode is the stop after auto. Leaving it goes to ask, never back to auto."
+    ui.agent.approvals.mode = 'auto'
+    ui.cycle_approve()
+    assert ui.agent.plan_mode and 'plan' in ui.chip().plain
+    ui.cycle_approve()
+    assert not ui.agent.plan_mode and ui.agent.approvals.mode == 'ask' and 'ask' in ui.chip().plain
+
+
 def test_the_key_is_bound_and_reaches_the_control(ui):
     class _Key:
         name = 'ctrl+g'

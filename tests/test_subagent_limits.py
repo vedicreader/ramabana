@@ -1,8 +1,9 @@
 """Sub-agent limits: steps, a wall clock, bounded nesting, background runs in `runs`, and pruned run children."""
-import threading, time
+import re, threading, time
+from pathlib import Path
 from fastcore.basics import AttrDict
 from ramabana.runtime import Run
-from ramabana.tools import subagent_tools, Slots
+from ramabana.tools import subagent_tools, Slots, Background, MAX_TOOL_CHARS
 from ramabana.testing import FakeBackend
 
 
@@ -59,3 +60,73 @@ def test_a_sub_agent_waiting_on_its_own_sub_agents_lends_its_slot():
         with s.lend(parent):
             with s.hold(kid) as got: assert got, 'the child waited on a slot its parent held'
         assert parent.slot
+
+
+class _Answers:
+    "A sub-agent that answers a question starting `long` with 20000 characters, and any other briefly."
+    max_steps = 0
+    def send(self, q, run=None): return 'A' * 20000 if q.startswith('long') else f'short answer to {q}'
+    def close(self): pass
+
+
+def _answering(**kw):
+    be = AttrDict(spec=AttrDict(name='fake', local=True), spawn=lambda **k: _Answers())
+    return _subs(be, **kw)
+
+
+def test_every_question_keeps_its_own_share_of_the_combined_answer():
+    out = _answering()['delegate_search'](['long one', 'second', 'third'])
+    assert 'short answer to second' in out and 'short answer to third' in out, out[-300:]
+    assert len(out) <= MAX_TOOL_CHARS
+
+
+def test_a_clipped_answer_is_saved_whole_and_the_note_names_the_file(tmp_path):
+    subs = _answering(get_log_dir=lambda: tmp_path)
+    out = subs['delegate_search'](['long one'])
+    assert len(out) <= MAX_TOOL_CHARS
+    saved = list(tmp_path.glob('*.txt'))
+    assert len(saved) == 1 and saved[0].read_text() == 'A' * 20000
+    assert f'saved to {saved[0]}' in out and 'view_file' in out
+    subs['delegate_search'](['short'])
+    assert len(list(tmp_path.glob('*.txt'))) == 1   # an answer that fits is not saved
+    out = subs['delegate_search'](['long a', 'long b'])
+    assert len(list(tmp_path.glob('*.txt'))) == 3 and out.count('saved to') == 2
+
+
+def test_without_a_log_dir_the_full_answer_is_still_saved_somewhere_readable():
+    out = _answering()['delegate_search'](['long one'])
+    path = Path(re.search(r'saved to (\S+?\.txt)', out).group(1))
+    assert path.read_text() == 'A' * 20000
+
+
+def test_delegation_output_follows_the_effective_cap_not_the_default(tmp_path):
+    "A 2000-char model was sent 6000-char delegations, and the outer cut removed the note naming the saved file."
+    bg = Background()
+    subs = _answering(get_log_dir=lambda: tmp_path, get_max=lambda: 2000, background=bg)
+    for qs in (['long one'], ['long a', 'second', 'third']):
+        out = subs['delegate_search'](qs)
+        assert len(out) <= 2000 and 'saved to' in out, (len(out), out[-200:])
+    rid = re.search(r'run_\w+', subs['delegate_async']('long one')).group()
+    deadline = time.monotonic() + 5
+    while rid not in bg.answers and time.monotonic() < deadline: time.sleep(.01)
+    page = subs['delegate_result'](rid)
+    assert len(page) <= 2000 and 'continue with offset=' in page
+
+
+def test_delegate_result_reads_a_long_answer_in_pages_by_offset():
+    bg = Background()
+    subs = _answering(background=bg)
+    rid = re.search(r'run_\w+', subs['delegate_async']('long one')).group()
+    deadline = time.monotonic() + 5
+    while rid not in bg.answers and time.monotonic() < deadline: time.sleep(.01)
+    got, offset = '', 0
+    for _ in range(10):
+        page = subs['delegate_result'](rid, offset=offset)
+        assert len(page) <= MAX_TOOL_CHARS
+        more = re.search(r'continue with offset=(\d+)\]$', page)
+        got += re.sub(r'…\[chars .*\]$', '', page)
+        if more is None: break
+        offset = int(more.group(1))
+    assert got == 'A' * 20000 and offset > 0, (len(got), offset)
+    assert 'offset' in subs['delegate_result'](rid)
+    assert 'past the end' in subs['delegate_result'](rid, offset=99999)

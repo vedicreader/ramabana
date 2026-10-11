@@ -91,6 +91,37 @@ def test_a_stopped_turn_is_in_the_log_and_not_in_the_replayed_context(tmp_path):
     assert 'the one that was dropped' not in back, 'a fragment went back as a whole turn'
 
 
+def test_a_cancelled_turn_goes_back_to_the_model_marked_as_interrupted(tmp_path):
+    """The user stopping a turn is not the model forgetting it. The prompt, the half of the reply that
+    streamed and anything sent mid-turn are what the next turn has to build on, so `/resume` puts them
+    back -- with a note that the turn never finished, so the fragment is not mistaken for an answer.
+    The editor's replay (`REPLAYED`) stays as it was."""
+    from ramabana.agent import REPLAYED
+    a, _ = fake_agent(cfg=tmp_path)
+    list(a.stream('the one that finished'))
+    list(a.stream('the one the user stopped', on_registered=lambda run: run.request_cancel()))
+    got = rows(a)
+    assert [r['state'] for r in got] == ['complete', 'cancelled']
+    got[1].update(reply='first half of an answ', steered=['use pandas, not polars'])
+    msgs = _replayed(a, got)
+    back = ' '.join(msgs)
+    for kept in ('the one the user stopped', 'first half of an answ', 'use pandas, not polars'):
+        assert kept in back, f'{kept!r} did not reach the model'
+    assert 'interrupted' in msgs[-1], 'the fragment went back with nothing saying it was one'
+    assert back.index('first half of an answ') < back.index('interrupted')
+    assert 'interrupted' not in msgs[1], 'a finished turn was marked'
+    assert 'cancelled' not in REPLAYED, 'the editor replay changed'
+
+
+def test_a_cancelled_turn_that_said_nothing_still_goes_back_as_interrupted(tmp_path):
+    a, _ = fake_agent(cfg=tmp_path)
+    list(a.stream('stopped before a word', on_registered=lambda run: run.request_cancel()))
+    got = rows(a)
+    assert got[0]['state'] == 'cancelled' and not got[0]['reply']
+    msgs = _replayed(a, got)
+    assert 'stopped before a word' in msgs[0] and 'interrupted' in msgs[-1]
+
+
 # -- what the review found the first cut had broken ---------------------------------------
 
 def test_a_stopped_turn_gets_its_own_id_and_not_the_last_turns(agent):

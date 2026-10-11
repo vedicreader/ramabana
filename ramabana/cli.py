@@ -358,7 +358,7 @@ MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
                     'join', 'kernels', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
 
-HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · enter on an empty line steers the queued one · shift+tab cycle approvals · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+1..9 drill in · ctrl+c stop · ctrl+d quit
+HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · alt+up take the queued text back into the composer · enter on an empty line steers the queued one · shift+tab cycle approvals, then plan mode · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+o fold all turns · alt+1..9 drill in · ctrl+c stop, keeping what is queued and typed in the composer · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
 transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
 edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
@@ -366,10 +366,10 @@ media   drop or paste a path to attach · @path in a prompt · /attach PATH · /
 memory  #note TEXT keeps a line for later sessions · /SKILL ARGS runs a skill or a <cfg>/commands/*.md file ($1..$n, $ARGUMENTS, @path) as a prompt
 copy    select with the mouse · /copy the last reply · /copy turn all of it · ctrl+r then y any block
 approve y approve · n ⏎ refuse · n: REASON ⏎ refuse with a reason · a approve all · ctrl+y approve with a note · A always allow this · anything else re-asks
-          shift+tab cycles ask, edits, auto · ctrl+g one step stricter · /approve off|ask|edits|auto sets any
+          shift+tab cycles ask, edits, auto, plan · ctrl+g one step stricter · /approve off|ask|edits|auto sets any
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
-plan    /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
+plan    /planmode on|off withholds every tool that acts and asks for a plan · /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
 extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
 subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N, timeout S, nest N set the rest
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
@@ -421,7 +421,8 @@ READING A TURN
 WORK
   /plan  /todo  /sessions  /resume [ID|latest]  /model [NAME]
   enter mid-turn steers the turn, attachments and all; shift+enter queues
-  the next one, and enter on an empty line steers the queued one in.
+  the next one, enter on an empty line steers the queued one in, and
+  alt+up takes the queued text back into the composer.
   shift+tab cycles approvals: ask, edits, auto.
   Outside tmux it starts in its own; --tmux off stays out.
   /pane shows the turn and its sub-agents; /pane off closes it.
@@ -662,16 +663,22 @@ async def run_turn(ui, prompt):
     ui.drawn = 0
     spec = ui.agent.model
     ask, media = prompt + media_note(atts, spec), media_parts(atts, spec)
+    stopped = threading.Event()
+    def post(chunk):
+        if not stopped.is_set(): loop.call_soon_threadsafe(q.put_nowait, chunk)
     def pump():
         try:
             for chunk in ui.agent.stream_with(ask, image=media or None):
-                loop.call_soon_threadsafe(q.put_nowait, chunk)
-        except Exception as e: loop.call_soon_threadsafe(q.put_nowait, agent_err(e))
-        finally: loop.call_soon_threadsafe(q.put_nowait, None)
+                if stopped.is_set(): break
+                post(chunk)
+        except Exception as e: post(agent_err(e))
+        finally: post(None)
     threading.Thread(target=pump, daemon=True).start()
     blk, run = None, None
+    received = []
     try:
         while True:
+            ui.mark_read()
             try: chunk = await asyncio.wait_for(q.get(), .05)
             except asyncio.TimeoutError:
                 run = run or ui.agent.run()
@@ -679,9 +686,12 @@ async def run_turn(ui, prompt):
                 continue
             if chunk is None:break
             run = run or ui.agent.run()
-            if run is not None and run.cancelled:break
+            received.append(chunk)
             blk = ui.stream(blk, chunk)
+            if run is not None and run.cancelled:break
     finally:
+        stopped.set()
+        ui.mark_read(final=True)
         ui.turn = None
         close_done_shells(ui.agent.host)
         ui.write_now(force=True)
@@ -694,7 +704,7 @@ async def run_turn(ui, prompt):
         ui.ring()
         ui.touch(now=True)
         ui.paint()
-    if blk is not None and ui._reply: ui.log_cell('**assistant**\n\n' + ui._reply, cell_type='markdown')
+        if received: ui.log_cell('**assistant**\n\n' + ''.join(received), cell_type='markdown')
     return blk
 
 # %% ../nbs/05_cli.ipynb #02201508
@@ -799,10 +809,12 @@ class Ui:
         self.turn = None
         self.starting = self.closed = False
         self._queued = None
-        self._queued_prompt = None
+        self._queued_text = []   #: the queued lines, one per entry; `_queued_prompt` joins them
+        self._typed = ''   #: what the last Enter took from the composer, for a refused turn to give back
         self._prompt = None
         self._flash = None
         self._queued_echo = []
+        self._steered = []
         self._hold = False
         self.pane, self._pane_at, self._alive_at, self._reopen_at = None, None, 0.0, 0.0
         self._opened_at, self._quick = None, 0
@@ -1081,10 +1093,11 @@ class Ui:
         self.say(Text(text), kind, fold=None)
         return None
 
-    def fold_work(self):
-        "Open or shut every step and call of the turn; True when shut."
+    def fold_work(self, all_turns=False):
+        "Open or shut tool blocks in this turn or the whole transcript; True when shut."
         self.flush_stream()
-        work = [b for b in self.turn_blocks() if b.tag == 'tool' and b.height > 1]
+        blocks = self.comp.blocks.values() if all_turns else self.turn_blocks()
+        work = [b for b in blocks if b.tag == 'tool' and b.height > 1]
         if not work: return False
         shut = not all(b.collapsed or self._capped(b) for b in work)
         for b in work:
@@ -1140,25 +1153,35 @@ class Ui:
         self._prompt = prompt
         return run_turn(self, prompt)
 
+    @property
+    def _queued_prompt(self):
+        "The queued lines as one prompt; None when nothing queued carries one."
+        return '\n\n'.join(self._queued_text) or None
+
+    @_queued_prompt.setter
+    def _queued_prompt(self, text): self._queued_text = [] if text is None else [text]
+
     def start_turn(self, coro, prompt=None):
         "Spawn a turn, or queue it behind the running one; True if it started."
         prompt, self._prompt = (self._prompt if prompt is None else prompt), None
+        typed, self._typed = self._typed, ''
         if self._turn_over(): self.turn = None
         if self.turn is not None:
             if self._queued is not None:
                 if prompt is None or self._queued_prompt is None:
                     coro.close()
                     self._retract()
-                    self.note('something is already waiting · ctrl+c clears it and stops this turn')
+                    if typed: self.buf.insert(typed)   # `submit` cleared it; a refused line is not lost
+                    self.note('something is already waiting · alt+up takes it back · ctrl+c stops this turn')
                     return False
                 coro.close(); self._queued.close()
-                self._queued_prompt += '\n\n' + prompt
+                self._queued_text.append(prompt)
                 self._queued = run_turn(self, self._queued_prompt)
                 self._queued_echo += self._retract()
                 self.flash('absorbed into the queued message')
                 return False
             self._queued, self._queued_prompt, self._queued_echo = coro, prompt, self._retract()
-            self.note('queued · it runs when this turn ends · ctrl+c stops and clears it')
+            self.note('queued · it runs when this turn ends · alt+up takes it back · ctrl+c stops this turn')
             return False
         self.turn = self.comp.spawn(coro, name='turn')
         self._echoed = []
@@ -1167,13 +1190,33 @@ class Ui:
 
     def steer(self, line):
         "Send `line` into the running turn, what is attached named by path for the model to read; False if no turn listens."
-        if self.turn is None or not self.agent.steer(line + steer_note(self.attachments)): return False
+        sent = line + steer_note(self.attachments)
+        if self.turn is None or not self.agent.steer(sent): return False
         names, self.attachments = ', '.join(a.name for a in self.attachments), []
         self._retract()
-        self._echo(Text('↪ ' + line + (f'  [{names}]' if names else '')), 'user', pad=True)
+        text = '↪ ' + line + (f'  [{names}]' if names else '')
+        blk = self._echo(Text(text), 'user', pad=True, source=text)
+        self._steered.append((sent, blk))
         self._echoed = []
         self.flash('sent · read after the current call')
         return True
+
+    def mark_read(self, final=False):
+        "Mark steering delivered after it leaves the inbox; leave unread text unmarked."
+        if not self._steered: return
+        run = self.agent.run()
+        if run is None: return
+        with run._lock: unread = list(run.inbox)
+        waiting = []
+        for text, blk in reversed(self._steered):
+            if text in unread:
+                unread.remove(text)
+                if not final: waiting.append((text, blk))
+            else:
+                source = (blk.source or '') + ' ✓'
+                self.comp.set_body(blk, Text(source), source=source)
+                self.comp.refresh_block(blk)
+        self._steered = list(reversed(waiting))
 
     def steer_queued(self):
         "Hand the queued line to the running turn now; False when nothing waits or no turn listens."
@@ -1191,6 +1234,7 @@ class Ui:
         if self._turn_over(): self.turn = None
         # the running turn drains this when it ends
         if self.turn is not None: return
+        self.mark_read(final=True)
         if (left := '\n\n'.join(self.agent.leftovers())):
             if self._queued is not None and self._queued_prompt is None:
                 self.start_turn(run_turn(self, left), prompt=left)
@@ -1208,13 +1252,17 @@ class Ui:
             self.note(f'the waiting message did not start: {agent_err(e)}', 'error')
         self.paint()
 
-    def drop_queued(self):
-        "Forget a waiting line and any unread steering."
+    def take_back(self):
+        "Return unread steering, the queued lines and the current draft to the composer, in the order said; False when nothing waited."
+        self.mark_read(final=True)
         unread = self.agent.leftovers()
         if self._queued is None and not unread: return False
+        waiting = list(self._queued_text)
         if self._queued is not None: self._queued.close()
         self._queued, self._queued_prompt, self._queued_echo = None, None, []
-        self.note('the waiting message was cleared')
+        text = '\n\n'.join(p for p in (*unread, *waiting, self.buf.text) if p.strip())
+        self.buf.text, self.buf.cursor = text, len(text)
+        self.note('the waiting message is back in the composer')
         return True
 
     def _act(self, act):
@@ -1352,13 +1400,18 @@ class Ui:
             return None
         return Text(' \u2713 ' + self._flash[0], style=GRUVBOX['green'])
 
-    def queued_row(self):
-        "The row showing the message waiting for this turn to end."
-        if self._queued is None: return None
-        what = ' '.join((self._queued_prompt or '').split()) or 'a command'
+    def queued_rows(self):
+        "One row per message waiting for this turn to end; a queued command is one row of its own."
+        if self._queued is None: return []
+        lines = self._queued_text or ['']
+        return [self.queued_row(line, i == len(lines) - 1) for i, line in enumerate(lines)]
+
+    def queued_row(self, line, last=True):
+        "The row for one waiting message; the last one carries the keys."
+        what = ' '.join(line.split()) or 'a command'
         row = Text(' \u23f3 queued  ', style=GRUVBOX['yellow'])
         row.append(what[:79] + '\u2026' if len(what) > 80 else what, style=GRUVBOX['fg0'])
-        row.append('   enter steers it into this turn · ctrl+c clears it', style=GRUVBOX['gray'])
+        if last: row.append('   enter steers it into this turn · alt+up takes it back · ctrl+c stops', style=GRUVBOX['gray'])
         return row
 
     def copy_last(self, tag='reply'):
@@ -1549,8 +1602,10 @@ class Ui:
             return self.paint()
         if k.name in ('enter', 'shift+enter', 'alt+enter'):
             self._hold = k.name != 'enter'
+            self._typed = self.buf.text.strip()   # `submit` clears the buffer; a refused turn gives this back
             coro = self.submit()
             self._hold = False
+            if coro is None or isinstance(coro, str): self._typed = ''
             self.paint()
             return coro
         if k.name == 'ctrl+v':
@@ -1559,8 +1614,8 @@ class Ui:
         if k.name == 'ctrl+g':
             self.note(self.tighten_approve())
             return self.paint()
-        if k.name == 'ctrl+o':
-            self.fold_work()
+        if k.name in ('ctrl+o', 'alt+o'):
+            self.fold_work(all_turns=k.name == 'alt+o')
             return self.paint()
         if k.name.startswith('alt+') and k.name[4:].isdigit() and k.name[4:] != '0':
             self.drill(int(k.name[4:]))
@@ -1730,17 +1785,26 @@ def tighten_approve(self:Ui):
 
 @patch
 def cycle_approve(self:Ui):
-    "Cycle ask, edits, auto; from off, go to ask."
+    "Cycle ask, edits, auto, then plan mode, then ask again; from off, go to ask."
     a = self.agent.approvals
     if a is None: return 'this session runs without approvals'
     ring = APPROVE_MODES[1:]
+    try:
+        if self.agent.plan_mode:
+            self.agent.set_plan_mode(False)
+            return a.set_mode('ask')
+        if a.mode == ring[-1]:
+            self.agent.set_plan_mode(True)
+            return 'plan mode: tools that act are withheld, and the model proposes a plan'
+    except RuntimeError as e: return str(e)
     return a.set_mode(ring[(ring.index(a.mode) + 1) % len(ring)] if a.mode in ring else 'ask')
 
 APPROVE_CHIPS = {'ask': ('⏵ ask', 'gray'), 'edits': ('⏵⏵ edits', 'blue'), 'auto': ('⏵⏵⏵ auto', 'red'), 'off': ('⊘ off', 'red')}
 
 @patch
 def chip(self:Ui):
-    "The approval mode as one short token, or None when nothing is gated."
+    "Plan mode or the approval mode as one short token, or None when nothing is gated."
+    if getattr(self.agent, 'plan_mode', False): return Text('⏸ plan', style=GRUVBOX['aqua'])
     a = getattr(self.agent, 'approvals', None)
     if a is None or a.mode not in APPROVE_CHIPS: return None
     label, colour = APPROVE_CHIPS[a.mode]
@@ -1765,7 +1829,7 @@ def tail(self:Ui):
     chips = self.attach_row()
     if chips is not None: rows.append(chips)
     rows += self.working()
-    for r in (self.queued_row(), self.flash_row()):
+    for r in (*self.queued_rows(), self.flash_row()):
         if r is not None: rows.append(r)
     rows.append(self.prompt())
     before = Text(self._prefixed(self.buf.text[:self.buf.cursor]))
@@ -2507,7 +2571,7 @@ def stop(self:Ui):
         self._stop_count, self._stop_run = 0, ''
     self._stop_at, self._stop_count = now, self._stop_count + 1
     if self._stop_count >= 3:return 'quit'
-    cleared = self.drop_queued()
+    cleared = self.take_back()
     if self.starting: return self.note('the model is still starting · ctrl+d quits')
     if self.turn is not None:
         self.flush_stream()
@@ -2535,9 +2599,13 @@ _ui_on_key = Ui.on_key
 
 @patch
 def on_key(self:Ui, k):
+    "Ctrl-C stops without wiping the composer; alt+up pulls queued text back into it."
+    if k.name == 'alt+up' and self.ask is None and not self.transcript.active:
+        if not self.take_back(): self.flash('nothing queued to take back')
+        self.paint()
+        return None
     if (k.name == 'ctrl+c' and self.mode != 'python' and self.ask is None
             and (self.turn is not None or self._stop_count)):
-        self.buf.clear()
         return self.stop()
     return _ui_on_key(self, k)
 

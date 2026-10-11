@@ -8,14 +8,16 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES',
-           'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'TODO_STATUSES', 'TODO_MARK',
-           'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'MEMORY_CHARS', 'HISTORY_TAIL',
-           'HISTORY_TURNS', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP',
-           'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER',
+           'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES',
+           'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS',
+           'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL',
+           'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP',
+           'PR_SP', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER',
            'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject',
            'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'request_text',
-           'prompt_directives', 'project_context', 'work_rules', 'system_prompt', 'small_system_prompt', 'Todo', 'Plan',
-           'plan_tools', 'Agent', 'git_shell_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
+           'prompt_directives', 'project_context', 'work_rules', 'skill_catalogue', 'system_prompt',
+           'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
+           'shell_denial', 'generated_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
@@ -562,7 +564,7 @@ def apply(): return True
 def note(): return 'provided by rishi.remote'
 
 # %% ../nbs/03_agent.ipynb #6b808b15
-INLINE_SKILLS = ('exhash', 'coding_patterns')
+INLINE_SKILLS = ('exhash',)
 
 def inline_for(inline, names):
     "The skills to inline for a tool list: `exhash` only when `edit_file` is offered."
@@ -728,6 +730,18 @@ def work_rules(names=(), rules=RULES, pictures=True):
                      if not names or tool is None or tool in names)
 
 
+CATALOGUE_CHARS = 70   # chars of one skill's description in the briefing
+
+def skill_catalogue(skills):
+    "The briefing's skill list: one line per skill, the first sentence of its description clipped to `CATALOGUE_CHARS`."
+    if not skills: return ''
+    def first(desc):
+        s = re.split(r'(?<=[.!?])\s', ' '.join((desc or '').split()), maxsplit=1)[0]
+        return s if len(s) <= CATALOGUE_CHARS else s[:CATALOGUE_CHARS].rsplit(' ', 1)[0].rstrip(',;:') + '…'
+    point = ' Read `coding_patterns` before writing, reviewing or refactoring code.' if any(s.name == 'coding_patterns' for s in skills) else ''
+    rows = '\n'.join(f'- `{s.name}`: {first(s.description)}' for s in skills)
+    return f'\n\n## Skills\n\nRead a skill with `read_skill(name)` before the work it covers.{point}\n\n{rows}'
+
 def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=(), cfg=None,
                   pictures=True):   # does the turn model see a picture a tool returns
 
@@ -754,7 +768,7 @@ the web, and read skills that describe the tools already installed here.
 
 How to work:
 {work_rules(names, pictures=pictures)}{live}"""
-    idx = skill_index(skills)
+    idx = skill_catalogue(skills)
     if idx: sp += idx
     for name in inline or ():
         if (s := find(skills, name)): sp += f'\n\n## {s.name}\n\n{s.text()}'
@@ -790,12 +804,44 @@ These apply on top of the rules above, and outrank them where they disagree.
 - Correct the record. When an earlier claim of yours turns out to be wrong, say so plainly rather than moving quietly past it.
 - When a turn involved a concrete mistake with a reusable correction, record the mistake and its fix in Vishalakshi with `remember`, so later work can avoid it.
 
-- Everything the user needs is in the final text of the turn, with no tool call after it. Text between tool calls may never reach them, so restate anything important that appeared only mid-run.
+- Everything the user needs is in the final text of the turn, with no tool call after it.
 - Lead with the outcome when the turn concludes: the first sentence says what happened or what you found.
 - No metadiscourse. Do not advertise the content ("the key point is", "what's interesting is"), and never end on a caveat or a note. A risk that could change the decision belongs in the body, beside the reasoning it affects.
 - Readable outranks concise. Shorten by cutting what the reader does not need, never by dropping into fragments, abbreviations, arrow chains or jargon. Write full sentences and spell the terms out.
 - Never hard-wrap prose: one paragraph is one line, and the display wraps it. To show markdown the user can copy, use a four-space indented block rather than a fence.
 """
+
+QUIET_NOTE = 'Text between tool calls may never reach the user, so restate anything important that appeared only mid-run.'
+
+GPT_NOTES = """## Working as GPT
+
+These apply on top of the rules above. Where two instructions seem to conflict, the user's latest explicit request wins, then the project instructions, then these notes.
+
+- Gather only the context the change needs. Run independent searches and reads in one message, and stop searching once you can name the exact code to change.
+- Keep going until the request is resolved. When a call fails or a fact is uncertain, investigate and continue rather than handing the question back. Ask only when the answer would change what the user gets and no tool can settle it.
+- Make the call when a step needs a tool. A plan of calls, or a description of one, runs nothing.
+- Write the final answer in plain sentences. Use headings, tables and bold only when the user asks for a document.
+"""
+
+GEMINI_NOTES = """## Working as Gemini
+
+These apply on top of the rules above.
+
+- Read a file before you describe or change it, and copy `oldText` from what the read returned. Never reconstruct a file's contents from memory.
+- Check that a library or command exists in this project, in its imports, `pyproject.toml` or venv, before you use it.
+- Use paths exactly as the workspace lists them.
+- Calls that do not depend on each other go together in one message.
+- Leave changes you did not make alone unless the user asks you to revert them.
+- Keep the final answer short: what changed, what was verified, and what remains. Do not apologise or summarise the conversation.
+"""
+
+#: briefing notes by model family; `model_family` chooses the key
+MODEL_NOTES = dict(claude=CLAUDE_NOTES, gpt=GPT_NOTES, gemini=GEMINI_NOTES, default='')
+
+def model_family(spec):
+    "The `MODEL_NOTES` key for a turn spec: `claude`, `gpt`, `gemini` or `default`."
+    name = f'{spec.runtime} {spec.model_id}'.lower()
+    return next((f for f in ('claude', 'gpt', 'gemini') if f in name), 'default')
 
 # %% ../nbs/03_agent.ipynb #8f32832a
 TODO_STATUSES = ('pending', 'active', 'done', 'cancelled')
@@ -1010,7 +1056,7 @@ class Agent:
                  readonly=False,            # withhold every tool that acts
                  readonly_calls=None,       # hard cap on read-only calls, when set
                  local_multimodal=False,       # load LiteRT vision/audio encoders for local models
-                 tool_max_len=MAX_TOOL_CHARS,
+                 tool_max_len=None,           # None scales the result cap to the model window
                  on_compact=None,
                  on_activity=None,
                  history_name='agent',      # names this durable conversation in the config dir
@@ -1041,7 +1087,7 @@ class Agent:
         self.subagent_writes = bool(subagent_writes)
         self.subagent_steps, self.subagent_timeout, self.subagent_depth = _sub_steps(subagent_steps), _sub_timeout(subagent_timeout), _sub_depth(subagent_depth)
         self.sub_slots = Slots()   # one bound on sub-agents at once, across every delegation tree
-        self.readonly, self.readonly_calls = bool(readonly), readonly_calls
+        self.readonly, self.readonly_calls, self.plan_mode = bool(readonly), readonly_calls, False
         self.local_multimodal = bool(local_multimodal)
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
         self._sp = sp
@@ -1252,7 +1298,7 @@ def _record(self:Agent, f):
                         'summarise the evidence and unfinished work now.')
         elif not self._draw(): return TREE_SPENT
         denied, rewritten = None, False
-        for r in (self._deny_git_shell(name, args), *self.registry.fire('before_tool', self, name, args)):
+        for r in (self._guard(name, args), *self.registry.fire('before_tool', self, name, args)):
             if isinstance(r, str): denied = denied or r
             elif isinstance(r, dict): a, kw, args, rewritten = (), dict(r), _named(f, (), dict(r)), True
         writing = is_write(f) or path_write(name, args)
@@ -1345,6 +1391,39 @@ def _deny_git_shell(self:Agent, name, args):
     return git_shell_denial(args.get('command', ''), {t.__name__ for t in self.tools}) if name == 'run_shell' else None
 
 
+HIDING = {'head', 'tail'}   #: commands a pipe may not end in: they cut output before anyone has read it
+
+def shell_denial(command):
+    "Why a shell line hides its own output, or ''. Quoted text never matches; a `sh -c` line is read too."
+    try: toks = list(shlex.shlex(str(command or ''), posix=True, punctuation_chars=True))
+    except ValueError: return ''
+    for i, t in enumerate(toks):
+        nxt = toks[i + 1:i + 3]
+        if t in ('|', '|&') and nxt and Path(nxt[0]).name in HIDING:
+            return (f'`| {nxt[0]}` cuts the output a failure is in. Run the command bare, or redirect stdout '
+                    'and stderr to separate files and read both')
+        if t == '2' and nxt == ['>&', '1']:
+            return '`2>&1` merges stderr into stdout. Leave them apart, so a crash stays visible'
+        if i and re.fullmatch(r'-[a-zA-Z]*c', t) and Path(toks[i - 1]).name in _SHELLS and i + 1 < len(toks):
+            if (why := shell_denial(toks[i + 1])): return why
+    return ''
+
+_GENERATED = re.compile(r'AUTOGENERATED! DO NOT EDIT! File to edit: (\S+?)\.?$', re.M)
+
+def generated_denial(host, name, args):
+    "Why a write would hand-edit an nbdev-generated module, or ''."
+    for p in write_targets(name, args):
+        if (m := _GENERATED.search((host.text_at(p) or '')[:300])):
+            return f'{p} is generated from {m.group(1)}. Edit that notebook, then run `nbdev-export`'
+    return ''
+
+@patch
+def _guard(self:Agent, name, args):
+    "Why a call is refused before it runs, or None: git goes through git tools, shell output is read whole, generated modules are left to their notebooks."
+    if name in ('run_shell', 'run_shell_bg'): return self._deny_git_shell(name, args) or shell_denial(args.get('command', '')) or None
+    return generated_denial(self.host, name, args) or None
+
+
 @patch
 def _keep_undo(self:Agent, name, out):
     "Keep a git write's `undo` token, resulting HEAD and repository root against this turn, for `/rewind`."
@@ -1395,7 +1474,7 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
         if not small and 'memory' not in self.host.provides: extra += note_tools(self.note_memory)
         if full and not small:
             if self.subagents:
-                extra += self._delegation_tools(self._sub_tools, background=self.background)
+                extra += self._delegation_tools(self._sub_tools, background=self.background, get_max=lambda: budget.tool_max)
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
                           drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
@@ -1429,12 +1508,15 @@ def _sub_plain(self:Agent):
     return [t for t in tools if getattr(t, '__name__', '') not in ROOT_ONLY]
 
 @patch
-def _delegation_tools(self:Agent, get_tools, background=None):
+def _delegation_tools(self:Agent, get_tools, background=None,
+                      get_max=None,   # callable -> chars a delegation result may spend; the turn budget when None
+                      ):
     "`subagent_tools` on this session's settings; `get_tools` alone decides what a sub-agent gets."
     return subagent_tools(lambda: self._be_or_none('subagent'), get_tools, lambda: self.skills, self._cloud_backend_or_none,
                           lambda: self.subagent_writes, lambda: self.approvals.gate if self.approvals is not None else None,
                           background=background, get_log_dir=lambda: self.runs_dir, get_pictures=lambda ps: read_pictures(self.host, ps),
-                          get_steps=lambda: self.subagent_steps, get_timeout=lambda: self.subagent_timeout, slots=self.sub_slots, block=())
+                          get_steps=lambda: self.subagent_steps, get_timeout=lambda: self.subagent_timeout, slots=self.sub_slots, block=(),
+                          get_max=get_max or (lambda: self.budget.tool_max))
 
 @patch
 def _sub_tools(self:Agent, depth=0):
@@ -1442,7 +1524,7 @@ def _sub_tools(self:Agent, depth=0):
     tools = self._sub_plain()
     tools = tools if self.subagent_writes else [self._observe(t) for t in tools]
     if not self.subagents or depth >= self.subagent_depth: return tools
-    nest = first(t for t in self._delegation_tools(lambda: self._sub_tools(depth + 1)) if t.__name__ == 'delegate_search')
+    nest = first(t for t in self._delegation_tools(lambda: self._sub_tools(depth + 1), get_max=lambda: self.subagent_budget.tool_max) if t.__name__ == 'delegate_search')
     return tools + [self._observe(nest)]
 
 # %% ../nbs/03_agent.ipynb #76e57894
@@ -1476,7 +1558,7 @@ def tools(self:Agent):
     "Every tool the turn model can afford, built once and recorded. Rebuilt by `reload`."
     if self._tools is None:
         view = self._catalog_for(self.budget, profile=self.profile)
-        if self.readonly:
+        if self.readonly or self.plan_mode:
             view = view.read_only(self.readonly_calls, effects=False, block=NO_SUB)
         self._catalog_view = view
         if self.approvals is not None:
@@ -1492,7 +1574,7 @@ def tools(self:Agent):
 # %% ../nbs/03_agent.ipynb #f37435ce
 @patch
 def system_prompt(self:Agent):
-    note = inbox_note(self.inbox_key) + (STATUS_NOTE if self._quiet else '')
+    note = inbox_note(self.inbox_key) + (STATUS_NOTE if self._quiet else '') + (PLAN_NOTE if self.plan_mode else '')
     if self._sp: return self._sp + note
     if self._tools is None: self.tools
     if self.profile == 'small': return small_system_prompt(self.host, tools=self._plain, cfg=self.cfg) + note
@@ -1503,12 +1585,13 @@ def system_prompt(self:Agent):
                      if self.subagent_writes else
                      'Sub-agents are read-only this session: `delegate_async(writes=True)` is refused until the user runs `/subagents on`.')
     if (m := self.memory_context('briefing', MEMORY_CHARS)): parts.append(f'## Remembered\n\n{m}')
-    if (s := self.spec_or_none('turn')) is not None and (s.runtime == 'claude' or 'claude' in s.model_id): parts.append(CLAUDE_NOTES)
+    s = self.spec_or_none('turn')   # not `_be`: building the backend asks for this briefing
+    if s is not None and (notes := MODEL_NOTES[model_family(s)]): parts.append(notes)
+    if self._quiet: parts.append(QUIET_NOTE)
     if self.plan:
         parts.append('## Current plan\n\n' + self.plan.md() +
                      '\n\nWork the active todo; mark it done when finished; after a stop, '
                      'resume from the active item rather than rewriting the plan.')
-    s = self.spec_or_none('turn')   # not `_be`: building the backend asks for this briefing
     pics = s is None or (be.takes_pictures if (be := self._backends.get((s.backend, s.model_id))) is not None else accepts(s, 'image'))
     return system_prompt(self.host, self.skills, inline, tools=self._plain, extra='\n\n'.join(parts), cfg=self.cfg, pictures=pics) + note
 
@@ -1559,7 +1642,7 @@ def _be(self:Agent, job='turn'):
         is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
         kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
         if is_turn:
-            kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.tool_max_len,
+            kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
                       approve=(self.approvals.gate if self.approvals is not None else None))
         self._backends[key] = make_backend(spec, **kw)
     return self._backends[key]
@@ -1746,10 +1829,33 @@ def reload(self:Agent):
 def refresh(self:Agent):
     "Re-discover skills, extensions and tools, and re-brief a running turn backend in place."
     self._forget()
+    return self._rebrief()
+
+@patch
+def _rebrief(self:Agent):
+    "Hand a running turn backend this agent's current briefing and tools; one not yet started takes them when it starts."
     spec = self.routing.spec('turn')
     b = self._backends.get((spec.backend, spec.model_id))
     if b is not None: b.refresh(self.system_prompt(), self.tools)
     return self
+
+PLAN_NOTE = """
+
+## Plan mode
+
+This session is in plan mode, so every tool that acts is withheld. Read what the task needs, then reply with a numbered plan: the files and symbols involved, the change to each, its risk, and the order to make them in. Do not try to make the change. The user leaves plan mode when they approve the plan.
+"""
+
+@patch
+def set_plan_mode(self:Agent, on):
+    "Withhold every acting tool and brief the model to plan, or give the tools back. The conversation carries on either way."
+    on = bool(on)
+    if on == self.plan_mode: return on
+    if self.busy: raise RuntimeError('cannot switch plan mode while the assistant is working')
+    self.plan_mode, self._tools = on, None
+    self._rebrief()
+    self.note = f'plan mode {"on" if on else "off"}'
+    return on
 
 @patch
 def add_tool(self:Agent, f):
@@ -2226,12 +2332,13 @@ def resume_session(self:Agent, selector='latest',
         if len(matches) != 1: raise KeyError(f'session {selector!r} matched {len(matches)} conversations')
         picked = matches[0]
     self.resumed_roots = self.session_added_roots(picked['id'])
-    turns = [t for t in self.session_turns(picked['id']) if t.get('state', 'complete') in REPLAYED]
+    turns = [t for t in self.session_turns(picked['id']) if t.get('state', 'complete') in (*REPLAYED, 'cancelled')]
     canonical = []
     for turn in turns:
         steer = '\n'.join(turn.get('steered') or ())
         canonical.append({'role': 'user', 'content': str(turn.get('prompt', '')) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
         body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
+        if turn.get('state') == 'cancelled': body += '\n\n[This turn was interrupted by the user; this is an incomplete reply.]'
         if body.strip(): canonical.append({'role': 'assistant', 'content': body})
     if picked['model'] and not keep_model: self.set_model(picked['model'])
     self._be('turn').resume_hist(canonical)
@@ -2839,6 +2946,10 @@ def command(self:Agent, line):
         except RuntimeError as e: return str(e)
         except ValueError: return 'say /subagents on|off, or /subagents steps N, timeout S or nest N'
         return self.subagent_report
+    if name == 'planmode':
+        try: on = self.set_plan_mode(arg.lower() in ('on', 'yes', 'true', '1')) if arg else self.plan_mode
+        except RuntimeError as e: return str(e)
+        return 'plan mode on: tools that act are withheld, and the model proposes a plan' if on else 'plan mode off'
     if name == 'cost': return repr(self.use)
     if name == 'compact':
         t = self.compact(arg)
@@ -3143,7 +3254,7 @@ def unwatch(self:Agent, target='all'):
 def commands(self:Agent):
     "Every command name, built-in and registered, for a help line or an autocomplete."
     return sorted({'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
-                   'subagents', 'plan', 'todos', 'todo', 'rewind', 'branches', 'branch', 'commit', 'pr', *self.registry.commands})
+                   'subagents', 'plan', 'planmode', 'todos', 'todo', 'rewind', 'branches', 'branch', 'commit', 'pr', *self.registry.commands})
 
 # %% ../nbs/03_agent.ipynb #8fd374fe
 COMPLETE_SP = """You are a code completion engine inside an editor. You are given the code before \
@@ -3645,7 +3756,7 @@ def _be(self:Agent, job='turn'):
         is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
         kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
         if is_turn:
-            kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.tool_max_len,
+            kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
                       approve=(self.approvals.gate if self.approvals is not None else None))
         backend = make_backend(spec, **kw)
         if is_turn:
