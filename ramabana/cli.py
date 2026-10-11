@@ -12,17 +12,17 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION',
            'GUIDE', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT',
            'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE',
-           'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES',
-           'RESUME_SHOWN', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok',
-           'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics',
-           'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs',
-           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn',
-           'hl_text', 'is_diff', 'diff_rich', 'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern',
-           'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty',
-           'stderr_to', 'stderr_log', 'pick_session', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main',
-           'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths',
-           'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
-           'media_note']
+           'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS',
+           'BLOCK_START', 'PYREPL_MODULES', 'RESUME_SHOWN', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH',
+           'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text',
+           'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
+           'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
+           'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich', 'changed_table', 'opens',
+           'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md',
+           'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'amain',
+           'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA',
+           'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs',
+           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -1049,14 +1049,12 @@ class Ui:
         self.comp.spawn(self._suggest(), name='suggest')
 
     def overlay(self):
-        "Transient rows above the tail: options, slash completion, or the plan checklist."
+        "Transient rows above the tail, drawn over the transcript while they last: options or slash completion."
         if self.menu is not None: return self.menu.render()
         if self.complete is not None:
             rows = [self.complete.renderable()]
             if self.desc: rows.append(Text('  '.join(self.desc), style=GRUVBOX['gray']))
             return rows
-        if self.show_plan and self.agent.plan:
-            return [Tooltip(self.agent.plan.md(), max_lines=12).renderable()]
         return []
 
     def paint(self):
@@ -1830,9 +1828,19 @@ def model_row(self:Ui):
     if (c := self.chip()) is not None: row.append_text(c).append('  ')
     return row.append(note, style=GRUVBOX['gray'])
 
+PLAN_ROWS, PLAN_RESERVE = 12, 4   #: the most plan lines the tail shows, and the transcript rows it always leaves
+
+@patch
+def _plan_rows(self:Ui, rows):
+    "The plan checklist to head the tail, in the rows the screen can spare beside `rows`; none while a menu, completion or the browsing view is up."
+    if not (self.show_plan and self.agent.plan) or self.menu is not None or self.complete is not None or self.transcript.active: return []
+    used = sum(len(self.comp.console.render_lines(r, pad=False)) for r in rows)
+    room = self.comp.rows - used - PLAN_RESERVE
+    return [Tooltip(self.agent.plan.md(), max_lines=min(PLAN_ROWS, room - 1)).renderable()] if room >= 2 else []
+
 @patch
 def tail(self:Ui):
-    "The live-tail description shared with Teleprint's transcript view."
+    "The live-tail description shared with Teleprint's transcript view. The plan checklist heads it rather than covering the transcript."
     rows = [self.status(), self.model_row()]
     if self.hint: rows.append(Text(' ' + self.hint, style=GRUVBOX['gray']))
     chips = self.attach_row()
@@ -1841,6 +1849,7 @@ def tail(self:Ui):
     for r in (*self.queued_rows(), self.flash_row()):
         if r is not None: rows.append(r)
     rows.append(self.prompt())
+    rows[:0] = self._plan_rows(rows)
     before = Text(self._prefixed(self.buf.text[:self.buf.cursor]))
     rendered = self.comp.console.render_lines(before, pad=False)
     cursor = (len(rows) - 1, len(rendered) - 1, sum(s.cell_length for s in rendered[-1]))
@@ -1983,7 +1992,8 @@ def compact_md(text):
             prose_block = False; out.append(line); continue
         if fence: out.append(line); continue
         if line.strip():
-            if not out or not out[-1].strip(): prose_block = _prose(line)
+            starts = not out or not out[-1].strip()
+            prose_block = _prose(line) and (starts or prose_block)   # a list item under a lead line ends the prose
             out.append(line); continue
         nxt = next((l for l in lines[i + 1:] if l.strip()), '')
         if prose_block and out and out[-1].strip() and _prose(nxt):
