@@ -18,7 +18,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_directives', 'project_context',
            'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
            'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools', 'Completer',
-           'mk_host', 'mk_agent']
+           'request_title', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, os, re, shlex, threading, time, tomllib, uuid
@@ -29,7 +29,7 @@ from fastcore.basics import first, ifnone, patch
 from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from urai import parse_args, tc_name, tool_media
-from .core import accepts, AgentError, agent_err, available_models, missing_key, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
+from .core import accepts, AgentError, agent_err, available_models, missing_key, needs, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .runtime import QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo
@@ -1992,7 +1992,7 @@ def start(self:Agent):
     "Build the turn backend, once. Returns it, or None with `note` explaining why not."
     b = self._be('turn')
     if (k := missing_key(b.spec)):
-        self.note = f'turn job: {b.spec.name} needs {k}; set it in the environment'
+        self.note = f'turn job: {b.spec.name} {needs(k)}'
         return None
     if b.start() is None:
         self.note = b.note
@@ -2307,9 +2307,9 @@ def session_owner(self:Agent, sid):
 
 @patch
 def _from_here(self:Agent, sid):
-    "Whether session `sid` was last used with one of this host's folders."
-    o = None if self.cfg is None else _read_json(self.cfg/'runs'/str(sid)/OWNER)
-    return bool(o) and bool({str(r) for r in self.host.roots} & set(o.get('roots') or ()))
+    "Whether session `sid` ran with one of this host's folders: those its index entry saved, else those its last holder recorded."
+    roots = self.session_meta(sid).get('roots') or ((None if self.cfg is None else _read_json(self.cfg/'runs'/str(sid)/OWNER)) or {}).get('roots') or ()
+    return bool({str(r) for r in self.host.roots} & set(roots))
 
 @patch
 def _prepare(self:Agent, prompt):
@@ -2843,9 +2843,16 @@ def revise(self:Agent, turn_id, text, branch_id=''):
 # %% ../nbs/03_agent.ipynb #2741493e
 @patch
 def oneshot(self:Agent, prompt, sp='', job='oneshot', max_tokens=None):
-    "A question on whichever model `job` routes to, in a conversation that is thrown away."
-    b = self._be_or_none(job)
-    return '' if b is None else b.oneshot(prompt, sp, max_tokens, job=job)
+    "A question on whichever model `job` routes to, in a conversation that is thrown away. A cloud model that fails or answers nothing is set aside, and the question goes to `job`'s next route."
+    tried = set()
+    while (b := self._be_or_none(job)) is not None and b.spec.name not in tried:
+        tried.add(b.spec.name)
+        before = b.note
+        out = b.oneshot(prompt, sp, max_tokens, job=job, if_busy=None)
+        if out is None or out or b.spec.local: return out or ''
+        why = b.note.removeprefix(f'{b.spec.name} ') if b.note != before else 'answered nothing'
+        self.routing.down[b.spec.name] = (why, time.time())
+    return ''
 
 # %% ../nbs/03_agent.ipynb #7b71fdf3
 @patch
@@ -3012,8 +3019,10 @@ def command(self:Agent, line):
         try: return f'{model_note(self.set_model(m or job, job if m else "turn"))} · {self.profile} profile'
         except Exception as e: return agent_err(e)
     if name == 'sessions':
-        rows = self.sessions()
+        every = self.sessions()
+        rows = every if arg.lower() == 'all' else [s for s in every if self._from_here(s['id'])]   # this folder's, unless asked for all
         if rows: return '\n'.join(f"{s['id']}  {s['turns']:>3} turns  {s['model']:<20} {s['title']}" for s in rows)
+        if every: return 'no saved sessions from these folders; /sessions all lists every folder'
         where = str(self.history_path) if self.history_path is not None else '(history disabled: no cfg directory)'
         return f'no saved sessions in {where}; a session is saved after its first completed turn'
     if name == 'resume':
@@ -3517,7 +3526,18 @@ def close(self:Agent):
 _HISTORY_LOCKS, _HISTORY_LOCKS_LOCK = {}, threading.RLock()
 _SESSION_META_VERSION = 2
 LEGACY_GAP = 1800
-_SESSION_DEFAULTS = {'title': '', 'title_turns': 0, 'muted': False, 'manual': False}
+_SESSION_DEFAULTS = {'title': '', 'title_turns': 0, 'muted': False, 'manual': False, 'roots': ()}
+
+_HARNESS = re.compile(r'<(system-reminder|notebook|background-results|watch-results|sent_mid_turn)\b[^>]*>.*?</\1>', re.S)
+
+def request_title(prompt, n=80):
+    "A session's title from its first request: the text in `<user-request>`, without the harness's blocks, to its first sentence and at most `n` characters."
+    text = str(prompt or '')
+    if (m := re.search(r'<user-request>(.*?)</user-request>', text, re.S)): text = m.group(1)
+    text = re.sub(r'</?user-request>', ' ', text)   # a prompt the index cut short keeps only its opening tag
+    text = ' '.join(_HARNESS.sub(' ', text).split()).lstrip('▌│┆┃ ')
+    if (m := re.match(r'(.+?[.?!])(\s|$)', text)): text = m.group(1)
+    return text if len(text) <= n else text[:n].rsplit(' ', 1)[0].rstrip(',;:') + '…'
 
 def _history_lock(agent):
     "One lock per history file, so agents sharing a log serialise their writes to it."
@@ -3753,7 +3773,7 @@ def summarize_session(self:Agent, sid=None, force=False):
     if not turns or (meta['manual'] and not force): return meta
     n = len(turns)
     if not force and meta['title_turns'] and n < meta['title_turns'] * 2:return meta
-    fallback = meta['title'] or ' '.join(str(turns[0].get('prompt', '')).split())[:72]
+    fallback = meta['title'] or request_title(turns[0].get('prompt', ''))
     prompt = '\n'.join(str(t.get('prompt', '')) for t in turns[-8:])
     try:
         title = ' '.join(self.oneshot(prompt, 'Write a short conversation title. Output only the title.', 'summary', 32).split())[:120]
@@ -3824,8 +3844,9 @@ def sessions(self:Agent):
     if not rows: return _agent_sessions(self)
     return sorted([{'id': sid, 'turns': int(r.get('turns', 0)), 'at': r.get('last_at', 0),
                     'first_at': r.get('first_at', 0), 'model': r.get('model', ''),
-                    'title': r.get('title') or r.get('first_prompt', ''),
-                    'title_turns': r.get('title_turns', 0), 'muted': bool(r.get('muted', False))}
+                    'title': r.get('title') or request_title(r.get('first_prompt', '')),
+                    'title_turns': r.get('title_turns', 0), 'muted': bool(r.get('muted', False)),
+                    'roots': list(r.get('roots') or ())}
                    for sid, r in rows.items() if r.get('turns')],
                   key=lambda row: row['at'], reverse=True)
 
@@ -3849,6 +3870,12 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
     with _history_lock(self):
         _agent_remember(self, prompt, text, error, state)
         if (span := self.__dict__.pop('_last_span', None)) and self.history: _index_turn(self, self.history[-1], *span)
+        if self.history_path is not None and self.history_path.exists():   # a session gets its title once, and every folder it runs in
+            meta, sid = self.session_meta(), self.session_id
+            saved = list(meta.get('roots') or ())
+            roots = saved + [r for r in map(str, self.host.roots) if r not in saved]
+            fill = ({} if meta.get('title') else {'title': request_title(prompt)}) | ({} if roots == saved else {'roots': roots})
+            if fill: _set_session_meta(self, sid, **fill)
 
 # %% ../nbs/03_agent.ipynb #491879ee
 @patch

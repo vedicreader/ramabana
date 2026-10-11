@@ -51,7 +51,7 @@ For the terminal on its own, `uv tool install 'ramabana[cli]'`, then `ramabana`.
 
 ## Point it at a model
 
-`--model` names the model this session’s turns run on. Without it the turn model is `$RAMABANA_MODEL`, then `$LEELA_MODEL`, then `claude-opus-5-5` through Claude Code. No default runs on the device: a local model runs only when you name it.
+`--model` names the model this session’s turns run on. Without it the turn model is `$RAMABANA_MODEL`, then `$LEELA_MODEL`, then `claude-opus-5-5` through Claude Code. A turn runs on the device only when you name a local model.
 
 ``` sh
 ramabana --root . --model sonnet
@@ -62,7 +62,7 @@ export RAMABANA_MODEL=sonnet    # the same choice in every session
 |----|----|----|
 | `opus`, `sonnet`, `fable`, `haiku`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-1` | Claude Code | a `claude /login` session |
 | `gpt`, `gpt-mini`, `gpt-sol`, `gpt-5.6`, `gpt-4.1`, `gpt-4.1-mini` | the OpenAI API | `OPENAI_API_KEY` |
-| `gpt-5.5`, `gpt-5.3-codex-spark` | Codex | a Codex login |
+| `gpt-6-luna`, `gpt-5.5`, `gpt-5.3-codex-spark` | Codex | a Codex login |
 | `anthropic/<id>` | the Anthropic API | `ANTHROPIC_API_KEY` |
 | `copilot/<id>` | GitHub Copilot | a Copilot sign-in |
 | `gemma-e2b`, `gemma-e4b`, `gemma-12b` | LiteRT, on the device | none |
@@ -72,7 +72,7 @@ export RAMABANA_MODEL=sonnet    # the same choice in every session
 
 `/models` lists what this machine can reach and marks the one running. `/model NAME` changes model without ending the session. `/model` alone prints the routing summary.
 
-Short jobs route away from the turn model. Completions and classification run on `claude-haiku-5-5`. Inline edits, summaries and other one-shot work run on `gpt-6.1-luna`. Delegated sub-agents run on `claude-sonnet-5-5`. When the turn model is local, every job without a model of its own stays on it. When a job’s model cannot run, the job moves to another cloud route. Without `OPENAI_API_KEY`, the default Luna jobs fall back to the turn model. The session reports the fallback once. With no route left, the error names the job, the model and the key or CLI it needs.
+Short jobs route away from the turn model. Completions and classification run on `claude-haiku-5-5`. Inline edits, summaries and other one-shot work run on `gpt-6-luna` through your Codex login. Delegated sub-agents run on `claude-sonnet-5-5`. When the turn model is local, every job without a model of its own stays on it. When a job’s model cannot run, the job moves to another cloud route. Without a Codex login, the default Luna jobs fall back to the turn model. A cloud model whose one-shot answer fails or comes back empty is set aside for five minutes, and its jobs move the same way. With no cloud route left, a job runs on `gemma-e4b` on the device, and the turn never moves. The session reports each fallback once. With nothing left at all, the error names the job, the model and the key or CLI it needs.
 
 `$RAMABANA_MODEL_<JOB>` overrides one job. `<JOB>` is `ONESHOT`, `INLINE`, `COMPLETION`, `CLASSIFY`, `SUMMARY` or `SUBAGENT`. The turn model uses `$RAMABANA_MODEL` and has no `_TURN` variable. `/model JOB NAME` sets one job inside a session:
 

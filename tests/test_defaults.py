@@ -10,10 +10,10 @@ def test_default_routes_and_subagent_settings(monkeypatch):
             monkeypatch.delenv(prefix + key, raising=False)
     routing = Routing()
     expected = dict(turn='claude-opus-5-5', subagent='claude-sonnet-5-5',
-                    oneshot='gpt-6.1-luna', inline='gpt-6.1-luna', summary='gpt-6.1-luna',
+                    oneshot='gpt-6-luna', inline='gpt-6-luna', summary='gpt-6-luna',
                     classify='claude-haiku-5-5', completion='claude-haiku-5-5')
     assert {job: routing.name_for(job) for job in JOBS} == expected
-    assert resolve('gpt-6.1-luna').model_id == 'openai/gpt-6.1-luna'
+    assert resolve('gpt-6-luna').model_id == 'codex/gpt-6-luna', 'through the Codex login, not an API key'
     assert not DFLT_LOCAL.startswith('gemma')
     assert signature(main).parameters['subagent_writes'].default is True
     agent, _ = fake_agent()

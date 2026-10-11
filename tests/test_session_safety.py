@@ -75,7 +75,8 @@ def test_a_session_held_by_a_live_process_cannot_be_claimed():
 def test_latest_skips_a_session_another_live_process_holds_and_prefers_this_folder(tmp_path):
     here, _ = fake_agent(cfg=tmp_path); list(here.stream('in /proj'))
     there, _ = fake_agent(cfg=tmp_path); list(there.stream('elsewhere, and newer'))
-    (there.runs_dir/'owner.json').write_text(json.dumps({'pid': 0, 'roots': ['/elsewhere']}))
+    from ramabana.agent import _set_session_meta
+    _set_session_meta(there, there.session_id, roots=['/elsewhere'])   # a session that ran in another folder
     me, _ = fake_agent(cfg=tmp_path)
     assert me.resume_session('latest', keep_model=True)['id'] == here.session_id, 'a session from this folder comes first'
     holder = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])

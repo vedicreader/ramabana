@@ -15,9 +15,10 @@ from fastcore.xtras import Path
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
            'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'PII_OFF', 'PII_MODES', 'VALUED', 'EARLY', 'FLAGS',
-           'LAUNCHED', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need',
-           'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'run_cli', 'kosha_env_db', 'pkg_state',
-           'root_state', 'index_state', 'index_changes', 'index_gate', 'save_index', 'log_index', 'last_index']
+           'LAUNCHED', 'PICK_SESSION', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed',
+           'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli',
+           'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate', 'save_index',
+           'log_index', 'last_index']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -182,10 +183,22 @@ def launch_args(argv):
     if refusal(**{k: kw[k] for k in ('tmux', 'pane', 'profile', 'pii')}, **{f: True for f in flags}) or kw['tmux'] == 'off': return None
     return dict(cfg=kw['cfg'], tmux=kw['tmux'])
 
+PICK_SESSION = 'pick'   #: the value a bare `--resume` stands for: list this folder's sessions to choose from
+
+def bare_resume(argv):
+    "`argv` with a bare `--resume`, one followed by nothing or by another option, given the value `PICK_SESSION`."
+    out = list(argv)
+    for i, a in enumerate(out):
+        if a == '--resume' and (i + 1 == len(out) or out[i + 1].startswith('-')):
+            out.insert(i + 1, PICK_SESSION)
+            break
+    return out
+
 def run_cli():
     "The `ramabana` script: rerun inside tmux before anything heavy loads, then parse the command line for `cli.main`."
     global LAUNCHED
     if (msg := need('cli')): return _refuse(msg)()
+    sys.argv[1:] = bare_resume(sys.argv[1:])   # both parsers, and the rerun inside tmux, see a value
     if (kw := launch_args(sys.argv[1:])) is not None:
         LAUNCHED = True
         Setup(kw['cfg']).launch(tmux=kw['tmux'])

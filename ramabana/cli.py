@@ -19,9 +19,9 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff',
            'diff_rich', 'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang',
            'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to',
-           'stderr_log', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA',
-           'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING',
-           'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
+           'stderr_log', 'pick_session', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd',
+           'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF',
+           'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -370,7 +370,7 @@ approve y approve · n ⏎ refuse · n: REASON ⏎ refuse with a reason · a app
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /planmode on|off withholds every tool that acts and asks for a plan · /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
-extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions · /resume [ID|latest] · /cost · /compact · /reload
+extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload
 subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N, timeout S, nest N set the rest
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
@@ -2296,6 +2296,34 @@ def stderr_log(agent):
     "Where a session's stderr goes: its own run folder, so the next start cannot overwrite a crash's trace."
     return (agent.runs_dir or Path(agent.cfg or tempfile.gettempdir()))/'stderr.log'
 
+def _ago(t):
+    "How long ago `t` was: `5m`, `3h` or `2d`."
+    s = max(0, time.time() - (t or 0))
+    return f'{int(s // 60)}m' if s < 3600 else f'{int(s // 3600)}h' if s < 86400 else f'{int(s // 86400)}d'
+
+def pick_session(agent,
+                 all_folders=False,   # list every folder's sessions, not only those that ran in these folders
+                 ask=input, out=print, n=20):
+    "The id of the saved session the person picks from the newest `n`, or '' for a new session."
+    rows = agent.sessions()
+    rows = (rows if all_folders else [s for s in rows if agent._from_here(s['id'])])[:n]
+    if not rows:
+        out('no saved sessions ' + ('yet' if all_folders else 'from these folders; --all-folders lists every folder') + '; starting a new one')
+        return ''
+    for i, s in enumerate(rows, 1):
+        held = '  (in use)' if agent.session_owner(s['id']) else ''
+        out(f"{i:>2}  {_ago(s['at']):>4} ago  {s['turns']:>3} turns  {s['title'] or s['id']}{held}")
+    while True:
+        try: a = ask(f'resume which? 1-{len(rows)}, enter for 1, n for a new session: ').strip().lower()
+        except (EOFError, KeyboardInterrupt): return ''
+        if a in ('n', 'new'): return ''
+        if not (a == '' or (a.isdigit() and 1 <= int(a) <= len(rows))):
+            out(f'not a choice: {a!r}')
+            continue
+        s = rows[int(a or 1) - 1]
+        if (o := agent.session_owner(s['id'])) is None: return s['id']
+        out(f"that session is in use by process {o['pid']}; pick another")
+
 async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto'):
     "The tty loop: one terminal, one event loop, one keyboard owner."
     tty = AppTty()
@@ -2392,7 +2420,8 @@ def main(
     max_tool_calls: str = 'auto',        # auto | 20..400 tool calls per turn
     max_steps: str = 'auto',             # auto | 8..80 model/tool-loop steps per turn
     cfg: str = '~/.config/ramabana',     # config dir: skills, extensions, resumable history
-    resume: str = '',                    # saved session id/prefix, or 'latest'
+    resume: str = '',                    # saved session id/prefix, or 'latest'; bare --resume lists this folder's sessions to pick from
+    all_folders: bool = False,           # with a bare --resume, list sessions from every folder
     python: bool = False,                # start in python mode, on a kernel of your own
     attach: str = '',                    # join a live session; --kernels lists them
     agent_proxy: bool = False,           # expose a restricted agent proxy in PyREPL
@@ -2446,6 +2475,8 @@ def main(
     except (RuntimeError, AgentError) as e:
         print(e, file=sys.stderr)
         return 2
+    from ramabana.setup import PICK_SESSION
+    if resume == PICK_SESSION: resume = pick_session(agent, all_folders) if sys.stdin.isatty() else 'latest'
     if resume:
         try: agent.resume_session(resume)
         except Exception as e:

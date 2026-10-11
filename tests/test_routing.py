@@ -200,19 +200,69 @@ def no_model_env(monkeypatch):
         for j in ('', *(f'_{j.upper()}' for j in core.JOBS)): monkeypatch.delenv(f'{p}MODEL{j}', raising=False)
 
 
-# -- a missing OpenAI key falls back without moving Claude jobs -------------------------
+# -- a missing Codex login falls back without moving Claude jobs ------------------------
 
-def test_without_an_openai_key_medium_jobs_fall_back_and_say_so_once(monkeypatch):
-    no_model_env(monkeypatch)
-    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+def no_codex_login(monkeypatch, tmp_path):
+    monkeypatch.delenv('CODEX_AUTH_TOKEN', raising=False)
+    monkeypatch.setenv('CODEX_AUTH_PATH', str(tmp_path/'auth.json'))
+
+def test_without_a_codex_login_medium_jobs_fall_back_and_say_so_once(monkeypatch, tmp_path):
+    no_model_env(monkeypatch); no_codex_login(monkeypatch, tmp_path)
     monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: FakeBackend(spec, **kw))
     notes = []
     h = MemHost(); h.note = notes.append
     a = Agent(h, extensions=False, subagents=False)
     for job in ('classify', 'completion'): assert a.routing.spec(job).name == 'claude-haiku-5-5'
     for job in ('oneshot', 'summary', 'inline', 'summary'): assert a._be_or_none(job).spec.name == 'claude-opus-5-5'
-    said = [n for n in notes if 'gpt-6.1-luna' in n]
-    assert len(said) == 1 and 'OPENAI_API_KEY' in said[0] and 'claude-opus-5-5' in said[0], notes
+    said = [n for n in notes if core.DFLT_MEDIUM in n]
+    assert len(said) == 1 and 'Codex login' in said[0] and 'claude-opus-5-5' in said[0], notes
+
+
+# -- with no cloud route left, a job runs on Gemma on the machine ------------------------
+
+def test_a_job_no_cloud_route_can_run_falls_to_local_gemma_and_the_turn_never_does(monkeypatch, tmp_path):
+    no_model_env(monkeypatch); no_codex_login(monkeypatch, tmp_path)
+    real = core.runtime_available
+    monkeypatch.setattr(core, 'runtime_available', lambda rt: rt == 'litert' or (rt != 'claude' and real(rt)))
+    r = Routing()
+    for job in ('summary', 'classify', 'subagent'): assert r.spec(job).name == core.DFLT_FALLBACK, job
+    assert r.spec('summary').local and core.DFLT_FALLBACK in r.notes['summary']
+    with pytest.raises(core.AgentError): r.spec('turn')
+    monkeypatch.setattr(core, 'runtime_available', lambda rt: False)
+    with pytest.raises(core.AgentError, match='summary job'): Routing().spec('summary')
+
+
+class Silent(FakeBackend):
+    "Answers nothing in the cloud, and something on the machine."
+    def _oneshot(self, prompt, sp, max_tokens):
+        self.calls.append(self.spec.name)
+        return 'from gemma' if self.spec.local else ''
+
+def test_a_cloud_model_that_answers_nothing_is_set_aside_until_a_job_reaches_gemma(monkeypatch):
+    no_model_env(monkeypatch)
+    monkeypatch.setenv('CODEX_AUTH_TOKEN', 'x')
+    real = core.runtime_available
+    monkeypatch.setattr(core, 'runtime_available', lambda rt: rt in ('claude', 'litert') or real(rt))
+    calls = []
+    monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: Silent(spec, **kw))
+    monkeypatch.setattr(Silent, 'calls', calls, raising=False)
+    notes = []
+    h = MemHost(); h.note = notes.append
+    a = Agent(h, extensions=False, subagents=False)
+    b = a._be('summary')
+    with b.lock: assert a.oneshot('q', job='summary') == ''
+    assert not a.routing.down and not calls, 'a busy backend is not an unavailable one'
+    assert a.oneshot('q', job='summary') == 'from gemma'
+    assert calls[0] == core.DFLT_MEDIUM and calls[-1] == core.DFLT_FALLBACK and len(set(calls)) == len(calls), calls
+    assert set(a.routing.down) == set(calls[:-1])
+    assert any(core.DFLT_FALLBACK in n for n in notes), notes
+    assert a.routing.spec('turn').name == 'claude-opus-5-5', 'only jobs step past a set-aside turn model'
+    assert a.oneshot('again', job='summary') == 'from gemma' and calls[-2:] == [core.DFLT_FALLBACK] * 2, 'set aside for a while'
+    a.routing.down[core.DFLT_MEDIUM] = (a.routing.down[core.DFLT_MEDIUM][0], 0.)
+    a.oneshot('later', job='summary')
+    assert calls[-2:] == [core.DFLT_MEDIUM, core.DFLT_FALLBACK], 'after DOWN_TTL it is tried again'
+    a.routing.set(core.DFLT_MEDIUM, 'summary')
+    assert core.DFLT_MEDIUM not in a.routing.down, 'naming a model again gives it another try'
 
 def test_rishi_usage_is_cumulative_though_its_chat_counts_each_call_afresh():
     """rishi's `Chat` starts a new `use` on every call, while `Agent._finish` diffs a running total.

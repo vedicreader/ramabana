@@ -700,9 +700,10 @@ class Backend:
             body=body[-max(1,int(len(body)*room*.95/n)):]
         return ONESHOT_CUT+body
 
-    def oneshot(self,prompt,sp='',max_tokens=None,job='one-shot'):
-        "Ask one question in a throwaway conversation; `job` names a failure."
-        if self.start() is None or not self.lock.acquire(False):return ''
+    def oneshot(self,prompt,sp='',max_tokens=None,job='one-shot',if_busy=''):
+        "Ask one question in a throwaway conversation; `job` names a failure, and `if_busy` is the answer while another call holds the backend."
+        if self.start() is None:return ''
+        if not self.lock.acquire(False):return if_busy
         try:return answer_only(self._oneshot(self._fit_oneshot(prompt,sp,max_tokens),sp,max_tokens) or '')
         except Exception as e:self._failed(f'{job} failed',e); return ''
         finally:self.lock.release()
