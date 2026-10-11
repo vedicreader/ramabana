@@ -354,6 +354,16 @@ The editor names the folder. `--root` here is the fallback for a client that nam
 
 [`ramabana.agent.mk_agent`](https://vedicreader.github.io/ramabana/agent.html#mk_agent) builds what the terminal runs: a host over the named folders, and an [`Agent`](https://vedicreader.github.io/ramabana/agent.html#agent) gated the way `approve` says. The example below uses the same [`Agent.ask`](https://vedicreader.github.io/ramabana/agent.html#agent.ask) path with [`fake_agent`](https://vedicreader.github.io/ramabana/testing.html#fake_agent), which supplies a deterministic backend and an in-memory project. It runs without credentials, downloads, or writes to disk.
 
+A long-running host, such as a web app that runs agent jobs, uses the same calls with these options:
+
+- **Read roots.** `mk_agent(read_roots=[...])` opens folders that the read tools search and no write touches. The system prompt names them.
+- **Many asks.** [`Approvals`](https://vedicreader.github.io/ramabana/agent.html#approvals) holds every waiting ask. `answer(id, ok)` resolves any of them, and `waiting` lists them oldest first. Each ask appears through `on_activity` as an `awaiting` row with its `ask_id` before its call runs.
+- **A policy.** `Approvals(policy=fn)` is consulted before rules and modes. `fn(name, args)` returns `'allow'`, `'deny'`, `'ask'` or `None`.
+- **Waiting and timeouts.** `no_listener='wait'` holds an ask until a page listens, and that page is shown the asks already waiting. `on_timeout='allow'` lets an unanswered ask through, except one that the policy or the loop guard put to a person.
+- **A typed result.** `agent.ask(prompt, schema=Model)` returns a [`TurnResult`](https://vedicreader.github.io/ramabana/agent.html#turnresult) whose `result` is a validated `Model`.
+- **Sessions.** `Agent(session_id=...)` names the session. A turn in a session another live process holds raises [`SessionBusy`](https://vedicreader.github.io/ramabana/agent.html#sessionbusy).
+- **Budgets.** `max_cost`, `max_tokens`, `session_max_cost` and `session_max_tokens` stop a turn that passes them. The turn is recorded with state `budget`.
+
 ``` python
 from ramabana.testing import fake_agent
 

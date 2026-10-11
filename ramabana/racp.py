@@ -197,6 +197,7 @@ class Session:
         if self.shell: self._send(acp.update_tool_call(self.shell, content=[acp.tool_terminal_ref(tid)]))
 
     def _act(self, a):
+        if a.in_prompt: return   # the editor's permission request stands for an approval waiting or granted
         k = self._key(a.tool, a.args)
         if a.parent_action_id and k not in self.gated: return
         d = a.dict()

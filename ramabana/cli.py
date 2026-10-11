@@ -1111,8 +1111,8 @@ class Ui:
         return shut
 
     def on_act(self, act):
-        "Post a tool call's change from the model's thread: running, then done."
-        self._post(self._act, act)
+        "Post a tool call's change from the model's thread: running, then done. An approval waiting or granted belongs to the prompt."
+        if not act.in_prompt: self._post(self._act, act)
 
     def _act_style(self, act):
         "Blue while it runs, green when it worked, red when it did not."

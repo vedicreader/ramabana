@@ -7,18 +7,19 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
-           'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES',
-           'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES',
-           'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS',
-           'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL',
-           'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'REPLAYED',
-           'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
-           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
-           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
-           'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_directives', 'project_context',
-           'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
-           'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools', 'Completer',
-           'request_body', 'request_title', 'model_title', 'mk_host', 'mk_agent']
+           'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT', 'INLINE_SKILLS',
+           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS',
+           'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES',
+           'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL',
+           'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS',
+           'OWNER', 'LOCK', 'PENDING', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK',
+           'RESULT_AGAIN', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE',
+           'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
+           'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
+           'request_text', 'prompt_directives', 'project_context', 'work_rules', 'skill_catalogue', 'system_prompt',
+           'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
+           'shell_denial', 'generated_denial', 'note_tools', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing',
+           'Completer', 'request_body', 'request_title', 'model_title', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, os, re, shlex, threading, time, tomllib, uuid
@@ -81,13 +82,19 @@ class Act:
     branch_id: str = 'main'
     parent_action_id: str = ''
     run_id: str = ''          # run whose model made this call
-    state: str = 'running'
-    kind: str = ''            # 'ask' for a refused approval, else from the tool
+    state: str = 'running'    # 'awaiting' for an approval a person has yet to answer
+    kind: str = ''            # 'ask' for an approval, else from the tool
+    ask_id: str = ''          # the `Ask` an approval row stands for
 
     def __post_init__(self): self.kind = self.kind or _kind_of(self.tool)
 
     @property
     def icon(self): return ICONS.get(self.kind, ICONS['tool'])
+
+    @property
+    def in_prompt(self):
+        "Whether this is an approval waiting or granted, which a frontend with its own approval prompt shows there instead."
+        return self.kind == 'ask' and (not self.done or self.ok)
 
     def finish(self, out, ok=True):
         self.detail = _clip(out)
@@ -97,6 +104,7 @@ class Act:
 
     def line(self):
         "The single line: icon, what it did, and how long. Or an hourglass while it runs."
+        if self.state == 'awaiting': return f'🔐 waiting for approval: {self.summary}'
         if not self.done: return f'⏳ {self.summary}'
         tail = f'  ({self.secs:.1f}s)' if self.secs >= 0.5 else ''
         return f'{"" if self.ok else "⚠️ "}{self.icon} {self.summary}{tail}'
@@ -111,7 +119,7 @@ class Act:
     def dict(self):
         return {'id': self.id, 'action_id': self.id, 'turn_id': self.turn_id,
                 'revision': self.revision, 'branch_id': self.branch_id,
-                'parent_action_id': self.parent_action_id, 'run_id': self.run_id, 'state': self.state,
+                'parent_action_id': self.parent_action_id, 'run_id': self.run_id, 'state': self.state, 'ask_id': self.ask_id,
                 'tool': self.tool, 'kind': self.kind, 'icon': self.icon,
                 'summary': self.summary, 'line': self.line(), 'detail': self.detail,
                 'ok': self.ok, 'done': self.done, 'secs': self.secs,
@@ -144,6 +152,7 @@ def _resumed_acts(acts):
     rows = []
     for a in acts or ():
         if not isinstance(a, dict) or not a.get('tool') or a.get('parent_action_id'): continue
+        if a.get('kind') == 'ask' and a.get('ok', True): continue   # the approved call has its own row; a refusal is kept
         args = ', '.join(f'{k}={_1(v, 300) if isinstance(v, str) else v}' for k, v in (a.get('args') or {}).items())
         row = f"- {a['tool']}({args})" + ('' if a.get('ok', True) else '  [failed]')
         if a.get('detail'): row += '\n' + _indent(_clip(a['detail'], RESUME_DETAIL))
@@ -165,12 +174,13 @@ class Activity:
     def __len__(self): return len(self.acts)
 
     def start(self, tool, args, action_id='', turn_id='', revision=0, branch_id='main',
-              parent_action_id='', summary=None, kind='', run_id=''):
+              parent_action_id='', summary=None, kind='', run_id='', state='running', detail='', ask_id=''):
         a = Act(tool=tool, args=dict(args or {}), kind=kind,
                 summary=summary if summary is not None else summarise(tool, args),
                 id=action_id or uuid.uuid4().hex[:12], turn_id=turn_id or self.turn_id,
                 revision=int(revision or 0), branch_id=branch_id or 'main',
-                parent_action_id=parent_action_id or '', run_id=run_id or '')
+                parent_action_id=parent_action_id or '', run_id=run_id or '',
+                state=state, detail=_clip(detail), ask_id=ask_id)
         with self._lock:
             self.acts.append(a)
             if len(self.acts) > self.max_acts:
@@ -300,6 +310,8 @@ class Ask:
     asked: float = field(default_factory=time.time)
     run_id: str = ''          # raising run; '' for the foreground turn
     run: object = field(default=None, repr=False, compare=False)   # that run, for its log
+    forced: str = ''          # 'policy' or 'loop' when a person must decide it, whatever the mode or a timeout says
+    _shown: set = field(default_factory=set, repr=False, compare=False)   # the watchers already told of it
     _done: threading.Event = field(default_factory=threading.Event, repr=False, compare=False)
 
     @property
@@ -369,8 +381,12 @@ def _load_rules(path):
 
 APPROVE_MODES = ('off', 'ask', 'edits', 'auto')   #: strictest first
 
+VERDICTS = ('allow', 'deny', 'ask')   #: what an approval `policy` may return; anything else falls through
+NO_LISTENER = ('refuse', 'wait')   #: an ask with nobody listening is refused at once, or waits for a listener
+ON_TIMEOUT = ('refuse', 'allow')   #: what an ask nobody answers in time becomes
+
 class Approvals:
-    "The queue of one, and the thread handshake behind it. One request at a time."
+    "Every request waiting for an answer, and the thread handshake behind each."
 
     def __init__(self,
                  tools=(),                  # tool names that need approval
@@ -379,12 +395,19 @@ class Approvals:
                  host=None,                 # for previews that read disk
                  on_ask=None,               # called with the `Ask` when one is raised
                  on_answer=None,            # called with the `Ask` when it is answered
-                 rules_path=None):          # saved allow/deny rules, `<cfg>/approvals.json`
+                 rules_path=None,           # saved allow/deny rules, `<cfg>/approvals.json`
+                 no_listener='refuse',      # with nobody listening: 'refuse', or 'wait' for a listener
+                 on_timeout='refuse',       # an ask nobody answers in time: 'refuse' or 'allow'
+                 policy=None):              # `fn(name, args)` -> a `VERDICTS` entry or None, consulted before rules and modes
+        if no_listener not in NO_LISTENER: raise ValueError(f'no_listener must be one of {NO_LISTENER}')
+        if on_timeout not in ON_TIMEOUT: raise ValueError(f'on_timeout must be one of {ON_TIMEOUT}')
         self.tools, self.mode, self.timeout, self.host = frozenset(tools), mode, timeout, host
+        self.no_listener, self.on_timeout, self.policy = no_listener, on_timeout, policy
         self.rules_path = Path(rules_path) if rules_path else None
         self.rules, self.problem = _load_rules(self.rules_path)
         self.on_ask, self.on_answer = on_ask, on_answer
-        self.current = None
+        self.current = None       # the newest ask, for a frontend that shows one at a time
+        self._asks = {}           # id -> every ask still waiting, oldest first
         self.closed = False
         self.history = []
         self._watchers = []
@@ -423,9 +446,12 @@ class Approvals:
         return f'always {verdict}: {name} {pattern}'
 
     def listen(self, on_ask=None, on_answer=None):
-        "Register a frontend, and how to reach it. Returns a callable that unregisters it."
+        "Register a frontend, and how to reach it; it is shown every ask already waiting. Returns a callable that unregisters it."
         w = (on_ask, on_answer)
-        with self._lock: self._watchers.append(w)
+        with self._lock:
+            self._watchers.append(w)
+            waiting = [a for a in self._asks.values() if a.pending]
+        for a in waiting: self._show(w, a)
         done = [False]
         def stop():
             if done[0]: return
@@ -435,28 +461,44 @@ class Approvals:
         return stop
 
     def _notify(self, which, a):
-        "Call the recorder and every watcher, swallowing their failures."
-        fns = [getattr(self, f'on_{which}')] + [w[0 if which == 'ask' else 1] for w in list(self._watchers)]
-        for f in fns:
-            if not f: continue
+        "Call the recorder and every watcher, swallowing their failures; a watcher hears of each ask once."
+        if (f := getattr(self, f'on_{which}')):
             try: f(a)
             except Exception: pass
+        for w in list(self._watchers):
+            if which == 'ask': self._show(w, a)
+            elif w[1]:
+                try: w[1](a)
+                except Exception: pass
+
+    def _show(self, w, a):
+        "Tell watcher `w` of ask `a` once, however its `listen` and the ask's raising interleave."
+        with self._lock:
+            if not (w[0] and a.pending) or id(w) in a._shown: return
+            a._shown.add(id(w))
+        try: w[0](a)
+        except Exception: pass
+
+    @property
+    def waiting(self):
+        "Every request waiting for an answer, oldest first."
+        with self._lock: return [a for a in self._asks.values() if a.pending]
 
     @property
     def pending(self):
-        "The request waiting for an answer, or None."
-        a = self.current
-        return a if (a is not None and a.pending) else None
+        "The oldest request waiting for an answer, or None."
+        return next(iter(self.waiting), None)
 
     def answer(self, id, ok, note='', session=False, scope='auto'):
-        "Answer the pending request; a `session` approval switches the mode to `scope`."
-        a = self.current
-        if a is None or a.id != id or not a.pending: return None
-        if ok and session: self.mode = scope
+        "Answer the waiting request `id`, once; a `session` approval switches the mode to `scope`."
+        with self._lock:   # resolved under the lock `close` and a timeout take, so an ask is resolved once
+            a = self._asks.pop(id, None)
+            if a is None or not a.pending: return None
+            if ok and session: self.mode = scope
+            a.answer, a.note = bool(ok), note or ''
+            if ok and session and not a.note:
+                a.note = 'approved for the rest of this session' if scope == 'auto' else f'writes approved for the rest of this session ({scope})'
         # notify before waking the model thread
-        a.answer, a.note = bool(ok), note or ''
-        if ok and session and not a.note:
-            a.note = 'approved for the rest of this session' if scope == 'auto' else f'writes approved for the rest of this session ({scope})'
         self._notify('answer', a)
         a._done.set()
         return a
@@ -466,10 +508,11 @@ class Approvals:
         with self._lock:
             if self.closed: return []
             self.closed = True
-            # `history`, not `current`: a background run may raise one while another waits
             waiting = [a for a in self.history if a.pending]
+            for a in waiting: a.answer, a.note = False, 'the session closed before this was answered'
+            self._asks.clear()
         for a in waiting:
-            a.resolve(False, 'the session closed before this was answered')
+            a._done.set()
             self._notify('answer', a)
         return waiting
 
@@ -479,10 +522,11 @@ class Approvals:
         self._notify('answer', a)
         return a
 
-    def cancel_all(self, note='the turn was cancelled'):
-        "Refuse anything in flight, so a stopped turn leaves no worker parked."
-        a = self.pending
-        if a is not None: self.answer(a.id, False, note)
+    def cancel_all(self, note='the turn was cancelled', run=None):
+        "Refuse what is waiting, so a stopped turn leaves no worker parked. With `run`, an ask of a run that `run` did not start keeps waiting."
+        for a in self.waiting:
+            # an ask raised off the run's thread, a parallel tool call say, names no run and may be this one's
+            if run is None or a.run is None or _of_run(a.run, run): self.answer(a.id, False, note)
 
 
     def gate(self, tool_call):
@@ -502,9 +546,22 @@ class Approvals:
         "Whether `edits` mode runs `name` unasked: a file or notebook write, never `ALWAYS_ASK`."
         return group_of(name) in EDIT_GROUPS and name not in ALWAYS_ASK
 
+    def _verdict(self, name, args):
+        "What `policy` says about this call; a policy that raises says 'ask', so it never allows by failing."
+        if self.policy is None: return None
+        try: v = self.policy(name, args)
+        except Exception: return 'ask'
+        return v if v in VERDICTS else None
+
     def decide(self, name, args, force=False, ask=None, loop=False):
-        "Resolve the `Ask` by policy when no person is needed, else None."
+        "Resolve the `Ask` without a person when the policy, a rule or the mode decides it, else None."
         a = self.ask(name, args) if ask is None else ask
+        v = self._verdict(name, args)
+        if v == 'deny': return self._decided(a, False, 'denied by the host policy')
+        if v == 'ask':
+            a.forced = 'policy'
+            return None
+        if v == 'allow' and not loop: return a.resolve(True)
         if not force and name not in self.tools and not path_write(name, args): return a.resolve(True)
         if self.mode == 'off': return self._decided(a, False, 'approval is switched off for this session')
         if (v := self.rule_for(name, args)) == 'deny': return self._decided(a, False, 'denied by a saved rule')
@@ -527,32 +584,46 @@ class Approvals:
         return f'approvals: {mode}' if was == mode else f'approvals: {was} -> {mode}{self._settle()}'
 
     def _settle(self):
-        a = self.pending
-        if a is None or self.mode == 'ask' or (self.mode == 'edits' and not self.edits_cover(a.tool)): return ''
+        "Answer what is waiting that the new mode decides without a person."
+        settled = [a for a in self.waiting if a.forced != 'policy' and self.mode != 'ask' and not (self.mode == 'edits' and not self.edits_cover(a.tool))]
+        if not settled: return ''
         ok = self.mode != 'off'
-        self.answer(a.id, ok, f'answered by /approve {self.mode}')
+        for a in settled: self.answer(a.id, ok, f'answered by /approve {self.mode}')
         return f' · {"approved" if ok else "refused"} what was waiting'
 
     def request(self, name, args, force=False, timeout=None):
         "Raise one request and wait for it; the resolved `Ask`'s `reply()` carries the reason."
         a = self.ask(name, args)
         loop = (force or name in self.tools or path_write(name, args)) and self._looping(name, args)
-        if loop: a.preview = f'the same call {_times(self._streak)} running -- allow it?\n\n{a.preview}'.strip()
+        if loop: a.preview, a.forced = f'the same call {_times(self._streak)} running -- allow it?\n\n{a.preview}'.strip(), 'loop'
         if (d := self.decide(name, args, force, ask=a, loop=loop)) is not None: return d
         # under the close lock, or an ask in the gap waits out its timeout
         with self._lock:
-            closing = self.closed
-            if not closing: self.current = a
+            closing, heard = self.closed, bool(self._watchers) or self.no_listener == 'wait'
+            if not closing and heard: self._asks[a.id], self.current = a, a
         if closing: return self._decided(a, False, 'the session is closing')
-        if self.listeners < 1:
+        if not heard:
             why = f'the same call {_times(self._streak)} running, and nothing is listening to ask about it' if loop else 'nothing is listening for approvals, so this could not be asked'
             return self._decided(a, False, why)
         self._notify('ask', a)
         wait_for = self.timeout if timeout is None else timeout
         if not a.wait(wait_for):
-            a.resolve(False, f'no answer after {wait_for}s')
-            self._notify('answer', a)
+            with self._lock:
+                late = self._asks.pop(a.id, None) is not None and a.pending
+                if late:   # a timeout never allows what the policy or the loop guard put to a person
+                    ok = self.on_timeout == 'allow' and not a.forced
+                    a.answer, a.note = ok, f"no answer after {wait_for}s; {'allowed' if ok else 'refused'} as the host chose"
+            if late:
+                a._done.set()
+                self._notify('answer', a)
         return a
+
+def _of_run(run, ancestor):
+    "Whether `run` is `ancestor` or one of the runs it started."
+    while run is not None:
+        if run is ancestor: return True
+        run = getattr(run, 'parent', None)
+    return False
 
 # %% ../nbs/03_agent.ipynb #584448e4
 def always(tool_call): return True
@@ -748,7 +819,7 @@ def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=(), cfg
 
     "The agent's briefing: what it is, where it is, how to work, and what it knows."
     names = {getattr(t, '__name__', '') for t in tools or ()}
-    roots = '\n'.join(f'  {r}' for r in host.roots) or '  (no folder open)'
+    roots = _folders(host)
     if getattr(host, 'read_outside', False):
         roots += ('\n  Reads may name any path on this machine. Writing, running commands and\n'
                   '  listing files stay inside the folders above.')
@@ -779,10 +850,17 @@ How to work:
 
 SMALL_CONTEXT_FILE = 2000   # chars
 
+def _folders(host):
+    "The open folders as a briefing lists them, the ones open for reading only after them."
+    roots = '\n'.join(f'  {r}' for r in host.roots) or '  (no folder open)'
+    if (ro := list(getattr(host, 'read_roots', ()) or ())):
+        roots += '\n  Open for reading only: search and read them, never write or run commands in them:\n' + '\n'.join(f'    {r}' for r in ro)
+    return roots
+
 def small_system_prompt(host, tools=(), cfg=None):
     "The small profile's briefing: folders, one machine line, `SMALL_RULES`, clipped instructions."
     names = {getattr(t, '__name__', '') for t in tools or ()}
-    roots = '\n'.join(f'  {r}' for r in host.roots) or '  (no folder open)'
+    roots = _folders(host)
     env = (getattr(host, 'environment', lambda: '')() or '').strip()
     line = env.splitlines()[0].split('; inspect_python')[0] if env else ''   # `inspect_python` is not offered here
     machine = f"\n\nOn this machine:\n{line}" if line else ''
@@ -1056,11 +1134,16 @@ class Agent:
                  subagent_depth=2,          # levels of sub-agents that may delegate again, at most `SUB_DEPTH_MAX`
                  readonly=False,            # withhold every tool that acts
                  readonly_calls=None,       # hard cap on read-only calls, when set
+                 max_cost=None,             # dollars the turn model may spend in one turn; None has no limit, and a local model reports none
+                 max_tokens=None,           # tokens the turn model may spend in one turn; None has no limit
+                 session_max_cost=None,     # dollars the whole session may spend, earlier turns included
+                 session_max_tokens=None,   # tokens the whole session may spend, earlier turns included
                  local_multimodal=False,       # load LiteRT vision/audio encoders for local models
                  tool_max_len=None,           # None scales the result cap to the model window
                  on_compact=None,
                  on_activity=None,
                  history_name='agent',      # names this durable conversation in the config dir
+                 session_id=None,           # this session's id, for a host that keeps its own; None makes a new one
                  poll_every=POLL_EVERY,     # seconds between automatic watch polls; 0 never polls
                  verify='',                 # the project's check; empty reads `[tool.ramabana] verify`
                  instruction_style='ramabana', # 'ramabana' | 'aai' compatibility profile
@@ -1074,7 +1157,7 @@ class Agent:
         self.instruction_style, self.optin = instruction_style, tuple([optin] if isinstance(optin, str) else optin)
         if (bad := set(self.optin) - set(OPTIN)): raise ValueError(f'unknown optin {sorted(bad)}; one of {", ".join(OPTIN)}')
         self.history_name = history_name
-        self.session_id = f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")}'
+        self.session_id = session_id or f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")}'
         self.inbox_key = uuid.uuid4().hex[:8]   # stable per session, so the briefing stays cached
         self._steered = []
         self.turn_seq, self.current_turn_id = 0, ''
@@ -1089,6 +1172,9 @@ class Agent:
         self.subagent_steps, self.subagent_timeout, self.subagent_depth = _sub_steps(subagent_steps), _sub_timeout(subagent_timeout), _sub_depth(subagent_depth)
         self.sub_slots = Slots()   # one bound on sub-agents at once, across every delegation tree
         self.readonly, self.readonly_calls, self.plan_mode = bool(readonly), readonly_calls, False
+        self.max_cost, self.max_tokens, self.session_max_cost, self.session_max_tokens = max_cost, max_tokens, session_max_cost, session_max_tokens
+        if any(v is not None for v in (max_cost, max_tokens, session_max_cost, session_max_tokens)):
+            self._chat_callbacks = {'budget': _budget_callback(self)}
         self.local_multimodal = bool(local_multimodal)
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
         self._sp = sp
@@ -1132,17 +1218,33 @@ class Agent:
 
     @approvals.setter
     def approvals(self, ap):
-        "Every gate this agent is given records its refusals on the activity, once."
+        "Every gate this agent is given records its asks on the activity, once, and takes an extension's `registry.approval` when it has no policy."
         self._approvals = ap
         if ap is None or getattr(ap, '_recorder', None) is self: return
-        ap._recorder, prev = self, ap.on_answer
-        ap.on_answer = self._refused if prev is None else (lambda a: (prev(a), self._refused(a)))
+        if getattr(ap, 'policy', None) is None: ap.policy = self._extension_policy
+        ap._recorder, asked, answered = self, ap.on_ask, ap.on_answer
+        ap.on_ask = self._ask_raised if asked is None else (lambda a: (asked(a), self._ask_raised(a)))
+        ap.on_answer = self._ask_settled if answered is None else (lambda a: (answered(a), self._ask_settled(a)))
 
-    def _refused(self, ask):
-        "Record a refused approval as one activity row and one run-log line."
+    def _extension_policy(self, name, args):
+        "The verdict of the policy an extension registered, read at each call so a reload takes effect; None without one."
+        fn = getattr(self._reg, 'approve', None)   # the built registry only: a gate thread never triggers its first load
+        return fn(name, args) if fn is not None else None
+
+    def _ask_raised(self, ask):
+        "Show an ask put to a person as an `awaiting` activity row before its call runs."
+        act = self.activity.start(ask.tool, ask.args, summary=ask.summary, kind='ask', state='awaiting', detail=ask.preview,
+                                  ask_id=ask.id, **self._action_meta(ask.tool, ask.args))
+        self.__dict__.setdefault('_ask_acts', {})[ask.id] = act
+
+    def _ask_settled(self, ask):
+        "Finish an ask's row when it is answered; a refusal nobody was asked about still gets a row, and a run-log line."
+        act = self.__dict__.get('_ask_acts', {}).pop(ask.id, None)
+        if act is None:
+            if ask.answer: return
+            act = self.activity.start(ask.tool, ask.args, summary=ask.summary, kind='ask', ask_id=ask.id, **self._action_meta(ask.tool, ask.args))
+        self.activity.finish(act, ask.reply() or 'approved', ok=bool(ask.answer))
         if ask.answer: return
-        act = self.activity.start(ask.tool, ask.args, summary=ask.summary, kind='ask', **self._action_meta(ask.tool, ask.args))
-        self.activity.finish(act, ask.reply(), ok=False)
         run = ask.run or current_run()
         if run is not None: run.write(f'< {ask.tool} REFUSED {_1(ask.reply(), 200)}')
 
@@ -1955,7 +2057,7 @@ def verify_command(self:Agent):
 @patch
 def _verified(self:Agent):
     "Whether a `run_shell` ran after this turn's last file write."
-    names = [a.tool for a in self.activity.acts if a.turn_id == self.current_turn_id]
+    names = [a.tool for a in self.activity.acts if a.turn_id == self.current_turn_id and a.kind != 'ask']   # an ask row is not the call
     last = max((i for i, n in enumerate(names) if n in WRITE_TOOLS and n != 'run_shell'), default=-1)
     return 'run_shell' in names[last + 1:]
 
@@ -2230,6 +2332,7 @@ def _begin_turn(self:Agent, run=None):
     if rid and getattr(self, '_begun', None) == rid: return self.current_turn_id
     self._begun = rid
     self.turn_use = Usage()
+    self._budget_hit = ''   # why a budget stopped this turn, for its row
     self._tool_calls_turn = 0
     self._steered = []
     self.turn_seq += 1
@@ -2444,6 +2547,18 @@ def resume_session(self:Agent, selector='latest',
 # %% ../nbs/03_agent.ipynb #3fd8838b
 REPLAYED = ('complete', 'failed')
 
+def _append_line(p, line):
+    "Append one line to `p` under an exclusive lock, so lines from two processes never interleave; returns its byte span."
+    import fcntl
+    data = line.encode()
+    with open(p, 'ab') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            f.write(data); f.flush()
+            end = f.tell()
+        finally: fcntl.flock(f, fcntl.LOCK_UN)
+    return end - len(data), end
+
 @patch
 def _remember(self:Agent, prompt, text, error='', state='complete'):
     turn = {'at': time.time(), 'session': getattr(self, 'session_id', '') or '', 'state': state,
@@ -2458,12 +2573,7 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
     if (p := self.history_path) is not None:
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
-            line = json.dumps(turn, ensure_ascii=False) + '\n'
-            with p.open('a') as f:
-                f.write(line)
-                f.flush()
-                end = f.tell()
-            self._last_span = (max(0, end - len(line.encode())), end)
+            self._last_span = _append_line(p, json.dumps(turn, ensure_ascii=False) + '\n')
         except Exception: pass
     if (d := getattr(self, 'runs_dir', None)) is not None: (d/PENDING).unlink(missing_ok=True)   # the row now holds the turn
 
@@ -2949,8 +3059,7 @@ def status(self:Agent):
             'use': self.use.dict(), 'usage': repr(self.use),
             'plan': self.plan.dict(), 'plan_line': self.plan.line(),
             'activity': self.activity.rows(40),
-            'approval': (self.approvals.pending.dict() if self.approvals is not None
-                         and self.approvals.pending is not None else None),
+            'approval': (p.dict() if self.approvals is not None and (p := self.approvals.pending) is not None else None),
             'calls': [{'tool': t, 'args': str(a)[:300]} for t, a in self.calls[-40:]]}
 
 # %% ../nbs/03_agent.ipynb #0795cbf0
@@ -3116,8 +3225,14 @@ def _stream_chunk(out, chunk):
     if chunk == text: return ''
     return chunk[len(text):] if chunk.startswith(text) else chunk
 
+class SessionBusy(RuntimeError):
+    "A turn in a session another live process holds."
+
 @patch
 def _new_run(self:Agent, prompt):
+    "A run for one turn; `SessionBusy` before anything is written when another process holds this session."
+    if not self.claim_session():
+        raise SessionBusy(f"session {self.session_id} is in use by process {(self.session_owner(self.session_id) or {}).get('pid', '?')}")
     _run_store(self)
     with self._runs_lock:
         current = self.run()
@@ -3136,13 +3251,119 @@ def _release_run(self:Agent, run):
     for key, backend in list(self._backends.items()):
         if backend is run.backend: self._backends.pop(key, None)
 
+@dataclass
+class TurnResult:
+    "How one turn ended, for a host: its reply, its state, and the value it handed back."
+    reply: str = ''
+    state: str = ''           # 'complete', 'failed', 'cancelled' or 'abandoned'
+    error: str = ''
+    usage: dict = field(default_factory=dict)
+    result: object = None     # what `submit_result` received, validated against the `schema`
+    session: str = ''
+    turn_id: str = ''
+
+class TurnFailed(Exception):
+    "A strict `ask` whose turn did not complete; `result` is its `TurnResult`."
+    def __init__(self, result, why=''):
+        super().__init__(why or f'the turn ended {result.state}: {result.error or result.reply}')
+        self.result = result
+
+class ResultMissing(TurnFailed):
+    "A strict `ask` with a `schema` whose model never handed back a valid result."
+
+RESULT_ASK = '\n\nWhen you have the answer, call `submit_result` once with it, then reply in one sentence.'
+RESULT_AGAIN = 'You have not called `submit_result`. Call it now with the result, matching the schema in its description.'
+
+def _result_tool(schema, got):
+    "A `submit_result` tool that validates its payload against `schema` and keeps the first valid one in `got['value']`."
+    if isinstance(schema, dict):
+        import jsonschema
+        spec = schema
+        def check(v): jsonschema.validate(v, schema); return v
+    else:
+        from pydantic import TypeAdapter
+        ta = TypeAdapter(schema)
+        spec, check = ta.json_schema(), ta.validate_python
+    def submit_result(
+        result:dict|list|str|int|float|bool, # the result, matching the schema in this tool's description
+    ):
+        try: got.setdefault('value', check(result))
+        except Exception as e: return f'that result does not match the schema ({agent_err(e)}); call submit_result again with it fixed'
+        return 'result received'
+    submit_result.__doc__ = f'Hand back the result of this task, once, as `result`. Its JSON schema:\n{json.dumps(spec)}'
+    return submit_result
+
+def _with_note(prompt, note):
+    "`prompt` with `note` after its text; a prompt of parts gets it on its last text part."
+    if isinstance(prompt, str): return prompt + note
+    parts = list(prompt)
+    if parts and isinstance(parts[-1], str): parts[-1] += note
+    else: parts.append(note.strip())
+    return parts
+
 @patch
-def ask(self:Agent, prompt, **kw):
+def _turn_result(self:Agent, out, got):
+    "The `TurnResult` of the turn that just ended, from the row it left."
+    row = self.history[-1] if self.history and self.history[-1].get('turn_id') == self.current_turn_id else {}
+    state = row.get('state') or ('complete' if isinstance(out, str) else 'cancelled')
+    return TurnResult(reply=str(row.get('reply') or (out if isinstance(out, str) else '')), state=state,
+                      error=str(row.get('error') or ''), usage=dict(row.get('usage') or {}), result=got.get('value'),
+                      session=self.session_id, turn_id=self.current_turn_id)
+
+@patch
+def ask(self:Agent, prompt,
+        schema=None,   # a type pydantic validates, or a JSON schema dict: the model hands back a value of it through `submit_result`
+        result=False,  # return a `TurnResult` rather than the reply text
+        strict=False,  # raise `TurnFailed` for a turn that did not complete, and `ResultMissing` for a `schema` never filled
+        **kw):
+    "One registered turn. A stopped turn is recorded, and not replayed. Plain, it returns the reply text, a dict when stopped, or a failure note."
+    if schema is None and not result and not strict: return self._ask_once(prompt, **kw)
+    if (r := self.run()) is not None and not r.terminal: raise RuntimeError('the assistant is already running')   # before the running turn is handed a tool
+    got, tool = {}, None
+    if schema is not None:
+        tool = _result_tool(schema, got)
+        self.add_tool(tool)
+    try:
+        out = self._ask_once(_with_note(prompt, RESULT_ASK) if tool else prompt, **kw)
+        if tool is not None and 'value' not in got and self._turn_result(out, got).state == 'complete':
+            out = self._ask_once(RESULT_AGAIN, **kw)   # once: a model that ignores it twice is told no more
+    finally:
+        if tool is not None:
+            try: self.registry.tools.remove(tool); self.refresh()
+            except Exception: pass   # never in place of what the turn raised
+    tr = self._turn_result(out, got)
+    if strict and tr.state != 'complete': raise TurnFailed(tr)
+    if strict and tool is not None and 'value' not in got: raise ResultMissing(tr, 'the model never handed back a valid result')
+    return tr
+
+def _budget_callback(agent):
+    "A chat callback that hands `agent` what the turn has spent after each model step, so a budget can stop it."
+    from urai.core import ChatCallback
+    class BudgetCallback(ChatCallback):
+        order = 15   # after urai's `UsageCallback` folds the step into `chat.use`
+        def after_response(self): agent._spend(self.chat.use)
+    return BudgetCallback
+
+@patch
+def _spend(self:Agent, use):
+    "Stop the turn once it, or the session with it, is past a budget; the reason waits for the turn's row."
+    tok, cost = getattr(use, 'total_tokens', 0) or 0, getattr(use, 'cost', 0.) or 0.
+    for limit, spent, what in ((self.max_tokens, tok, 'tokens this turn'), (self.max_cost, cost, 'dollars this turn'),
+                               (self.session_max_tokens, self.use.total + tok, 'tokens this session'),
+                               (self.session_max_cost, self.use.cost + cost, 'dollars this session')):
+        if limit is not None and spent > limit:
+            self._budget_hit = f'stopped by its budget: {spent:,.4g} {what}, past {limit:,.4g}'
+            if (run := current_run()) is not None: run.request_cancel()
+            return
+
+@patch
+def _ask_once(self:Agent, prompt, **kw):
     "One registered turn. A stopped turn is recorded, and not replayed."
     run, kept = self._new_run(prompt), [False]
     def keep(state, text='', error=''):
-        "Write the row once, whichever way the turn ended."
+        "Write the row once, whichever way the turn ended; a stop a budget made is recorded as `budget`."
         if kept[0]: return
+        if state == 'cancelled' and getattr(self, '_budget_hit', ''): state, error = 'budget', self._budget_hit
         self._remember(prompt, text, error, state=state)
         kept[0] = True
     try:
@@ -3176,8 +3397,9 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
     "One registered turn as markdown chunks. A stopped turn is recorded, and not replayed."
     run, out, kept = self._new_run(prompt), [], [False]
     def keep(state, text='', error=''):
-        "Write the row once, whichever way the turn ended."
+        "Write the row once, whichever way the turn ended; a stop a budget made is recorded as `budget`."
         if kept[0]: return
+        if state == 'cancelled' and getattr(self, '_budget_hit', ''): state, error = 'budget', self._budget_hit
         self._remember(prompt, text, error, state=state)
         kept[0] = True
     try:
@@ -3217,7 +3439,7 @@ def cancel(self:Agent, run_id='', grace=None):
     "Cancel one run, or the foreground root, and return its structured terminal state."
     run = self.run(run_id)
     if run is None:return {'id': run_id or None, 'state': 'idle', 'children': []}
-    if self.approvals is not None:self.approvals.cancel_all('the run was cancelled')
+    if self.approvals is not None:self.approvals.cancel_all('the run was cancelled', run=run)
     run.cancel(self.cancel_grace if grace is None else grace)
     self._release_run(run)
     return run.dict()
@@ -3849,7 +4071,7 @@ def recover_turns(self:Agent):
                'error': 'the process ended during this turn', 'activity': []}
         with _history_lock(self):
             p.parent.mkdir(parents=True, exist_ok=True)
-            with p.open('a') as h: h.write(json.dumps(row, ensure_ascii=False) + '\n')
+            _append_line(p, json.dumps(row, ensure_ascii=False) + '\n')
         mine.unlink(missing_ok=True)
         n += 1
     return n
@@ -3960,12 +4182,16 @@ def mk_agent(roots=('.',),
              pii=PII_OFF,             # off | redact | refuse PII from the vault
              pii_ner=False,           # gate titled names too, not only patterns
              host_kw=None,            # to `mk_host`: `index` (off: `sync_index` runs it after the model), `warm`, `vault=<path>`
+             read_roots=(),           # folders the read tools search and no write touches
+             timeout=None,            # seconds an ask waits for an answer; None waits forever
+             no_listener='refuse',    # an ask with nobody listening: 'refuse', or 'wait' for a listener
+             on_timeout='refuse',     # an ask nobody answers in time: 'refuse' or 'allow'
              **kw):                   # forwarded to `Agent`
     "A host over `roots` and an `Agent` on it, gated as `approve` says; no code index until asked."
-    approvals = None if approve == 'none' else Approvals(mode=approve, timeout=None,
+    approvals = None if approve == 'none' else Approvals(mode=approve, timeout=timeout, no_listener=no_listener, on_timeout=on_timeout,
                                                          rules_path=cfg/'approvals.json' if (cfg := kw.get('cfg')) else None)
-    host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec,
-                   read_outside=read_outside, pii=pii, pii_ner=pii_ner, **{'index': False, **(host_kw or {})})
+    host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec, read_outside=read_outside, pii=pii, pii_ner=pii_ner,
+                   **{'index': False, **({'read_roots': read_roots} if read_roots else {}), **(host_kw or {})})
     if approvals is not None: approvals.host = host
     agent = Agent(host, model=model, approvals=approvals, **kw)
     agent.lend_model()   # else `--vault` loads a second runtime
