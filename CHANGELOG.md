@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.2.24
+
+- A bare `ramabana --resume` lists the sessions that ran in the current folders, newest first, with their age, turn count and title. Enter resumes the newest, a number picks one, and `n` starts a new session. A session another process holds is marked `(in use)` and cannot be picked. `--all-folders` lists every folder's sessions. Without a terminal, a bare `--resume` means `latest`.
+- `/sessions` lists the current folders' sessions, and `/sessions all` lists every folder's.
+- A session is saved with a title from its first request: its first sentence, at most 80 characters, without the harness's reminder and notebook blocks. A session recovered after a crash gets a title too. A session records every folder it runs in. A session saved before 0.2.24 has no folder record, and appears only under `--all-folders` and `/sessions all` until it is resumed in a folder.
+- Summaries, inline edits and other one-shot jobs run on `gpt-6-luna` through a Codex login. `gpt-6.1-luna` through `OPENAI_API_KEY` returned empty answers. Without a Codex login, these jobs move to another cloud model, and the note says to run `codex login`.
+- A cloud model whose one-shot answer fails or is empty is set aside for five minutes, and its jobs move to the next route. A model busy with another call is not set aside. Naming a model with `/model` clears it.
+- With no cloud route left, a job runs on `gemma-e4b` on the device. The turn never falls back. The chat says once where a model's jobs went.
+
 ## 0.2.23
 
 - A turn cut off by a crash can be resumed. The turn in flight is kept in `runs/<session>/turn.json` until its row is written. Listing sessions turns one whose process died into an `interrupted` row with its prompt, and `/resume` replays it with a note. A session that crashed in its first turn now appears in `/sessions`.
