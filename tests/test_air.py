@@ -15,3 +15,17 @@ def test_a_silent_stretch_gets_one_nudge_quoting_the_request_and_speaking_resets
     for _ in range(AIR_CALLS - 2): tool()
     run.hear(SAID)
     assert all('system-reminder' not in tool() for _ in range(AIR_CALLS - 1)), 'saying something resets the count'
+
+
+def test_a_sub_agent_is_never_nudged_and_a_user_message_restarts_the_count():
+    "A sub-agent reports to its caller, not the user; and a turn just steered answers the steering, not the old request."
+    for kind in ('child', 'background', 'monitor'):
+        child = _inboxed(lambda: 'ok', Run('c', kind, question='look'))
+        assert all('system-reminder' not in child() for _ in range(AIR_CALLS * 2)), kind
+    run = Run('r2', question='the old request')
+    tool = _inboxed(lambda: 'ok', run)
+    for _ in range(AIR_CALLS - 1): tool()
+    run.tell('stop that and do this instead')
+    out = tool()
+    assert 'do this instead' in out and 'system-reminder' not in out, out
+    assert all('system-reminder' not in tool() for _ in range(AIR_CALLS - 1)), 'the steering restarted the count'

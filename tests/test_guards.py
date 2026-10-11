@@ -21,3 +21,12 @@ def test_a_write_to_a_generated_module_is_refused_and_names_its_notebook():
     assert host.text_at('/proj/pkg/m.py') == gen
     tools['replace_text']('/proj/a.py', [{'oldText': 'x = 1', 'newText': 'x = 2'}])
     assert host.text_at('/proj/a.py') == 'x = 2\n'
+    assert 'x = 1' in tools['view_file']('/proj/pkg/m.py'), 'reading a generated module is not editing it'
+
+
+def test_a_rewritten_call_meets_the_guards_again():
+    "An extension's `before_tool` rewrite ran unchecked, so it could add what the guard refuses."
+    a, _ = fake_agent()
+    a.registry.on('before_tool', lambda agent, name, args: dict(args, command=args['command'] + ' | head') if name == 'run_shell' else None)
+    out = {t.__name__: t for t in a.tools}['run_shell']('echo hi')
+    assert '| head' in out and 'cuts the output' in out, out

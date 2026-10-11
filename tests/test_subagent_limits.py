@@ -113,6 +113,33 @@ def test_delegation_output_follows_the_effective_cap_not_the_default(tmp_path):
     assert len(page) <= 2000 and 'continue with offset=' in page
 
 
+def test_a_long_skill_note_fits_the_cap_and_a_tiny_cap_still_pages_forward(tmp_path):
+    "A note naming thousands of missing skills went past the cap; a cap below the continuation note never advanced."
+    subs = _answering(get_log_dir=lambda: tmp_path, get_max=lambda: 1500, get_skills=lambda: [])
+    out = subs['delegate_search'](['short'], skills=' '.join(f'missing{i}' for i in range(2000)))
+    assert len(out) <= 1500 and 'short answer to short' in out, (len(out), out[:200])
+    bg = Background()
+    tiny = _answering(get_max=lambda: 10, background=bg)
+    rid = re.search(r'run_\w+', tiny['delegate_async']('long one')).group()
+    deadline = time.monotonic() + 5
+    while rid not in bg.answers and time.monotonic() < deadline: time.sleep(.01)
+    nxt = lambda page: int(re.search(r'continue with offset=(\d+)\]$', page).group(1))
+    first = nxt(tiny['delegate_result'](rid))
+    assert 0 < first < nxt(tiny['delegate_result'](rid, offset=first))
+
+
+def test_a_sub_agent_is_briefed_with_its_family_notes_and_its_answer_budget():
+    "The parent pasted the GPT notes and a reporting rule into every question; the briefing now carries both."
+    spawned = []
+    be = AttrDict(spec=AttrDict(name='gpt-6-sol', local=False), spawn=lambda **k: spawned.append(k['sp']) or _Answers())
+    subs = _subs(be, get_max=lambda: 3000, get_notes=lambda spec: f'## Working as {spec.name}')
+    subs['delegate_search'](['q'])
+    subs['delegate_search'](['a', 'b'])
+    assert len(spawned) == 3 and all('## Working as gpt-6-sol' in sp for sp in spawned), spawned[0]
+    assert '3000 characters' in spawned[0] and all('1499 characters' in sp for sp in spawned[1:]), 'each answer is told its share'
+    assert 'report file' in spawned[0]
+
+
 def test_delegate_result_reads_a_long_answer_in_pages_by_offset():
     bg = Background()
     subs = _answering(background=bg)

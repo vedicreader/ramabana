@@ -1298,11 +1298,12 @@ def _record(self:Agent, f):
                         'summarise the evidence and unfinished work now.')
         elif not self._draw(): return TREE_SPENT
         denied, rewritten = None, False
-        for r in (self._guard(name, args), *self.registry.fire('before_tool', self, name, args)):
+        for r in (self._guard(name, args, is_write(f) or path_write(name, args)), *self.registry.fire('before_tool', self, name, args)):
             if isinstance(r, str): denied = denied or r
             elif isinstance(r, dict): a, kw, args, rewritten = (), dict(r), _named(f, (), dict(r)), True
         writing = is_write(f) or path_write(name, args)
-        if rewritten and writing and self.approvals is not None and not (ask := self.approvals.request(name, args)).answer:
+        if rewritten: denied = denied or self._guard(name, args, writing)   # the call that runs is the rewritten one
+        if rewritten and writing and not denied and self.approvals is not None and not (ask := self.approvals.request(name, args)).answer:
             return err(ask.reply())   # the gate's recorder already logged it
         self.calls.append((name, args))
         act = self._open_act(f, name, args)
@@ -1418,10 +1419,11 @@ def generated_denial(host, name, args):
     return ''
 
 @patch
-def _guard(self:Agent, name, args):
-    "Why a call is refused before it runs, or None: git goes through git tools, shell output is read whole, generated modules are left to their notebooks."
+def _guard(self:Agent, name, args,
+           writing=False):   # whether this call writes where it names, so a generated module is refused
+    "Why a call is refused before it runs, or None: git goes through git tools, shell output is read whole, and the write tools leave generated modules to their notebooks."
     if name in ('run_shell', 'run_shell_bg'): return self._deny_git_shell(name, args) or shell_denial(args.get('command', '')) or None
-    return generated_denial(self.host, name, args) or None
+    return (generated_denial(self.host, name, args) or None) if writing else None
 
 
 @patch
@@ -1499,10 +1501,12 @@ def _sub_plain(self:Agent):
     budget = self.subagent_budget
     same = budget == self.budget
     source = self._catalog_for(budget, full=same)
+    held = self.readonly or self.plan_mode   # what the foreground withholds, sub-agents and reviewers are not given either
+    if held: source = source.read_only(self.readonly_calls, effects=False, block=NO_SUB)
     if same and self.subagent_writes: tools = self.tools
     elif not self.subagent_writes: tools = source.tools
     else:
-        key = ('subagent', budget.tool_max, tuple(budget.drop))
+        key = ('subagent', budget.tool_max, tuple(budget.drop), held)
         if key not in self._views: self._views[key] = source.map(self._record)
         tools = self._views[key].tools
     return [t for t in tools if getattr(t, '__name__', '') not in ROOT_ONLY]
@@ -1516,7 +1520,8 @@ def _delegation_tools(self:Agent, get_tools, background=None,
                           lambda: self.subagent_writes, lambda: self.approvals.gate if self.approvals is not None else None,
                           background=background, get_log_dir=lambda: self.runs_dir, get_pictures=lambda ps: read_pictures(self.host, ps),
                           get_steps=lambda: self.subagent_steps, get_timeout=lambda: self.subagent_timeout, slots=self.sub_slots, block=(),
-                          get_max=get_max or (lambda: self.budget.tool_max))
+                          get_max=get_max or (lambda: self.budget.tool_max),
+                          get_notes=lambda spec: MODEL_NOTES[model_family(spec)])
 
 @patch
 def _sub_tools(self:Agent, depth=0):
@@ -1843,7 +1848,7 @@ PLAN_NOTE = """
 
 ## Plan mode
 
-This session is in plan mode, so every tool that acts is withheld. Read what the task needs, then reply with a numbered plan: the files and symbols involved, the change to each, its risk, and the order to make them in. Do not try to make the change. The user leaves plan mode when they approve the plan.
+This session is in plan mode. The tools that edit files, run commands, change git or start sub-agents are withheld; the reading tools and the plan tools stay. Read what the task needs, then reply with a numbered plan: the files and symbols involved, the change to each, its risk, and the order to make them in. Record the steps with `set_plan`. Do not try to make the change. The user leaves plan mode when they approve the plan.
 """
 
 @patch

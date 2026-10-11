@@ -1013,8 +1013,10 @@ class Run:
         self.write(f'user: {text}')
 
     def drain_inbox(self):
-        "Every queued user message, taken once."
-        with self._lock: out, self.inbox = self.inbox, []
+        "Every queued user message, taken once. A message handed over restarts the `air` count: the next reply answers it."
+        with self._lock:
+            out, self.inbox = self.inbox, []
+            if out: self.silent = 0
         return out
 
     def set_status(self, text):
@@ -1038,9 +1040,9 @@ class Run:
         return self.set_status(said)
 
     def air(self):
-        "A reminder to tell the user where the work is, once `AIR_CALLS` calls in a row went by with nothing said; else ''."
+        "A reminder to tell the user where the work is, once `AIR_CALLS` calls in a row went by with nothing said; else ''. A sub-agent's run is never reminded, since it reports to its caller."
         with self._lock:
-            if self.silent < AIR_CALLS: return ''
+            if self.kind != 'root' or self.silent < AIR_CALLS: return ''
             n, self.silent = self.silent, 0
         asked = ' '.join(str(self.question).split())[:300]
         return (f'{n} tool calls have gone by without a message to the user. Before the next call, tell them in a few '

@@ -665,7 +665,9 @@ async def run_turn(ui, prompt):
     ask, media = prompt + media_note(atts, spec), media_parts(atts, spec)
     stopped = threading.Event()
     def post(chunk):
-        if not stopped.is_set(): loop.call_soon_threadsafe(q.put_nowait, chunk)
+        if stopped.is_set(): return
+        try: loop.call_soon_threadsafe(q.put_nowait, chunk)
+        except RuntimeError: pass   # the loop closed between the check and the call; nobody is left to read it
     def pump():
         try:
             for chunk in ui.agent.stream_with(ask, image=media or None):
@@ -811,6 +813,7 @@ class Ui:
         self._queued = None
         self._queued_text = []   #: the queued lines, one per entry; `_queued_prompt` joins them
         self._typed = ''   #: what the last Enter took from the composer, for a refused turn to give back
+        self._queued_typed = ''   #: what was typed for a queued command, which carries no prompt
         self._prompt = None
         self._flash = None
         self._queued_echo = []
@@ -1181,6 +1184,7 @@ class Ui:
                 self.flash('absorbed into the queued message')
                 return False
             self._queued, self._queued_prompt, self._queued_echo = coro, prompt, self._retract()
+            self._queued_typed = typed if prompt is None else ''
             self.note('queued · it runs when this turn ends · alt+up takes it back · ctrl+c stops this turn')
             return False
         self.turn = self.comp.spawn(coro, name='turn')
@@ -1257,7 +1261,8 @@ class Ui:
         self.mark_read(final=True)
         unread = self.agent.leftovers()
         if self._queued is None and not unread: return False
-        waiting = list(self._queued_text)
+        waiting = list(self._queued_text) or ([self._queued_typed] if self._queued is not None and self._queued_typed else [])
+        self._queued_typed = ''
         if self._queued is not None: self._queued.close()
         self._queued, self._queued_prompt, self._queued_echo = None, None, []
         text = '\n\n'.join(p for p in (*unread, *waiting, self.buf.text) if p.strip())

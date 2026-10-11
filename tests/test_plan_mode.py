@@ -18,6 +18,17 @@ def test_plan_mode_withholds_acting_tools_rebriefs_the_live_model_and_gives_them
     assert 'replace_text' in {t.__name__ for t in be.tools}
 
 
+def test_plan_mode_and_readonly_reach_what_a_sub_agent_or_reviewer_is_given():
+    "`_sub_plain` built its own view from the catalog, so a folder-watch reviewer kept the tools plan mode withheld."
+    for writes in (True, False):
+        a, _ = fake_agent(subagent_writes=writes)
+        a.set_plan_mode(True)
+        given = {t.__name__ for t in a._sub_plain()}
+        assert not ({'replace_text', 'run_shell', 'create_file'} & given) and 'view_file' in given, (writes, sorted(given))
+    ro, _ = fake_agent(readonly=True, subagent_writes=False)
+    assert 'replace_text' not in {t.__name__ for t in ro._sub_plain()}
+
+
 def test_plan_mode_does_not_switch_under_a_running_turn():
     a, _ = fake_agent()
     a._new_run('q').start()
