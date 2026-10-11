@@ -44,7 +44,7 @@ from shalya.core import one_line as _1
 from shalya.host import LocalHost, _fuse
 from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for, mime_for
 from .core import AgentError, agent_err, spec_caps, accepts, installed
-from .runtime import Run, current_run, run_context
+from .runtime import REPEAT_CALLS, Run, current_run, run_context
 
 # %% ../nbs/02_tools.ipynb #e0ca9981
 from fastcore.docments import frontmatter
@@ -253,6 +253,11 @@ def _inboxed(f, run, heard=None):
     def call(*a, **kw):
         if (r := run() if callable(run) else run) is not None: r.on_call()
         out = f(*a, **kw)
+        same = r is not None and r.repeated((getattr(f, '__name__', ''), repr(a), repr(sorted(kw.items()))),
+                                           out if isinstance(out, str) else object())   # a result that is not text matches nothing
+        if isinstance(out, str) and same >= REPEAT_CALLS:
+            out = keep_media(out + f'\n\n<system-reminder>\nThis call has returned the same result {REPEAT_CALLS} times in a row. '
+                             'Use the result you have, change the arguments, or answer.\n</system-reminder>', out)
         if isinstance(out, str) and r is not None and (msgs := r.drain_inbox()):
             out = keep_media(out + f'\n\n<user-message key="{r.key}">\n' + '\n'.join(msgs) + '\n</user-message>', out)
             if heard: heard(msgs)

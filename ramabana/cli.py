@@ -18,10 +18,10 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
            'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff',
            'diff_rich', 'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang',
-           'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'amain',
-           'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA',
-           'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs',
-           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
+           'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to',
+           'stderr_log', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA',
+           'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING',
+           'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -1245,7 +1245,8 @@ class Ui:
                 return self.paint()
             if self._queued is not None: self._queued.close(); left += '\n\n' + self._queued_prompt
             self._queued, self._queued_prompt = run_turn(self, left), left
-        if self._queued is None: return
+        # a turn that never cleared `turn` itself, such as the start, last painted while it still counted as running
+        if self._queued is None: return None if self.closed else self.paint()
         held, hp, echo = self._queued, self._queued_prompt, self._queued_echo
         self._queued, self._queued_prompt, self._queued_echo = None, None, []
         self._replay(echo)
@@ -2278,9 +2279,22 @@ class AppTty(RealTty):
 
 @contextlib.contextmanager
 def stderr_to(path):
-    "Python's `sys.stderr` into `path` while the TUI owns the screen: a bar or warning written to the terminal scrolls it under teleprint's frames."
+    """Python's `sys.stderr` into `path`, appended, while the TUI owns the screen: a bar or warning written to the
+    terminal scrolls it under teleprint's frames. `faulthandler` writes a hard crash's stack there too."""
+    import faulthandler
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'w', buffering=1) as f, contextlib.redirect_stderr(f): yield f
+    was = faulthandler.is_enabled()
+    try:
+        with open(path, 'a', buffering=1) as f, contextlib.redirect_stderr(f):
+            faulthandler.enable(file=f)
+            yield f
+    finally:
+        faulthandler.disable()
+        if was: faulthandler.enable(file=sys.__stderr__)
+
+def stderr_log(agent):
+    "Where a session's stderr goes: its own run folder, so the next start cannot overwrite a crash's trace."
+    return (agent.runs_dir or Path(agent.cfg or tempfile.gettempdir()))/'stderr.log'
 
 async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto'):
     "The tty loop: one terminal, one event loop, one keyboard owner."
@@ -2443,7 +2457,7 @@ def main(
         start_agent(agent)
         return sys.exit(ask_once(agent, prompt, as_json=json))
     hint = f"{', '.join(host.roots)} · /python · /help"
-    log = Path(agent.cfg or tempfile.gettempdir())/'stderr.log'
+    log = stderr_log(agent)
     try:
         with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane))
     except KeyboardInterrupt: pass

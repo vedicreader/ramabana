@@ -11,16 +11,17 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES',
            'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS',
            'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL',
-           'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP',
-           'PR_SP', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER',
-           'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject',
-           'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'request_text',
-           'prompt_directives', 'project_context', 'work_rules', 'skill_catalogue', 'system_prompt',
-           'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
-           'shell_denial', 'generated_denial', 'note_tools', 'Completer', 'mk_host', 'mk_agent']
+           'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'REPLAYED',
+           'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
+           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
+           'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_directives', 'project_context',
+           'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
+           'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools', 'Completer',
+           'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
-import contextvars, datetime, fnmatch, functools, hashlib, json, re, shlex, threading, time, tomllib, uuid
+import contextvars, datetime, fnmatch, functools, hashlib, json, os, re, shlex, threading, time, tomllib, uuid
 from glob import escape as glob_escape
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -2234,7 +2235,81 @@ def _begin_turn(self:Agent, run=None):
     self.turn_seq += 1
     self.current_turn_id = f'{self.session_id}:turn_{self.turn_seq:06d}'
     self.activity.mark(self.current_turn_id)
+    if (d := getattr(self, 'runs_dir', None)) is not None:   # the turn in flight, for a process that dies before its row
+        d.mkdir(parents=True, exist_ok=True)
+        self.claim_session()
+        (d/PENDING).write_text(json.dumps({'prompt': str(getattr(run, 'question', '') or ''), 'at': time.time(), 'pid': os.getpid(),
+                                           'turn_id': self.current_turn_id, 'model': getattr(self.spec_or_none(), 'name', '')}))
     return self.current_turn_id
+
+
+OWNER = 'owner.json'    #: in a session's run folder: the folders it was last used with
+LOCK = 'owner.lock'     #: in a session's run folder: the process using it, created exclusively
+PENDING = 'turn.json'   #: in a session's run folder: the turn in flight, until its row is written
+
+def _alive(pid):
+    "Whether process `pid` is running; 0 or nothing never is."
+    try: pid = int(pid or 0)
+    except (TypeError, ValueError): return False
+    if pid <= 0: return False
+    try: os.kill(pid, 0)
+    except PermissionError: return True
+    except OSError: return False
+    return True
+
+def _read_json(p):
+    "The JSON in `p`, or None when it is missing or unreadable."
+    try: return json.loads(Path(p).read_text())
+    except Exception: return None
+
+def _pid_in(p):
+    "The process id written in `p`, or 0."
+    try: return int(Path(p).read_text().strip() or 0)
+    except (OSError, ValueError): return 0
+
+def _claim(d):
+    "Take run folder `d` for this process; False when another live process holds it. A dead holder's lock is replaced."
+    lock = Path(d)/LOCK
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    mine = lock.with_name(f'{LOCK}.{os.getpid()}')
+    mine.write_text(str(os.getpid()))
+    try:
+        for _ in range(2):
+            try:
+                os.link(mine, lock)   # atomic, and the lock holds its pid from the moment it exists
+                return True
+            except FileExistsError:
+                holder = _pid_in(lock)
+                if holder == os.getpid(): return True
+                if _alive(holder): return False
+                lock.unlink(missing_ok=True)
+        return False
+    finally: mine.unlink(missing_ok=True)
+
+@patch
+def claim_session(self:Agent):
+    "Hold this session for this process and record its folders; False when another live process holds it."
+    if (d := getattr(self, 'runs_dir', None)) is None: return True
+    if not _claim(d): return False
+    (d/OWNER).write_text(json.dumps({'roots': [str(r) for r in self.host.roots], 'at': time.time()}))
+    return True
+
+@patch
+def release_session(self:Agent):
+    "Give the session up if this process holds it. Its folders stay, for `latest`."
+    if (d := getattr(self, 'runs_dir', None)) is not None and _pid_in(d/LOCK) == os.getpid(): (d/LOCK).unlink(missing_ok=True)
+
+@patch
+def session_owner(self:Agent, sid):
+    "`{'pid': ...}` when another live process holds session `sid`, else None."
+    pid = 0 if self.cfg is None else _pid_in(self.cfg/'runs'/str(sid)/LOCK)
+    return {'pid': pid} if pid and pid != os.getpid() and _alive(pid) else None
+
+@patch
+def _from_here(self:Agent, sid):
+    "Whether session `sid` was last used with one of this host's folders."
+    o = None if self.cfg is None else _read_json(self.cfg/'runs'/str(sid)/OWNER)
+    return bool(o) and bool({str(r) for r in self.host.roots} & set(o.get('roots') or ()))
 
 @patch
 def _prepare(self:Agent, prompt):
@@ -2331,23 +2406,31 @@ def resume_session(self:Agent, selector='latest',
     choices = self.sessions()
     if not choices: raise KeyError('no saved sessions; start the CLI with --cfg or use its default config')
     selector = (selector or 'latest').strip()
-    if selector == 'latest': picked = choices[0]
+    if selector == 'latest':   # never a conversation another process is in; one from these folders first
+        order = sorted(choices, key=lambda s: not self._from_here(s['id']))   # stable: newest first within each
     else:
-        matches = [s for s in choices if s['id'] == selector or s['id'].startswith(selector)]
-        if len(matches) != 1: raise KeyError(f'session {selector!r} matched {len(matches)} conversations')
-        picked = matches[0]
+        order = [s for s in choices if s['id'] == selector or s['id'].startswith(selector)]
+        if len(order) != 1: raise KeyError(f'session {selector!r} matched {len(order)} conversations')
+    runs = None if self.cfg is None else self.cfg/'runs'
+    picked = next((s for s in order if runs is None or s['id'] == self.session_id or _claim(runs/s['id'])), None)
+    if picked is None and selector == 'latest': raise KeyError('every saved session is in use by another ramabana process')
+    if picked is None:
+        raise RuntimeError(f"session {order[0]['id']} is in use by process {(self.session_owner(order[0]['id']) or {}).get('pid', '?')}; quit it there first")
     self.resumed_roots = self.session_added_roots(picked['id'])
-    turns = [t for t in self.session_turns(picked['id']) if t.get('state', 'complete') in (*REPLAYED, 'cancelled')]
+    turns = [t for t in self.session_turns(picked['id']) if t.get('state', 'complete') in (*REPLAYED, 'cancelled', 'interrupted')]
     canonical = []
     for turn in turns:
         steer = '\n'.join(turn.get('steered') or ())
         canonical.append({'role': 'user', 'content': str(turn.get('prompt', '')) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
         body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
         if turn.get('state') == 'cancelled': body += '\n\n[This turn was interrupted by the user; this is an incomplete reply.]'
+        if turn.get('state') == 'interrupted': body += '\n\n[This turn was cut off when its process ended; any reply is missing or incomplete.]'
         if body.strip(): canonical.append({'role': 'assistant', 'content': body})
     if picked['model'] and not keep_model: self.set_model(picked['model'])
     self._be('turn').resume_hist(canonical)
+    self.release_session()
     self.session_id = picked['id']
+    self.claim_session()
     self.plan = Plan()
     self._load_plan()
     bit = f" · plan {self.plan.line()}" if self.plan else ''
@@ -2378,6 +2461,7 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
                 end = f.tell()
             self._last_span = (max(0, end - len(line.encode())), end)
         except Exception: pass
+    if (d := getattr(self, 'runs_dir', None)) is not None: (d/PENDING).unlink(missing_ok=True)   # the row now holds the turn
 
 # %% ../nbs/03_agent.ipynb #728d1a4e
 @patch
@@ -3426,6 +3510,7 @@ def close(self:Agent):
     for backend in evicted:
         try: backend.close()
         except Exception: pass
+    self.release_session()
 
 
 # %% ../nbs/03_agent.ipynb #d29d008a
@@ -3701,8 +3786,40 @@ def session_count(self:Agent):
     return sum(int(r.get('turns', 0)) for r in self.rebuild_index().values())
 
 @patch
+def recover_turns(self:Agent):
+    "Write each turn whose process died before its row as an `interrupted` row with its prompt; how many were written."
+    if self.cfg is None or (p := self.history_path) is None: return 0
+    n = 0
+    for f in sorted((self.cfg/'runs').glob(f'*/{PENDING}*')):
+        by = f.name[len(PENDING) + 1:]      # `turn.json.<pid>`: a recoverer took it, and may have died doing so
+        if by and (not by.isdigit() or _alive(by)): continue
+        if _alive((_read_json(f) or {}).get('pid')): continue   # still running, in this process or another
+        mine = f.with_name(f'{PENDING}.{os.getpid()}')
+        try: f.rename(mine)                 # one process recovers it, however many list sessions at once
+        except OSError: continue
+        t = _read_json(mine) or {}          # read again: a live turn may have taken its place before the rename
+        if _alive(t.get('pid')):
+            try: mine.rename(f.parent/PENDING)
+            except OSError: pass
+            continue
+        if t.get('turn_id') and any(r.get('turn_id') == t['turn_id'] for r in self.session_turns(f.parent.name)):
+            mine.unlink(missing_ok=True)    # its row was written; only the file was left behind
+            continue
+        row = {'at': t.get('at') or mine.stat().st_mtime, 'session': f.parent.name, 'state': 'interrupted',
+               'turn_id': t.get('turn_id', ''), 'branch_id': 'main', 'model': t.get('model', ''),
+               'prompt': str(t.get('prompt', '')), 'steered': [], 'reply': '',
+               'error': 'the process ended during this turn', 'activity': []}
+        with _history_lock(self):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with p.open('a') as h: h.write(json.dumps(row, ensure_ascii=False) + '\n')
+        mine.unlink(missing_ok=True)
+        n += 1
+    return n
+
+@patch
 def sessions(self:Agent):
-    "Conversations from the index, newest first, titled by the user or the first prompt."
+    "Conversations from the index, newest first, titled by the user or the first prompt. A turn whose process died is recovered first."
+    self.recover_turns()
     rows = self.rebuild_index()
     if not rows: return _agent_sessions(self)
     return sorted([{'id': sid, 'turns': int(r.get('turns', 0)), 'at': r.get('last_at', 0),

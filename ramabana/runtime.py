@@ -9,9 +9,9 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
            'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM', 'ONESHOT_CUT',
            'IMG_TOKENS', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'ROUTINE_CBS', 'STATUS_CHARS', 'CHILD_KEEP', 'NOTE_KEEP',
-           'AIR_CALLS', 'AIR_CHARS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture', 'estimate_tokens',
-           'halvings', 'threshold', 'should_compact', 'serialise', 'split_previous', 'summarise_prompt',
-           'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
+           'AIR_CALLS', 'AIR_CHARS', 'REPEAT_CALLS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture',
+           'estimate_tokens', 'halvings', 'threshold', 'should_compact', 'serialise', 'split_previous',
+           'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
            'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
            'use_chat', 'RishiBackend', 'make_backend', 'status_line', 'said_before_call', 'Run', 'current_run',
            'run_context', 'TokenLogger']
@@ -961,6 +961,7 @@ CHILD_KEEP = 50   #: finished children a run keeps; live ones are never dropped
 NOTE_KEEP = 100   #: narration notes a run keeps for the pane
 AIR_CALLS = 8     #: calls in a row with nothing said before the model is reminded to tell the user where it is
 AIR_CHARS = 100   #: what a model must say before a call for the call to count as telling the user
+REPEAT_CALLS = 3  #: identical calls in a row with an identical result before the model is told it is looping
 
 @dataclass
 class Run:
@@ -981,7 +982,7 @@ class Run:
 
     def __post_init__(self):
         self.children, self._lock, self._done, self.inbox, self._heard, self.notes = [], threading.RLock(), threading.Event(), [], [], []
-        self.key, self.silent = uuid.uuid4().hex[:8], 0
+        self.key, self.silent, self._same = uuid.uuid4().hex[:8], 0, (None, None, 0)
         if self.parent is not None: self.parent._adopt(self)
         if self.log is None and getattr(self.parent, 'log', None) is not None: self.log = self.parent.log.parent/f'{self.id}.log'
 
@@ -1038,6 +1039,14 @@ class Run:
             if (n := _note(said)) and not (self.notes and self.notes[-1][1] == n): self.notes = [*self.notes, (time.time(), n)][-NOTE_KEEP:]
             self.silent = 0 if len(n) >= AIR_CHARS else self.silent + 1
         return self.set_status(said)
+
+    def repeated(self, call, result):
+        "How many calls in a row have been `call` returning `result`, this one included."
+        with self._lock:
+            last, seen, n = self._same
+            n = n + 1 if (call, result) == (last, seen) else 1
+            self._same = (call, result, n)
+        return n
 
     def air(self):
         "A reminder to tell the user where the work is, once `AIR_CALLS` calls in a row went by with nothing said; else ''. A sub-agent's run is never reminded, since it reports to its caller."

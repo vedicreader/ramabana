@@ -64,6 +64,19 @@ def test_the_prompt_is_drawn_before_the_model_is_up(tmp_path):
         assert 'starting model' not in str(ui.tail()[0][0])
     session(a, body)
 
+def test_the_screen_says_ready_once_the_start_ends(tmp_path):
+    """The start runs as the turn, so its own last paint still counted the turn as running. With nothing
+    queued, the screen kept a frozen 'working' and a 'thinking' footer until a key repainted it."""
+    a, be = slow_agent(tmp_path)
+    async def body(ui):
+        await asyncio.sleep(.05)
+        be.gate.set()
+        assert await until(lambda: not ui.starting and ui.turn is None)
+        await asyncio.sleep(.05)
+        screen = ui.comp.tty.term.text()
+        assert 'ready' in screen and 'working' not in screen and 'thinking' not in screen, screen
+    session(a, body)
+
 def test_a_line_sent_before_ready_waits_then_runs(tmp_path):
     a, be = slow_agent(tmp_path, replies=['hello back'])
     async def body(ui):
