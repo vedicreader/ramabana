@@ -2,6 +2,19 @@
 
 <!-- do not remove -->
 
+## 0.2.27
+
+What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-embedding-host.md`.
+
+- `Approvals` holds every waiting ask. `answer(id, ok)` resolves any of them once, and each answer reaches `on_answer`. `waiting` lists them oldest first, and `pending` is the oldest. `cancel_all(run=)` refuses the asks of that run and the runs it started.
+- `Approvals(no_listener='wait')` holds an ask until a page listens, and that page is shown the asks already waiting. `on_timeout='allow'` lets an unanswered ask through. `mk_agent` takes `timeout`, `no_listener` and `on_timeout`.
+- `Approvals(policy=fn)` is consulted before rules and modes. `fn(name, args)` returns `'allow'`, `'deny'`, `'ask'` or `None`. A policy that raises asks. An ask the policy or the loop guard put to a person is not allowed by a timeout, and `/approve` does not settle a policy's ask. `registry.approval(fn)` sets the policy.
+- An ask put to a person is an activity row of kind `ask` and state `awaiting`, with its `ask_id`, before its call runs. Its answer finishes the row. The terminal and ACP show their own prompt instead.
+- `agent.ask(prompt, schema=...)` returns a `TurnResult` whose `result` is validated against a pydantic type or a JSON schema dict. The model hands it back through a `submit_result` tool that lasts for the call. `result=True` returns a `TurnResult` without a schema. `strict=True` raises `TurnFailed` for a turn that did not complete and `ResultMissing` for a schema never filled.
+- A turn in a session another live process holds raises `SessionBusy` before anything is written. `Agent(session_id=)` names the session. History lines appended by two processes at once stay whole.
+- `Agent(max_cost=, max_tokens=, session_max_cost=, session_max_tokens=)` stop a turn after the model step that passes them. The turn is recorded with state `budget`.
+- `mk_agent(read_roots=)` opens folders that the read tools search and no write touches, and the briefing names them. Requires shalya 0.1.7.
+
 ## 0.2.26
 
 - The plan checklist no longer covers the end of the transcript. It heads the live tail and pushes the transcript up. It takes only the rows the screen can spare and always leaves 4 transcript rows. It steps aside while a menu, slash completion or the browsing view is open. Ctrl+T still hides it.
