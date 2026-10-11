@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.2.23
+
+- A turn cut off by a crash can be resumed. The turn in flight is kept in `runs/<session>/turn.json` until its row is written. Listing sessions turns one whose process died into an `interrupted` row with its prompt, and `/resume` replays it with a note. A session that crashed in its first turn now appears in `/sessions`.
+- A session in use is never resumed by another process. A session is held through `runs/<session>/owner.lock`. `--resume latest` skips a session another live process holds and prefers sessions from the current folders. `/resume ID` on a held session is refused and names the process holding it. Two processes no longer share one run folder, so the side pane no longer flickers between them.
+- Each session's stderr goes to `stderr.log` in its own run folder, appended rather than truncated, and `faulthandler` writes a hard crash's stack there.
+- When the same call returns the same result three times in a row, the result carries a note to use it, change the arguments or answer.
+- The status bar says `ready` once startup finishes. It kept a frozen `working` and a `thinking` line until a key arrived.
+
 ## 0.2.22
 
 - `view_file` on a generated module returns its text again. The generated-file guard applies only to writes.
