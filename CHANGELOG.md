@@ -2,6 +2,18 @@
 
 <!-- do not remove -->
 
+## 0.2.22
+
+- `view_file` on a generated module returns its text again. The generated-file guard applies only to writes.
+- A call an extension rewrites in `before_tool` meets the guards again. A refused rewrite is not put to the user for approval.
+- The come-up-for-air reminder no longer reaches sub-agents, which report to their caller. A steering message restarts its count.
+- Plan mode and `--readonly` reach sub-agents and folder-watch reviewers, which get the same read-only view as the turn model. A delegation already running keeps the tools it started with. The plan-mode briefing says what stays: the reading tools and the plan tools.
+- A command typed while a turn runs, such as `/python`, comes back to the composer on Alt+Up or Ctrl+C.
+- A chunk the model thread posts after the event loop closes is dropped instead of raising.
+- Sub-agents are briefed with their model family's notes and the characters the caller reads of their answer.
+- A long missing-skill note takes at most a quarter of a delegation's budget, and a `delegate_result` page always moves forward.
+- Requires shalya 0.1.6, where clipped JSON and lines stay within their budget.
+
 ## 0.2.21
 
 - Tool results scale with the model's window. `tool_max_len=None`, now the default, gives a quarter of the window's tokens in characters, at least 6000 and at most 32000. A small window still gets less. Requires shalya 0.1.5, where a clipped result fits its budget with its note, keeps the rest in a file `view_file` can read, and a git report stays JSON.
