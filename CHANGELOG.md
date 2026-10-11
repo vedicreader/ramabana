@@ -2,6 +2,23 @@
 
 <!-- do not remove -->
 
+## 0.2.21
+
+- Tool results scale with the model's window. `tool_max_len=None`, now the default, gives a quarter of the window's tokens in characters, at least 6000 and at most 32000. A small window still gets less. Requires shalya 0.1.5, where a clipped result fits its budget with its note, keeps the rest in a file `view_file` can read, and a git report stays JSON.
+- Delegation results fit the model's budget, notes included. Each question gets its own share, a clipped answer is saved to a file named in the note, and `delegate_result(run_id, offset=)` reads a long answer in pages.
+- The briefing is lighter. `coding_patterns` is no longer inlined, and the catalogue points to it. Each skill is one clipped line. Claude, GPT and Gemini turns each get notes for their family.
+- rishi's per-message tool reminder and its summary-less sliding window are removed from turn chats. Compaction stays with `Compactor`.
+- Only a runtime that hides text between tool calls is told that such text may not reach the user.
+- `/resume` replays a cancelled turn: its prompt, its partial reply and what was sent mid-turn, with a note that it was interrupted. An abandoned stream is still left out.
+- Typed text is never lost. Ctrl+C and Alt+Up return unread steering, queued lines and the draft to the composer. A refused command keeps its text. Each queued line has its own row.
+- A steered line gets a check mark once the model has read it.
+- Narration between tool calls reaches the notebook log. A cancelled turn logs its partial reply, and the chunk in hand when a cancel lands is drawn and logged.
+- Alt+O folds or opens every tool block in the transcript, including turns already scrolled away.
+- One-character prompts: `.` continues the agreed task, `;` restates the last answer more simply, and `,` lists what the user needs to answer next.
+- `run_shell` refuses `| head`, `| tail`, `|&` into either, and `2>&1`, inside `sh -c` too. A write to an nbdev-generated module is refused, and the refusal names the notebook to edit.
+- After 8 tool calls with fewer than 100 characters said before each, the next tool result reminds the model to tell the user where the work is, quoting their request.
+- Plan mode: `/planmode on|off`, or Shift+Tab after auto. It withholds every tool that acts, asks the model for a numbered plan and re-briefs a running model in place. Leaving it sets approvals to ask.
+
 ## 0.2.20
 
 - No local model loads unless one is chosen. With a vault open, rebuilding its entity graph used vishalakshi's default chat, a local Gemma 4 on LiteRT, so a session on cloud models loaded it mid-turn. The graph is built only when `graph_chat` is given or `$VISHALAKSHI_MODEL` names a model; topic nodes need no model and still update.
