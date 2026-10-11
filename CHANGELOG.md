@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.25
+
+- A session resumed with `--resume` or `/resume` draws its last 10 turns: each request, the lines sent during it, and its reply. A stopped or cut-off turn gets a note. A longer session gets a note with the number of turns not shown.
+- Session titles are whole. The index kept each session's first prompt cut to 72 characters, wrapper included, so titles stopped mid-word. It now keeps the title, and the first listing after an upgrade rebuilds the index from the log once.
+- Titles the summary model wrote lose `**bold**`, a `Title:` or `Conversation Title:` label, quotes and anything after a spaced `---`. A title the person set is shown as set.
+
 ## 0.2.24
 
 - A bare `ramabana --resume` lists the sessions that ran in the current folders, newest first, with their age, turn count and title. Enter resumes the newest, a number picks one, and `n` starts a new session. A session another process holds is marked `(in use)` and cannot be picked. `--all-folders` lists every folder's sessions. Without a terminal, a bare `--resume` means `latest`.
