@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.26
+
+- The plan checklist no longer covers the end of the transcript. It heads the live tail and pushes the transcript up. It takes only the rows the screen can spare and always leaves 4 transcript rows. It steps aside while a menu, slash completion or the browsing view is open. Ctrl+T still hides it.
+- A paragraph after a list that sits directly under its lead line is drawn as its own paragraph. It was drawn as a continuation of the list's last item. A block quote or table under a lead line is fixed the same way.
+
 ## 0.2.25
 
 - A session resumed with `--resume` or `/resume` draws its last 10 turns: each request, the lines sent during it, and its reply. A stopped or cut-off turn gets a note. A longer session gets a note with the number of turns not shown.
