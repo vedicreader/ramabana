@@ -18,7 +18,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_directives', 'project_context',
            'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
            'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools', 'Completer',
-           'request_title', 'mk_host', 'mk_agent']
+           'request_body', 'request_title', 'model_title', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, os, re, shlex, threading, time, tomllib, uuid
@@ -2399,6 +2399,11 @@ def session_added_roots(self:Agent, session_id):
 
 # %% ../nbs/03_agent.ipynb #9a62f465
 @patch
+def replayed_turns(self:Agent, sid):
+    "The turns of session `sid` a resume gives back: finished, failed, stopped, or cut off when their process ended."
+    return [t for t in self.session_turns(sid) if t.get('state', 'complete') in (*REPLAYED, 'cancelled', 'interrupted')]
+
+@patch
 def resume_session(self:Agent, selector='latest',
                    keep_model=False):   # stay on the current turn model rather than the conversation's last
     "Resume a persisted conversation by full/prefix id, or the newest with `latest`."
@@ -2417,9 +2422,8 @@ def resume_session(self:Agent, selector='latest',
     if picked is None:
         raise RuntimeError(f"session {order[0]['id']} is in use by process {(self.session_owner(order[0]['id']) or {}).get('pid', '?')}; quit it there first")
     self.resumed_roots = self.session_added_roots(picked['id'])
-    turns = [t for t in self.session_turns(picked['id']) if t.get('state', 'complete') in (*REPLAYED, 'cancelled', 'interrupted')]
     canonical = []
-    for turn in turns:
+    for turn in self.replayed_turns(picked['id']):
         steer = '\n'.join(turn.get('steered') or ())
         canonical.append({'role': 'user', 'content': str(turn.get('prompt', '')) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
         body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
@@ -3524,20 +3528,33 @@ def close(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #d29d008a
 _HISTORY_LOCKS, _HISTORY_LOCKS_LOCK = {}, threading.RLock()
-_SESSION_META_VERSION = 2
+_SESSION_META_VERSION = 3   # 3: the index keeps each session's `first_title`, not its first prompt cut to 72 characters
 LEGACY_GAP = 1800
 _SESSION_DEFAULTS = {'title': '', 'title_turns': 0, 'muted': False, 'manual': False, 'roots': ()}
 
 _HARNESS = re.compile(r'<(system-reminder|notebook|background-results|watch-results|sent_mid_turn)\b[^>]*>.*?</\1>', re.S)
 
+def request_body(prompt):
+    "`request_text` without the harness's blocks, or a `<user-request>` tag a prompt cut short kept."
+    return _HARNESS.sub(' ', re.sub(r'</?user-request>', ' ', request_text(prompt))).strip()
+
+def _cut_title(text, n):
+    "`text` in at most `n` characters, cut at a word with an ellipsis."
+    return text if len(text) <= n else text[:n - 1].rsplit(' ', 1)[0].rstrip(',;:') + '…'
+
 def request_title(prompt, n=80):
-    "A session's title from its first request: the text in `<user-request>`, without the harness's blocks, to its first sentence and at most `n` characters."
-    text = str(prompt or '')
-    if (m := re.search(r'<user-request>(.*?)</user-request>', text, re.S)): text = m.group(1)
-    text = re.sub(r'</?user-request>', ' ', text)   # a prompt the index cut short keeps only its opening tag
-    text = ' '.join(_HARNESS.sub(' ', text).split()).lstrip('▌│┆┃ ')
+    "A session's title from its first request: `request_body` to its first sentence, and at most `n` characters."
+    text = ' '.join(request_body(prompt).split()).lstrip('▌│┆┃ ')
     if (m := re.match(r'(.+?[.?!])(\s|$)', text)): text = m.group(1)
-    return text if len(text) <= n else text[:n].rsplit(' ', 1)[0].rstrip(',;:') + '…'
+    return _cut_title(text, n)
+
+_TITLE_LABEL = re.compile(r'^(?:conversation\s+)?title\s*:\s*', re.I)
+
+def model_title(text, n=80):
+    "A title the summary model wrote, without `**bold**`, a `Title:` label, quotes or what follows a spaced `---` rule, in at most `n` characters."
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', ' '.join(str(text or '').split()))
+    text = re.split(r'\s-{3,}(?:\s|$)', text + ' ')[0]
+    return _cut_title(_TITLE_LABEL.sub('', text.strip().lstrip('# ')).strip('"\'“” '), n)
 
 def _history_lock(agent):
     "One lock per history file, so agents sharing a log serialise their writes to it."
@@ -3652,11 +3669,11 @@ def _index_turn(agent, turn, start, end):
     row['model'] = turn.get('model', '')
     if row.get('first_offset') is None:
         row['first_offset'], row['first_at'] = start, turn.get('at', 0)
-        row['first_prompt'] = str(turn.get('prompt', '')).replace('\n', ' ')[:72]
+        row['first_title'] = request_title(turn.get('prompt', ''))
     rows[sid] = {'version': _SESSION_META_VERSION, **_SESSION_DEFAULTS} | row
     _write_session_rows(agent, rows)
 
-_INDEX_KEYS = ('turns', 'first_at', 'first_offset', 'first_prompt', 'last_at', 'last_offset', 'model')
+_INDEX_KEYS = ('turns', 'first_at', 'first_offset', 'first_title', 'last_at', 'last_offset', 'model')
 
 def _index_start(agent, rows):
     "Where the log has to be read from: None when the index covers it, 0 to rebuild, else where the index ends."
@@ -3689,8 +3706,9 @@ def _index_from_log(p, offset=0, legacy_n=0, legacy_last=None):
             if not sid:
                 if legacy_last is None or at - legacy_last > LEGACY_GAP: legacy_n += 1
                 sid, legacy_last = f'legacy-{legacy_n}', at
-            row = found.setdefault(sid, {'turns': 0, 'first_at': at, 'first_offset': start,
-                'first_prompt': str(turn.get('prompt', '')).replace('\n', ' ')[:72]})
+            if sid not in found:
+                found[sid] = {'turns': 0, 'first_at': at, 'first_offset': start, 'first_title': request_title(turn.get('prompt', ''))}
+            row = found[sid]
             row['turns'] += 1
             row['last_at'], row['last_offset'] = at, offset
             row['model'] = turn.get('model', '')
@@ -3704,8 +3722,8 @@ def _index_from_history(agent):
         if not sid:
             if legacy_last is None or at - legacy_last > LEGACY_GAP: legacy_n += 1
             sid, legacy_last = f'legacy-{legacy_n}', at
-        row = found.setdefault(sid, {'turns': 0, 'first_at': at,
-            'first_prompt': str(turn.get('prompt', '')).replace('\n', ' ')[:72]})
+        if sid not in found: found[sid] = {'turns': 0, 'first_at': at, 'first_title': request_title(turn.get('prompt', ''))}
+        row = found[sid]
         row['turns'] += 1
         row['last_at'], row['model'] = at, turn.get('model', '')
     return found
@@ -3724,7 +3742,7 @@ def rebuild_index(self:Agent, force=False):
         if not start: found = _index_from_log(p) if logged else _index_from_history(self)
         for sid, row in found.items():
             if start and (old := rows.get(sid) or {}).get('turns'):
-                found[sid] = old | row | {k: old[k] for k in ('first_at', 'first_offset', 'first_prompt') if k in old} | {'turns': int(old['turns']) + row['turns']}
+                found[sid] = old | row | {k: old[k] for k in ('first_at', 'first_offset', 'first_title') if k in old} | {'turns': int(old['turns']) + row['turns']}
         out = {sid: {'version': _SESSION_META_VERSION, **_SESSION_DEFAULTS}
                     | {k: v for k, v in (rows.get(sid) or {}).items() if k in _SESSION_DEFAULTS}
                     | row
@@ -3776,7 +3794,7 @@ def summarize_session(self:Agent, sid=None, force=False):
     fallback = meta['title'] or request_title(turns[0].get('prompt', ''))
     prompt = '\n'.join(str(t.get('prompt', '')) for t in turns[-8:])
     try:
-        title = ' '.join(self.oneshot(prompt, 'Write a short conversation title. Output only the title.', 'summary', 32).split())[:120]
+        title = model_title(self.oneshot(prompt, 'Write a short conversation title. Output only the title.', 'summary', 32))
         if not title: raise ValueError('the summary model returned no title')
         self.history_problem = ''
     except Exception as e:
@@ -3844,7 +3862,7 @@ def sessions(self:Agent):
     if not rows: return _agent_sessions(self)
     return sorted([{'id': sid, 'turns': int(r.get('turns', 0)), 'at': r.get('last_at', 0),
                     'first_at': r.get('first_at', 0), 'model': r.get('model', ''),
-                    'title': r.get('title') or request_title(r.get('first_prompt', '')),
+                    'title': (r.get('title') if r.get('manual') else model_title(r.get('title'))) or r.get('first_title', ''),
                     'title_turns': r.get('title_turns', 0), 'muted': bool(r.get('muted', False)),
                     'roots': list(r.get('roots') or ())}
                    for sid, r in rows.items() if r.get('turns')],

@@ -13,15 +13,16 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'GUIDE', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT',
            'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE',
            'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES',
-           'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme',
-           'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
-           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
-           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff',
-           'diff_rich', 'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang',
-           'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to',
-           'stderr_log', 'pick_session', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd',
-           'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF',
-           'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
+           'RESUME_SHOWN', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok',
+           'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics',
+           'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs',
+           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn',
+           'hl_text', 'is_diff', 'diff_rich', 'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern',
+           'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty',
+           'stderr_to', 'stderr_log', 'pick_session', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main',
+           'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths',
+           'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
+           'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -49,7 +50,7 @@ from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
 from .core import EXTRAS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, env, installed, model_note, need
 from shalya.tools import media_dir, save_media
-from .agent import Agent, Approvals, APPROVE_MODES, answer_md, subject
+from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
 from .pane import quit_mark, write_snapshot
 from .tools import WRITE_TOOLS, path_write
 from . import setup
@@ -1527,6 +1528,7 @@ class Ui:
         if name == '#note': return self.note(self.note_memory(arg))
         if line.startswith('/') and self.starting: return self.note(f'{name} waits for the model · try again once it is ready')
         if line.startswith('/'):
+            was = self.agent.session_id
             out = self.agent.command(line)
             if out is None and (body := self.agent.expand_command(line)) is not None: return self._turn(body)
             kind = 'plan' if name in ('/plan', '/todo', '/todos') and out is not None else (
@@ -1534,6 +1536,7 @@ class Ui:
             self.say(Text(out) if out is not None else Text(f'unknown command: {line}'),
                      kind, fold=None, source=out)
             if name in ('/plan', '/todo', '/todos'): self.show_plan = bool(self.agent.plan)
+            if self.agent.session_id != was: self.show_resumed()
             return None
         if not self._hold and self.steer(line): return None
         got = [self.attach(p) for p in attach_refs(line)]
@@ -2324,7 +2327,23 @@ def pick_session(agent,
         if (o := agent.session_owner(s['id'])) is None: return s['id']
         out(f"that session is in use by process {o['pid']}; pick another")
 
-async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto'):
+RESUME_SHOWN = 10   #: the most recent turns a resumed session draws
+
+@patch
+def show_resumed(self:Ui, n=RESUME_SHOWN):
+    "Draw the resumed session's last `n` turns: each request, what was sent during it, and its reply."
+    turns = self.agent.replayed_turns(self.agent.session_id)
+    if len(turns) > n: self.note(f'{len(turns) - n} earlier of {len(turns)} turns are not shown')
+    for t in turns[-n:]:
+        self.say(Text(request_body(t.get('prompt', ''))), 'user', pad=True)
+        for line in t.get('steered') or (): self.say(Text(request_body(line)), 'user')
+        if (r := str(t.get('reply') or '').strip()): self.say(self.reply(r), 'reply', fold=None, source=r)
+        why = {'cancelled': 'was stopped before it finished', 'interrupted': 'was cut off when its process ended'}.get(t.get('state'))
+        if why: self.note(f'this turn {why}')
+        elif t.get('error'): self.note(str(t['error']), 'error')
+
+async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto',
+                resumed=False):   # draw the resumed session's turns before the first prompt
     "The tty loop: one terminal, one event loop, one keyboard owner."
     tty = AppTty()
     tty.write('\x1b[?2004h')
@@ -2348,6 +2367,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         comp.on_paste = ui.paste
         comp.on_resize = lambda: (comp.resize(), ui.paint())
         comp.on_mouse = ui.on_mouse
+        if resumed: ui.show_resumed()
         if agent.plan:
             ui.say(plan_text(agent.plan.md()), 'plan', fold=None, source=agent.plan.md())
             ui.show_plan = True
@@ -2490,7 +2510,7 @@ def main(
     hint = f"{', '.join(host.roots)} · /python · /help"
     log = stderr_log(agent)
     try:
-        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane))
+        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane, resumed=bool(resume)))
     except KeyboardInterrupt: pass
     if log.exists() and log.stat().st_size: print(f'library output from the session is in {log}', file=sys.stderr)
 
