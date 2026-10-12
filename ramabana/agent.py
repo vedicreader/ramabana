@@ -12,14 +12,15 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES',
            'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL',
            'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS',
-           'OWNER', 'LOCK', 'PENDING', 'REPLAYED', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK',
-           'RESULT_AGAIN', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE',
-           'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
-           'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
-           'request_text', 'prompt_directives', 'project_context', 'work_rules', 'skill_catalogue', 'system_prompt',
-           'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
-           'shell_denial', 'generated_denial', 'note_tools', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing',
-           'Completer', 'request_body', 'request_title', 'model_title', 'mk_host', 'mk_agent']
+           'OWNER', 'LOCK', 'PENDING', 'REPLAYED', 'EVENT_MAX', 'HIST', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP',
+           'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
+           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
+           'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_directives', 'project_context',
+           'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
+           'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools', 'SessionBusy',
+           'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title',
+           'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, os, re, shlex, threading, time, tomllib, uuid
@@ -29,6 +30,7 @@ from pathlib import Path
 from fastcore.basics import first, ifnone, patch
 from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
+from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import accepts, AgentError, agent_err, available_models, missing_key, needs, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .runtime import QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
@@ -167,6 +169,7 @@ class Activity:
 
     def __init__(self, on_change=None, max_acts=MAX_ACTS):
         self.acts, self.on_change, self.max_acts = [], on_change, max_acts
+        self.tap = None   # the agent's own listener, kept apart from `on_change`, which a frontend replaces
         self._lock = threading.Lock()
         self._mark = 0
         self.turn_id = ''
@@ -196,9 +199,10 @@ class Activity:
         return act
 
     def _changed(self, act):
-        if not self.on_change: return
-        try: self.on_change(act)
-        except Exception: pass
+        for f in (self.on_change, self.tap):
+            if not f: continue
+            try: f(act)
+            except Exception: pass
 
     def mark(self, turn_id=''):
         "Remember where the stream is now and bind new actions to one durable turn id."
@@ -1118,6 +1122,8 @@ class Agent:
                  model=None,                # turn model; None takes the routing default
                  routing=None,
                  sp=None,                   # override the whole briefing
+                 extra_sp='',               # text added after the briefing, which stays
+                 global_skills=True,        # read skills from `~/.agents/skills` too
                  approvals=None,            # an `Approvals`; None gates nothing
                  cfg=None,                  # config dir, for skills and extensions
                  compact=True,              # compact automatically at the threshold
@@ -1144,6 +1150,7 @@ class Agent:
                  on_activity=None,
                  history_name='agent',      # names this durable conversation in the config dir
                  session_id=None,           # this session's id, for a host that keeps its own; None makes a new one
+                 keep_conversation=False,   # save the turn model's whole conversation each turn, for `resume_session(full=True)`
                  poll_every=POLL_EVERY,     # seconds between automatic watch polls; 0 never polls
                  verify='',                 # the project's check; empty reads `[tool.ramabana] verify`
                  instruction_style='ramabana', # 'ramabana' | 'aai' compatibility profile
@@ -1158,8 +1165,10 @@ class Agent:
         if (bad := set(self.optin) - set(OPTIN)): raise ValueError(f'unknown optin {sorted(bad)}; one of {", ".join(OPTIN)}')
         self.history_name = history_name
         self.session_id = session_id or f'agent_{datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")}'
+        self.keep_conversation = bool(keep_conversation)
         self.inbox_key = uuid.uuid4().hex[:8]   # stable per session, so the briefing stays cached
         self._steered = []
+        self.queued = deque()   # prompts held for the turns after this one; `run_queued` runs them
         self.turn_seq, self.current_turn_id = 0, ''
         self.current_branch_id, self.checkpoints, self._branch_hist = 'main', {}, {}
         self.routing = routing or Routing(turn=model)
@@ -1177,9 +1186,10 @@ class Agent:
             self._chat_callbacks = {'budget': _budget_callback(self)}
         self.local_multimodal = bool(local_multimodal)
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
-        self._sp = sp
+        self._sp, self.extra_sp, self.global_skills = sp, extra_sp, bool(global_skills)
         self.compactor = Compactor(auto=compact, strategy=compact_strategy, kernel_alive=kernel_alive, on_compact=on_compact)
         self.activity = Activity(on_change=on_activity)
+        self.activity.tap = self._act_event
         self._nested = contextvars.ContextVar('delegating', default=())   # per context, so a fan-out's workers inherit it
         self.plan = Plan()
         self.on_plan = None      # callable(plan) after every mutation
@@ -1231,14 +1241,29 @@ class Agent:
         fn = getattr(self._reg, 'approve', None)   # the built registry only: a gate thread never triggers its first load
         return fn(name, args) if fn is not None else None
 
+    def _act_event(self, act):
+        "An activity row as an event, its result clipped."
+        self._event('act', act={**act.dict(), 'detail': _clip(act.detail, 2000)})
+
+    def _heard_steer(self, msgs):
+        "Steering the model has just been handed, with a tool result."
+        self._steered.extend(msgs)
+        self._event('steer', turn_id=self.current_turn_id, messages=list(msgs))
+
+    def _ask_event(self, ask, event):
+        self._event('ask', event=event, id=ask.id, tool=ask.tool, summary=ask.summary, run_id=ask.run_id,
+                    answer=ask.answer, note=ask.note, forced=ask.forced, preview=_clip(ask.preview, 2000))
+
     def _ask_raised(self, ask):
         "Show an ask put to a person as an `awaiting` activity row before its call runs."
+        self._ask_event(ask, 'raised')
         act = self.activity.start(ask.tool, ask.args, summary=ask.summary, kind='ask', state='awaiting', detail=ask.preview,
                                   ask_id=ask.id, **self._action_meta(ask.tool, ask.args))
         self.__dict__.setdefault('_ask_acts', {})[ask.id] = act
 
     def _ask_settled(self, ask):
         "Finish an ask's row when it is answered; a refusal nobody was asked about still gets a row, and a run-log line."
+        self._ask_event(ask, 'answered')
         act = self.__dict__.get('_ask_acts', {}).pop(ask.id, None)
         if act is None:
             if ask.answer: return
@@ -1295,6 +1320,9 @@ def skills(self:Agent):
     if self._skills is None:
         try:
             self._skills = discover(self.host.roots, self.cfg, extra=self.registry.skills)
+            if not self.global_skills:   # a host that is not one person's terminal leaves `~/.agents/skills` out
+                home = Path.home()/'.agents'/'skills'
+                self._skills = [s for s in self._skills if not str(getattr(s, 'where', '') or '').startswith(str(home))]
         except Exception as e:
             self._skills = []
             self.note = f'skills unavailable ({agent_err(e)})'
@@ -1556,6 +1584,7 @@ def _save_plan(self:Agent):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(self.plan.dict(), ensure_ascii=False, indent=2))
     except Exception: pass
+    self._event('plan', plan=self.plan.dict())
     if self.on_plan:
         try: self.on_plan(self.plan)
         except Exception: pass
@@ -1673,7 +1702,7 @@ def tools(self:Agent):
             self.approvals.tools = self.approvals.tools | view.writes
             self.approvals.prune()
         root = lambda: r if (r := current_run()) is self.run() else None
-        self._tools = view.map(lambda f: _inboxed(self._record(f), root, lambda msgs: self._steered.extend(msgs))).tools + ([status_tool(root)] if self._quiet else [])
+        self._tools = view.map(lambda f: _inboxed(self._record(f), root, self._heard_steer)).tools + ([status_tool(root)] if self._quiet else [])
     return self._tools
 
 
@@ -1683,6 +1712,7 @@ def tools(self:Agent):
 @patch
 def system_prompt(self:Agent):
     note = inbox_note(self.inbox_key) + (STATUS_NOTE if self._quiet else '') + (PLAN_NOTE if self.plan_mode else '')
+    note = (f'\n\n{self.extra_sp}' if self.extra_sp else '') + note   # a host's addition, after the briefing it adds to
     if self._sp: return self._sp + note
     if self._tools is None: self.tools
     if self.profile == 'small': return small_system_prompt(self.host, tools=self._plain, cfg=self.cfg) + note
@@ -2338,6 +2368,8 @@ def _begin_turn(self:Agent, run=None):
     self.turn_seq += 1
     self.current_turn_id = f'{self.session_id}:turn_{self.turn_seq:06d}'
     self.activity.mark(self.current_turn_id)
+    self._event('turn_start', turn_id=self.current_turn_id, prompt=str(request_text(getattr(run, 'question', '')))[:2000],
+                model=getattr(self.spec_or_none(), 'name', ''))
     if (d := getattr(self, 'runs_dir', None)) is not None:   # the turn in flight, for a process that dies before its row
         d.mkdir(parents=True, exist_ok=True)
         self.claim_session()
@@ -2506,9 +2538,22 @@ def replayed_turns(self:Agent, sid):
     "The turns of session `sid` a resume gives back: finished, failed, stopped, or cut off when their process ended."
     return [t for t in self.session_turns(sid) if t.get('state', 'complete') in (*REPLAYED, 'cancelled', 'interrupted')]
 
+def _as_messages(turns):
+    "Turns as the text of a conversation: each prompt and what was sent during it, then the reply, its calls clipped."
+    out = []
+    for turn in turns:
+        steer = '\n'.join(turn.get('steered') or ())
+        out.append({'role': 'user', 'content': str(turn.get('prompt', '')) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
+        body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
+        if turn.get('state') == 'cancelled': body += '\n\n[This turn was interrupted by the user; this is an incomplete reply.]'
+        if turn.get('state') == 'interrupted': body += '\n\n[This turn was cut off when its process ended; any reply is missing or incomplete.]'
+        if body.strip(): out.append({'role': 'assistant', 'content': body})
+    return out
+
 @patch
 def resume_session(self:Agent, selector='latest',
-                   keep_model=False):   # stay on the current turn model rather than the conversation's last
+                   keep_model=False,   # stay on the current turn model rather than the conversation's last
+                   full=False):        # restore the conversation as its last turn left it, every tool result whole
     "Resume a persisted conversation by full/prefix id, or the newest with `latest`."
     if self.busy: raise RuntimeError('cannot resume while the assistant is working')
     choices = self.sessions()
@@ -2525,15 +2570,15 @@ def resume_session(self:Agent, selector='latest',
     if picked is None:
         raise RuntimeError(f"session {order[0]['id']} is in use by process {(self.session_owner(order[0]['id']) or {}).get('pid', '?')}; quit it there first")
     self.resumed_roots = self.session_added_roots(picked['id'])
-    canonical = []
-    for turn in self.replayed_turns(picked['id']):
-        steer = '\n'.join(turn.get('steered') or ())
-        canonical.append({'role': 'user', 'content': str(turn.get('prompt', '')) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
-        body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
-        if turn.get('state') == 'cancelled': body += '\n\n[This turn was interrupted by the user; this is an incomplete reply.]'
-        if turn.get('state') == 'interrupted': body += '\n\n[This turn was cut off when its process ended; any reply is missing or incomplete.]'
-        if body.strip(): canonical.append({'role': 'assistant', 'content': body})
+    turns = self.replayed_turns(picked['id'])
     if picked['model'] and not keep_model: self.set_model(picked['model'])
+    saved = (_read_json(self.cfg/'runs'/picked['id']/HIST) if full and self.cfg is not None else None) or {}
+    spec = self.routing.spec('turn')
+    at = {t.get('turn_id'): i for i, t in enumerate(self.session_turns(picked['id']))}   # every turn, a budget's stop included
+    if saved.get('hist') and saved.get('turn_id') in at and (saved.get('backend'), saved.get('model_id')) == (spec.backend, spec.model_id):
+        # the saved conversation, then any turn after it as text; another model's messages are never replayed
+        canonical = list(saved['hist']) + _as_messages([t for t in turns if at.get(t.get('turn_id'), -1) > at[saved['turn_id']]])
+    else: canonical = _as_messages(turns)
     self._be('turn').resume_hist(canonical)
     self.release_session()
     self.session_id = picked['id']
@@ -2559,6 +2604,53 @@ def _append_line(p, line):
         finally: fcntl.flock(f, fcntl.LOCK_UN)
     return end - len(data), end
 
+EVENT_MAX = 10_000_000   #: bytes an event file reaches before it is renamed to `<name>.1` and started again
+HIST = 'hist.json'   #: in a session's run folder: the turn model's whole conversation as its last turn left it
+
+def _whole(hist):
+    "`hist` up to its last complete exchange: a call a stop left without its result would be refused by the provider."
+    answered = {m.get('tool_call_id') for m in hist if isinstance(m, dict) and m.get('role') == 'tool'}
+    for i in range(len(hist) - 1, -1, -1):
+        m = hist[i]
+        if isinstance(m, dict) and m.get('role') == 'assistant' and any(tc.get('id') not in answered for tc in m.get('tool_calls') or ()):
+            return list(hist[:i])
+    return list(hist)
+
+@patch
+def _save_hist(self:Agent):
+    "Keep the turn model's whole conversation, tool results included, for `resume_session(full=True)`, when `keep_conversation` asks."
+    if not self.keep_conversation or (d := getattr(self, 'runs_dir', None)) is None: return
+    try:
+        b = self._be('turn')
+        data = json.dumps({'turn_id': self.current_turn_id, 'backend': b.spec.backend, 'model_id': b.spec.model_id,
+                           'hist': _whole(b.snapshot_hist())}, ensure_ascii=False)
+        d.mkdir(parents=True, exist_ok=True)
+        with atomic_save(d/HIST, 'w') as f: f.write(data)
+    except Exception as e: self.history_problem = f'the conversation was not saved for a full resume ({agent_err(e)})'
+
+@patch
+def events_to(self:Agent, path,
+              max_bytes=EVENT_MAX):   # the size at which the file rolls over to `<name>.1`
+    "Write one JSON line per event to `path` from now on: calls, asks, plan changes, turns and steering. Returns the path."
+    p = Path(path).expanduser()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    os.close(os.open(p, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600))   # prompts and tool output are this user's to read
+    if '_event_lock' not in self.__dict__: self._event_lock = threading.Lock()
+    self.__dict__.setdefault('_event_files', []).append((p, int(max_bytes)))
+    return p
+
+@patch
+def _event(self:Agent, kind, **data):
+    "Append one event to every file `events_to` named. A failed write never reaches the turn."
+    if not (files := self.__dict__.get('_event_files')): return
+    line = json.dumps({'at': time.time(), 'session': self.session_id, 'kind': kind, **data}, ensure_ascii=False, default=str) + '\n'
+    with self._event_lock:   # threads in this process rotate one at a time; other processes may still race a rotation
+        for p, mx in files:
+            try:
+                if p.exists() and p.stat().st_size + len(line.encode()) > mx: p.replace(p.with_name(p.name + '.1'))
+                _append_line(p, line)
+            except Exception: pass
+
 @patch
 def _remember(self:Agent, prompt, text, error='', state='complete'):
     turn = {'at': time.time(), 'session': getattr(self, 'session_id', '') or '', 'state': state,
@@ -2575,6 +2667,8 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
             p.parent.mkdir(parents=True, exist_ok=True)
             self._last_span = _append_line(p, json.dumps(turn, ensure_ascii=False) + '\n')
         except Exception: pass
+    self._event('turn_end', turn_id=turn['turn_id'], state=state, error=error, usage=turn['usage'], reply=str(text or '')[:4000])
+    self._save_hist()
     if (d := getattr(self, 'runs_dir', None)) is not None: (d/PENDING).unlink(missing_ok=True)   # the row now holds the turn
 
 # %% ../nbs/03_agent.ipynb #728d1a4e
@@ -3247,9 +3341,15 @@ def _new_run(self:Agent, prompt):
 
 @patch
 def _release_run(self:Agent, run):
+    "Drop a backend a stop left running; the turn backend that takes its place starts with its conversation."
     if run.state not in ('detached', 'terminated'): return
+    turn = (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
     for key, backend in list(self._backends.items()):
-        if backend is run.backend: self._backends.pop(key, None)
+        if backend is not run.backend: continue
+        try: hist = _whole(backend.snapshot_hist()) if key == turn else None   # its worker may still be mid-call
+        except Exception: hist = None
+        self._backends.pop(key, None)
+        if hist: self._be('turn').resume_hist(hist)
 
 @dataclass
 class TurnResult:
@@ -3357,8 +3457,33 @@ def _spend(self:Agent, use):
             return
 
 @patch
+def queue(self:Agent, prompt):
+    "Hold `prompt` for a turn after this one; `run_queued` runs what is held, in order. Returns how many wait."
+    self.queued.append(prompt)
+    return len(self.queued)
+
+@patch
+def run_queued(self:Agent, **kw):
+    "Run every queued prompt in order, each its own turn, and return their `TurnResult`s."
+    out = []
+    while True:
+        try: p = self.queued.popleft()
+        except IndexError: return out
+        out.append(self.ask(p, result=True, **kw))
+
+UNREAD = 'Sent during the last turn, after its last tool call, so not yet read:'
+
+@patch
+def _with_unread(self:Agent, prompt):
+    "`prompt` after the steering the last turn never read, so a line sent too late is not lost; a running turn keeps its own."
+    if (r := self.run()) is None or not r.terminal or not (msgs := r.drain_inbox()): return prompt
+    head = UNREAD + '\n' + '\n'.join(msgs)
+    return f'{head}\n\n{prompt}' if isinstance(prompt, str) else [head, *prompt]
+
+@patch
 def _ask_once(self:Agent, prompt, **kw):
     "One registered turn. A stopped turn is recorded, and not replayed."
+    prompt = self._with_unread(prompt)
     run, kept = self._new_run(prompt), [False]
     def keep(state, text='', error=''):
         "Write the row once, whichever way the turn ended; a stop a budget made is recorded as `budget`."
@@ -3395,6 +3520,7 @@ def _ask_once(self:Agent, prompt, **kw):
 @patch
 def stream(self:Agent, prompt, on_registered=None, **kw):
     "One registered turn as markdown chunks. A stopped turn is recorded, and not replayed."
+    prompt = self._with_unread(prompt)
     run, out, kept = self._new_run(prompt), [], [False]
     def keep(state, text='', error=''):
         "Write the row once, whichever way the turn ended; a stop a budget made is recorded as `budget`."
@@ -4183,16 +4309,22 @@ def mk_agent(roots=('.',),
              pii_ner=False,           # gate titled names too, not only patterns
              host_kw=None,            # to `mk_host`: `index` (off: `sync_index` runs it after the model), `warm`, `vault=<path>`
              read_roots=(),           # folders the read tools search and no write touches
+             python='host',           # 'host' runs `run_python` in this process, 'off' withholds it, or a Dhrishti URL runs it in that kernel
+             rules_path=None,         # saved allow/deny rules; None shares `<cfg>/approvals.json` with every session on that cfg
              timeout=None,            # seconds an ask waits for an answer; None waits forever
              no_listener='refuse',    # an ask with nobody listening: 'refuse', or 'wait' for a listener
              on_timeout='refuse',     # an ask nobody answers in time: 'refuse' or 'allow'
              **kw):                   # forwarded to `Agent`
     "A host over `roots` and an `Agent` on it, gated as `approve` says; no code index until asked."
-    approvals = None if approve == 'none' else Approvals(mode=approve, timeout=timeout, no_listener=no_listener, on_timeout=on_timeout,
-                                                         rules_path=cfg/'approvals.json' if (cfg := kw.get('cfg')) else None)
+    rules_path = rules_path or (cfg/'approvals.json' if (cfg := kw.get('cfg')) else None)
+    approvals = None if approve == 'none' else Approvals(mode=approve, timeout=timeout, no_listener=no_listener, on_timeout=on_timeout, rules_path=rules_path)
     host = mk_host(roots, approvals=approvals, web=web, vault=vault, spec=spec, read_outside=read_outside, pii=pii, pii_ner=pii_ner,
                    **{'index': False, **({'read_roots': read_roots} if read_roots else {}), **(host_kw or {})})
     if approvals is not None: approvals.host = host
+    if python == 'off': host.without = frozenset(host.without) | {'session'}   # run_python, inspect_python, restart_kernel, read_terminal
+    elif python != 'host':
+        from .pyrepl import use_kernel
+        use_kernel(host, python)
     agent = Agent(host, model=model, approvals=approvals, **kw)
     agent.lend_model()   # else `--vault` loads a second runtime
     return agent, host

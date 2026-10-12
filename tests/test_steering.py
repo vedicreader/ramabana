@@ -219,3 +219,15 @@ def test_a_real_turn_marks_the_steered_line_read():
         assert _tool_results(be)[0].endswith(_tag(agent, 'and mention b.py'))
         assert '✓' in _src(blk)
     finally: tty.close()
+
+
+def test_queued_prompts_run_in_order_and_unread_steering_joins_the_next_turn(tmp_path):
+    "A host queues follow-ups while a job runs; a line that arrived after the last tool call is not left for it to find."
+    a, be = fake_agent(cfg=tmp_path, replies=['one', 'two', 'three'])
+    a.ask('first')
+    a.run().tell('also check the footnotes')        # arrived after the turn's last tool result
+    assert a.queue('second') == 1 and a.queue('third') == 2
+    results = a.run_queued()
+    assert [r.reply for r in results] == ['two', 'three'] and all(r.state == 'complete' for r in results)
+    assert 'also check the footnotes' in str(be.sent[1]) and 'second' in str(be.sent[1]), 'the unread line joins the next turn'
+    assert 'footnotes' not in str(be.sent[2]) and not a.queued and a.run_queued() == []

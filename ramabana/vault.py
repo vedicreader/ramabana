@@ -255,6 +255,21 @@ class WorkspaceHost(VaultHost, SpecHost):
         if not (self._spec_enabled or inherited_apis is not None):
             self.without = self.without | {'api'}
 
+    def add_worktree(self, repo,
+                     branch,            # checked out when it exists, else made from the checked-out commit
+                     path=None,         # where the worktree goes; None puts it beside `repo` as `<repo>-<branch>`
+                     readonly=False):   # open it for reading only
+        "A git worktree of `repo` on `branch`, opened as a root; returns its path. The host's own call: it may make a folder outside the open ones."
+        import subprocess
+        repo = Path(repo).expanduser().resolve()
+        path = Path(path).expanduser() if path else repo.parent/f"{repo.name}-{re.sub(r'[^A-Za-z0-9._-]+', '-', branch)}"
+        git = lambda *a: subprocess.run(['git', '-C', str(repo), *a], capture_output=True, text=True)
+        made = git('rev-parse', '--verify', '--quiet', f'refs/heads/{branch}').returncode != 0
+        r = git('worktree', 'add', *(['-b', branch, str(path)] if made else [str(path), branch]))
+        if r.returncode: raise RuntimeError(f'git worktree add {branch}: {(r.stderr or r.stdout).strip()}')
+        self.add_root(str(path), readonly=readonly)
+        return path.resolve()
+
     def run_cmd_bg(self, command, cwd=None):
         "Start `command` in its own process group, logging to a file and reading nothing from the terminal: never a tmux pane, since several stacked under the chat. The pane's Background rows show it."
         import subprocess, tempfile, uuid

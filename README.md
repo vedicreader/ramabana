@@ -363,6 +363,14 @@ A long-running host, such as a web app that runs agent jobs, uses the same calls
 - **A typed result.** `agent.ask(prompt, schema=Model)` returns a [`TurnResult`](https://vedicreader.github.io/ramabana/agent.html#turnresult) whose `result` is a validated `Model`.
 - **Sessions.** `Agent(session_id=...)` names the session. A turn in a session another live process holds raises [`SessionBusy`](https://vedicreader.github.io/ramabana/agent.html#sessionbusy).
 - **Budgets.** `max_cost`, `max_tokens`, `session_max_cost` and `session_max_tokens` stop a turn that passes them. The turn is recorded with state `budget`.
+- **An event file.** `agent.events_to(path)` writes one JSON line per call, ask, plan change, turn start and end, and steering delivered. A file past `max_bytes` rolls over to `<name>.1`.
+- **A queue.** `agent.queue(prompt)` holds a prompt, and `agent.run_queued()` runs what is held, in order. Steering a turn never read joins the next turn.
+- **A full resume.** `resume_session(id, full=True)` restores the conversation as its last turn left it, every tool result whole. A stop that leaves a backend running hands its conversation to the next one.
+- **Defaults for a host.** `mk_agent(python='off')` withholds Python, or a Dhrishti URL runs it in that kernel. `mk_agent(global_skills=False)` leaves `~/.agents/skills` out. `rules_path=` names the job’s own rules file. `Agent(extra_sp=...)` adds to the briefing.
+- **A worktree.** `host.add_worktree(repo, branch)` makes a git worktree for the job and opens it as a root.
+- **A control socket.** `ramabana.control.Control(agent).start()` listens on a socket in the session’s run folder, and `control_call(path, method, ...)` prompts, steers, cancels and answers it from another process.
+
+`examples/embed_host.py` runs one such job end to end.
 
 ``` python
 from ramabana.testing import fake_agent
@@ -396,6 +404,7 @@ Start with the page for the contract you need:
 - [testing](04_testing.ipynb): in-memory hosts and deterministic backends
 - [terminal](05_cli.ipynb), [MCP](06_mcp.ipynb), [PyREPL](11_pyrepl.ipynb), and [ACP](16_acp.ipynb): frontend adapters, the [now pane](18_pane.ipynb) beside the terminal, and the [first-run setup](19_setup.ipynb) that starts it in tmux
 - [vault](07_vault.ipynb), [API specifications](10_spec.ipynb), and [folder monitoring](17_monitor.ipynb): optional capabilities
+- [control](20_control.ipynb): a local socket a detached job runner listens on
 - [shop](08_shop.ipynb): product search tools
 - [coding patterns](09_coding_patterns.ipynb), [theory](13_theory.ipynb), [prose](14_write_prose.ipynb), and [documentation](15_write_docs.ipynb): bundled agent skills
 
