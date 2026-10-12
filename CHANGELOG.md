@@ -2,6 +2,20 @@
 
 <!-- do not remove -->
 
+## 0.2.28
+
+The rest of `docs/plans/2026-10-12-embedding-host.md`: items 9 to 14.
+
+- `agent.events_to(path, max_bytes=)` appends one JSON line per event to `path`. Events are a call starting and finishing, an ask raised and answered, a plan change, a turn starting and ending with its state and usage, and steering delivered. Each line is flushed when written. A file past `max_bytes` is renamed to `<name>.1` and a new file is started. The file is created readable by this user only. The terminal's and ACP's own listeners do not replace it.
+- `mk_agent(python='off')` withholds `run_python` and the other Python tools. `python=` set to a Dhrishti URL runs them in that kernel. The default `'host'` runs them in this process.
+- `Agent(global_skills=False)` reads no skills from `~/.agents/skills`. `Agent(extra_sp=)` adds text after the briefing. `sp=` still replaces the briefing. `mk_agent(rules_path=)` keeps a job's allow and deny rules in their own file.
+- `agent.queue(prompt)` holds a prompt and returns the queue length. `agent.run_queued()` runs the held prompts in order and returns their `TurnResult`s. Steering that arrived after a turn's last tool call joins the next turn.
+- `Agent(keep_conversation=True)` saves the turn model's whole conversation after each turn in `runs/<session>/hist.json`, with its backend and model. `resume_session(id, full=True)` restores it with every tool result whole. A saved conversation is used only for the same backend and model. Otherwise the session is replayed as text. A tool call left without its result is trimmed off. The default saves nothing.
+- A stop that leaves its backend running hands the conversation to the next turn's backend.
+- `host.add_worktree(repo, branch, path=None, readonly=False)` creates a git worktree of `repo` on `branch` and opens it as a root. An existing branch is checked out. A missing branch is created from the checked-out commit. The default path is `<repo>-<branch>` beside `repo`.
+- `ramabana.control.Control(agent).start()` listens on a Unix socket, `runs/<session>/control.sock`, readable by this user only. A path too long for a socket moves to the temp folder. `control_call(path, method, **params)` sends one request. The methods are `prompt`, `steer`, `cancel`, `asks`, `answer`, `status` and `events`. A prompt sent during a turn is queued. `cancel` drops the queued prompts and returns their number in `dropped`. `events(offset=)` returns whole lines from `offset` and sets `rotated` when the file rolled over. A turn that raises is recorded in `status` as `failed`. `start` refuses a path another runner listens on and a path that is not a socket. A socket a crashed runner left is replaced.
+- `examples/embed_host.py` runs one job end to end: a policy, a typed result, an ask answered by id, the event file and a read-only reference folder.
+
 ## 0.2.27
 
 What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-embedding-host.md`.
