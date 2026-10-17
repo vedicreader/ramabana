@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.2.29
+
+- A line that starts with `!` in agent mode runs as a shell command in the first open folder. Its output and exit state print in the transcript and are never sent to the model. It runs without an approval, in every approval and plan mode. It reads no input, so it cannot answer a password prompt. Its output prints when it finishes. In python mode a `!` line is Python.
+- `ctrl+c` sends `SIGINT` to a running `!` command, and the next `ctrl+c` sends `SIGKILL`. A command that a signal ended prints `stopped`. Quitting kills a command that is still running. A `!` line typed during a turn waits behind it.
+- An interactive session's briefing tells the model that the user can run commands with `!`. `main` adds `SHELL_NOTE` to `agent.extra_sp`. A `-p` run does not get it.
+- Diff and code highlighting moved to the new `ramabana.hl`. Its functions take the palette and the Lumis theme: `hl_text(code, lang, theme)`, `diff_rich(s, palette, theme)`, `scope_style(scope, theme)` and `diff_lang(path)`. `ramabana.cli` keeps `hl_text(code, lang)` and `diff_rich(s)`, and adds `hl_theme(name)`. `cli.scope_style` is removed.
+- A notebook's diff, or one cell's as `nb.ipynb#id`, is highlighted as Python, in the transcript and in the side pane.
+- The side pane draws an open file's diff with `hl.diff_rich`: the code highlighted by its language, and added and removed lines tinted.
+
 ## 0.2.28
 
 The rest of `docs/plans/2026-10-12-embedding-host.md`: items 9 to 14.
