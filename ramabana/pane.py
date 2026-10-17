@@ -19,6 +19,7 @@ from teleprint.tty import RealTty
 
 from shalya.core import clip, diff_text, one_line as _1
 
+from .hl import diff_rich
 from .monitor import _counts, _rel
 
 # %% auto #0
@@ -133,7 +134,7 @@ def read_snapshot(path):
 
 # %% ../nbs/18_pane.ipynb #6f45eca9
 PALETTE = {'fg0': '#e6edf3', 'fg1': '#c9d1d9', 'gray': '#8b949e', 'red': '#ff7b72', 'green': '#3fb950',
-           'yellow': '#d29922', 'blue': '#58a6ff', 'cursor': '#30363d'}
+           'yellow': '#d29922', 'blue': '#58a6ff', 'aqua': '#39c5cf', 'bg0': '#0a0c10', 'cursor': '#30363d'}
 _STOPPED = ('cancelled', 'detached', 'terminated', 'failed', 'stopped')
 _TODO = {'done': ('✓', 'green', 'gray'), 'active': ('◐', 'yellow', 'bold yellow'), 'cancelled': ('✗', 'gray', 'strike gray')}
 
@@ -186,14 +187,15 @@ def _sub_rows(s, width, drift, opened):
     words = textwrap.wrap(_1(s['answer'], ANSWER_CHARS), max(8, width - 4))
     return out + [(None, _line(l, PALETTE['fg0'], width, '  → ' if i == 0 else '    ')) for i, l in enumerate(words)]
 
-def _diff_style(l):
-    if l.startswith(('+++', '---')): return PALETTE['gray']
-    return PALETTE[{'+': 'green', '-': 'red', '@': 'blue'}.get(l[:1], 'fg1')]
+def _cut(t, width):
+    t.truncate(width, overflow='ellipsis')
+    return t
 
 def _file_rows(f, width, opened):
     tail = Text(f" +{f['added']}", style=PALETTE['green']) + Text(f" −{f['removed']}", style=PALETTE['red'])
     out = [(('file', f['path']), _row(width, Text('▾ ' if opened else '▸ ', style=PALETTE['gray']), f['path'], tail, PALETTE['fg0'], left=True))]
-    return out + [(None, _line(l, _diff_style(l), width, '  ')) for l in f['diff'].splitlines()] if opened else out
+    if not opened: return out
+    return out + [(None, _cut(Text('  ') + l, width)) for l in diff_rich(f['diff'].expandtabs(4), PALETTE).split('\n', allow_blank=True)]
 
 def _bg_rows(b, width, drift, opened, subs):
     "One background row, opening to a shell's output, a watch's last review, or a delegation's sub-agent detail."

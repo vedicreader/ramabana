@@ -7,22 +7,22 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 # %% auto #0
 __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', 'KEYS_OFF', 'EXT_NAMES', 'EXT_CTRL',
            'KEYS_PATCHED', 'MODES_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEMES', 'CODE_THEMES', 'KAKU', 'GRUVBOX',
-           'ACTIVE_THEME', 'HL_THEMES', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'NOTIFY_EVERY',
-           'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR',
-           'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION',
-           'GUIDE', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT',
-           'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE',
-           'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS',
-           'BLOCK_START', 'PYREPL_MODULES', 'RESUME_SHOWN', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH',
-           'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'scope_style', 'code_bg', 'set_theme', 'plan_text',
-           'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
-           'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
-           'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'is_diff', 'diff_rich', 'changed_table', 'opens',
-           'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md',
-           'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'amain',
-           'headless_prompt', 'ask_once', 'host_kw', 'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA',
-           'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs',
-           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
+           'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'NOTIFY_EVERY', 'FOLD_RUNNING',
+           'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS',
+           'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV',
+           'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
+           'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
+           'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
+           'RESUME_SHOWN', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok',
+           'code_theme', 'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics',
+           'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs',
+           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn',
+           'hl_text', 'diff_rich', 'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern',
+           'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty',
+           'stderr_to', 'stderr_log', 'pick_session', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main',
+           'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths',
+           'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
+           'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -53,7 +53,8 @@ from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
 from .pane import quit_mark, write_snapshot
 from .tools import WRITE_TOOLS, path_write
-from . import setup
+from . import hl, setup
+from .hl import HL_THEMES, is_diff
 from .setup import PANE_MODES, TMUX_MODES, Setup, refusal
 from datetime import datetime
 from . import __version__
@@ -287,23 +288,9 @@ def code_theme(name=None):
     "The pygments style to highlight code with under the named palette."
     return CODE_THEMES.get(name or ACTIVE_THEME, 'github-dark')
 
-#: fastpylight (Lumis) themes, one per palette, for the code inside a diff
-HL_THEMES = {'github-dark': 'github_dark', 'dark': 'github_dark', 'light': 'github_light',
-             'gruvbox': 'gruvbox_dark', 'gruvbox-light': 'gruvbox_light', 'nord': 'nord',
-             'dracula': 'dracula', 'solarized': 'solarized_osaka_dark',
-             'solarized-light': 'solarized_osaka_light', 'tokyonight': 'tokyonight_night',
-             'catppuccin': 'catppuccin_mocha', 'kanagawa': 'kanagawa_wave', 'everforest': 'everforest_dark',
-             'latte': 'catppuccin_latte'}
-
-@functools.cache
-def _hl_colors(theme): return fastpylight.theme_colors(theme)
-
-def scope_style(scope, name=None):
-    "The rich style the palette's Lumis theme gives token `scope`; the longest dotted prefix it names wins."
-    c = _hl_colors(HL_THEMES.get(name or ACTIVE_THEME, 'github_dark'))
-    while scope and scope not in c: scope = scope.rpartition('.')[0]
-    if not (s := c.get(scope)) or not s['fg']: return ''
-    return ' '.join([s['fg']] + ['bold'] * bool(s['bold']) + ['italic'] * bool(s['italic']))
+def hl_theme(name=None):
+    "The Lumis theme `hl` colours code with under the named palette."
+    return HL_THEMES.get(name or ACTIVE_THEME, 'github_dark')
 
 def code_bg(palette=None):
     "The code block background: the palette's `bg1`."
@@ -369,6 +356,7 @@ copy    select with the mouse · /copy the last reply · /copy turn all of it ·
 approve y approve · n ⏎ refuse · n: REASON ⏎ refuse with a reason · a approve all · ctrl+y approve with a note · A always allow this · anything else re-asks
           shift+tab cycles ask, edits, auto, plan · ctrl+g one step stricter · /approve off|ask|edits|auto sets any
 options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
+shell   !COMMAND runs it in the first open folder, in agent mode · ctrl+c interrupts it, twice kills it · the output stays out of the model's context
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /planmode on|off withholds every tool that acts and asks for a plan · /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
 extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload
@@ -711,63 +699,13 @@ async def run_turn(ui, prompt):
     return blk
 
 # %% ../nbs/05_cli.ipynb #02201508
-_STAT = re.compile(r'^(\s*\S.*?\s\|\s+\d+\s)(\+*)(-*)\s*$')
-_HUNK = re.compile(r'^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@')
-
 def hl_text(code, lang):
-    "`code` coloured by fastpylight, whose offsets count UTF-8 bytes where rich counts characters."
-    t = Text(code)
-    if lang == 'plaintext': return t
-    code = t.plain
-    at = [i for i, ch in enumerate(code) for _ in ch.encode()] + [len(code)]
-    for a, b, k in fastpylight.tokenize(code, lang):
-        if (st := scope_style(k)): t.stylize(st, at[a], at[b])
-    return t
-
-def _mix(a, b, t): return '#' + ''.join(f'{round(int(a[i:i+2], 16) * (1 - t) + int(b[i:i+2], 16) * t):02x}' for i in (1, 3, 5))
-
-def _hunk(ls, lang):
-    "Rows for one hunk body; each side is highlighted whole, so a string spanning lines keeps its colour."
-    G, ls = GRUVBOX, [l or ' ' for l in ls]
-    def side(keep): return iter(hl_text('\n'.join(l[1:] for l in ls if l[:1] in keep), lang).split('\n', allow_blank=True))
-    old, new, rows = side((' ', '-')), side((' ', '+')), []
-    for l in ls:
-        k = l[:1]
-        c = {'+': G['green'], '-': G['red']}.get(k, G['gray'])
-        if k == '\\': rows.append(Text(l, style=c)); continue
-        code = next(old) if k == '-' else next(new)
-        if k == ' ': next(old)
-        if lang == 'plaintext': code.stylize(c)
-        row = Text(k, style=c) + code
-        if k != ' ': row.stylize(f"on {_mix(G['bg0'], c, .15)}")
-        rows.append(row)
-    return rows
-
-def is_diff(s):
-    "Whether `s` holds a unified diff: at least one hunk header."
-    return any(_HUNK.match(l) for l in (s or '').split('\n'))
+    "`code` coloured by fastpylight in the active palette's theme."
+    return hl.hl_text(code, lang, hl_theme())
 
 def diff_rich(s):
-    "`s` coloured when it holds a unified diff, its code by the file's language, or a diffstat; else gray."
-    G, ls = GRUVBOX, s.split('\n')
-    hunks = is_diff(s)
-    if not hunks and not any(_STAT.match(l) for l in ls): return Text(s, style=G['gray'])
-    rows, lang, i = [], 'plaintext', 0
-    while i < len(ls):
-        l = ls[i]; i += 1
-        if hunks and l.startswith(('--- ', '+++ ')) and (f := l[4:].split('\t')[0].strip()) != '/dev/null': lang = fastpylight.guess('', f)
-        if hunks and l.startswith(('diff --git', '--- ', '+++ ')): rows.append(Text(l, style=f"bold {G['fg1']}"))
-        elif hunks and (m := _HUNK.match(l)):
-            rows.append(Text(l, style=G['aqua']))
-            o, n, j = int(ifnone(m[1], 1)), int(ifnone(m[2], 1)), i
-            while j < len(ls) and (o > 0 or n > 0 or ls[j][:1] == '\\'):
-                k = ls[j][:1]
-                if k not in ('', ' ', '+', '-', '\\'): break
-                o, n, j = o - (k in ('', ' ', '-')), n - (k in ('', ' ', '+')), j + 1
-            rows += _hunk(ls[i:j], lang); i = j
-        elif (m := _STAT.match(l)): rows.append(Text.assemble((m[1], G['gray']), (m[2], G['green']), (m[3], G['red'])))
-        else: rows.append(Text(l, style=G['gray']))
-    return Text('\n').join(rows)
+    "`s` coloured by `hl.diff_rich` in the active palette."
+    return hl.diff_rich(s, GRUVBOX, hl_theme())
 
 def changed_table(rows, cap=12):
     "The turn's changed files, largest `cap` first, then a total over every one."
@@ -830,6 +768,7 @@ class Ui:
         self.hint = ''
         self.mode = 'agent'
         self.kernel = None
+        self.shell_proc = None   #: the running `!` command
         self.attached = ''
         self.agent_bridge = None
         self.proxy_url = ''
@@ -1494,6 +1433,9 @@ class Ui:
             # raw buffer: an indented paste keeps its first row
             self._echo(hl(src), 'user', source=src)
             return self.run_code(src)
+        if line.startswith('!'):
+            self._echo(Text(line), 'user', pad=True)
+            return self.run_shell_line(line[1:].strip())
         if not line.startswith('/') and (opts := options_for(line)) is not None:
             self.menu_prompt, self.menu = line, ChoiceMenu(*opts)
             return None
@@ -2160,6 +2102,31 @@ async def _promote(self:Ui, name):
     self.turn = None
     self.paint()
 
+# %% ../nbs/05_cli.ipynb #5285d36c
+#: what `main` adds to an interactive session's briefing about `!` lines
+SHELL_NOTE = ('The user can run a shell command themselves by typing `!COMMAND` at the prompt in agent mode. It runs in the first open '
+              'folder and reads no input, so it cannot answer a password prompt. Its output is shown to them, not to you. '
+              'When a command should run as the user -- one that relies on their logged-in tools or keys, or one your tools '
+              'refuse -- give it in a `bash` fence, ask them to run it with `!`, and ask them to paste back the part of the '
+              'output you need.')
+
+@patch
+async def run_shell_line(self:Ui, command):
+    "Run one owner-typed `!` line in the first open folder, printing its output and exit code."
+    p = None
+    try:
+        p = self.shell_proc = await asyncio.create_subprocess_shell(
+            command, cwd=self.agent.host.roots[0], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+        self._shell_sigint = False
+        out, _ = await p.communicate()
+        if out.strip(): self.say(Text.from_ansi(out.decode(errors='replace').rstrip('\n')), 'note')
+        self.note('stopped' if p.returncode < 0 else f'exit {p.returncode}', 'error' if p.returncode else 'note')
+    finally:
+        if p is not None and p.returncode is None: os.killpg(p.pid, signal.SIGKILL)   # the task was cancelled, as on quit
+        self.shell_proc = self.turn = None
+        self.paint()
+
 # %% ../nbs/05_cli.ipynb #d16f206f
 @patch
 def _close_seg(self:Ui):
@@ -2505,6 +2472,7 @@ def main(
     except (RuntimeError, AgentError) as e:
         print(e, file=sys.stderr)
         return 2
+    if not prompt: agent.extra_sp = '\n\n'.join(p for p in (agent.extra_sp, SHELL_NOTE) if p)   # before `resume_session` builds the briefing
     from ramabana.setup import PICK_SESSION
     if resume == PICK_SESSION: resume = pick_session(agent, all_folders) if sys.stdin.isatty() else 'latest'
     if resume:
@@ -2653,6 +2621,10 @@ def stop(self:Ui):
     if self._stop_count >= 3:return 'quit'
     cleared = self.take_back()
     if self.starting: return self.note('the model is still starting · ctrl+d quits')
+    if (p := self.shell_proc) is not None:
+        kill, self._shell_sigint = self._shell_sigint, True
+        with contextlib.suppress(ProcessLookupError): os.killpg(p.pid, signal.SIGKILL if kill else signal.SIGINT)
+        return self.note('killing' if kill else 'interrupting · ctrl+c again kills it')
     if self.turn is not None:
         self.flush_stream()
         self._seg_blk = None
