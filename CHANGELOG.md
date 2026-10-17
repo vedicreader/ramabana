@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.2.30
+
+- Compaction moves past a summary model that fails. It summarises through the summary job's routes, as `Agent.oneshot` does: a cloud model that fails or answers nothing is set aside, and the next route is tried, the turn model among them. Before, a failing summary model, such as one an API key has no access to, left the conversation uncompacted.
+- Compaction never hands a route a prompt larger than its window. A backend trims such a prompt, and a summary of the rest would replace the whole history. The compactor retries with a smaller prompt, and when none fits, the history is left whole and the note names the window.
+- A summary model that cannot start leaves compaction on the turn model, as before.
+- When every route fails, the compaction note names the newest failure among the summary job's routes, such as `compaction failed (... model_not_found ...)`. It said the summarizer returned nothing.
+- `Agent.oneshot(fits=)` takes a check on each route's backend. A route it refuses ends the search with `''` and is not set aside.
+
 ## 0.2.29
 
 - A line that starts with `!` in agent mode runs as a shell command in the first open folder. Its output and exit state print in the transcript and are never sent to the model. It runs without an approval, in every approval and plan mode. It reads no input, so it cannot answer a password prompt. Its output prints when it finishes. In python mode a `!` line is Python.
