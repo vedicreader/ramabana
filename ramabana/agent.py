@@ -3050,10 +3050,12 @@ def revise(self:Agent, turn_id, text, branch_id=''):
 
 # %% ../nbs/03_agent.ipynb #2741493e
 @patch
-def oneshot(self:Agent, prompt, sp='', job='oneshot', max_tokens=None):
+def oneshot(self:Agent, prompt, sp='', job='oneshot', max_tokens=None,
+            fits=None):   # `fits(backend)`; a route it refuses ends the search with '' and is not set aside
     "A question on whichever model `job` routes to, in a conversation that is thrown away. A cloud model that fails or answers nothing is set aside, and the question goes to `job`'s next route."
     tried = set()
     while (b := self._be_or_none(job)) is not None and b.spec.name not in tried:
+        if fits is not None and not fits(b): return ''
         tried.add(b.spec.name)
         before = b.note
         out = b.oneshot(prompt, sp, max_tokens, job=job, if_busy=None)
@@ -3086,10 +3088,20 @@ def compact(self:Agent, extra=''):
     sub = self._be_or_none('summary')
     summary_backend = sub if sub is not None else b
     summary_output = min(1024, max(256, summary_backend.spec.ctx // 4))
-    summariser = summary_backend.oneshot
+    routes = {summary_backend.spec.name, *self.routing.alternatives('summary')}
+    def summary_of(p, sp):
+        "The summary job's routes in turn, as `oneshot` takes them, each only while its window holds `p` whole."
+        if sub is None: return b.oneshot(p, sp, summary_output, job='summary')
+        small = []
+        def fits(nb):   # a backend trims a prompt to its window, and a summary of the rest would replace all of it
+            if nb.count_tokens(p) + nb.count_tokens(sp) + summary_output <= nb.spec.ctx: return True
+            small.append(nb.spec.name); return False
+        if (out := self.oneshot(p, sp, 'summary', summary_output, fits=fits)): return out
+        if small: raise AgentError(f'the window of {small[0]} is too small for this summary')
+        why = [d for n, d in self.routing.down.items() if n in routes]
+        raise AgentError(max(why, key=lambda d: d[1])[0] if why else 'the summary model answered nothing')
     text = self.compactor.compact(
-        b, lambda p, sp: summariser(p, sp, summary_output), extra,
-        summary_ctx=summary_backend.spec.ctx, summary_output=summary_output,
+        b, summary_of, extra, summary_ctx=summary_backend.spec.ctx, summary_output=summary_output,
         summary_count=summary_backend.count_tokens)
     if text: self.registry.fire('compact', self, text)
     self.note = self.compactor.note

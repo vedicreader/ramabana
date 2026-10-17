@@ -264,6 +264,51 @@ def test_a_cloud_model_that_answers_nothing_is_set_aside_until_a_job_reaches_gem
     a.routing.set(core.DFLT_MEDIUM, 'summary')
     assert core.DFLT_MEDIUM not in a.routing.down, 'naming a model again gives it another try'
 
+class Refused(FakeBackend):
+    "Refuses the way an API key without access to a model does; `everyone` makes every model refuse, `unstartable` the medium one fail to start."
+    everyone = unstartable = False
+    def _start(self):
+        if self.unstartable and self.spec.name == core.DFLT_MEDIUM: raise RuntimeError('cannot load')
+        return self
+    def _oneshot(self, prompt, sp, max_tokens):
+        if self.everyone or self.spec.name == core.DFLT_MEDIUM: raise RuntimeError('model_not_found: you do not have access to it')
+        return f'GOAL: summarised by {self.spec.name}'
+
+def test_compaction_moves_past_a_summary_model_that_fails_and_names_the_error_when_all_do(monkeypatch):
+    no_model_env(monkeypatch)
+    monkeypatch.setenv('CODEX_AUTH_TOKEN', 'x')
+    monkeypatch.setattr(core, 'runtime_available', lambda rt: rt == 'claude')
+    monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: Refused(spec, **kw))
+    a = Agent(MemHost(), extensions=False, subagents=False)
+    b = a._be('turn'); b.start()
+    talk = lambda: [{'role': r, 'content': f'{r} {i} ' * 60} for i in range(6) for r in ('user', 'assistant')]
+    b.hist_ = talk()
+    assert a.compact() == 'GOAL: summarised by claude-opus-5-5' and a.compactor.note.startswith('compacted')
+    assert core.DFLT_MEDIUM in a.routing.down, 'the refusing model is set aside'
+    monkeypatch.setattr(Refused, 'everyone', True)
+    b.hist_ = talk()
+    assert a.compact() == '' and 'model_not_found' in a.compactor.note, a.compactor.note
+    monkeypatch.setattr(Refused, 'everyone', False)
+    monkeypatch.setattr(Refused, 'unstartable', True)
+    a = Agent(MemHost(), extensions=False, subagents=False)
+    b = a._be('turn'); b.start(); b.hist_ = talk()
+    assert a.compact() == 'GOAL: summarised by claude-opus-5-5', 'a summary model that cannot start leaves the turn model'
+
+def test_compaction_never_hands_a_route_a_prompt_its_window_would_cut(monkeypatch):
+    "A backend trims an oversized prompt to its window, and a summary of what is left would replace the whole history."
+    from dataclasses import replace
+    no_model_env(monkeypatch)
+    monkeypatch.setenv('CODEX_AUTH_TOKEN', 'x')
+    monkeypatch.setattr(core, 'runtime_available', lambda rt: rt == 'claude')
+    monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: Refused(spec, **kw))
+    a = Agent(MemHost(), extensions=False, subagents=False)
+    b = a._be('turn'); b.start()
+    b.spec = replace(b.spec, ctx=300)
+    b.hist_ = [{'role': r, 'content': f'{r} {i} ' * 60} for i in range(6) for r in ('user', 'assistant')]
+    held = list(b.hist_)
+    assert a.compact() == '' and b.hist_ == held, 'history left whole'
+    assert 'claude-opus-5-5' in a.compactor.note and 'window' in a.compactor.note, a.compactor.note
+
 def test_rishi_usage_is_cumulative_though_its_chat_counts_each_call_afresh():
     """rishi's `Chat` starts a new `use` on every call, while `Agent._finish` diffs a running total.
     A turn smaller than the one before therefore recorded nothing, and `turns` stuck at 0."""
