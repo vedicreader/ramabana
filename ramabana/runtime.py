@@ -555,6 +555,7 @@ class Backend:
     kind='?'
     narrates=True   # the text before each tool call reaches `hist` or the stream; see `QUIET_RUNTIMES`
     _tag_reminded=False
+    turn_error=''   # why the last `send` or `stream` gave a failure note instead of a reply; '' when it answered
     def __init__(self,spec,sp='',tools=(),approve=None,tool_max_len=None,shared=False,**kw):
         self.spec,self.sp,self.tools,self.approve=spec,sp,list(tools),approve
         self.tool_max_len,self.shared,self.kw=tool_max_len,shared,kw
@@ -624,7 +625,8 @@ class Backend:
         for cb in getattr(self, '_callbacks', ()):
             if not any(isinstance(x, cb) for x in held): add(cb)
     def send(self,msg,run=None,**kw):
-        if self.start() is None:return self.note
+        self.turn_error=''
+        if self.start() is None:self.turn_error=self.note; return self.note
         with self.lock:
             self.run=run
             self._tag_reminded=False
@@ -641,10 +643,11 @@ class Backend:
                         return out or self._empty()
                     except Exception as e:
                         if run is not None and run.cancelled:return ''
-                        if not (again and self._recover(e)):return self._failed('failed',e)
+                        if not (again and self._recover(e)):self.turn_error=agent_err(e); return self._failed('failed',e)
             finally:self.run=None
     def stream(self,msg,run=None,**kw):
-        if self.start() is None:yield self.note; return
+        self.turn_error=''
+        if self.start() is None:self.turn_error=self.note; yield self.note; return
         with self.lock:
             self.run=run
             self._tag_reminded=False
@@ -672,7 +675,7 @@ class Backend:
                         if run is not None and run.cancelled:return
                         # retry only before any chunk was shown
                         if not (again and not n and self._recover(e)):
-                            yield f'\n\n{self._failed("failed",e)}'; return
+                            self.turn_error=agent_err(e); yield f'\n\n{self._failed("failed",e)}'; return
             finally:self.run=None
     def _recover(self,e):
         "Fix what made `e` happen and return True to retry once. False by default."

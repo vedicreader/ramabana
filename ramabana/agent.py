@@ -2735,7 +2735,8 @@ def _finish(self:Agent, text, prompt=''):
     self.registry.fire('stop', self, text)
     self.registry.fire('after_turn', self, text)
     if self.current_turn_id in self.checkpoints: self.checkpoints[self.current_turn_id]['after'] = b.snapshot_hist()
-    self._remember(prompt, text)
+    err = getattr(b, 'turn_error', '') or ''   # the backend caught a model failure and returned its note as the text
+    self._remember(prompt, text, err, state='failed' if err else 'complete')
     return text
 
 # %% ../nbs/03_agent.ipynb #10069f98
@@ -3557,7 +3558,7 @@ def _ask_once(self:Agent, prompt, **kw):
             text = backend.send(outgoing, run=run, **kw)
         if run.cancelled:
             run.finish(); keep('cancelled'); return run.dict()
-        run.finish()
+        run.finish('failed' if getattr(backend, 'turn_error', '') else 'completed')
         out = self._finish(text, prompt)
         kept[0] = True
         return out
@@ -3599,7 +3600,7 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
                 if run.cancelled: break
                 chunk = _stream_chunk(out, chunk)
                 if chunk: out.append(chunk); run.hear(chunk); yield chunk
-        run.finish()
+        run.finish('failed' if getattr(backend, 'turn_error', '') else 'completed')
         if run.cancelled: keep('cancelled', ''.join(out))
         else:
             tail = self._finish(''.join(out), prompt)[len(''.join(out)):]
