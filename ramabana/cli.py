@@ -2432,6 +2432,7 @@ def main(
     no_warm: bool = False,               # start without them, which is the default
     optin: str = '',                     # opt-in tool groups: exhash,research,author
     profile: str = 'auto',               # auto | small | full: small suits ≤32k local models
+    learned: bool = True,                # --no-learned starts without <cfg>/learned, the lessons Dhrona keeps
 ):
     "Run Ramabana as a terminal agent or Python prompt. Name every folder it may work on: --root .,~/notes"
     if doctor: return Setup(cfg).doctor()
@@ -2465,7 +2466,7 @@ def main(
                                pii=pii, pii_ner=pii_ner, host_kw=host_kw(tmux),
                                max_tool_calls=max_tool_calls, max_steps=max_steps,
                                warm=True if warm else False if no_warm else None, optin=tuple(s.strip() for s in optin.split(',') if s.strip()), profile=profile,
-                               cfg=Path(cfg).expanduser() if cfg else None)
+                               cfg=Path(cfg).expanduser() if cfg else None, learned=learned)
     except KeyError as e:
         print(e.args[0] if e.args else e, file=sys.stderr)
         return 2

@@ -288,6 +288,8 @@ A skill is markdown the agent reads when the work calls for it. Ramabana looks f
 
 When two skills share a name, the later folder wins. Each skill is a folder holding a `SKILL.md`. Four skills ship in the package: `coding_patterns`, `theory`, `write_prose` and `write_docs`. `/skills` lists what this session found, and `/skill NAME` prints one.
 
+`<cfg>/learned/AGENTS.md` holds lessons Dhrona kept from earlier sessions. Ramabana puts it in the briefing after its own rules and before the project instructions, and the project instructions outrank it. `--no-learned` starts a session without it.
+
 An extension is a Python file in `<cfg>/extensions` with a `setup(reg)` function. It can:
 
 - add a tool

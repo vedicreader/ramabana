@@ -8,7 +8,7 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT', 'INLINE_SKILLS',
-           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS',
+           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'LEARNED', 'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS',
            'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES',
            'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL',
            'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS',
@@ -17,10 +17,10 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
            'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
            'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_directives', 'project_context',
-           'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
-           'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools', 'SessionBusy',
-           'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title',
-           'mk_host', 'mk_agent']
+           'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family',
+           'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools',
+           'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer', 'request_body',
+           'request_title', 'model_title', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, os, re, shlex, threading, time, tomllib, uuid
@@ -696,6 +696,18 @@ def project_context(host, mx=MAX_CONTEXT_FILE, cfg=None):
             'override the general guidance above where they disagree.\n\n' + '\n\n'.join(out) +
             '\n</project_context>')
 
+LEARNED = 'learned'   #: the folder under the config dir where Dhrona keeps what it learned
+
+def learned_context(learned, mx=MAX_CONTEXT_FILE):
+    "`<learned>/AGENTS.md` as a briefing block, or '' when `learned` is None or holds none."
+    p = None if learned is None else Path(learned)/'AGENTS.md'
+    body = p.read_text().strip() if p is not None and p.exists() else ''
+    if not body: return ''
+    if len(body) > mx: body = body[:mx] + f'\n…[truncated; read {p} in full if you need the rest]'
+    return (f'\n\n<learned path="{p}">\nLessons a tool kept from earlier sessions. They override the general guidance\n'
+            'above where they disagree. Project instructions and every note after them override these.\n\n'
+            f'{body}\n</learned>')
+
 #: the screenshot rule, keyed on whether the turn model sees a picture a tool returns
 PICTURE_RULE = {
     True: ('A picture a tool returns (`screenshot`, `view_file` on an image) arrives as an image right after\n'
@@ -819,7 +831,8 @@ def skill_catalogue(skills):
     return f'\n\n## Skills\n\nRead a skill with `read_skill(name)` before the work it covers.{point}\n\n{rows}'
 
 def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=(), cfg=None,
-                  pictures=True):   # does the turn model see a picture a tool returns
+                  pictures=True,    # does the turn model see a picture a tool returns
+                  learned=None):    # the folder `learned_context` reads; None leaves it out
 
     "The agent's briefing: what it is, where it is, how to work, and what it knows."
     names = {getattr(t, '__name__', '') for t in tools or ()}
@@ -848,7 +861,7 @@ How to work:
     if idx: sp += idx
     for name in inline or ():
         if (s := find(skills, name)): sp += f'\n\n## {s.name}\n\n{s.text()}'
-    sp += project_context(host, cfg=cfg)
+    sp += learned_context(learned) + project_context(host, cfg=cfg)
     return sp + (f'\n\n{extra}' if extra else '')
 
 
@@ -861,7 +874,7 @@ def _folders(host):
         roots += '\n  Open for reading only: search and read them, never write or run commands in them:\n' + '\n'.join(f'    {r}' for r in ro)
     return roots
 
-def small_system_prompt(host, tools=(), cfg=None):
+def small_system_prompt(host, tools=(), cfg=None, learned=None):
     "The small profile's briefing: folders, one machine line, `SMALL_RULES`, clipped instructions."
     names = {getattr(t, '__name__', '') for t in tools or ()}
     roots = _folders(host)
@@ -869,7 +882,8 @@ def small_system_prompt(host, tools=(), cfg=None):
     line = env.splitlines()[0].split('; inspect_python')[0] if env else ''   # `inspect_python` is not offered here
     machine = f"\n\nOn this machine:\n{line}" if line else ''
     return (f"You are Ramabana, a coding agent. Follow the user's latest explicit request. You are working in these folders:\n"
-            f"{roots}{machine}\n\nHow to work:\n{work_rules(names, SMALL_RULES)}" + project_context(host, mx=SMALL_CONTEXT_FILE, cfg=cfg))
+            f"{roots}{machine}\n\nHow to work:\n{work_rules(names, SMALL_RULES)}" + learned_context(learned, SMALL_CONTEXT_FILE)
+            + project_context(host, mx=SMALL_CONTEXT_FILE, cfg=cfg))
 
 
 # %% ../nbs/03_agent.ipynb #8eff0a57
@@ -1156,8 +1170,9 @@ class Agent:
                  instruction_style='ramabana', # 'ramabana' | 'aai' compatibility profile
                  optin=(),                  # shalya's opt-in tool groups, see `OPTIN`
                  profile='auto',            # 'auto', 'small' or 'full'; see `profile_for`
-                 warm=None):                # seed with dhrona's examples; None: off
-        self.host, self.cfg, self.inline_skills = host, cfg, inline_skills
+                 warm=None,                 # seed with dhrona's examples; None: off
+                 learned=True):             # brief from `<cfg>/learned`; False runs without it
+        self.host, self.cfg, self.inline_skills, self.learned = host, cfg, inline_skills, learned
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
         if profile not in PROFILES: raise ValueError(f'profile must be one of {", ".join(PROFILES)}, not {profile!r}')
         self.profile_choice = profile
@@ -1709,13 +1724,18 @@ def tools(self:Agent):
 
 
 # %% ../nbs/03_agent.ipynb #f37435ce
+@patch(as_prop=True)
+def learned_dir(self:Agent):
+    "`<cfg>/learned`, or None without a config dir or with `learned` off."
+    return None if self.cfg is None or not self.learned else Path(self.cfg)/LEARNED
+
 @patch
 def system_prompt(self:Agent):
     note = inbox_note(self.inbox_key) + (STATUS_NOTE if self._quiet else '') + (PLAN_NOTE if self.plan_mode else '')
     note = (f'\n\n{self.extra_sp}' if self.extra_sp else '') + note   # a host's addition, after the briefing it adds to
     if self._sp: return self._sp + note
     if self._tools is None: self.tools
-    if self.profile == 'small': return small_system_prompt(self.host, tools=self._plain, cfg=self.cfg) + note
+    if self.profile == 'small': return small_system_prompt(self.host, tools=self._plain, cfg=self.cfg, learned=self.learned_dir) + note
     inline = inline_for(self.inline_skills if self.budget.inline else (), {getattr(t, '__name__', '') for t in self._plain})
     parts = []
     if self.subagents and 'delegate_async' in {getattr(t, '__name__', '') for t in self._plain}:
@@ -1731,7 +1751,8 @@ def system_prompt(self:Agent):
                      '\n\nWork the active todo; mark it done when finished; after a stop, '
                      'resume from the active item rather than rewriting the plan.')
     pics = s is None or (be.takes_pictures if (be := self._backends.get((s.backend, s.model_id))) is not None else accepts(s, 'image'))
-    return system_prompt(self.host, self.skills, inline, tools=self._plain, extra='\n\n'.join(parts), cfg=self.cfg, pictures=pics) + note
+    return system_prompt(self.host, self.skills, inline, tools=self._plain, extra='\n\n'.join(parts), cfg=self.cfg, pictures=pics,
+                         learned=self.learned_dir) + note
 
 # %% ../nbs/03_agent.ipynb #bf85c66d
 MEMORY_CHARS = 4000
@@ -2355,6 +2376,23 @@ def beat_drain(self:Agent):
     return beat_notes(self.beat, reader=self._beat_reader)
 
 # %% ../nbs/03_agent.ipynb #0ccb8d65
+def repo_state(folder):
+    "`{folder, repo, head, branch, dirty}` for the git repository holding `folder`, or None outside one. `dirty` lists modified tracked files."
+    from gheasy.repo import GitRepo
+    try: r = GitRepo.at(folder); head = r.run('rev-parse', 'HEAD').strip()
+    except Exception: return None
+    lines = r.run('status', '--porcelain', '--untracked-files=no').splitlines()
+    return dict(folder=str(folder), repo=str(r.root), head=head, branch=r.run('branch', '--show-current').strip(),
+                dirty=sorted(l[3:].split(' -> ')[-1] for l in lines if len(l) > 3))
+
+@patch
+def _record_start(self:Agent):
+    "Write each open folder's `repo_state` to `<runs_dir>/start.json`, once; a resumed session keeps the state it began from."
+    d = getattr(self, 'runs_dir', None)
+    if d is None or (p := d/'start.json').exists(): return
+    d.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps([s for f in self.host.roots if (s := repo_state(f))], indent=1))
+
 @patch
 def _begin_turn(self:Agent, run=None):
     "This turn's own identity, before anything can go wrong with it."
@@ -2456,6 +2494,7 @@ def _prepare(self:Agent, prompt):
     seeded = []
     if not self._session_started:   # before the checkpoint, so /rewind keeps the seeds
         self._session_started = True
+        self._record_start()
         seeded = self.warm_start()
         self.registry.fire('session_start', self)
     self.checkpoints[self.current_turn_id] = {'before': self._be('turn').snapshot_hist(),
