@@ -282,13 +282,14 @@ ramabana-tick --uninstall
 
 A skill is markdown the agent reads when the work calls for it. Ramabana looks for skills in these folders, in order:
 
+- `<cfg>/learned/skills`
 - `<cfg>/skills`
 - `~/.agents/skills`
 - `.leela/skills` and `.agents/skills` under each open folder
 
 When two skills share a name, the later folder wins. Each skill is a folder holding a `SKILL.md`. Four skills ship in the package: `coding_patterns`, `theory`, `write_prose` and `write_docs`. `/skills` lists what this session found, and `/skill NAME` prints one.
 
-`<cfg>/learned/AGENTS.md` holds lessons Dhrona kept from earlier sessions. Ramabana puts it in the briefing after its own rules and before the project instructions, and the project instructions outrank it. `--no-learned` starts a session without it.
+`<cfg>/learned` holds what Dhrona kept from earlier sessions. Its skills override the packaged ones and lose to every folder you write. Its `AGENTS.md` goes in the briefing after Ramabana’s own rules and before the project instructions, and the project instructions outrank it. `--no-learned` starts a session without the folder.
 
 An extension is a Python file in `<cfg>/extensions` with a `setup(reg)` function. It can:
 

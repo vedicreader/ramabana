@@ -35,7 +35,7 @@ from urai import parse_args, tc_name, tool_media
 from .core import accepts, AgentError, agent_err, available_models, missing_key, needs, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .runtime import QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
-from shalya.tools import OPTIN, group_of, git_repo
+from shalya.tools import OPTIN, group_of, git_repo, lesson_text
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
@@ -899,7 +899,7 @@ These apply on top of the rules above, and outrank them where they disagree.
 - Do not work around a problem. Fix it at its source, or say what is blocking and stop. A broken tool comes before the work in flight, because every later task pays for it.
 - Before a command that changes state -- a restart, a delete, a config edit -- check the evidence supports that exact action. A signal that matches a known failure may have another cause.
 - Correct the record. When an earlier claim of yours turns out to be wrong, say so plainly rather than moving quietly past it.
-- When a turn involved a concrete mistake with a reusable correction, record the mistake and its fix in Vishalakshi with `remember`, so later work can avoid it.
+- When a turn involved a concrete mistake with a reusable correction, record it with `remember`. `text` is what to do next time, `cue` is the kind of situation it applies to, `component` is the part of the harness it concerns, `evidence` is what in the conversation showed the mistake, and `confidence` is how firmly the conversation supports it. A lesson whose `component` is `tool` describes a defect to fix at its source, not a habit to keep. Record nothing when the conversation shows no concrete, reusable correction.
 
 - Everything the user needs is in the final text of the turn, with no tool call after it.
 - Lead with the outcome when the turn concludes: the first sentence says what happened or what you found.
@@ -1330,11 +1330,16 @@ def registry(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #47fc0470
 @patch(as_prop=True)
+def learned_dir(self:Agent):
+    "`<cfg>/learned`, or None without a config dir or with `learned` off."
+    return None if self.cfg is None or not self.learned else Path(self.cfg)/LEARNED
+
+@patch(as_prop=True)
 def skills(self:Agent):
     "Every discovered skill, found once. Includes anything an extension registered."
     if self._skills is None:
         try:
-            self._skills = discover(self.host.roots, self.cfg, extra=self.registry.skills)
+            self._skills = discover(self.host.roots, self.cfg, extra=self.registry.skills, learned=self.learned_dir)
             if not self.global_skills:   # a host that is not one person's terminal leaves `~/.agents/skills` out
                 home = Path.home()/'.agents'/'skills'
                 self._skills = [s for s in self._skills if not str(getattr(s, 'where', '') or '').startswith(str(home))]
@@ -1724,11 +1729,6 @@ def tools(self:Agent):
 
 
 # %% ../nbs/03_agent.ipynb #f37435ce
-@patch(as_prop=True)
-def learned_dir(self:Agent):
-    "`<cfg>/learned`, or None without a config dir or with `learned` off."
-    return None if self.cfg is None or not self.learned else Path(self.cfg)/LEARNED
-
 @patch
 def system_prompt(self:Agent):
     note = inbox_note(self.inbox_key) + (STATUS_NOTE if self._quiet else '') + (PLAN_NOTE if self.plan_mode else '')
@@ -1786,9 +1786,13 @@ def memory_context(self:Agent, surface, max_chars=MEMORY_CHARS):
 def note_tools(note):
     "The memory tool a host without a vault still gets: shalya's `remember`, on the project's memory file."
     @summary(lambda a: f'Remember {_1(a.get("title") or a.get("text"), 80)}')
-    def remember(text: str, title: str = '', tags: str = '', key: str = '') -> str:
-        "Store a conclusion in this project's memory file (no vault here); the same `key` later replaces the line."
-        return note(text, title=title, tags=tags, key=key)
+    def remember(text: str, title: str = '', tags: str = '', key: str = '',
+                 cue: str = '', component: str = '', evidence: str = '', confidence: str = '') -> str:
+        "Store a conclusion in this project's memory file (no vault here); the same `key` later replaces the line; a lesson from a mistake adds `cue`, `component` (rule, skill, extension, tool or memory), `evidence` and `confidence` (low, medium or high)."
+        try: body = lesson_text(text, cue, component, evidence, confidence)
+        except ValueError as e: return err('could not remember', e)
+        if body != text: body = ' | '.join(body.splitlines())   # the memory file holds one line per note
+        return note(body, title=title, tags=tags, key=key)
     return [remember]
 
 # %% ../nbs/03_agent.ipynb #00efc09f
