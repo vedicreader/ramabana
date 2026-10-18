@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.31
+
+- `ramabana.hl.diff_html(s, lang=None)` returns each line of a unified diff as escaped HTML spans, or `None` for a line outside a hunk body. A span carries its scope and every dotted prefix of it as classes, such as `hl-function hl-function-builtin`, and `fastpylight.theme_css` styles those classes. Leela colours its diff views with it.
+- `hl_toks`, `hunk_toks` and `diff_toks` return the same tokens as data, in character offsets. A token that crosses a line break is cut at it. Each side of a hunk is tokenized whole, so a string spanning lines keeps its scope. `toks_html` renders one line's tokens. `diff_rich` colours from `hunk_toks`, and its output is unchanged.
+- `<cfg>/learned/AGENTS.md` goes in the briefing after the built-in rules and before the project instructions. `--no-learned` and `Agent(learned=False)` leave it out.
+- The first turn of a session writes each open folder's repository, branch, HEAD and modified tracked files to `<cfg>/runs/<session>/start.json`. A resumed session keeps the file it began with.
+
 ## 0.2.30
 
 - Compaction moves past a summary model that fails. It summarises through the summary job's routes, as `Agent.oneshot` does: a cloud model that fails or answers nothing is set aside, and the next route is tried, the turn model among them. Before, a failing summary model, such as one an API key has no access to, left the conversation uncompacted.
