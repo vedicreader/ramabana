@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.32
+
+- Skills in `<cfg>/learned/skills` load through shalya's `discover(learned=)`. They override the packaged skills and lose to every skill folder a person writes. `--no-learned` and `Agent(learned=False)` leave them out with the rest of the folder.
+- `remember` without a vault takes `cue`, `component`, `evidence` and `confidence`, as shalya's does, and checks them with shalya's `lesson_text`. A lesson is one ` | `-separated line in the project's `MEMORY.md`. A note without them is stored as before. The Claude notes ask for these fields when a turn shows a mistake with a reusable correction.
+- A model failure the backend caught is a failed turn. `Backend.send` and `stream` keep it in `turn_error`, and the history row and the run are `failed`, with the error, instead of `complete` with an empty error.
+- Requires shalya 0.1.9, whose `search_code` hints name only the tools that reach a hit, and koshas 0.1.10 in the `search` extra, whose quiet `sync` keeps `--json` output valid.
+
 ## 0.2.31
 
 - `ramabana.hl.diff_html(s, lang=None)` returns each line of a unified diff as escaped HTML spans, or `None` for a line outside a hunk body. A span carries its scope and every dotted prefix of it as classes, such as `hl-function hl-function-builtin`, and `fastpylight.theme_css` styles those classes. Leela colours its diff views with it.
