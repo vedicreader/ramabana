@@ -162,4 +162,37 @@ def test_accept_past_the_limit_points_at_compact(tmp_path):
     from ramabana.learned import accept
     a = '20261019-010101-aaaaaa'
     _propose(tmp_path/'learned', {'AGENTS.md': 'x' * 2001}, a)
-    assert 'run `/learned compact`' in accept(tmp_path/'learned', a)['error']
+    assert f'run `/learned compact {a}`' in accept(tmp_path/'learned', a)['error']
+
+
+def test_a_candidate_refused_for_size_is_folded_into_a_compaction(tmp_path, monkeypatch):
+    "The refusal names `/learned compact ID`; that compaction carries the candidate, and accepting it moves the rest onto the new HEAD."
+    import asyncio, subprocess
+    import dhrona.improve
+    from teleprint.compositor import Compositor
+    from teleprint.testing import EmuTty
+    from ramabana.cli import Ui
+    f, big, skill = tmp_path/'learned', '20261019-020202-bbbbbb', '20261019-030303-cccccc'
+    f.mkdir(); (f/'AGENTS.md').write_text('A rule a person wrote.\n')
+    for c in (['init', '-q'], ['add', '-A'], ['-c', 'user.name=t', '-c', 'user.email=t@x', 'commit', '-qm', 'by hand']):
+        subprocess.run(['git', '-C', str(f), *c], check=True)
+    _propose(f, {'AGENTS.md': 'A rule a person wrote.\n\n' + 'Run pytest -q before a commit. ' * 70 + '\n'}, big)
+    _propose(f, {'skills/rg/SKILL.md': '---\nname: rg\ndescription: x\n---\nuse rg\n'}, skill)
+    monkeypatch.setattr(dhrona.improve, '_editor', lambda *a, **k: lambda prompt: '[kept 1]\n\nRun pytest -q before a commit.')
+    agent, _ = fake_agent(cfg=tmp_path)
+    tty = EmuTty(100, 30); comp = Compositor(tty); comp._register_signals = lambda: None
+    asyncio.run(comp.start())
+    ui = Ui(comp, agent)
+    def run(line):
+        ui.buf.insert(line); ui.submit()
+        return [blk.source for blk in ui.comp.blocks.values() if blk.tag == 'note'][-1]
+    try:
+        assert f'run `/learned compact {big}`' in run(f'/learned accept {big}')
+        out = run(f'/learned compact {big}')
+        assert out.startswith('compaction pending as '), out
+        id = out.split()[3].rstrip(':')
+        out = run(f'/learned accept {id}')
+        assert out.startswith(f'accepted {id} as ') and f'moved {skill} onto it' in out, out
+        assert (f/'AGENTS.md').read_text() == 'A rule a person wrote.\n\nRun pytest -q before a commit.\n'
+        assert big not in run('/learned') and skill in run('/learned')   # the folded candidate went with the compaction
+    finally: tty.close()

@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.41
+
+- An accept refused for size returns the would-be `length` and names `/learned compact ID`. `compact(folder, id)` and `/learned compact ID` fold that candidate into the compaction, and accepting the compaction accepts the candidate and drops its branch.
+- After an accept moves HEAD, `restack` moves every other pending candidate onto it where it picks cleanly. `accept` returns `moved` and `stale` ids, and `/learned accept` names them. `pending` gives each candidate a `stale` reason, or None, and `/learned` shows it, so a candidate that no longer applies is visible before anyone tries it. `accept` of such a candidate returns the same reason (`STALE`).
+- `pending` sorts by when Dhrona proposed a candidate, and `at` is that time, so moving a candidate keeps its place.
+- The `dhrona` extra requires dhrona 0.1.12, which has `compact_learned(onto=)`.
+
 ## 0.2.40
 
 - `ramabana.learned.compact(folder)` asks Dhrona for a shorter learned `AGENTS.md` and returns `{ok, id, before, after}`, where `before` and `after` are character counts, or `{ok: False, error}`. Dhrona's editor model merges and shortens the paragraphs Dhrona proposed and keeps every paragraph a person wrote byte for byte. The result waits as one more pending candidate, so `diff`, `accept` and `reject` act on it. Without Dhrona it returns an error naming the `dhrona` extra.
