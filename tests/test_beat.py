@@ -5,6 +5,7 @@ halves meet in one SQLite database and never call each other: the beat leaves no
 reads them under its own id. What is worth a plain test is that the reading never takes a turn
 down, and that two sessions each see what the beat left rather than racing for it.
 """
+import subprocess
 import sys
 import tempfile
 import time
@@ -12,7 +13,7 @@ import time
 import pytest
 
 from ramabana.agent import Agent
-from ramabana.monitor import TICKS, beat_notes, on_tick, pob, pob_path, tick
+from ramabana.monitor import TICKS, beat_command, beat_notes, on_tick, pob, pob_path, tick
 from ramabana.testing import MemHost
 
 pobblebonk = pytest.importorskip('pobblebonk')
@@ -59,6 +60,17 @@ def test_an_installed_package_names_its_tick_through_an_entry_point(db, tmp_path
         assert tick.__wrapped__(db=db, quiet=True) == 0
         assert beat_notes(pob(db)) == ['t_pkg: a package ran t_pkg']
     finally: sys.modules.pop('t_pkg_tick', None)
+
+
+@pytest.mark.skipif(sys.platform == 'win32', reason='the launcher here is a shell script')
+def test_the_installed_launcher_runs_a_tick_whose_path_has_a_space(tmp_path):
+    "uv installs tools under `~/Library/Application Support` on macOS."
+    from pobblebonk.heartbeat import launcher
+    exe = tmp_path/'Application Support'/'ramabana-tick'
+    exe.parent.mkdir()
+    exe.write_text('#!/bin/sh\necho ran "$@"\n'); exe.chmod(0o755)
+    subprocess.run([str(launcher(beat_command(exe), dirn=tmp_path, tag='t', win=False))], check=True)
+    assert (tmp_path/'t.log').read_text() == 'ran --quiet\n'
 
 
 def test_a_session_reads_the_beat_under_its_own_id_and_only_once(tmp_path, monkeypatch):

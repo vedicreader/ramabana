@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/monitor.html.md"""
 # %% ../nbs/17_monitor.ipynb #a361b376
 from __future__ import annotations
 
-import fnmatch, json, sys, threading, time, uuid
+import fnmatch, json, shlex, subprocess, sys, threading, time, uuid
 from collections import Counter, deque
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -24,7 +24,7 @@ from shalya.core import one_line as _1
 __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_STEPS', 'PENDING_MAX', 'DFLT_SETTLE', 'REVIEW_SP',
            'POB_READER', 'TICKS', 'POB_HOME', 'BEAT_TAG', 'TICK_GROUP', 'secs', 'files_under', 'snapshot', 'changed',
            'summarise', 'report', 'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'on_tick', 'pob_path',
-           'pob', 'beat_notes', 'beat_notice', 'heartbeat', 'tick']
+           'pob', 'beat_notes', 'beat_notice', 'beat_command', 'heartbeat', 'tick']
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
 SNAP_MAX_FILES = 2000
@@ -356,6 +356,11 @@ def beat_notice(notes, mx=REVIEW_MAX_CHARS):
 BEAT_TAG = 'ramabana'   #: names the launcher, log and job
 TICK_GROUP = 'ramabana.ticks'   #: entry points: each name is a schedule, each value the callback a fire of it runs
 
+def beat_command(exe):
+    "`exe --quiet` as the launcher's shell reads it, with `exe` quoted."
+    q = subprocess.list2cmdline([str(exe)]) if sys.platform == 'win32' else shlex.quote(str(exe))
+    return f'{q} --quiet'
+
 def heartbeat():
     "pobblebonk's scheduler seam, or None when it is not installed."
     try: from pobblebonk import heartbeat
@@ -377,8 +382,7 @@ def tick(db: str = '',         # the shared database; pobblebonk's own by defaul
         if uninstall:
             print('stopped' if hb.uninstall(BEAT_TAG) else 'nothing was scheduled')
             return 0
-        cmd = f'{Path(sys.executable).parent/"ramabana-tick"} --quiet'
-        print(f'every {every}s: {hb.install(cmd, tag=BEAT_TAG, every=every)}')
+        print(f'every {every}s: {hb.install(beat_command(Path(sys.executable).parent/"ramabana-tick"), tag=BEAT_TAG, every=every)}')
         return 0
     p = pob(db or None)
     if p is None:
