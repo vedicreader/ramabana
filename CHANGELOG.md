@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.34
+
+- `ramabana-tick --install` quotes the tick's path in the launcher it writes. uv installs tools under `~/Library/Application Support` on macOS, and the unquoted path split at the space, so an installed beat never ran. Run `ramabana-tick --install` again to rewrite an existing launcher.
+- The `Agent.beat` example checks a machine with no beat against an empty beat home. It read the real `~/.pobblebonk/pob.db` before, and failed on a machine with a beat installed.
+
 ## 0.2.33
 
 - `ramabana-tick` runs the callbacks installed packages register through the `ramabana.ticks` entry-point group. Each entry point's name is a pobblebonk schedule, and its value is the callback a fire of that schedule runs. The beat imports the package only when its schedule fires. An `on_tick` callback with the same name replaces the entry point's.
