@@ -254,6 +254,7 @@ class WorkspaceHost(VaultHost, SpecHost):
             self.without = self.without | {'memory', 'ask', 'watch'}
         if not (self._spec_enabled or inherited_apis is not None):
             self.without = self.without | {'api'}
+        if not self._vault_enabled: del self.mk_chat, self.pii, self.pii_ner   # so `Agent.lend_model` passes it by
 
     def add_worktree(self, repo,
                      branch,            # checked out when it exists, else made from the checked-out commit
@@ -279,7 +280,6 @@ class WorkspaceHost(VaultHost, SpecHost):
         log.close()
         self._bg[rid] = (p, Path(log.name))
         return rid
-        if not self._vault_enabled: del self.mk_chat, self.pii, self.pii_ner
 
     def _memory_call(self, name, *args, **kwargs):
         owner = VaultHost if self._vault_enabled else LocalHost

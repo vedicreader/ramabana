@@ -11,6 +11,7 @@ __all__ = ['SPEC', 'SCRIPTED', 'CHATS', 'GEMMA', 'MemHost', 'FullHost', 'FakeBac
 # %% ../nbs/04_testing.ipynb #9b48cc52
 import time, ramabana
 from contextlib import contextmanager
+from unittest.mock import patch
 from functools import partial
 from pathlib import Path
 from .core import AgentError, ModelSpec, agent_err, register_model
@@ -256,11 +257,11 @@ CHATS = Path(ramabana.__file__).parent.parent/'chatcache'
 
 @contextmanager
 def recorded(path=None, record=None):
-    "Replay recorded model answers for the duration, instead of calling a model."
+    "Replay recorded model answers for the duration, instead of calling a model; every runtime counts as available."
     from urai.record import CachedChat
     from ramabana.runtime import use_chat
     p = Path(path or CHATS)
-    with use_chat(partial(CachedChat, path=str(p), record=record)): yield p
+    with use_chat(partial(CachedChat, path=str(p), record=record)), patch.object(ramabana.core, 'runtime_available', lambda runtime: True): yield p
 
 # %% ../nbs/04_testing.ipynb #nomodel01
 def no_model(model=None, **kw):

@@ -47,11 +47,11 @@ def _selves(reqs): return {x.strip() for r in reqs if _name(r) == 'ramabana' for
 def test_pyproject_declares_a_lean_core_and_nested_extras():
     d = tomllib.loads(PYPROJECT.read_text())
     core, ex = {_name(r) for r in d['project']['dependencies']}, d['project']['optional-dependencies']
-    assert set(ex) == {'search', 'python', 'serve', 'cli', 'dhrona', 'all'}
+    assert set(ex) == {'search', 'python', 'serve', 'cli', 'dhrona', 'all', 'dev'}
     assert {'search', 'python'} <= _selves(ex['cli'])
-    assert _selves(ex['all']) == set(ex) - {'all'}
-    assert 'ramabana[all]' in d['dependency-groups']['dev']
-    own = {k: {_name(r) for r in v} - {'ramabana', 'shalya'} for k, v in ex.items()}
+    assert _selves(ex['all']) == set(ex) - {'all', 'dev'}
+    assert 'ramabana[all]' in ex['dev'] and d['dependency-groups']['dev'] == ['ramabana[dev]']   # CI installs `.[dev]`
+    own = {k: {_name(r) for r in v} - {'ramabana', 'shalya'} for k, v in ex.items() if k != 'dev'}
     assert not core & set().union(*own.values()), 'a package is both core and optional'
     dists = packages_distributions()
     for extra, mods in EXTRAS.items():
