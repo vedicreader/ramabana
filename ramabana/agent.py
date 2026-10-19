@@ -12,8 +12,8 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES',
            'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT',
            'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS',
-           'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'REPLAYED', 'EVENT_MAX', 'HIST', 'CHECKPOINT_BYTES',
-           'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP',
+           'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST',
+           'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP',
            'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
            'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
            'never', 'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt',
@@ -23,7 +23,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
-import ast, contextvars, datetime, fnmatch, functools, hashlib, json, os, re, shlex, threading, time, tomllib, uuid
+import ast, contextvars, datetime, fnmatch, functools, hashlib, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
 from glob import escape as glob_escape
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -33,7 +33,8 @@ from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, needs, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
-from .runtime import threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
+from .setup import load_config, setting
+from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
@@ -1163,8 +1164,8 @@ class Agent:
                  global_skills=True,        # read skills from `~/.agents/skills` too
                  approvals=None,            # an `Approvals`; None gates nothing
                  cfg=None,                  # config dir, for skills and extensions
-                 compact=True,              # compact automatically at the threshold
-                 compact_strategy='summary', # 'summary' or deterministic 'surgical'
+                 compact=None,              # compact automatically at the threshold; None reads config.toml's `compaction.auto`, else True
+                 compact_strategy=None,     # 'summary' or deterministic 'surgical'; None reads `compaction.strategy`, else 'summary'
                  kernel_alive=True,         # what the post-compaction note may promise
                  extensions=True,
                  project_extensions=False,  # project extensions execute repo code: opt in
@@ -1194,7 +1195,8 @@ class Agent:
                  optin=(),                  # shalya's opt-in tool groups, see `OPTIN`
                  profile='auto',            # 'auto', 'small' or 'full'; see `profile_for`
                  warm=None,                 # seed with dhrona's examples; None: off
-                 learned=True):             # brief from `<cfg>/learned`; False runs without it
+                 learned=True,              # brief from `<cfg>/learned`; False runs without it
+                 fresh_hint=None):          # what a turn too large for any window tells the user to do, `{session}` its id; None suits any host
         self.host, self.cfg, self.inline_skills, self.learned = host, cfg, inline_skills, learned
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
         if profile not in PROFILES: raise ValueError(f'profile must be one of {", ".join(PROFILES)}, not {profile!r}')
@@ -1225,7 +1227,9 @@ class Agent:
         self.local_multimodal = bool(local_multimodal)
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
         self._sp, self.extra_sp, self.global_skills = sp, extra_sp, bool(global_skills)
-        self.compactor = Compactor(auto=compact, strategy=compact_strategy, kernel_alive=kernel_alive, on_compact=on_compact)
+        self.compactor = Compactor(auto=ifnone(compact, setting('compaction.auto', True)), strategy=ifnone(compact_strategy, setting('compaction.strategy', 'summary')),
+                                   kernel_alive=kernel_alive, on_compact=on_compact)
+        self.fresh_hint = fresh_hint
         self.activity = Activity(on_change=on_activity)
         self.activity.tap = self._act_event
         self._nested = contextvars.ContextVar('delegating', default=())   # per context, so a fan-out's workers inherit it
@@ -1355,7 +1359,7 @@ def registry(self:Agent):
 # %% ../nbs/03_agent.ipynb #47fc0470
 @patch(as_prop=True)
 def learning(self:Agent):
-    "Whether learning is on: `learned`, and the config dir's `learning` setting when there is one."
+    "Whether learning is on: `learned`, and this machine's `learning` setting when there is a config dir."
     return bool(self.learned) and (self.cfg is None or learning_enabled(self.cfg))
 
 @patch(as_prop=True)
@@ -2581,15 +2585,74 @@ def _prepare(self:Agent, prompt):
     if (left := self.beat_drain()): outgoing = _append(outgoing, beat_notice(left))
     for skill in loaded:
         outgoing = _append(outgoing, f'\n\n<requested-skill name="{skill.name}">\n{skill.text()}\n</requested-skill>')
+    return self._fit(outgoing, _grown(outgoing, prompt))
+
+FRESH_HINT = 'Start a new conversation for a fresh window; this one stays in the history and can be resumed.'   #: `ContextFull`'s advice when the host gives none
+
+def _grown(outgoing, prompt):
+    "How many characters `_prepare` added to the end of the prompt's last text: reminders an excerpt keeps whole."
+    last = lambda m: next((p for p in reversed(m) if isinstance(p, str)), '') if isinstance(m, (list, tuple)) else str(m or '')
+    return max(0, len(last(outgoing)) - len(last(prompt)))
+
+@patch
+def _fit(self:Agent, outgoing, tail=0):
+    "`outgoing` made to fit the turn model's window, cutting whatever is oversized to an excerpt kept whole in a file; `ContextFull` only when the briefing and tools alone are too large."
     b = self._be('turn')
-    if not b.fits(outgoing): b.trim(b.projected_tokens(outgoing) - (threshold(b.spec.ctx) or b.spec.ctx))   # oldest tool results and pictures first
-    if self.compactor.auto and (self.compactor.due(b) or not b.fits(outgoing)): self.compact()
-    if not b.fits(outgoing): outgoing = compact_notebook_context(outgoing, b.fits)
+    cold = math.ceil(margin()*b.count_tokens(b.sp)) if b.chat is None else 0   # an unstarted chat counts nothing yet, its briefing included
+    if not b.spec.ctx or b.fits(outgoing, reserve=min(1024, max(128, b.spec.ctx // 4)) + cold): return outgoing
+    if b.start() is None: return outgoing   # a model that cannot start says so when the turn goes out
+    b.spill, b.how = self._spill, self._how()
+    limit = max(1, b.spec.ctx - min(1024, max(128, b.spec.ctx // 4)))   # `fits`'s line
+    half = int((limit - margin()*b.base_tokens()) / margin() / 2)
     if not b.fits(outgoing):
-        raise ContextFull(f'this conversation does not fit {b.spec.name}: about {b.projected_tokens(outgoing):,} tokens with this message, '
-                          f'past its {b.spec.ctx:,}-token window, after compacting and trimming. Quit and start ramabana again for a fresh '
-                          f'conversation; `ramabana --resume {self.session_id}` brings this one back.')
-    return outgoing
+        # a paste past half the room is cut first, so a short conversation is not compacted for it; a notebook has its own cutting
+        if not (isinstance(outgoing, str) and '<notebook' in outgoing) and b.pending_tokens(outgoing) > half:
+            outgoing = fit_content(outgoing, max(64, half), b.spill, b.how, b.count_tokens, tail)
+        # so is a newest exchange past it, which compaction would otherwise summarise away
+        if (big := sum(msg_tokens(m, b.count_tokens) for m in b.hist[-2:] if m.get('role') in ('user', 'tool'))) > half: b.shrink_recent(big - half)
+    if not b.fits(outgoing): b.trim(b.projected_tokens(outgoing) - (threshold(b.spec.ctx, self.compactor.reserve) or b.spec.ctx))   # oldest tool results and pictures first
+    if (self.compactor.auto and self.compactor.due(b)) or not b.fits(outgoing): self.compact()
+    if not b.fits(outgoing): outgoing = compact_notebook_context(outgoing, b.fits)
+    if not b.fits(outgoing): b.shrink_recent(b.projected_tokens(outgoing) - limit)
+    for k in range(4):
+        if b.fits(outgoing): return outgoing
+        outgoing = fit_content(outgoing, max(64, int(((limit - b.used_tokens) / margin() - 8) * .8**k)), b.spill, b.how, b.count_tokens, tail)
+    if b.fits(outgoing): return outgoing
+    raise ContextFull(f'this conversation does not fit {b.spec.name}: about {b.projected_tokens(outgoing):,} tokens with this message, '
+                      f'past its {b.spec.ctx:,}-token window, even with the message cut to an excerpt; the briefing and tools alone take about '
+                      f'{math.ceil(margin()*b.base_tokens()):,}. ' + (self.fresh_hint or FRESH_HINT).replace('{session}', self.session_id))
+
+@patch
+def _spill(self:Agent, data, suffix='.txt'):
+    "Keep `data` whole in `<runs_dir>/full`, readable by this user alone; its path, or None."
+    try:
+        p = self._full_dir()/f'{datetime.datetime.now():%H%M%S}-{uuid.uuid4().hex[:8]}{suffix}'
+        with os.fdopen(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as f: f.write(data)
+        return p
+    except OSError: return None
+
+@patch
+def _full_dir(self:Agent):
+    "Where cut content is kept: `<runs_dir>/full`, else a private temp folder; opened read-only to the read tools when they cannot reach it."
+    held = getattr(self, '_full', None)
+    if held and held[0] == self.runs_dir: return held[1]
+    d = self.runs_dir/'full' if self.runs_dir is not None else Path(tempfile.mkdtemp(prefix='ramabana-full-'))
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try: self.host.check(str(d), reading=True)
+    except Exception:
+        try: self.host.sandbox.add_root(str(d), readonly=True)
+        except Exception: pass
+    self._full = (self.runs_dir, d)
+    return d
+
+@patch
+def _how(self:Agent):
+    "How the model reads a kept file back, from the tools it has."
+    names = {getattr(t, '__name__', '') for t in self.tools}
+    if 'view_file' in names: return 'read it in pieces with view_file(path, start=N)' + (', or search it with grep' if 'grep' in names else '')
+    if 'run_shell' in names: return 'read it in pieces with run_shell'
+    return 'ask the user for the part you need'
+
 
 # %% ../nbs/03_agent.ipynb #6d26f359
 @patch
@@ -3241,6 +3304,7 @@ def problems(self:Agent):
         for p in b.problems:
             if p not in out: out.append(p)
     if (n := self.compactor.note).startswith('compaction') and n not in out: out.append(n)
+    out += [b for b in load_config()[1] if b not in out]
     if self.approvals is not None and self.approvals.problem: out.append(self.approvals.problem)
     return out[-10:]
 

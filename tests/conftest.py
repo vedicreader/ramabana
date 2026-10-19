@@ -21,3 +21,9 @@ def hide_runtime(monkeypatch):
     import ramabana.core as core
     real = core.runtime_available
     return lambda runtime: monkeypatch.setattr(core, 'runtime_available', lambda rt: rt != runtime and real(rt))
+
+
+@pytest.fixture(autouse=True)
+def _own_config(tmp_path_factory, monkeypatch):
+    "Point every test at a config.toml of its own, so none reads or writes the machine's."
+    monkeypatch.setenv('RAMABANA_CONFIG', str(tmp_path_factory.mktemp('config')/'config.toml'))

@@ -4,12 +4,14 @@ The fault this pins: a hosted chat's `token_count` is the window its last step r
 never changed it. So after compaction `fits` still saw the old count, raised, and every retry compacted again
 and raised again. A resumed conversation had the opposite blind spot: no step had reported yet, so it counted 0.
 """
-import json
+import json, re
+from pathlib import Path
 from rishi.remote import RemoteChat
 from urai import Resp
-from ramabana.agent import Agent, prompt_text, turn_prompt
+from ramabana.agent import FRESH_HINT, Agent, prompt_text, turn_prompt
+from ramabana.cli import CLI_FRESH
 from ramabana.core import ModelSpec
-from ramabana.runtime import EST_MARGIN, IMG_TOKENS, TRIMMED, RishiBackend, threshold, trim_hist, use_chat
+from ramabana.runtime import EST_MARGIN, IMG_TOKENS, TRIMMED, RishiBackend, fit_content, threshold, trim_hist, use_chat
 from ramabana.testing import MemHost
 
 CTX = 8_000
@@ -97,12 +99,88 @@ def test_pictures_are_charged_at_img_tokens_and_trimmed_before_text():
     assert any(p.get('type') == 'image_url' for p in hist[3]['content'])   # the newest messages stay whole
 
 
-def test_a_message_that_cannot_fit_says_so_without_a_raw_error():
+def test_a_briefing_too_large_for_the_window_says_so_without_a_raw_error():
+    "`ContextFull` is left for the one case nothing can cut: the briefing and tools alone overflow. Its advice suits the host."
     a, be = _agent()
+    be.sp = 'brief ' * CTX
     with use_chat(_chat):
-        out = a.ask('y' * (CTX * 4))
+        out = a.ask('hi')
     assert 'ValueError' not in out and 'does not fit hosted' in out and f'{CTX:,}-token window' in out
-    assert f'--resume {a.session_id}' in out
+    assert FRESH_HINT in out and '--resume' not in out and 'Quit' not in out
+    a.fresh_hint = CLI_FRESH
+    with use_chat(_chat):
+        out = a.ask('hi')
+    assert f'`ramabana --resume {a.session_id}`' in out
+
+
+def _sent_user(be): return next(m for m in reversed(be.chat.hist) if m['role'] == 'user')
+
+
+def _text(m): return m['content'] if isinstance(m['content'], str) else ''.join(p.get('text', '') for p in m['content'] if p.get('type') == 'text')
+
+
+def test_a_huge_paste_goes_out_as_an_excerpt_and_is_kept_whole(tmp_path):
+    a, be = _agent(tmp_path)
+    paste = 'START ' + ''.join(f'line {i}\n' for i in range(20_000)) + ' END'
+    Reported.sent.clear()
+    with use_chat(_chat):
+        assert a.ask(paste) == 'ok'
+    assert max(Reported.sent) <= CTX and a.compactor.count == 0, 'a short conversation is not compacted for a paste'
+    sent = _text(_sent_user(be))
+    assert sent.startswith('START') and 'END' in sent and 'characters omitted; full text at' in sent and 'view_file' in sent
+    path = Path(re.search(r'full text at (\S+?\.txt)', sent).group(1))
+    assert path.read_text() == paste and path.parent == a.runs_dir/'full' and path.stat().st_mode & 0o777 == 0o600
+    assert json.loads((tmp_path/'agent-history.jsonl').read_text().splitlines()[-1])['prompt'] == paste, 'the log keeps the whole prompt'
+
+
+def test_many_pictures_keep_the_newest_that_fit_and_name_the_rest(tmp_path):
+    a, be = _agent(tmp_path)
+    pics = [PNG[:-1] + bytes([i]) for i in range(10)]
+    with use_chat(_chat):
+        assert a.ask([*pics, 'what changed?']) == 'ok'
+    m = _sent_user(be)
+    kept = [p for p in m['content'] if p.get('type') == 'image_url']
+    assert 0 < len(kept) < 10 and be.used_tokens <= CTX
+    note = _text(m)
+    assert f'{10 - len(kept)} of the 10 pictures in this message were left out' in note and 'what changed?' in note
+    saved = re.findall(r'(/\S+?\.png)', note)
+    assert [Path(p).read_bytes() for p in saved] == pics[:10 - len(kept)], 'the oldest pictures are the ones saved'
+
+
+def test_a_giant_tool_result_in_the_newest_exchange_is_cut_and_kept(tmp_path):
+    a, be = _agent(tmp_path)
+    big = 'r' * 60_000
+    with use_chat(_chat):
+        be.resume_hist([{'role': 'user', 'content': 'read it'},
+                        {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'c1', 'type': 'function', 'function': {'name': 'view_file', 'arguments': '{}'}}]},
+                        {'role': 'tool', 'tool_call_id': 'c1', 'content': big}])
+        assert a.ask('next') == 'ok'
+    tool = next(m for m in be.chat.hist if m['role'] == 'tool')
+    assert 'full text at' in tool['content'] and len(tool['content']) < len(big)
+    assert Path(re.search(r'full text at (\S+?\.txt)', tool['content']).group(1)).read_text() == big
+
+
+def test_compaction_over_a_huge_history_folds_it_in_runs_that_each_fit():
+    asked = []
+    class Folding(Reported):
+        def _oneshot(self, prompt, sp='', think=None, max_tokens=None): asked.append(len(prompt) // 3); return f'summary {len(asked)}'
+    a, be = _agent()
+    with use_chat(lambda mid, **kw: Folding(mid, **{k: v for k, v in kw.items() if k in ('sp', 'tools', 'approve', 'ctx_limit')})):
+        be.start()
+        be.chat.hist[:] = be.chat.mk_msgs([m['content'] for m in _big(60)])
+        assert a.compact() == f'summary {len(asked)}'
+    assert len(asked) > 2 and max(asked) < CTX and a.compactor.count == 1
+
+
+def test_an_excerpt_keeps_the_reminders_at_its_end_and_a_trimmed_result_is_saved_once():
+    saved = []
+    def save(data, suffix): saved.append(data); return Path(f'/tmp/x{len(saved)}{suffix}')
+    tail = '\n\n<tool-plan route="explicit">use grep</tool-plan>'
+    out = fit_content('a' * 20_000 + tail, 300, save, tail=len(tail))
+    assert out.endswith(tail) and 'characters omitted; full text at /tmp/x1.txt' in out and saved == [b'a' * 20_000]
+    hist = [{'role': 'tool', 'tool_call_id': 'c', 'content': 'r' * 5000}, {'role': 'user', 'content': 'u'}, {'role': 'assistant', 'content': 'a'}]
+    trim_hist(hist, 10**6, save=save); trim_hist(hist, 10**6, save=save)
+    assert len(saved) == 2 and hist[0]['content'].startswith(TRIMMED[:-1]) and '/tmp/x2.txt' in hist[0]['content']
 
 
 def test_a_prompt_with_a_picture_is_logged_as_text(tmp_path):
@@ -124,3 +202,14 @@ def test_a_legacy_row_resumes_small(tmp_path):
                   'prompt': str([bytes(300_000), '<user-request>\nfix the pane\n</user-request>']), 'reply': ''}]
     a.resume_session('s1')
     assert sum(len(str(m['content'])) for m in be._resume_hist) < 1000
+
+
+def test_a_resumed_conversation_not_yet_started_is_counted_too():
+    "The first turn after `--resume` finds the chat unstarted; the guard counts what it will restore and starts it to cut."
+    a, be = _agent()
+    Reported.sent.clear()
+    with use_chat(_chat):
+        be.resume_hist(_big(8))
+        assert be.chat is None and be.used_tokens > CTX
+        assert a.ask('carry on') == 'ok'
+    assert max(Reported.sent) <= CTX

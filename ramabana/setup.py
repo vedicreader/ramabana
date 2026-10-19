@@ -15,10 +15,12 @@ from fastcore.xtras import Path
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
            'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'PII_OFF', 'PII_MODES', 'VALUED', 'EARLY', 'FLAGS',
-           'LAUNCHED', 'PICK_SESSION', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed',
-           'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli',
-           'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate', 'save_index',
-           'log_index', 'last_index']
+           'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'Key', 'KEYS', 'MODEL_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE',
+           'CONFIG_USAGE', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need',
+           'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path',
+           'load_config', 'setting', 'model_setting', 'set_setting', 'config_defaults', 'config_template',
+           'config_show', 'config_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
+           'index_gate', 'save_index', 'log_index', 'last_index']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -172,7 +174,7 @@ LAUNCHED = False   # `run_cli` has run `launch`, so `main` does not ask again
 
 def launch_args(argv):
     "`Setup`'s `cfg` and `launch`'s `tmux` for an interactive command line `main` accepts, read without its parser; None leaves it to `main`."
-    kw, flags, it = dict(cfg=None, tmux='auto', pane='auto', profile='auto', pii=PII_OFF), set(), iter(argv)
+    kw, flags, it = dict(cfg=None, **{k: setting(f'cli.{k}', 'auto') for k in ('tmux', 'pane', 'profile')}, pii=PII_OFF), set(), iter(argv)
     for a in it:
         k, eq, v = a.partition('=')
         if not a.startswith('-') or a == '-' or k in EARLY: return None
@@ -197,6 +199,7 @@ def bare_resume(argv):
 def run_cli():
     "The `ramabana` script: rerun inside tmux before anything heavy loads, then parse the command line for `cli.main`."
     global LAUNCHED
+    if sys.argv[1:2] == ['config']: return config_cli(sys.argv[2:])
     if (msg := need('cli')): return _refuse(msg)()
     sys.argv[1:] = bare_resume(sys.argv[1:])   # both parsers, and the rerun inside tmux, see a value
     if (kw := launch_args(sys.argv[1:])) is not None:
@@ -204,9 +207,230 @@ def run_cli():
         Setup(kw['cfg']).launch(tmux=kw['tmux'])
     from fastcore.script import anno_parser
     from ramabana.cli import main
-    args = vars(anno_parser(main.__wrapped__, pos=['prompt']).parse_args())
+    p = anno_parser(main.__wrapped__, pos=['prompt'])
+    p.set_defaults(**{k[4:]: v for k, v in load_config()[0].items() if k.startswith('cli.')})   # a flag given still wins
+    args = vars(p.parse_args())
     for k in ('pdb', 'xtra'): args.pop(k, None)
     return main(**args)
+
+# %% ../nbs/19_setup.ipynb #bc8fcf27
+import difflib, tomllib, warnings
+from collections import namedtuple
+from fastcore.xtras import atomic_save
+
+CONFIG = '~/.config/ramabana/config.toml'   #: one per machine, edited by hand; `$RAMABANA_CONFIG` names another file
+
+def config_path():
+    "This machine's config file: `$RAMABANA_CONFIG`, else `CONFIG`. An app that embeds ramabana reads the same file."
+    return Path(os.environ.get('RAMABANA_CONFIG') or CONFIG).expanduser()
+
+Key = namedtuple('Key', 'type env flag doc choices', defaults=('', '', '', ()))
+_JOB = 'the model the {} job runs on; empty takes the routing default'
+#: every key config.toml knows: its type, the env var (after the prefix) and the flag that beat it, what it sets, and its choices
+KEYS = {
+    'learning': Key(bool, '', '--no-learned', "learning: the learned briefing and skills, lessons, start.json and Dhrona's nightly batch"),
+    'jobs.turn': Key(str, 'MODEL', '--model', 'the model each turn runs on'),
+    **{f'jobs.{j}': Key(str, f'MODEL_{j.upper()}', '', _JOB.format(j)) for j in ('oneshot', 'inline', 'completion', 'classify', 'summary', 'subagent')},
+    'window.margin': Key(float, '', '', 'what a token count estimated from characters is multiplied by before it is held against the window'),
+    'window.image_tokens': Key(int, '', '', 'tokens one picture is charged against the window'),
+    'window.reserve': Key(int, '', '', 'tokens of headroom kept below the window; a conversation past that line compacts'),
+    'window.keep_recent': Key(int, '', '', 'tokens of the newest conversation a compaction keeps word for word'),
+    'window.local_ctx': Key(int, 'LOCAL_CTX', '', "the window every local model runs with; 0 keeps each model's own"),
+    'compaction.auto': Key(bool, '', '', 'compact on crossing the reserve; false compacts only on /compact or when a turn cannot fit'),
+    'compaction.strategy': Key(str, '', '', 'summary asks the summary model; surgical keeps a digest made without a model', ('summary', 'surgical')),
+    'runtime.effort': Key(str, 'EFFORT', '', 'the reasoning effort a Claude turn asks for'),
+    'runtime.tool_channel': Key(str, 'TOOL_CHANNEL', '', 'native sends tool schemas on the wire, tags in the prompt; empty decides per model', ('', 'native', 'tags')),
+    'runtime.litert_backend': Key(str, 'LITERT_BACKEND', '', 'the engine a LiteRT model runs on; empty lets LiteRT choose', ('', 'cpu', 'gpu')),
+    'cli.approve': Key(str, '', '--approve', 'which actions the terminal session asks about', ('ask', 'edits', 'auto', 'off', 'none')),
+    'cli.theme': Key(str, '', '--theme', 'the terminal palette', ('auto', 'dark', 'light')),
+    'cli.tmux': Key(str, '', '--tmux', 'whether the terminal session runs in tmux panes', ('auto', 'on', 'off')),
+    'cli.pane': Key(str, '', '--pane', 'whether the terminal session opens the now pane', ('auto', 'on', 'off')),
+    'cli.profile': Key(str, '', '--profile', 'the tool profile; small suits local models of 32k or less', PROFILES),
+    'cli.max_tool_calls': Key((int, str), '', '--max-tool-calls', 'tool calls one turn may make: auto, or 20 to 400'),
+    'cli.max_steps': Key((int, str), '', '--max-steps', 'model and tool steps one turn may take: auto, or 8 to 80'),
+}
+#: what a `[model."NAME"]` table may correct in fastllm's numbers for that model
+MODEL_KEYS = {'max_input_tokens': Key(int, doc='the input window the guard sizes each turn against'),
+              'max_output_tokens': Key(int, doc='tokens one reply may spend'),
+              'supports_images': Key(bool, doc='whether pictures may be sent to it')}
+
+def _why(key, v):
+    "What `v` would have to be to suit `key`, or '' when it does."
+    t = key.type
+    if t is bool: ok, need = isinstance(v, bool), 'true or false'
+    elif t is int: ok, need = isinstance(v, int) and not isinstance(v, bool) and v >= 0, 'a whole number, 0 or more'
+    elif t is float: ok, need = isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 1, 'a number, 1 or more'
+    elif t is str: ok, need = isinstance(v, str), 'a string'
+    else: ok, need = isinstance(v, t) and not isinstance(v, bool), 'a number or a string'
+    if ok and key.choices and v not in key.choices: ok, need = False, 'one of ' + ', '.join(map(repr, key.choices))
+    return '' if ok else need
+
+def _unknown(k, known):
+    near = difflib.get_close_matches(k, known, n=1, cutoff=0.6)
+    return f'{k} is not a setting' + (f'; did you mean {near[0]}?' if near else '')
+
+def _check(raw):
+    "`(values, problems)` for a parsed config.toml: valid keys flat, `model` as `{name: {key: value}}`, and one line per entry ignored."
+    vals, bad = {}, []
+    for k, v in raw.items():
+        if k == 'model':
+            for name, o in (v.items() if isinstance(v, dict) else ()):
+                if not isinstance(o, dict): bad.append(f'model.{name} is ignored: it must be a table, [model."{name}"]'); continue
+                for f, x in o.items():
+                    if (key := MODEL_KEYS.get(f)) is None: bad.append(_unknown(f'model."{name}".{f}', [f'model."{name}".{m}' for m in MODEL_KEYS]))
+                    elif (why := _why(key, x)): bad.append(f'model."{name}".{f} = {x!r} is ignored: it must be {why}')
+                    else: vals.setdefault('model', {}).setdefault(name, {})[f] = x
+            if not isinstance(v, dict): bad.append('model is ignored: it holds one table per model, [model."NAME"]')
+            continue
+        for kk, x in ([(f'{k}.{a}', b) for a, b in v.items()] if isinstance(v, dict) else [(k, v)]):
+            if (key := KEYS.get(kk)) is None: bad.append(_unknown(kk, KEYS))
+            elif (why := _why(key, x)): bad.append(f'{kk} = {x!r} is ignored: it must be {why}')
+            else: vals[kk] = str(x) if isinstance(key.type, tuple) else x
+    return vals, bad
+
+_LOADED, _WARNED = {}, set()
+
+def load_config(path=None):
+    "`(values, problems)` from config.toml, read again only when it changes. A key that is missing or wrong takes its default; nothing raises."
+    p = Path(path).expanduser() if path else config_path()
+    try: st = p.stat(); stamp = (st.st_mtime_ns, st.st_size)
+    except OSError: return {}, []
+    if (hit := _LOADED.get(p)) and hit[0] == stamp: return hit[1]
+    try: out = _check(tomllib.loads(p.read_text()))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as e: out = {}, [f'it is not valid TOML ({e}), so every setting takes its default']
+    out = out[0], [f'{p}: {b}' for b in out[1]]
+    _LOADED[p] = stamp, out
+    for b in out[1]:
+        if b not in _WARNED: _WARNED.add(b); warnings.warn(b, stacklevel=2)
+    return out
+
+def setting(key, dflt=None):
+    "Config.toml's value for `key`, else `dflt`. An env var or a flag that beats it is read by the code that owns the key."
+    return load_config()[0].get(key, dflt)
+
+def model_setting(*names):
+    "The `[model.\"NAME\"]` corrections for the first of `names` that has any, else `{}`."
+    ovr = load_config()[0].get('model', {})
+    return next((ovr[n] for n in names if n in ovr), {})
+
+def _toml(v):
+    "`v` as a TOML value."
+    return ('true' if v else 'false') if isinstance(v, bool) else json.dumps(v) if isinstance(v, str) else repr(v)
+
+def _locked_write(p, text):
+    import fcntl
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p.parent/f'.{p.name}.lock', 'w') as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        with atomic_save(p, 'w') as f: f.write(text)
+
+def set_setting(key, value, path=None):
+    "Set top-level `key` in config.toml by rewriting its one line, comments kept. A missing file starts from `config_template`; one that is not TOML is refused, never rewritten."
+    p = Path(path).expanduser() if path else config_path()
+    try: text = p.read_text()
+    except FileNotFoundError: text = config_template()
+    try: tomllib.loads(text)
+    except (UnicodeError, tomllib.TOMLDecodeError) as e:
+        raise ValueError(f'{p} is not valid TOML ({e}); fix it by hand: ramabana never rewrites a file it cannot read') from None
+    m = re.search(r'^\s*\[', text, re.M)
+    head, tail = (text[:m.start()], text[m.start():]) if m else (text, '')
+    line = f'{key} = {_toml(value)}'
+    for pat in (rf'^{re.escape(key)}[ \t]*=.*$', rf'^#[ \t]*{re.escape(key)}[ \t]*=.*$'):
+        if re.search(pat, head, re.M): head = re.sub(pat, line, head, count=1, flags=re.M); break
+    else: head = f'{line}\n{head}'
+    if tomllib.loads(new := head + tail).get(key) != value: raise ValueError(f'{p}: could not set {key} without breaking the file; set it by hand')
+    _locked_write(p, new)
+    _LOADED.pop(p, None)
+    return value
+
+
+# %% ../nbs/19_setup.ipynb #3ed0bb06
+import inspect
+from itertools import groupby
+
+def config_defaults():
+    "Every key's built-in default, read from the module that owns it."
+    from ramabana.core import DEFAULT_POLICY, DFLT_TURN
+    from ramabana.runtime import CLAUDE_EFFORT, EST_MARGIN, IMG_TOKENS, KEEP_RECENT, RESERVE
+    d = {'learning': True, 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
+         'window.margin': EST_MARGIN, 'window.image_tokens': IMG_TOKENS, 'window.reserve': RESERVE, 'window.keep_recent': KEEP_RECENT,
+         'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'summary', 'runtime.effort': CLAUDE_EFFORT,
+         'runtime.tool_channel': '', 'runtime.litert_backend': ''}
+    try:
+        from ramabana.cli import main
+        ps = inspect.signature(getattr(main, '__wrapped__', main)).parameters
+        d |= {k: ps[k[4:]].default for k in KEYS if k.startswith('cli.')}
+    except Exception: pass   # without the cli extra there is no terminal session to set defaults for
+    return d
+
+CONFIG_HEAD = '''# Ramabana's settings for this machine. Every key is commented out, so each takes the default shown.
+# Delete the leading '#' to set one. A command-line flag beats an env var, an env var beats this file,
+# and this file beats the built-in default. Inside an app that embeds Ramabana, the env vars may carry
+# that app's prefix too. `ramabana config show` prints what is in effect and where each value came from.
+'''
+MODEL_EXAMPLE = '''
+# Corrections to the numbers fastllm's table gives one model, keyed by the name you choose it by
+# (`/model NAME`) or its full vendor/model id. The name wins when both are set. A local model never
+# runs past the window it was trained for.
+# [model."openai/gpt-5.4"]
+# max_input_tokens = 272000   # the input window each turn is sized against
+# max_output_tokens = 32000   # tokens one reply may spend
+# supports_images = true      # whether pictures may be sent to it
+'''
+
+def config_template():
+    "A config.toml naming every key with its default, all commented out."
+    d, out = config_defaults(), [CONFIG_HEAD]
+    for table, rows in groupby(KEYS.items(), lambda kv: kv[0].rpartition('.')[0]):
+        if table: out.append(f'[{table}]')
+        for k, key in rows:
+            beat = ' and '.join(x for x in (key.flag and f'the flag {key.flag}', key.env and f'${ENV_DEFAULT[0]}{key.env}') if x)
+            out += [f'# {key.doc}' + (f'; {beat} beats it' if beat else ''), f'# {k.rpartition(".")[2]} = {_toml(d.get(k, ""))}']
+        out.append('')
+    return '\n'.join(out) + MODEL_EXAMPLE
+
+def config_show(path=None):
+    "Each setting in effect and where it came from: an env var, config.toml or the built-in default. A flag is per command line, so it is named, not read."
+    p = Path(path).expanduser() if path else config_path()
+    vals, bad = load_config(p)
+    d = config_defaults()
+    rows = [f'# {p}' + ('' if p.exists() else ' does not exist; `ramabana config init` writes one')]
+    for k, key in KEYS.items():
+        e = next((pre + key.env for pre in env_prefixes() if key.env and os.environ.get(pre + key.env)), None)
+        v, src = (os.environ[e], f'${e}') if e else (vals[k], 'config.toml') if k in vals else (d.get(k, ''), 'built-in')
+        rows.append(f'{k} = {_toml(v)}   # {src}' + (f'; {key.flag} beats it' if key.flag else ''))
+    for name, o in vals.get('model', {}).items():
+        for f, v in o.items():
+            up = ''
+            if f == 'max_input_tokens':
+                try:
+                    from ramabana.core import _spec_for
+                    up = f', fastllm says {_spec_for(name).ctx:,}'
+                except Exception: pass
+            rows.append(f'model."{name}".{f} = {_toml(v)}   # config.toml{up}')
+    return '\n'.join(rows + [f'warning: {b}' for b in bad])
+
+CONFIG_USAGE = 'usage: ramabana config [show | init [--force] | path]'
+
+def config_cli(argv=()):
+    "`ramabana config`: `show` what is in effect, `init` a commented config.toml, or print its `path`."
+    a = list(argv); cmd = a[0] if a else 'show'
+    p = config_path()
+    if cmd == 'path': print(p); return 0
+    if cmd == 'show': print(config_show(p)); return 0
+    if cmd != 'init' or set(a[1:]) - {'--force'}: print(CONFIG_USAGE, file=sys.stderr); return 2
+    old = setting('learning')
+    if p.exists():
+        if '--force' not in a:
+            print(f'{p} exists; `ramabana config init --force` replaces it and keeps it as {p.name}.bak', file=sys.stderr)
+            return 1
+        shutil.copy2(p, p.with_name(p.name + '.bak'))
+    _locked_write(p, config_template())
+    _LOADED.pop(p, None)
+    if old is not None: set_setting('learning', old, p)
+    print(f'wrote {p}')
+    return 0
+
 
 # %% ../nbs/19_setup.ipynb #235e735b
 @patch

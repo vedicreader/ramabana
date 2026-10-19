@@ -11,17 +11,20 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
            'IMG_TOKENS', 'EST_MARGIN', 'TRIMMED', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'ROUTINE_CBS', 'STATUS_CHARS',
            'CHILD_KEEP', 'NOTE_KEEP', 'AIR_CALLS', 'AIR_CHARS', 'REPEAT_CALLS', 'CHAT_CALLBACKS', 'interesting',
            'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact', 'serialise',
-           'split_previous', 'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices',
-           'notices_block', 'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter',
-           'Usage', 'msg_tokens', 'trim_hist', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'status_line',
+           'split_previous', 'summarise_prompt', 'transcript_runs', 'fold_summary', 'truncate_middle',
+           'surgical_history', 'reorient', 'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor',
+           'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'margin', 'img_tokens', 'msg_tokens', 'trim_hist',
+           'omitted', 'excerpt', 'fit_content', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'status_line',
            'said_before_call', 'Run', 'current_run', 'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
-import contextvars, copy, json, math, os, re, sys, threading, time, uuid
+import base64, contextvars, copy, json, math, mimetypes, os, re, sys, threading, time, uuid
+from pathlib import Path
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fastcore.basics import patch
 from urai import resp_text, tool_rows, strip_hist_media, strip_media, is_media
+from .setup import setting
 from .core import accepts, agent_err, claude_wire, env, force_tags, local_ctx, local_window, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
@@ -150,12 +153,13 @@ def halvings(budget, tries=3, floor=256):
     if not budget: return [budget]
     return [budget] + [max(floor, budget >> i) for i in range(1, tries)]
 
-def threshold(ctx, reserve=RESERVE):
-    "The token count at which a conversation should be compacted, or None when there is no window."
+def threshold(ctx, reserve=None):
+    "The token count at which a conversation should be compacted, or None when there is no window. `reserve` is config.toml's `window.reserve`, else `RESERVE`."
     if not ctx or ctx <= 0: return None
+    if reserve is None: reserve = setting('window.reserve', RESERVE)
     return max(1, ctx - min(reserve, max(1, ctx // 4)))
 
-def should_compact(used, ctx, reserve=RESERVE):
+def should_compact(used, ctx, reserve=None):
     "Whether `used` tokens against a `ctx` window has crossed the line."
     t = threshold(ctx, reserve)
     return bool(t and used >= t)
@@ -257,6 +261,25 @@ def summarise_prompt(msgs, extra='', max_tokens=None, count=None):
         body = body[:-1]
         out = build(body + '…', old)
     return _clip_tokens(out, max_tokens, count)
+
+def transcript_runs(msgs, budget, count=None):
+    "`msgs` in consecutive runs whose transcript fits `budget` tokens; a message that alone is larger makes a run of its own."
+    runs, cur, n = [], [], 0
+    for m in msgs:
+        k = estimate_tokens(serialise([m]), count)
+        if cur and n + k > budget: runs.append(cur); cur, n = [], 0
+        cur.append(m); n += k
+    return runs + ([cur] if cur else [])
+
+def fold_summary(msgs, summariser, extra='', max_tokens=None, count=None):
+    "Summarise `msgs` in runs that each fit `max_tokens`, every summary updated with the next run; '' when a step answers nothing."
+    if not max_tokens: return (summariser(summarise_prompt(msgs, extra, None, count), SUMMARISE_SP) or '').strip()
+    prev, rest = split_previous(msgs)
+    room = max(64, max_tokens * 3 // 4 - estimate_tokens(UPDATE_SUMMARISE + extra, count) - 32)   # a quarter for the summary so far
+    for run in transcript_runs(rest, room, count) or [[]]:
+        head = [] if prev is None else [{'role': 'user', 'content': SUMMARY_PREFIX + prev}]
+        if not (prev := (summariser(summarise_prompt(head + run, extra, max_tokens, count), SUMMARISE_SP) or '').strip()): return ''
+    return prev
 
 # %% ../nbs/01_runtime.ipynb #5e86aad6
 def truncate_middle(text, budget, count=None, mark=' … '):
@@ -376,18 +399,27 @@ def compact_notebook_context(prompt, fits):
 class Compactor:
     "Decide when to compact, and do it."
     def __init__(self,
-                 reserve=RESERVE,
-                 keep_recent=KEEP_RECENT,
+                 reserve=None,               # None reads config.toml's `window.reserve`, else `RESERVE`, each time
+                 keep_recent=None,           # None reads `window.keep_recent`, else `KEEP_RECENT`
                  auto=True,                  # compact on crossing the threshold
                  kernel_alive=True,          # what the reorientation note may promise
                  on_compact=None,            # called with each new checkpoint
                  strategy='summary'):         # 'summary' or deterministic 'surgical'
-        self.reserve, self.keep_recent, self.auto = reserve, keep_recent, auto
+        self._reserve, self._keep_recent, self.auto = reserve, keep_recent, auto
         self.strategy = strategy
         self.kernel_alive, self.on_compact = kernel_alive, on_compact
         self.count = 0
         self.last = ''
         self.note = 'not compacted'
+
+    @property
+    def reserve(self): return setting('window.reserve', RESERVE) if self._reserve is None else self._reserve
+    @reserve.setter
+    def reserve(self, v): self._reserve = v
+    @property
+    def keep_recent(self): return setting('window.keep_recent', KEEP_RECENT) if self._keep_recent is None else self._keep_recent
+    @keep_recent.setter
+    def keep_recent(self, v): self._keep_recent = v
 
     def due(self, backend):
         "Whether `backend` has crossed its threshold."
@@ -452,8 +484,7 @@ class Compactor:
         text, err = '', None
         for b in halvings(input_budget):
             try:
-                text = (summariser(summarise_prompt(older, extra, b, summary_count), SUMMARISE_SP) or '').strip()
-                if text: break
+                if (text := fold_summary(older, summariser, extra, b, summary_count)): break
             except Exception as e: err = e
         if not text:
             self.note = (f'compaction failed ({agent_err(err)})' if err is not None
@@ -540,6 +571,9 @@ IMG_TOKENS = 1600   # what one picture can cost a hosted model, whatever its byt
 EST_MARGIN = 1.15   # a count from characters runs short on code and escapes, so an estimate is charged this much more
 TRIMMED = '[trimmed to fit the context window]'
 
+def margin(): return setting('window.margin', EST_MARGIN)
+def img_tokens(): return setting('window.image_tokens', IMG_TOKENS)
+
 _MEDIA_PARTS = ('image_url', 'input_audio')
 
 def _parts(msg):
@@ -559,19 +593,84 @@ def msg_tokens(m, count=None):
     c = m.get('content') if isinstance(m, dict) else m
     text, media = _parts(c if isinstance(c, list) else [c or ''])
     calls = json.dumps(m['tool_calls'], default=str) if isinstance(m, dict) and m.get('tool_calls') else ''
-    return count(text) + (count(calls) if calls else 0) + IMG_TOKENS*media + 8
+    return count(text) + (count(calls) if calls else 0) + img_tokens()*media + 8
 
-def trim_hist(hist, need, count=None, keep=2):
-    "Free about `need` tokens from `hist` in place, the oldest tool results first and then the oldest pictures; the last `keep` messages stay whole. Returns what was freed."
+def trim_hist(hist, need, count=None, keep=2, save=None, how=''):
+    "Free about `need` tokens from `hist` in place, the oldest tool results first and then the oldest pictures; the last `keep` messages stay whole. With `save`, a trimmed result is kept in a file its note names. Returns what was freed."
     count, freed = count or estimate_tokens, 0
     old = hist[:-keep] if keep else hist
     for m in [m for m in old if m.get('role') == 'tool']:
         if freed >= need: return freed
-        if isinstance(c := m.get('content'), str) and len(c) > 2*len(TRIMMED): freed += count(c) - count(TRIMMED); m['content'] = TRIMMED
+        if isinstance(c := m.get('content'), str) and len(c) > 2*len(TRIMMED) and not c.startswith(TRIMMED[:-1]):
+            p = save(c.encode(), '.txt') if save else None
+            m['content'] = f'{TRIMMED[:-1]}; full text at {p}; {how}]' if p else TRIMMED
+            freed += count(c) - count(m['content'])
     for m in old:
         if freed >= need: return freed
-        if isinstance(c := m.get('content'), list) and (n := sum(map(is_media, c))): m.update(strip_media(m)); freed += n*IMG_TOKENS
+        if isinstance(c := m.get('content'), list) and (n := sum(map(is_media, c))): m.update(strip_media(m)); freed += n*img_tokens()
     return freed
+
+def _unsaved(data, suffix=''): return None
+
+def omitted(n, path, how=''):
+    "The note an excerpt carries where `n` characters were cut: where the whole is, and how to read it."
+    if path is None: return f'\n…[{n:,} characters omitted to fit the context window; the whole could not be saved]\n'
+    return f'\n…[{n:,} characters omitted; full text at {path}' + (f'; {how}' if how else '') + ']\n'
+
+def excerpt(text, room, save, how='', count=None, tail=0):
+    "`text` cut to its head and its end within `room` tokens, the last `tail` characters always kept; the whole goes to `save(data, suffix)` and the note names the file."
+    text = str(text)
+    if estimate_tokens(text, count) <= room: return text
+    body, keep = (text[:len(text) - tail], text[len(text) - tail:]) if tail else (text, '')
+    path = save(body.encode(), '.txt')
+    mark = omitted(len(body), path, how)
+    cut = truncate_middle(body, max(0, room - estimate_tokens(keep, count)), count, mark=mark)
+    if mark in cut: cut = cut.replace(mark, omitted(len(body) - len(cut) + len(mark), path, how), 1)
+    return cut + keep
+
+def _is_pic(p): return isinstance(p, (bytes, bytearray, os.PathLike)) or is_media(p)
+
+def _pic_file(p, save):
+    "Where picture part `p` can be read whole: its own file or URL, or the copy `save` writes; None when neither."
+    if isinstance(p, os.PathLike): return Path(p)
+    if isinstance(p, (bytes, bytearray)): return save(bytes(p), '.png' if bytes(p[:8]) == b'\x89PNG\r\n\x1a\n' else '.jpg' if p[:2] == b'\xff\xd8' else '.bin')
+    if p.get('type') == 'input_audio':
+        a = p.get('input_audio') or {}
+        try: return save(base64.b64decode(a.get('data', '')), '.' + a.get('format', 'wav'))
+        except Exception: return None
+    url = (p.get('image_url') or {}).get('url', '')
+    if not url.startswith('data:'): return url or None
+    head, _, b64 = url.partition(',')
+    try: return save(base64.b64decode(b64), mimetypes.guess_extension(head[5:].split(';')[0]) or '.bin')
+    except Exception: return None
+
+def _text_of(p): return p.get('text', '') if isinstance(p, dict) else str(p)
+
+def fit_content(c, room, save, how='', count=None, tail=0):
+    "Message content `c` within `room` tokens: the newest pictures that fit stay and the rest are saved and named, then text past the room becomes an excerpt. The last `tail` characters of the last text part are always kept."
+    if not isinstance(c, (list, tuple)): return excerpt(c or '', room, save, how, count, tail)
+    count = count or estimate_tokens
+    ps, it = list(c), img_tokens()
+    texts = [i for i, p in enumerate(ps) if not _is_pic(p)]
+    pics = [i for i, p in enumerate(ps) if _is_pic(p)]
+    tok = {i: count(_text_of(ps[i])) for i in texts}
+    if sum(tok.values()) + it*len(pics) + 8 <= room: return c
+    k = min(len(pics), max(0, room - min(sum(tok.values()) + 8, room // 2)) // it)
+    drop, note = pics[:len(pics) - k], ''
+    if drop:
+        where = ', '.join(str(_pic_file(ps[i], save) or '(could not be saved)') for i in drop)
+        note = f'\n[{len(drop)} of the {len(pics)} pictures in this message were left out to fit the context window: {where}' + (f'; view_file shows each' if 'view_file' in how else '') + ']'
+    left = room - it*k - count(note) - 8
+    last = texts[-1] if texts else None
+    for i in sorted(texts, key=tok.get, reverse=True):
+        if sum(tok.values()) <= left: break
+        allowed = max(64, left - (sum(tok.values()) - tok[i]))
+        cut = excerpt(_text_of(ps[i]), allowed, save, how, count, tail if i == last else 0)
+        ps[i] = {**ps[i], 'text': cut} if isinstance(ps[i], dict) else cut
+        tok[i] = count(cut)
+    out = [p for i, p in enumerate(ps) if i not in set(drop)]
+    if note: out.append({'type': 'text', 'text': note} if any(isinstance(p, dict) for p in out) else note)
+    return out
 
 # %% ../nbs/01_runtime.ipynb #197644e7
 class Backend:
@@ -587,6 +686,7 @@ class Backend:
         self.problems,self.last_native,self._tried,self.run=[], '', False, None
         self._resume_hist=None
         self._used,self._rewrote,self._est=0,None,0
+        self.spill,self.how=_unsaved,''   # where cut content is kept whole, and how the model reads it back
         self.lock=threading.Lock()
     @property
     def ready(self): return self.chat is not None
@@ -764,17 +864,33 @@ class Backend:
         except Exception: pass
         return self
     
-    def window_tokens(self):
-        "What the window holds, estimated with `EST_MARGIN`: the briefing, the tool schemas, and every message."
+    def base_tokens(self):
+        "What the briefing and the tool schemas alone take of the window, before `margin`."
         specs=getattr(self.chat,'toolspecs',None) or []
-        n=self.count_tokens(self.sp)+(self.count_tokens(json.dumps(specs,default=str)) if specs else 0)
-        return math.ceil(EST_MARGIN*(n+sum(msg_tokens(m,self.count_tokens) for m in self.hist)))
+        return self.count_tokens(self.sp)+(self.count_tokens(json.dumps(specs,default=str)) if specs else 0)
+
+    def window_tokens(self):
+        "What the window holds, estimated with `margin`: the briefing, the tool schemas, and every message."
+        return math.ceil(margin()*(self.base_tokens()+sum(msg_tokens(m,self.count_tokens) for m in self.hist)))
     
     def trim(self,need):
         "Free about `need` tokens from the oldest tool results, then the oldest pictures; returns what was freed."
-        if not self.chat or not (freed:=trim_hist(self.hist,need,self.count_tokens)):return 0
+        if not self.chat or not (freed:=trim_hist(self.hist,need,self.count_tokens,save=self.spill,how=self.how)):return 0
         if recreate:=getattr(self.chat,'_recreate_conv',None):recreate()
         self._rewritten(); return freed
+
+    def shrink_recent(self,need,keep=2):
+        "Cut about `need` tokens from the newest `keep` messages a person or a tool wrote, largest first: text to an excerpt, extra pictures to files. Returns what was freed."
+        if not self.chat or need<=0:return 0
+        tok,freed=lambda m:msg_tokens(m,self.count_tokens),0
+        for m in sorted([m for m in self.hist[-keep:] if m.get('role') in ('user','tool')],key=tok,reverse=True):
+            if freed>=need:break
+            n=tok(m); m['content']=fit_content(m.get('content'),max(64,n-(need-freed)),self.spill,self.how,self.count_tokens)
+            freed+=n-tok(m)
+        if freed:
+            if recreate:=getattr(self.chat,'_recreate_conv',None):recreate()
+            self._rewritten()
+        return freed
     
     def revise_last_assistant(self,text):
         "Replace the last prose assistant message in a restored checkpoint."
@@ -793,27 +909,29 @@ class Backend:
     
     @property
     def used_tokens(self):
-        "Tokens in use, from the rishi chat when there is one; after a rewrite of `hist`, `window_tokens` until the chat reports a new count."
+        "Tokens in use, from the rishi chat when there is one; before it reports any, or after a rewrite of `hist` until it reports again, `window_tokens`; before it starts, an estimate of a resumed conversation."
         try:
             if self.chat:
                 n = self.chat.token_count
                 if self._rewrote is not None and n == self._rewrote: n = self._est   # still the count from before the rewrite
                 else: self._rewrote = None
+                if not n: n = self.window_tokens()   # a hosted chat counts 0 until its first step, whatever its briefing holds
                 self._used = n
+            elif self._resume_hist: return max(self._used,math.ceil(margin()*sum(msg_tokens(m,self.count_tokens) for m in self._resume_hist)))   # a resumed conversation not yet started
         except Exception: pass
         return self._used
     
     @property
     def pct_full(self):return self.used_tokens/max(self.spec.ctx,1)
     def pending_tokens(self,msg):
-        "Tokens the pending message adds. Media is charged `IMG_TOKENS`, never its repr."
+        "Tokens the pending message adds. Media is charged `img_tokens()`, never its repr."
         try:
             if self.chat and hasattr(self.chat,'render'):return self.count_tokens(self.chat.render(msg))
         except Exception:pass
         text,media = _parts(msg)
-        return self.count_tokens(text)+8+IMG_TOKENS*media
+        return self.count_tokens(text)+8+img_tokens()*media
     
-    def projected_tokens(self,msg):return self.used_tokens+math.ceil(EST_MARGIN*self.pending_tokens(msg))
+    def projected_tokens(self,msg):return self.used_tokens+math.ceil(margin()*self.pending_tokens(msg))
     def fits(self,msg,reserve=None):
         if not self.spec.ctx:return True
         reserve=min(1024,max(128,self.spec.ctx//4)) if reserve is None else max(0,reserve)
@@ -864,10 +982,10 @@ class RishiBackend(Backend):
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime in ('llama','ollama'): kw.setdefault('n_ctx',self.spec.ctx)
-        if self.spec.runtime=='claude': kw.setdefault('effort',env('EFFORT',CLAUDE_EFFORT))
+        if self.spec.runtime=='claude': kw.setdefault('effort',env('EFFORT') or setting('runtime.effort') or CLAUDE_EFFORT)
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
-            if 'backend' not in eng and 'backend' not in kw and (backend := env('LITERT_BACKEND')):
+            if 'backend' not in eng and 'backend' not in kw and (backend := env('LITERT_BACKEND') or setting('runtime.litert_backend')):
                 from litert_lm import Backend as LB
                 backends = {'cpu': LB.CPU, 'gpu': LB.GPU}
                 if backend.lower() not in backends: raise ValueError(f'unknown LiteRT backend {backend!r}; use cpu or gpu')

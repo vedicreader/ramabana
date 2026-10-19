@@ -23,7 +23,7 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
 from fastcore.all import Path, atomic_save
 from shalya.host import HostError
-from .setup import ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES
+from .setup import ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES, model_setting, setting
 import urai, rishi.core   # registers rishi's backends with urai
 from .models import CATALOG, claude_ids, claude_aliases, provider_models
 from dataclasses import dataclass, field, replace
@@ -319,13 +319,13 @@ def local_window(runtime, model_id):
     return 0
 
 def local_ctx(name, dflt=DFLT_LOCAL_CTX):
-    "The context window to use for local model `name`: `$RAMABANA_LOCAL_CTX` if it sets one, else the table."
+    "The context window to use for local model `name`: `$RAMABANA_LOCAL_CTX` if it sets one, then config.toml's `[model.\"NAME\"]` and `window.local_ctx`, else the table."
     if (ovr := (env('LOCAL_CTX') or '').strip()):
         if ovr.isdigit(): return int(ovr)
         for part in ovr.split(','):
             k, _, v = part.partition(':')
             if k.strip() == name and v.strip().isdigit(): return int(v)
-    return _LOCAL_CTX.get(name, dflt)
+    return model_setting(name).get('max_input_tokens') or setting('window.local_ctx') or _LOCAL_CTX.get(name, dflt)
 
 # %% ../nbs/00_core.ipynb #64093121
 @dataclass(frozen=True)
@@ -389,8 +389,15 @@ def reachable_hint():
 
 def resolve(name):
     'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec; none is `DFLT_TURN`. A runtime this machine lacks is named in `missing`, not raised.'
-    spec = _spec_for(name)
+    spec = _corrected(_spec_for(name))
     return replace(spec, missing=m) if (m := missing_runtime(spec)) else spec
+
+def _corrected(spec):
+    "`spec` with config.toml's `[model.\"NAME\"]` window and output cap over fastllm's; the route name wins over the model id."
+    if not (o := model_setting(spec.name, spec.model_id)): return spec
+    opts = {**(spec.opts or {}), **({'max_output_tokens': o['max_output_tokens']} if o.get('max_output_tokens') else {})}
+    n = o.get('max_input_tokens')
+    return replace(spec, ctx=n or spec.ctx, note='' if n else spec.note, opts=opts)
 
 def _spec_for(name):
     if not name: name = DFLT_TURN
@@ -437,7 +444,8 @@ def spec_caps(spec):
     return _caps(spec.model_id, spec.backend if spec.local else 'remote')
 
 def accepts(spec, kind):
-    "Can `spec`'s model be sent `kind`? Unknown counts as yes."
+    "Can `spec`'s model be sent `kind`? config.toml's `supports_images` answers for a picture; unknown counts as yes."
+    if kind == 'image' and (v := model_setting(spec.name, spec.model_id).get('supports_images')) is not None: return v
     c = spec_caps(spec)
     return True if c is None or not c.known else c.accepts(kind)
 
@@ -574,7 +582,7 @@ def forget_forced_tags():
 
 def tool_channel(spec, chat=None):
     "The channel ('native' or 'tags') a model's tool schemas travel on."
-    if (v := (env('TOOL_CHANNEL') or '').strip().lower()) in TOOL_CHANNELS: return v
+    if (v := (env('TOOL_CHANNEL') or setting('runtime.tool_channel') or '').strip().lower()) in TOOL_CHANNELS: return v
     if (ch := getattr(chat, 'tool_channel', None)) in TOOL_CHANNELS: return ch
     mid = str(getattr(spec, 'model_id', spec) or '')
     rt = getattr(spec, 'runtime', '') or (mid.split('/', 1)[0] if '/' in mid else '')
@@ -610,10 +618,10 @@ class Routing:
     policy: dict = field(default_factory=lambda: dict(DEFAULT_POLICY))
 
     def __post_init__(self):
-        if not self.turn: self.turn = env('MODEL') or DFLT_TURN
+        if not self.turn: self.turn = env('MODEL') or setting('jobs.turn') or DFLT_TURN
         self.chosen = set()
-        for job in JOBS:
-            if (v := env(f'MODEL_{job.upper()}')): self.policy[job] = v; self.chosen.add(job)
+        for job in JOBS:   # an env var beats config.toml's `[jobs]`
+            if (v := env(f'MODEL_{job.upper()}') or (job != 'turn' and setting(f'jobs.{job}'))): self.policy[job] = v; self.chosen.add(job)
         self._cache, self.notes, self.said, self.news = {}, {}, set(), []
         self.down = {}   # name -> (why, when): a cloud model set aside for `DOWN_TTL`, or until named again
 

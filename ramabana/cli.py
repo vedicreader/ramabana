@@ -13,16 +13,16 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
            'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
            'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
-           'RESUME_SHOWN', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok',
-           'code_theme', 'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics',
-           'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs',
-           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn',
-           'hl_text', 'diff_rich', 'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern',
-           'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty',
-           'stderr_to', 'stderr_log', 'pick_session', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main',
-           'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths',
-           'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
-           'media_note']
+           'RESUME_SHOWN', 'CLI_FRESH', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key',
+           'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text',
+           'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note',
+           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells',
+           'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer',
+           'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop',
+           'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'amain', 'headless_prompt', 'ask_once', 'host_kw',
+           'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media',
+           'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -2402,6 +2402,8 @@ def host_kw(tmux='auto'):
     "The CLI's host options: `--tmux`, and no code index until the model is up."
     return dict(tmux=TMUX_MODES[tmux], index=False)
 
+CLI_FRESH = 'Quit and start ramabana again for a fresh conversation; `ramabana --resume {session}` brings this one back.'   #: `ContextFull`'s advice in a terminal session
+
 @call_parse(pos=['prompt'])
 def main(
     prompt: str = '',                    # one turn and exit; omit for interactive
@@ -2475,6 +2477,7 @@ def main(
     except (RuntimeError, AgentError) as e:
         print(e, file=sys.stderr)
         return 2
+    agent.fresh_hint = CLI_FRESH
     if not prompt: agent.extra_sp = '\n\n'.join(p for p in (agent.extra_sp, SHELL_NOTE) if p)   # before `resume_session` builds the briefing
     from ramabana.setup import PICK_SESSION
     if resume == PICK_SESSION: resume = pick_session(agent, all_folders) if sys.stdin.isatty() else 'latest'

@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from fastcore.script import call_parse
 from fastcore.xtras import atomic_save
+from .setup import set_setting, setting
 
 LEARNED = 'learned'   #: the folder under the config dir where Dhrona keeps what it learned
 PENDING = 'pending/'  #: the branch prefix a candidate waits under until a person accepts it
@@ -22,22 +23,25 @@ _ID = re.compile(r'\d{8}-\d{6}-[0-9a-f]{6}')
 _AS = ('-c', 'user.name=Ramabana', '-c', 'user.email=ramabana@localhost')
 INCLUDES = 'Includes: '   #: the trailer naming the candidate a compaction folded in; accepting it accepts that one too
 
-SETTINGS = 'settings.json'   #: the config folder's own settings; `learning` is one
+SETTINGS = 'settings.json'   #: where 0.2.44 kept `learning`, in each config folder; read once to move it to config.toml
+
+def _legacy(cfg):
+    "`learning` from `<cfg>/settings.json`: True, False, or None when it never said."
+    try: v = json.loads((Path(cfg).expanduser()/SETTINGS).read_text()).get('learning')
+    except (OSError, ValueError, AttributeError): return None
+    return None if v is None else v != 'off'
 
 def enabled(cfg='~/.config/ramabana'):
-    "Whether learning is on for `cfg`: the learned briefing and skills, lessons, `start.json`, and Dhrona's nightly batch. On unless set off."
-    try: return json.loads((Path(cfg).expanduser()/SETTINGS).read_text()).get('learning', 'on') != 'off'
-    except (OSError, ValueError, AttributeError): return True
+    "Whether learning is on: `learning` in this machine's config.toml, which a value only `<cfg>/settings.json` holds moves into the first time it is read. On unless set off."
+    if (v := setting('learning')) is not None: return v
+    if (old := _legacy(cfg)) is None: return True
+    try: set_setting('learning', old)
+    except (OSError, ValueError): pass   # a read-only home, or a config.toml that is not TOML, keeps answering from settings.json
+    return old
 
 def set_enabled(cfg='~/.config/ramabana', on=True):
-    "Turn learning on or off for `cfg`, keeping its other settings; returns the new state."
-    p = Path(cfg).expanduser()/SETTINGS
-    try: s = json.loads(p.read_text())
-    except (OSError, ValueError): s = {}
-    s['learning'] = 'on' if on else 'off'
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with atomic_save(p, 'w') as f: json.dump(s, f, indent=1)
-    return bool(on)
+    "Turn learning on or off in this machine's config.toml, its comments kept; `cfg`'s settings.json is never written. Raises `ValueError` for a config.toml that is not TOML."
+    return set_setting('learning', bool(on))
 
 def learned_folder(cfg='~/.config/ramabana'):
     "`<cfg>/learned`, whether or not a session runs with it."
@@ -141,7 +145,9 @@ def compact(folder, id=None, chat=None):
 def learned_command(folder, arg=''):
     "`/learned` and `ramabana-learned` as text: `list` by default, `compact`, `on`, `off` or `status`, or `diff`, `accept` or `reject` with an id."
     cmd, _, id = (arg or 'list').strip().partition(' ')
-    if cmd in ('on', 'off'): set_enabled(Path(folder).parent, cmd == 'on')
+    if cmd in ('on', 'off'):
+        try: set_enabled(Path(folder).parent, cmd == 'on')
+        except ValueError as e: return str(e)
     if cmd in ('on', 'off', 'status'): return f"learning is {'on' if enabled(Path(folder).parent) else 'off'}"
     if cmd == 'list':
         rows = pending(folder)
