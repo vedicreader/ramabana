@@ -5,6 +5,7 @@ halves meet in one SQLite database and never call each other: the beat leaves no
 reads them under its own id. What is worth a plain test is that the reading never takes a turn
 down, and that two sessions each see what the beat left rather than racing for it.
 """
+import sys
 import tempfile
 import time
 
@@ -40,6 +41,24 @@ def test_one_beat_runs_a_schedule_and_leaves_what_it_found(db):
         assert tick.__wrapped__(db=db, quiet=True) == 0
         assert beat_notes(pob(db)) == ['t_beat: the beat ran this']
     finally: TICKS.pop('t_beat', None)
+
+
+def test_an_installed_package_names_its_tick_through_an_entry_point(db, tmp_path, monkeypatch):
+    site = tmp_path/'site'
+    info = site/'t_pkg_tick-0.dist-info'
+    info.mkdir(parents=True)
+    (info/'METADATA').write_text('Name: t-pkg-tick\nVersion: 0\n')
+    (info/'entry_points.txt').write_text('[ramabana.ticks]\nt_pkg = t_pkg_tick:run\n')
+    (site/'t_pkg_tick.py').write_text("def run(fire): return f'a package ran {fire.schedule}'\n")
+    monkeypatch.syspath_prepend(str(site))
+    try:
+        assert tick.__wrapped__(db=db, quiet=True) == 0
+        assert 't_pkg_tick' not in sys.modules, 'a beat imported a package whose schedule did not fire'
+        pob(db).add('t_pkg', every='1s')
+        time.sleep(1.2)
+        assert tick.__wrapped__(db=db, quiet=True) == 0
+        assert beat_notes(pob(db)) == ['t_pkg: a package ran t_pkg']
+    finally: sys.modules.pop('t_pkg_tick', None)
 
 
 def test_a_session_reads_the_beat_under_its_own_id_and_only_once(tmp_path, monkeypatch):

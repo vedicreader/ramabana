@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import fnmatch, json, sys, threading, time, uuid
 from collections import Counter, deque
+from importlib.metadata import entry_points
 from pathlib import Path
 
 from fastcore.basics import patch
@@ -21,9 +22,9 @@ from shalya.core import one_line as _1
 
 # %% auto #0
 __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_STEPS', 'PENDING_MAX', 'DFLT_SETTLE', 'REVIEW_SP',
-           'POB_READER', 'TICKS', 'POB_HOME', 'BEAT_TAG', 'secs', 'files_under', 'snapshot', 'changed', 'summarise',
-           'report', 'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'on_tick', 'pob_path', 'pob',
-           'beat_notes', 'beat_notice', 'heartbeat', 'tick']
+           'POB_READER', 'TICKS', 'POB_HOME', 'BEAT_TAG', 'TICK_GROUP', 'secs', 'files_under', 'snapshot', 'changed',
+           'summarise', 'report', 'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'on_tick', 'pob_path',
+           'pob', 'beat_notes', 'beat_notice', 'heartbeat', 'tick']
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
 SNAP_MAX_FILES = 2000
@@ -353,6 +354,7 @@ def beat_notice(notes, mx=REVIEW_MAX_CHARS):
 
 # %% ../nbs/17_monitor.ipynb #18ac0628
 BEAT_TAG = 'ramabana'   #: names the launcher, log and job
+TICK_GROUP = 'ramabana.ticks'   #: entry points: each name is a schedule, each value the callback a fire of it runs
 
 def heartbeat():
     "pobblebonk's scheduler seam, or None when it is not installed."
@@ -382,6 +384,7 @@ def tick(db: str = '',         # the shared database; pobblebonk's own by defaul
     if p is None:
         print("pobblebonk is not installed: pip install pobblebonk", file=sys.stderr)
         return 1
+    for ep in entry_points(group=TICK_GROUP): p.on(ep.name)(lambda fire, ep=ep: ep.load()(fire))   # imported only when its schedule fires
     for name, fn in TICKS.items(): p.on(name)(fn)
     got = p.tick()
     if not quiet: print(f'{len(got.ran)} ran of {len(got.fired)} fired')
