@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.33
+
+- `ramabana-tick` runs the callbacks installed packages register through the `ramabana.ticks` entry-point group. Each entry point's name is a pobblebonk schedule, and its value is the callback a fire of that schedule runs. The beat imports the package only when its schedule fires. An `on_tick` callback with the same name replaces the entry point's.
+- The `dhrona` extra requires dhrona 0.1.8. Its `nightly` runs a Dhrona batch when the `dhrona` schedule fires, within the schedule's `budget` in dollars.
+- Requires rishi 0.1.43, which stops a Claude reply at its first tool call. A model that wrote a call and kept going no longer has its invented results passed on as the answer.
+
 ## 0.2.32
 
 - Skills in `<cfg>/learned/skills` load through shalya's `discover(learned=)`. They override the packaged skills and lose to every skill folder a person writes. `--no-learned` and `Agent(learned=False)` leave them out with the rest of the folder.
