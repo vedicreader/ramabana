@@ -359,7 +359,7 @@ options ↑/↓ move · enter choose · an option's own letter picks it · esc c
 shell   !COMMAND runs it in the first open folder, in agent mode · ctrl+c interrupts it, twice kills it · the output stays out of the model's context
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /planmode on|off withholds every tool that acts and asks for a plan · /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
-extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in
+extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
 subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N, timeout S, nest N set the rest
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
@@ -411,6 +411,7 @@ WORK
   /plan  /todo  /sessions  /resume [ID|latest]  /model [NAME]
   /learned  /learned diff|accept|reject ID  review what Dhrona proposes
   /learned compact [ID]  a shorter learned AGENTS.md, ID folded in
+  /learned on|off  learning on or off, for every session
   enter mid-turn steers the turn, attachments and all; shift+enter queues
   the next one, enter on an empty line steers the queued one in, and
   alt+up takes the queued text back into the composer.

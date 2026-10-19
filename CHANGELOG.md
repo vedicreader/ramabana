@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.2.44
+
+- A turn after a compaction no longer fails with "input is too large". A hosted chat's `token_count` is the window its last step reported, and rewriting the history never changed it. When a turn's steps ended past the window, the next turn compacted, `fits` still read the old count, and the turn raised; every retry compacted again and raised again. After `replace_hist` or `restore_hist`, `used_tokens` now gives `window_tokens`, an estimate of the briefing, the tool schemas and every message, until the chat reports a new count. The guard is unchanged since 0.2.35. The window exposed the fault: fastllm 0.0.65 gives `codex/gpt-6.1-sol` 371,000 tokens where fastllm 0.0.45 gave 922,000, so a conversation of about 370,000 tokens now reaches the line.
+- A resumed conversation is counted before its first turn goes out. It used to count as 0 until a step reported, so a long one was sent whole without compaction.
+- A prompt with a pasted picture is logged as text, with `[image]` where the picture was. The log used to keep the repr of the picture's bytes, about 560,000 characters for one screenshot, and a resume replayed it to the model as text, about 300,000 tokens on every step. `turn_prompt` reads such rows from older logs as text, so those sessions resume small. `prompt_text` gives the text form.
+- A turn that does not fit first trims the oldest tool results and then the oldest pictures, then compacts. One that still does not fit fails with a message that gives the sizes and the model's window and says how to start fresh or resume later, not a `ValueError`. `ContextFull` is that failure.
+- A picture is charged 1,600 tokens (`IMG_TOKENS`, was 1,024), and the pending message 15% over its estimate (`EST_MARGIN`).
+- Learning has one persistent switch per config folder, `learning` in `<cfg>/settings.json`. `/learned on|off|status`, `ramabana-learned on|off|status`, and `ramabana.learned.enabled(cfg)` and `set_enabled(cfg, on)` read and set it. Off leaves the learned `AGENTS.md` and learned skills out of the briefing, drops the rule to record lessons, keeps `remember` to plain notes, returns no lessons from `Agent.lessons()`, writes no `start.json`, and makes Dhrona's nightly schedule return "learning is off" without touching the learned folder. It is on by default. `Agent.learning` says whether it is on.
+
 ## 0.2.43
 
 - A model whose runtime is missing on this machine no longer raises in `resolve`. On a machine without Claude Code, building an `Agent`, reading `agent.model`, listing sessions and `set_model` raised for the default `claude-opus-5-5`. `resolve` now returns the spec with `missing` set: which binary or package is absent and how to get it, for example "claude runtime is unavailable (`claude` is not on PATH); install Claude Code ...". A missing API key already worked this way.

@@ -22,9 +22,9 @@ from shalya.core import one_line as _1
 
 # %% auto #0
 __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_STEPS', 'PENDING_MAX', 'DFLT_SETTLE', 'REVIEW_SP',
-           'POB_READER', 'TICKS', 'POB_HOME', 'BEAT_TAG', 'TICK_GROUP', 'secs', 'files_under', 'snapshot', 'changed',
-           'summarise', 'report', 'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'on_tick', 'pob_path',
-           'pob', 'beat_notes', 'beat_notice', 'beat_command', 'heartbeat', 'tick']
+           'POB_READER', 'TICKS', 'POB_HOME', 'BEAT_TAG', 'TICK_GROUP', 'LEARNING_TICKS', 'LEARNING_OFF', 'secs',
+           'files_under', 'snapshot', 'changed', 'summarise', 'report', 'review_prompt', 'review_notice', 'FolderWatch',
+           'Monitors', 'on_tick', 'pob_path', 'pob', 'beat_notes', 'beat_notice', 'beat_command', 'heartbeat', 'tick']
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
 SNAP_MAX_FILES = 2000
@@ -361,6 +361,15 @@ def beat_command(exe):
     q = subprocess.list2cmdline([str(exe)]) if sys.platform == 'win32' else shlex.quote(str(exe))
     return f'{q} --quiet'
 
+LEARNING_TICKS = ('dhrona',)   #: schedules that learn, and so do nothing while learning is off
+LEARNING_OFF = 'learning is off'
+
+def _fire(ep, fire):
+    "Run one installed schedule, imported only when it fires; a learning one with learning off leaves only a note."
+    from .learned import enabled
+    if ep.name in LEARNING_TICKS and not enabled(fire.get('cfg') or '~/.config/ramabana'): return LEARNING_OFF
+    return ep.load()(fire)
+
 def heartbeat():
     "pobblebonk's scheduler seam, or None when it is not installed."
     try: from pobblebonk import heartbeat
@@ -388,7 +397,7 @@ def tick(db: str = '',         # the shared database; pobblebonk's own by defaul
     if p is None:
         print("pobblebonk is not installed: pip install pobblebonk", file=sys.stderr)
         return 1
-    for ep in entry_points(group=TICK_GROUP): p.on(ep.name)(lambda fire, ep=ep: ep.load()(fire))   # imported only when its schedule fires
+    for ep in entry_points(group=TICK_GROUP): p.on(ep.name)(lambda fire, ep=ep: _fire(ep, fire))
     for name, fn in TICKS.items(): p.on(name)(fn)
     got = p.tick()
     if not quiet: print(f'{len(got.ran)} ran of {len(got.fired)} fired')

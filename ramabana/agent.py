@@ -9,21 +9,21 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT', 'INLINE_SKILLS',
            'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS',
-           'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES',
-           'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL',
-           'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS',
-           'OWNER', 'LOCK', 'PENDING', 'REPLAYED', 'EVENT_MAX', 'HIST', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP',
-           'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
-           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity',
-           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
-           'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_directives', 'project_context',
-           'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family',
-           'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools',
-           'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer', 'request_body',
-           'request_title', 'model_title', 'mk_host', 'mk_agent']
+           'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES',
+           'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT',
+           'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS',
+           'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'REPLAYED', 'EVENT_MAX', 'HIST', 'CHECKPOINT_BYTES',
+           'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP',
+           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
+           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
+           'never', 'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt',
+           'prompt_directives', 'project_context', 'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt',
+           'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
+           'shell_denial', 'generated_denial', 'note_tools', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed',
+           'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
-import contextvars, datetime, fnmatch, functools, hashlib, json, os, re, shlex, threading, time, tomllib, uuid
+import ast, contextvars, datetime, fnmatch, functools, hashlib, json, os, re, shlex, threading, time, tomllib, uuid
 from glob import escape as glob_escape
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -32,8 +32,8 @@ from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
-from .core import accepts, AgentError, agent_err, available_models, missing_key, missing_runtime, needs, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
-from .runtime import QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
+from .core import accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, needs, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
+from .runtime import threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
@@ -654,6 +654,22 @@ def request_text(prompt):
     matches = list(re.finditer(r'<user-request>\n?(.*?)\n?</user-request>', text, re.S))
     return matches[-1].group(1) if matches else text
 
+def prompt_text(prompt):
+    "A prompt as the text a log keeps: a picture or a sound it carries is `[image]` or `[audio]`, never the repr of its bytes."
+    if not isinstance(prompt, (list, tuple)): return str(prompt or '')
+    def one(p):
+        if isinstance(p, (bytes, bytearray, os.PathLike)): return '[image]'
+        if not isinstance(p, dict): return str(p)
+        return {'image_url': '[image]', 'input_audio': '[audio]'}.get(p.get('type')) or str(p.get('text', ''))
+    return '\n'.join(map(one, prompt))
+
+def turn_prompt(turn):
+    "A logged turn's prompt as text. A row from before `prompt_text` holds the repr of a list with picture bytes in it."
+    p = str(turn.get('prompt') or '')
+    if not p.startswith(("[b'", '[b"')): return p
+    try: return prompt_text(ast.literal_eval(p))
+    except (ValueError, SyntaxError, MemoryError): return '[image]\n' + request_text(p)
+
 # %% ../nbs/03_agent.ipynb #fdd81169
 def prompt_directives(prompt, tools=(), skills=()):
     "Explicit `/tool` and `/skill-name` mentions in an ordinary prompt. Known names only."
@@ -696,7 +712,7 @@ def project_context(host, mx=MAX_CONTEXT_FILE, cfg=None):
             'override the general guidance above where they disagree.\n\n' + '\n\n'.join(out) +
             '\n</project_context>')
 
-from .learned import LEARNED, learned_command, learned_folder   # the folder under the config dir; `ramabana.learned` reviews what Dhrona proposes for it
+from .learned import LEARNED, learned_command, learned_folder, enabled as learning_enabled   # the folder under the config dir; `ramabana.learned` reviews what Dhrona proposes for it
 
 def learned_context(learned, mx=MAX_CONTEXT_FILE):
     "`<learned>/AGENTS.md` as a briefing block, or '' when `learned` is None or holds none."
@@ -913,6 +929,7 @@ These apply on top of the rules above, and outrank them where they disagree.
 - Readable outranks concise. Shorten by cutting what the reader does not need, never by dropping into fragments, abbreviations, arrow chains or jargon. Write full sentences and spell the terms out.
 - Never hard-wrap prose: one paragraph is one line, and the display wraps it. To show markdown the user can copy, use a four-space indented block rather than a fence.
 """
+LESSON_RULE = next(l for l in CLAUDE_NOTES.splitlines(keepends=True) if l.startswith("- When a turn involved a concrete mistake"))   #: left out with learning off
 
 QUIET_NOTE = 'Text between tool calls may never reach the user, so restate anything important that appeared only mid-run.'
 
@@ -1337,9 +1354,14 @@ def registry(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #47fc0470
 @patch(as_prop=True)
+def learning(self:Agent):
+    "Whether learning is on: `learned`, and the config dir's `learning` setting when there is one."
+    return bool(self.learned) and (self.cfg is None or learning_enabled(self.cfg))
+
+@patch(as_prop=True)
 def learned_dir(self:Agent):
-    "`<cfg>/learned`, or None without a config dir or with `learned` off."
-    return None if self.cfg is None or not self.learned else Path(self.cfg)/LEARNED
+    "`<cfg>/learned`, or None without a config dir or with learning off."
+    return None if self.cfg is None or not self.learning else Path(self.cfg)/LEARNED
 
 @patch(as_prop=True)
 def skills(self:Agent):
@@ -1632,7 +1654,7 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
     key = (budget.tool_max, tuple(budget.drop), bool(full), small)
     if key not in self._catalogs:
         extra = [t for t in self.registry.tools if not small or getattr(t, 'small', False)]
-        if not small and 'memory' not in self.host.provides: extra += note_tools(self.note_memory)
+        if not small and 'memory' not in self.host.provides: extra += note_tools(self.note_memory, lambda: self.learning)
         if full and not small:
             if self.subagents:
                 extra += self._delegation_tools(self._sub_tools, background=self.background, get_max=lambda: budget.tool_max)
@@ -1751,7 +1773,7 @@ def system_prompt(self:Agent):
                      'Sub-agents are read-only this session: `delegate_async(writes=True)` is refused until the user runs `/subagents on`.')
     if (m := self.memory_context('briefing', MEMORY_CHARS)): parts.append(f'## Remembered\n\n{m}')
     s = self.spec_or_none('turn')   # not `_be`: building the backend asks for this briefing
-    if s is not None and (notes := MODEL_NOTES[model_family(s)]): parts.append(notes)
+    if s is not None and (notes := MODEL_NOTES[model_family(s)]): parts.append(notes if self.learning else notes.replace(LESSON_RULE, ''))
     if self._quiet: parts.append(QUIET_NOTE)
     if self.plan:
         parts.append('## Current plan\n\n' + self.plan.md() +
@@ -1792,7 +1814,8 @@ def memory_context(self:Agent, surface, max_chars=MEMORY_CHARS):
 
 @patch
 def lessons(self:Agent, limit=50):
-    "The lessons `remember` kept for this project, read with shalya's `lessons` from the vault or the memory file alike."
+    "The lessons `remember` kept for this project, read with shalya's `lessons` from the vault or the memory file alike; none with learning off."
+    if not self.learning: return []
     if 'memory' in self.host.provides:
         try: rows = self.host.memory_search('lesson:', limit)
         except Exception: return []
@@ -1802,12 +1825,13 @@ def lessons(self:Agent, limit=50):
     p = self.memory_path
     return lesson_rows(p.read_text())[-limit:] if p is not None and p.exists() else []
 
-def note_tools(note):
+def note_tools(note, learning=lambda: True):
     "The memory tool a host without a vault still gets: shalya's `remember`, on the project's memory file."
     @summary(lambda a: f'Remember {_1(a.get("title") or a.get("text"), 80)}')
     def remember(text: str, title: str = '', tags: str = '', key: str = '',
                  cue: str = '', component: str = '', evidence: str = '', confidence: str = '') -> str:
         "Store a conclusion in this project's memory file (no vault here); the same `key` later replaces the line; a lesson from a mistake adds `cue`, `component` (rule, skill, extension, tool or memory), `evidence` and `confidence` (low, medium or high)."
+        if not learning(): cue = component = evidence = confidence = ''   # learning off: a plain note
         try: body = lesson_text(text, cue, component, evidence, confidence)
         except ValueError as e: return err('could not remember', e)
         if body != text: body = ' | '.join(body.splitlines())   # the memory file holds one line per note
@@ -2415,9 +2439,9 @@ def repo_state(folder):
 
 @patch
 def _record_start(self:Agent):
-    "Write each open folder's `repo_state` to `<runs_dir>/start.json` before a session's first turn; a session with turns already began elsewhere."
+    "Write each open folder's `repo_state` to `<runs_dir>/start.json` before a session's first turn; a session with turns already began elsewhere, and learning off writes none."
     d = getattr(self, 'runs_dir', None)
-    if d is None or (p := d/'start.json').exists() or self.session_turns(self.session_id): return
+    if d is None or not self.learning or (p := d/'start.json').exists() or self.session_turns(self.session_id): return
     d.mkdir(parents=True, exist_ok=True)
     with atomic_save(p, 'w') as f: json.dump([s for r in self.host.roots if (s := repo_state(r))], f, indent=1)
 
@@ -2558,12 +2582,13 @@ def _prepare(self:Agent, prompt):
     for skill in loaded:
         outgoing = _append(outgoing, f'\n\n<requested-skill name="{skill.name}">\n{skill.text()}\n</requested-skill>')
     b = self._be('turn')
+    if not b.fits(outgoing): b.trim(b.projected_tokens(outgoing) - (threshold(b.spec.ctx) or b.spec.ctx))   # oldest tool results and pictures first
     if self.compactor.auto and (self.compactor.due(b) or not b.fits(outgoing)): self.compact()
     if not b.fits(outgoing): outgoing = compact_notebook_context(outgoing, b.fits)
     if not b.fits(outgoing):
-        projected = b.projected_tokens(outgoing)
-        raise ValueError(f'input is too large for {b.spec.name}: about {projected:,} tokens '
-                         f'with a {b.spec.ctx:,}-token context window')
+        raise ContextFull(f'this conversation does not fit {b.spec.name}: about {b.projected_tokens(outgoing):,} tokens with this message, '
+                          f'past its {b.spec.ctx:,}-token window, after compacting and trimming. Quit and start ramabana again for a fresh '
+                          f'conversation; `ramabana --resume {self.session_id}` brings this one back.')
     return outgoing
 
 # %% ../nbs/03_agent.ipynb #6d26f359
@@ -2577,7 +2602,7 @@ def sessions(self:Agent):
         grouped.setdefault(sid, []).append(turn)
     return [{'id': sid, 'turns': len(turns), 'at': turns[-1].get('at', 0),
              'model': turns[-1].get('model', ''),
-             'title': str(turns[0].get('prompt', '')).replace('\n', ' ')[:72]}
+             'title': turn_prompt(turns[0]).replace('\n', ' ')[:72]}
             for sid, turns in sorted(grouped.items(), key=lambda x: x[1][-1].get('at', 0), reverse=True)]
 
 @patch
@@ -2610,7 +2635,7 @@ def _as_messages(turns):
     out = []
     for turn in turns:
         steer = '\n'.join(turn.get('steered') or ())
-        out.append({'role': 'user', 'content': str(turn.get('prompt', '')) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
+        out.append({'role': 'user', 'content': turn_prompt(turn) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
         body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
         if turn.get('state') == 'cancelled': body += '\n\n[This turn was interrupted by the user; this is an incomplete reply.]'
         if turn.get('state') == 'interrupted': body += '\n\n[This turn was cut off when its process ended; any reply is missing or incomplete.]'
@@ -2727,7 +2752,7 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
     turn = {'at': time.time(), 'session': getattr(self, 'session_id', '') or '', 'state': state,
             'turn_id': self.current_turn_id, 'branch_id': self.current_branch_id,
             'model': self._be('turn').spec.name,
-            'prompt': str(prompt), 'steered': list(self._steered), 'reply': text, 'error': error,
+            'prompt': prompt_text(prompt), 'steered': list(self._steered), 'reply': text, 'error': error,
             'plan': dict(getattr(self, '_turn_plan', {})),
             'usage': self.turn_use.dict(), 'usage_label': repr(self.turn_use),
             'activity': self.activity.rows(mark=self.activity._mark)}
@@ -2990,7 +3015,7 @@ def conversation_parts(self:Agent, sid=None):
             out.append({'part_id': f'{tid}:{len(out)}', 'turn_id': tid, 'kind': kind,
                         'group': f'{tid}:g{group}', 'editable': editable,
                         'text': text, **(extra or {})})
-        part('user', str(turn.get('prompt') or ''), True)
+        part('user', turn_prompt(turn), True)
         for act in (turn.get('activity') or []):
             group += 1
             part('call', str(act.get('line') or act.get('summary') or act.get('tool') or ''), False,
@@ -3420,9 +3445,9 @@ def _new_run(self:Agent, prompt):
         current = self.run()
         if current is not None and not current.terminal: raise RuntimeError('the assistant is already running')
         rid, d = f'run_{uuid.uuid4().hex[:12]}', self.runs_dir
-        r = Run(rid, question=str(prompt), model=self.model.name, grace=self.cancel_grace, log=None if d is None else d/f'{rid}.log')
+        r = Run(rid, question=prompt_text(prompt), model=self.model.name, grace=self.cancel_grace, log=None if d is None else d/f'{rid}.log')
         r.key = self.inbox_key
-        r.write(f'question: {prompt}')
+        r.write(f'question: {r.question}')
         self._runs[r.id], self._foreground = r, r.id
         for old in list(self._runs)[:-100]: self._runs.pop(old, None)
         return r
@@ -3682,7 +3707,11 @@ def command(self:Agent, line):
     if name == 'tell': return self.tell(*arg.partition(' ')[::2])
     if name == 'watch': return self.watch(arg.strip())
     if name == 'unwatch': return self.unwatch(arg.strip() or 'all')
-    if name == 'learned': return 'no config folder, so no learned folder' if self.cfg is None else learned_command(learned_folder(self.cfg), arg)
+    if name == 'learned':
+        if self.cfg is None: return 'no config folder, so no learned folder'
+        out = learned_command(learned_folder(self.cfg), arg)
+        if arg.strip() in ('on', 'off'): self.refresh()   # the briefing and skills follow at once
+        return out
     return _agent_command(self, line)
 
 
@@ -4235,7 +4264,7 @@ def summarize_session(self:Agent, sid=None, force=False):
     n = len(turns)
     if not force and meta['title_turns'] and n < meta['title_turns'] * 2:return meta
     fallback = meta['title'] or request_title(turns[0].get('prompt', ''))
-    prompt = '\n'.join(str(t.get('prompt', '')) for t in turns[-8:])
+    prompt = '\n'.join(turn_prompt(t) for t in turns[-8:])
     try:
         title = model_title(self.oneshot(prompt, 'Write a short conversation title. Output only the title.', 'summary', 32))
         if not title: raise ValueError('the summary model returned no title')

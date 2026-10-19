@@ -196,3 +196,50 @@ def test_a_candidate_refused_for_size_is_folded_into_a_compaction(tmp_path, monk
         assert (f/'AGENTS.md').read_text() == 'A rule a person wrote.\n\nRun pytest -q before a commit.\n'
         assert big not in run('/learned') and skill in run('/learned')   # the folded candidate went with the compaction
     finally: tty.close()
+
+
+def test_learning_is_on_until_set_off_and_the_setting_persists(tmp_path):
+    from ramabana.learned import enabled, set_enabled, learned_command, learned_folder
+    assert enabled(tmp_path)
+    (tmp_path/'settings.json').write_text('{"theme": "dusk"}')
+    assert set_enabled(tmp_path, False) is False and not enabled(tmp_path)
+    assert '"theme": "dusk"' in (tmp_path/'settings.json').read_text()   # other settings kept
+    assert learned_command(learned_folder(tmp_path), 'status') == 'learning is off'
+    assert learned_command(learned_folder(tmp_path), 'on') == 'learning is on' and enabled(tmp_path)
+
+
+def test_learning_off_leaves_out_the_learned_briefing_skills_lessons_and_start_file(tmp_path):
+    "Off stops every learning path at once: nothing learned is briefed, no lesson is kept or read, no start state is written."
+    from ramabana.agent import LESSON_RULE
+    (tmp_path/'learned'/'skills'/'trick').mkdir(parents=True)
+    (tmp_path/'learned'/'AGENTS.md').write_text('LEARNED-RULE')
+    (tmp_path/'learned'/'skills'/'trick'/'SKILL.md').write_text('---\nname: trick\ndescription: a learned trick\n---\nbody')
+    a, _ = fake_agent(cfg=tmp_path, replies=['ok', 'ok'])
+    a.routing.spec = lambda job='turn', fallback=True: BIG
+    assert 'LEARNED-RULE' in a.system_prompt() and find(a.skills, 'trick')
+    assert a.command('/learned off') == 'learning is off'
+    assert not a.learning and 'LEARNED-RULE' not in a.system_prompt() and not find(a.skills, 'trick')
+    rem = next(t for t in a.tools if t.__name__ == 'remember')
+    rem('filter on the root-relative path', cue='an empty filtered search', component='tool', confidence='high')
+    assert a.lessons() == [] and 'cue:' not in a.memory_path.read_text()   # a plain note
+    a.ask('read a.py')
+    assert not (tmp_path/'runs'/a.session_id/'start.json').exists()
+    claude = ModelSpec('claude', 'claude', 'claude-opus-5-5', ctx=200_000)
+    a.routing.spec = lambda job='turn', fallback=True: claude
+    assert LESSON_RULE.strip() and LESSON_RULE not in a.system_prompt()
+    a.command('/learned on')
+    assert LESSON_RULE in a.system_prompt()
+
+
+def test_the_nightly_learning_tick_does_nothing_while_learning_is_off(tmp_path):
+    from ramabana.learned import set_enabled
+    from ramabana.monitor import LEARNING_OFF, _fire
+    class EP:
+        name = 'dhrona'
+        def load(self): raise AssertionError('loaded the learning batch with learning off')
+    set_enabled(tmp_path, False)
+    assert _fire(EP(), {'cfg': str(tmp_path), 'budget': 1}) == LEARNING_OFF
+    set_enabled(tmp_path, True)
+    class On(EP):
+        def load(self): return lambda fire: 'ran'
+    assert _fire(On(), {'cfg': str(tmp_path)}) == 'ran'

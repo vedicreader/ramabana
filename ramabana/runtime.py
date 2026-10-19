@@ -8,20 +8,20 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PREFIX', 'SURGICAL_POLICY', 'SUMMARISE_SP',
            'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE',
            'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM', 'ONESHOT_CUT',
-           'IMG_TOKENS', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'ROUTINE_CBS', 'STATUS_CHARS', 'CHILD_KEEP', 'NOTE_KEEP',
-           'AIR_CALLS', 'AIR_CHARS', 'REPEAT_CALLS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture',
-           'estimate_tokens', 'halvings', 'threshold', 'should_compact', 'serialise', 'split_previous',
-           'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
-           'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'Backend',
-           'use_chat', 'RishiBackend', 'make_backend', 'status_line', 'said_before_call', 'Run', 'current_run',
-           'run_context', 'TokenLogger']
+           'IMG_TOKENS', 'EST_MARGIN', 'TRIMMED', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'ROUTINE_CBS', 'STATUS_CHARS',
+           'CHILD_KEEP', 'NOTE_KEEP', 'AIR_CALLS', 'AIR_CHARS', 'REPEAT_CALLS', 'CHAT_CALLBACKS', 'interesting',
+           'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact', 'serialise',
+           'split_previous', 'summarise_prompt', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices',
+           'notices_block', 'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter',
+           'Usage', 'msg_tokens', 'trim_hist', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'status_line',
+           'said_before_call', 'Run', 'current_run', 'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
-import contextvars, copy, math, os, re, sys, threading, time, uuid
+import contextvars, copy, json, math, os, re, sys, threading, time, uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fastcore.basics import patch
-from urai import resp_text, tool_rows, strip_hist_media
+from urai import resp_text, tool_rows, strip_hist_media, strip_media, is_media
 from .core import accepts, agent_err, claude_wire, env, force_tags, local_ctx, local_window, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
@@ -536,7 +536,9 @@ class Usage:
     def dict(self): return dict(self.__dict__)
 
 # %% ../nbs/01_runtime.ipynb #af66f277
-IMG_TOKENS = 1024
+IMG_TOKENS = 1600   # what one picture can cost a hosted model, whatever its bytes
+EST_MARGIN = 1.15   # a count from characters runs short on code and escapes, so an estimate is charged this much more
+TRIMMED = '[trimmed to fit the context window]'
 
 _MEDIA_PARTS = ('image_url', 'input_audio')
 
@@ -551,6 +553,26 @@ def _parts(msg):
         else: txt.append(str(p))
     return '\n'.join(txt), n
 
+def msg_tokens(m, count=None):
+    "One history message's tokens: its text, its tool calls' arguments, and `IMG_TOKENS` a picture."
+    count = count or estimate_tokens
+    c = m.get('content') if isinstance(m, dict) else m
+    text, media = _parts(c if isinstance(c, list) else [c or ''])
+    calls = json.dumps(m['tool_calls'], default=str) if isinstance(m, dict) and m.get('tool_calls') else ''
+    return count(text) + (count(calls) if calls else 0) + IMG_TOKENS*media + 8
+
+def trim_hist(hist, need, count=None, keep=2):
+    "Free about `need` tokens from `hist` in place, the oldest tool results first and then the oldest pictures; the last `keep` messages stay whole. Returns what was freed."
+    count, freed = count or estimate_tokens, 0
+    old = hist[:-keep] if keep else hist
+    for m in [m for m in old if m.get('role') == 'tool']:
+        if freed >= need: return freed
+        if isinstance(c := m.get('content'), str) and len(c) > 2*len(TRIMMED): freed += count(c) - count(TRIMMED); m['content'] = TRIMMED
+    for m in old:
+        if freed >= need: return freed
+        if isinstance(c := m.get('content'), list) and (n := sum(map(is_media, c))): m.update(strip_media(m)); freed += n*IMG_TOKENS
+    return freed
+
 # %% ../nbs/01_runtime.ipynb #197644e7
 class Backend:
     "The contract a model engine meets: start, send or stream a turn, count tokens, and replace history."
@@ -564,7 +586,7 @@ class Backend:
         self.chat,self.use,self.note=None,Usage(model=spec.model_id),'not started'
         self.problems,self.last_native,self._tried,self.run=[], '', False, None
         self._resume_hist=None
-        self._used=0
+        self._used,self._rewrote,self._est=0,None,0
         self.lock=threading.Lock()
     @property
     def ready(self): return self.chat is not None
@@ -716,7 +738,7 @@ class Backend:
     def spawn(self,sp='',tools=(),**kw): raise NotImplementedError
     def replace_hist(self,summary,keep=()):
         if not self.chat:raise RuntimeError('nothing to compact: the model is not running')
-        self._replace_hist(summary,list(keep)); return self
+        self._replace_hist(summary,list(keep)); return self._rewritten()
     
     def snapshot_hist(self):
         "A detached model-history checkpoint suitable for an in-process branch, pending history included; pictures become placeholders."
@@ -734,7 +756,25 @@ class Backend:
         self.chat.hist[:]=copy.deepcopy(list(hist or []))
         recreate=getattr(self.chat,'_recreate_conv',None)
         if recreate:recreate()
+        return self._rewritten()
+    
+    def _rewritten(self):
+        "Note that `hist` changed under the chat: its last reported count no longer holds, so `used_tokens` estimates until it reports again."
+        try: self._rewrote,self._est=self.chat.token_count,self.window_tokens()
+        except Exception: pass
         return self
+    
+    def window_tokens(self):
+        "What the window holds, estimated with `EST_MARGIN`: the briefing, the tool schemas, and every message."
+        specs=getattr(self.chat,'toolspecs',None) or []
+        n=self.count_tokens(self.sp)+(self.count_tokens(json.dumps(specs,default=str)) if specs else 0)
+        return math.ceil(EST_MARGIN*(n+sum(msg_tokens(m,self.count_tokens) for m in self.hist)))
+    
+    def trim(self,need):
+        "Free about `need` tokens from the oldest tool results, then the oldest pictures; returns what was freed."
+        if not self.chat or not (freed:=trim_hist(self.hist,need,self.count_tokens)):return 0
+        if recreate:=getattr(self.chat,'_recreate_conv',None):recreate()
+        self._rewritten(); return freed
     
     def revise_last_assistant(self,text):
         "Replace the last prose assistant message in a restored checkpoint."
@@ -753,9 +793,13 @@ class Backend:
     
     @property
     def used_tokens(self):
-        "Tokens in use, from the rishi chat when there is one."
+        "Tokens in use, from the rishi chat when there is one; after a rewrite of `hist`, `window_tokens` until the chat reports a new count."
         try:
-            if self.chat: self._used = self.chat.token_count
+            if self.chat:
+                n = self.chat.token_count
+                if self._rewrote is not None and n == self._rewrote: n = self._est   # still the count from before the rewrite
+                else: self._rewrote = None
+                self._used = n
         except Exception: pass
         return self._used
     
@@ -769,7 +813,7 @@ class Backend:
         text,media = _parts(msg)
         return self.count_tokens(text)+8+IMG_TOKENS*media
     
-    def projected_tokens(self,msg):return self.used_tokens+self.pending_tokens(msg)
+    def projected_tokens(self,msg):return self.used_tokens+math.ceil(EST_MARGIN*self.pending_tokens(msg))
     def fits(self,msg,reserve=None):
         if not self.spec.ctx:return True
         reserve=min(1024,max(128,self.spec.ctx//4)) if reserve is None else max(0,reserve)

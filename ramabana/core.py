@@ -11,8 +11,8 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'DFLT_TURN', 'DFLT_SMALL', 'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES',
            'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
            'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS', 'MODEL_ALIASES', 'TOOL_CHANNELS',
-           'KEY_ENVS', 'CODEX_LOGIN', 'DOWN_TTL', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx',
-           'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail',
+           'KEY_ENVS', 'CODEX_LOGIN', 'DOWN_TTL', 'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix', 'env',
+           'claude_ctx', 'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail',
            'runtime_available', 'auth_status', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx',
            'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts',
            'model_note', 'Budget', 'budget_for', 'profile_for', 'register_model', 'unregister_model', 'alias_path',
@@ -33,10 +33,11 @@ ENV_PREFIX, ENV_FALLBACK = ENV_DEFAULT
 
 AgentError = HostError
 class BranchChanged(AgentError): "A branch moved while a person decided on it, so nothing was written."
+class ContextFull(AgentError): "A turn that does not fit the model's window after compaction and trimming; its message is the whole report."
 
 def agent_err(e):
-    "Render a caught exception for a user-facing surface, keeping its type."
-    return f'{type(e).__name__}: {e}'
+    "Render a caught exception for a user-facing surface, keeping its type; a `ContextFull` is its message alone."
+    return str(e) if isinstance(e, ContextFull) else f'{type(e).__name__}: {e}'
 
 def use_env_prefix(prefix, fallback=None):
     "Set the env var prefixes this application reads, most specific first."
