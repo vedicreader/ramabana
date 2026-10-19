@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.42
+
+- The `dhrona` extra requires dhrona 0.1.13. Under 0.1.12, about one compaction in ten that folded in a candidate lost the candidate's id to scrubbing, so accepting the compaction left that candidate pending.
+
 ## 0.2.41
 
 - An accept refused for size returns the would-be `length` and names `/learned compact ID`. `compact(folder, id)` and `/learned compact ID` fold that candidate into the compaction, and accepting the compaction accepts the candidate and drops its branch.
