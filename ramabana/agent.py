@@ -696,7 +696,7 @@ def project_context(host, mx=MAX_CONTEXT_FILE, cfg=None):
             'override the general guidance above where they disagree.\n\n' + '\n\n'.join(out) +
             '\n</project_context>')
 
-from .learned import LEARNED   # the folder under the config dir; `ramabana.learned` reviews what Dhrona proposes for it
+from .learned import LEARNED, learned_command, learned_folder   # the folder under the config dir; `ramabana.learned` reviews what Dhrona proposes for it
 
 def learned_context(learned, mx=MAX_CONTEXT_FILE):
     "`<learned>/AGENTS.md` as a briefing block, or '' when `learned` is None or holds none."
@@ -3673,6 +3673,7 @@ def command(self:Agent, line):
     if name == 'tell': return self.tell(*arg.partition(' ')[::2])
     if name == 'watch': return self.watch(arg.strip())
     if name == 'unwatch': return self.unwatch(arg.strip() or 'all')
+    if name == 'learned': return 'no config folder, so no learned folder' if self.cfg is None else learned_command(learned_folder(self.cfg), arg)
     return _agent_command(self, line)
 
 
@@ -3783,7 +3784,7 @@ def unwatch(self:Agent, target='all'):
 def commands(self:Agent):
     "Every command name, built-in and registered, for a help line or an autocomplete."
     return sorted({'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
-                   'subagents', 'plan', 'planmode', 'todos', 'todo', 'rewind', 'branches', 'branch', 'commit', 'pr', *self.registry.commands})
+                   'subagents', 'plan', 'planmode', 'todos', 'todo', 'rewind', 'branches', 'branch', 'commit', 'pr', 'learned', *self.registry.commands})
 
 # %% ../nbs/03_agent.ipynb #8fd374fe
 COMPLETE_SP = """You are a code completion engine inside an editor. You are given the code before \

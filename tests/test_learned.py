@@ -73,3 +73,50 @@ def test_lessons_read_back_from_a_vault(tmp_path):
         def memory_search(self, q, n): return dict(results=[dict(title=t.splitlines()[0], text=t), dict(title='x', text='a plain note')])
     a, _ = fake_agent(Vault({'/proj/a.py': ''}), cfg=tmp_path)
     assert a.lessons() == [dict(lesson='use ls', cue='sizes', component='skill')]
+
+
+def _propose(folder, files, id):
+    "What Dhrona's `keep` does: a commit on `pending/<id>` off HEAD, the folder's files untouched."
+    import subprocess, tempfile
+    from pathlib import Path
+    def git(d, *a): return subprocess.run(['git', '-C', str(d), *a], check=True, capture_output=True, text=True).stdout.strip()
+    if not (folder/'.git').exists():
+        folder.mkdir(parents=True, exist_ok=True)
+        git(folder, 'init', '-q'); git(folder, '-c', 'user.name=t', '-c', 'user.email=t@x', 'commit', '-q', '--allow-empty', '-m', 'first')
+    wt = Path(tempfile.mkdtemp())/'wt'
+    git(folder, 'worktree', 'add', '-q', '-b', f'pending/{id}', str(wt), 'HEAD')
+    for rel, text in files.items(): (wt/rel).parent.mkdir(parents=True, exist_ok=True); (wt/rel).write_text(text)
+    git(wt, 'add', '-A'); git(wt, '-c', 'user.name=Dhrona', '-c', 'user.email=d@x', 'commit', '-qm', f'Lesson from a replay: {id}')
+    git(folder, 'worktree', 'remove', '--force', str(wt))
+
+
+def test_the_learned_command_in_the_interface(tmp_path):
+    "`/learned` lists, diffs, accepts and rejects through `ramabana.learned`, and tab completion offers it."
+    import asyncio
+    from teleprint.compositor import Compositor
+    from teleprint.testing import EmuTty
+    from ramabana.cli import HELP, Ui
+    a, b = '20261019-010101-aaaaaa', '20261019-020202-bbbbbb'
+    _propose(tmp_path/'learned', {'AGENTS.md': 'Read sizes from ls.\n'}, a)
+    _propose(tmp_path/'learned', {'skills/x/SKILL.md': '---\nname: x\ndescription: y\n---\nz\n'}, b)
+    agent, _ = fake_agent(cfg=tmp_path)
+    tty = EmuTty(100, 30); comp = Compositor(tty); comp._register_signals = lambda: None
+    asyncio.run(comp.start())
+    ui = Ui(comp, agent)
+    def run(line):
+        ui.buf.insert(line); ui.submit()
+        return [blk.source for blk in ui.comp.blocks.values() if blk.tag == 'note'][-1]
+    try:
+        assert a in run('/learned') and b in run('/learned list')
+        assert '+Read sizes from ls.' in run(f'/learned diff {a}')
+        assert run(f'/learned accept {a}').startswith(f'accepted {a} as ')
+        assert (tmp_path/'learned'/'AGENTS.md').read_text() == 'Read sizes from ls.\n'
+        assert run(f'/learned reject {b}') == f'rejected {b}' and run('/learned') == 'nothing is pending'
+        assert 'nothing is pending' in run(f'/learned accept {b}')   # gone
+        assert 'learned' in agent.commands() and '/learned' in HELP
+    finally: tty.close()
+
+
+def test_the_learned_command_without_a_config_folder():
+    agent, _ = fake_agent()
+    assert agent.command('/learned') == 'no config folder, so no learned folder'

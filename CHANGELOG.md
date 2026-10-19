@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.39
+
+- `/learned` reviews what Dhrona proposes from inside a session: `/learned` lists, and `/learned diff|accept|reject ID` acts on one. Tab completion offers it, and the help and guide name it. `learned_command` is the text form `/learned` and `ramabana-learned` share.
+- `accept` refuses a candidate that would take the learned `AGENTS.md` past `LEARNED_MAX`, the 2,000 characters Dhrona allows, and leaves HEAD as it was. Reject it, or trim `AGENTS.md` and commit that first.
+- The `dhrona` extra requires dhrona 0.1.10, whose kept candidates wait on `pending/` branches.
+
 ## 0.2.38
 
 - `ramabana.learned` is the review queue for `<cfg>/learned`. Dhrona 0.1.10 commits each candidate on a `pending/<id>` branch and leaves the folder's files, which the briefing and skill discovery read, alone. `pending(folder)` lists the candidates, and `diff`, `accept` and `reject` act on one and return `{ok, id, ...}`, with `error` when `ok` is False. `accept` picks the candidate in a throwaway worktree, so a conflict never reaches the files a session briefs from. All three refuse while a Dhrona batch holds the folder's lock. `learned_folder(cfg)` names the folder.
