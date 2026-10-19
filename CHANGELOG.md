@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.37
+
+- `local_window` reads a llama model through rishi's public `llama.get_model`. Requires rishi 0.1.45.
+- Requires shalya 0.1.13; the image tests replace its public `post_image`.
+
 ## 0.2.36
 
 - A session that already has turns writes no `start.json`. A session resumed from before that file existed used to write the state at the resume as the state it began from, and Dhrona replayed its first turn from the wrong commit. `start.json` is written atomically.

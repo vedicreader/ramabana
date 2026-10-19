@@ -311,8 +311,8 @@ def local_window(runtime, model_id):
             return int(ctx_len(read_config(model_id), 0) or 0)
         if runtime == 'llama':
             from llama_cpp import Llama
-            from rishi.llama import _get_model
-            meta = Llama(_get_model(model_id), vocab_only=True, verbose=False).metadata
+            from rishi.llama import get_model
+            meta = Llama(get_model(model_id), vocab_only=True, verbose=False).metadata
             return int(meta.get(f"{meta.get('general.architecture')}.context_length") or 0)
     except Exception: pass
     return 0

@@ -257,7 +257,7 @@ def _drawing_turn(tmp_path, monkeypatch, cols=100, rows=40, turns=1):
     monkeypatch.setenv('RAMABANA_KITTY', '1')
     monkeypatch.chdir(tmp_path)
     png = _png(600, 600)
-    monkeypatch.setattr('shalya.tools._post_image',
+    monkeypatch.setattr('shalya.tools.post_image',
                         lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
     said = []
 
@@ -320,7 +320,7 @@ def test_the_image_group_reads_the_turns_model_on_every_call(tmp_path, monkeypat
     monkeypatch.setattr('shalya.tools.post_responses',
                         lambda prompt, model, timeout=300: seen.update(responses=model) or
                         {'output': [{'type': 'image_generation_call', 'result': b64encode(png).decode()}]})
-    monkeypatch.setattr('shalya.tools._post_image',
+    monkeypatch.setattr('shalya.tools.post_image',
                         lambda *a, **kw: seen.update(images=kw.get('model')) or
                         [{'b64_json': b64encode(png).decode()}])
 
