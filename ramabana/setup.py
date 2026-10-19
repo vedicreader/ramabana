@@ -138,7 +138,7 @@ class Setup:
         as_json=False, # so does `--json`
         tmux='auto',   # `--tmux`; `off` stays out of tmux
     ):
-        "Before an interactive session: ready tmux, and rerun inside ramabana's own server when outside tmux."
+        "Before an interactive session, ready tmux and rerun inside Ramabana's own tmux server when outside tmux."
         if prompt or as_json or not self.isatty() or 'off' in (tmux, self._env('TMUX')): return
         if self.environ.get('TMUX'): return self.ext_keys()
         if self._env('WRAPPED') or not (self.tmux or self.offer_install()) or (self.version() or (0,)) < WRAP_MIN: return
@@ -319,7 +319,7 @@ def index_changes(old, new, most=3):
     return '; '.join(why)
 
 def index_gate(cfg, roots, dirs=None):
-    "`(state, why)`: the fingerprint now, and why kosha must run, '' to skip it. A missing code or env db is a reason."
+    "`(state, why)`: the fingerprint now, and why kosha must run (a missing code or env db included), or '' to skip it."
     try: old = json.loads((Path(cfg)/KOSHA_STATE).read_text())
     except (OSError, ValueError): old = None
     state = index_state(roots, dirs)

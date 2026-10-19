@@ -1,5 +1,5 @@
-"""Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing
-watches that return work to the agent.
+"""Memory that outlives the process: a vishalakshi vault behind the host,
+and the watches that bring work back to the agent later.
 
 Docs: https://vedicreader.github.io/ramabana/vault.html.md"""
 
@@ -163,7 +163,7 @@ class VaultHost(LocalHost):
         return True
 
     def search(self, query, limit=20):
-        "Ranks prose, kosha, and ripgrep via `Vault.federate` (`litesearch.rrf_all`). If the vault can't open, it defaults to `LocalHost.search`."
+        "Merge vault prose, kosha and ripgrep hits by rank through `Vault.federate`, falling back to `LocalHost.search` when the vault fails."
         if not self.federate: return super().search(query, limit)
         pii, ner = self._policy()
         try:
@@ -259,7 +259,7 @@ class WorkspaceHost(VaultHost, SpecHost):
                      branch,            # checked out when it exists, else made from the checked-out commit
                      path=None,         # where the worktree goes; None puts it beside `repo` as `<repo>-<branch>`
                      readonly=False):   # open it for reading only
-        "A git worktree of `repo` on `branch`, opened as a root; returns its path. The host's own call: it may make a folder outside the open ones."
+        "Make a git worktree of `repo` on `branch`, open it as a root and return its path, even when that folder is outside the open ones."
         import subprocess
         repo = Path(repo).expanduser().resolve()
         path = Path(path).expanduser() if path else repo.parent/f"{repo.name}-{re.sub(r'[^A-Za-z0-9._-]+', '-', branch)}"
@@ -271,7 +271,7 @@ class WorkspaceHost(VaultHost, SpecHost):
         return path.resolve()
 
     def run_cmd_bg(self, command, cwd=None):
-        "Start `command` in its own process group, logging to a file and reading nothing from the terminal: never a tmux pane, since several stacked under the chat. The pane's Background rows show it."
+        "Start `command` in its own process group with output logged to a file and no terminal input, never in a tmux pane."
         import subprocess, tempfile, uuid
         d, rid = self._cwd(cwd), f'cmd_{uuid.uuid4().hex[:8]}'
         log = tempfile.NamedTemporaryFile('w', prefix='ramabana-bg-', suffix='.log', delete=False)

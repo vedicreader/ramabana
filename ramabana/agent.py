@@ -1,4 +1,4 @@
-"""One routed conversation with tools, approvals, activity, and usage.
+"""The `Agent` class: one conversation with a model, the tools it may call, the approvals that guard them, and the record of what it did.
 
 Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 
@@ -1129,7 +1129,7 @@ def _sub_timeout(s): return max(0., float(s or 0))
 def _sub_depth(n): return max(0, min(SUB_DEPTH_MAX, int(n)))
 
 class Agent:
-    "The IDE's agent: a routed chat whose tools are the host's own capabilities."
+    "One model conversation on a host, with its tools, approvals, activity feed, plan and history."
 
     def __init__(self,
                  host,
@@ -1292,6 +1292,7 @@ class Agent:
 # %% ../nbs/03_agent.ipynb #8f4741e8
 @patch(as_prop=True)
 def history_path(self:Agent):
+    "`<cfg>/<history_name>-history.jsonl`, the turn log, or None without a config dir."
     return None if self.cfg is None else self.cfg/f'{self.history_name}-history.jsonl'
 
 # %% ../nbs/03_agent.ipynb #7cd860a7
@@ -2923,6 +2924,7 @@ def cancel(self:Agent):
 # %% ../nbs/03_agent.ipynb #7e4133d5
 @patch
 def close(self:Agent):
+    "Close every backend and the host."
     for b in list(self._backends.values()):
         try: b.close()
         except Exception: pass
@@ -3119,6 +3121,7 @@ def classify(self:Agent, text, labels):
 # %% ../nbs/03_agent.ipynb #3497fd64
 @patch
 def summarise(self:Agent, text, sp='Summarise concisely. Output only the summary.'):
+    "Summarise `text` on the `summary` job's model, in a throwaway conversation."
     return self.oneshot(text, sp, 'summary')
 
 # %% ../nbs/03_agent.ipynb #b4fe8a31
@@ -3154,12 +3157,14 @@ def compact(self:Agent, extra=''):
 # %% ../nbs/03_agent.ipynb #37dccdda
 @patch(as_prop=True)
 def pct_full(self:Agent):
+    "The share of the turn model's context window in use, from 0 to 1."
     try: return self._be('turn').pct_full
     except Exception: return 0.0
 
 # %% ../nbs/03_agent.ipynb #b29c44ed
 @patch(as_prop=True)
 def context_used(self:Agent):
+    "Tokens the turn model's conversation holds now."
     try: return self._be('turn').used_tokens
     except Exception: return 0
 
@@ -3916,7 +3921,7 @@ def commands(self:Agent): return sorted(set(_agent_commands_runs(self)) | {'stop
 
 @patch
 def close(self:Agent):
-    "Cancel active runs before closing their backends."
+    "End the session: close panes, background work and the gate, cancel active runs, then close the backends and the host."
     backends = list(self._backends.values())
     self.unwatch('all')
     if getattr(self, '_background', None) is not None: self._background.close()
@@ -3969,6 +3974,7 @@ def _history_lock(agent):
 
 @patch(as_prop=True)
 def sessions_path(self:Agent):
+    "`<cfg>/<history_name>-sessions.json`, the session index, or None without a config dir."
     return None if self.cfg is None else self.cfg/f'{self.history_name}-sessions.json'
 
 def _session_rows(agent):
@@ -3996,6 +4002,7 @@ BRANCH_POLICIES = ('keep', 'discard', 'auto')
 
 @patch(as_prop=True)
 def branches_path(self:Agent):
+    "`<cfg>/<history_name>-branches.json`, the branch records, or None without a config dir."
     return None if self.cfg is None else self.cfg/f'{self.history_name}-branches.json'
 
 def _branch_rows(agent):
@@ -4162,6 +4169,7 @@ def _session_turns(agent, sid): return agent.session_turns(sid)
 
 @patch
 def session_meta(self:Agent, sid=None):
+    "A session's stored metadata: title, whether it is muted, and the folders it ran in."
     sid = sid or self.session_id
     with _history_lock(self):
         rows = _session_rows(self)
@@ -4179,6 +4187,7 @@ def _set_session_meta(agent, sid, **changes):
 
 @patch
 def set_title(self:Agent, text, sid=None):
+    "Set a session's title by hand; `summarize_session` never replaces a title set this way."
     sid = sid or self.session_id
     title = ' '.join(str(text).split())[:120]
     return _set_session_meta(self, sid, title=title, title_turns=len(_session_turns(self, sid)),
@@ -4186,10 +4195,12 @@ def set_title(self:Agent, text, sid=None):
 
 @patch
 def set_muted(self:Agent, muted=True, sid=None):
+    "Mark a session muted, or not."
     return _set_session_meta(self, sid or self.session_id, muted=bool(muted))
 
 @patch
 def summarize_session(self:Agent, sid=None, force=False):
+    "Title a session with the summary model, again each time its turn count doubles, unless the title was set by hand."
     sid = sid or self.session_id
     turns, meta = _session_turns(self, sid), self.session_meta(sid)
     if not turns or (meta['manual'] and not force): return meta
@@ -4217,6 +4228,7 @@ def _load_history(self:Agent):
 
 @patch
 def refresh_history(self:Agent):
+    "Reload the history log and the session and branch records, and return the sessions."
     with _history_lock(self):
         _agent_load_history(self)
         _session_rows(self); _branch_rows(self)

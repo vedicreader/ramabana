@@ -196,7 +196,7 @@ def _api(base, path, params=None, timeout=60):
         return json.loads(response.read())
 
 class Dhrishti:
-    "A Dhrishti overlay as a kernel a `LocalHost` can hold."
+    "The agent half of a Dhrishti session, in the shape of a kernel a `LocalHost` can hold."
 
     scopes, kind = ('isolated', 'overlay'), 'ipykernel'
 
@@ -241,7 +241,7 @@ class Dhrishti:
         write_nb(nb, self.agent_log)
 
     def describe(self):
-        "name -> 'type [shape]' for everything the session is holding. Never raises."
+        "Map each name the session holds to its description, or return `{}` when Dhrishti does not answer."
         try: result = _api(self.base, '/agent/api/rows', {'profile': 'minimal', 'sort': 'name'}, timeout=2)
         except Exception: return {}
         out = {}
@@ -356,7 +356,7 @@ def _syntax_note(src):
 
 # %% ../nbs/11_pyrepl.ipynb #pyr0952
 def promote(base, name):
-    "Adopt an agent-layer variable into the owner namespace. Own-kernel mode only."
+    "Move the agent-layer variable `name` into the owner namespace of a kernel this session started."
     if not base: return 'no kernel of our own; promote from the surface that started the session'
     from dhrishti.serving import owner_token
     port = int(str(base).rsplit(':', 1)[-1])
@@ -367,7 +367,7 @@ def promote(base, name):
 
 # %% ../nbs/11_pyrepl.ipynb #11a10f63
 class AgentBridge:
-    "An in-kernel control surface for an agent; joining the kernel is joining the agent."
+    "A loopback HTTP endpoint, guarded by a random token, through which kernel code reads this agent's usage and attaches chat callbacks."
     FIELDS = ('model', 'input', 'output', 'total', 'cached', 'cache_write', 'reasoning', 'cost', 'turns')
 
     def __init__(self, agent, dispatch=None):
@@ -468,6 +468,6 @@ def agent_proxy_code(url, token, label='local'):
         f'ramabana_agents[{label!r}] = ramabana_agent\n')
 
 def inject_agent_proxy(host, url, token, label='local'):
-    "Bind the agent proxy in Dhrishti's overlay, reaching the prompt namespace too."
+    "Bind the agent proxy in the agent's Dhrishti overlay by running `agent_proxy_code` through `run_python`."
     return host.run_python(agent_proxy_code(url, token, label))
 

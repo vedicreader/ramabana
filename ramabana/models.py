@@ -1,4 +1,4 @@
-"""The model catalog: curated ids per provider, and what live discovery adds.
+"""The model catalog: the models a picker offers for each provider, and what each provider's own listing adds.
 
 Docs: https://vedicreader.github.io/ramabana/models.html.md"""
 

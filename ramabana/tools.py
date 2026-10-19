@@ -1,4 +1,4 @@
-"""The toolset is `shalya`. This module is what Ramabana adds to it, and the names it keeps resolving.
+"""Hosts, tool lists and sub-agents: what Ramabana adds on top of the shalya toolset.
 
 Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 
@@ -67,7 +67,7 @@ def __getattr__(name):
 # %% ../nbs/02_tools.ipynb #1ec6c57a
 @implemented
 class NullHost(Host):
-    "A host with nothing behind it: the reference 'this host cannot'."
+    "A host with no folders and no services, which refuses every file operation."
     writes = False   # `file_tools` then withholds the editors
     def __init__(self, roots=()): self._roots = [str(r) for r in roots]
     @property
@@ -94,7 +94,7 @@ def exists(self:LocalHost, path):
 
 # %% ../nbs/02_tools.ipynb #55c1bbd5
 def draws_itself(spec):
-    "Can `spec`'s own model draw, given the image tool?"
+    "Whether the model behind `spec` can draw pictures itself when given the image tool."
     if spec is None: return False
     c = spec_caps(spec)
     return bool(c is not None and 'image' in getattr(c, 'tools', ()))
@@ -105,7 +105,7 @@ def _from_responses(raw):
     return gen_media(raw)
 
 def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=None):
-    "shalya's image group, asked on every call what this turn's model can do."
+    "Shalya's image tools for `host`, checking the turn's model on every call."
     spec = lambda: (get_spec() if get_spec else None)
     return _image_tools(host, mx, session, draws_itself=lambda: draws_itself(spec()),
                         from_reply=_from_responses,
@@ -113,7 +113,7 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
 
 # %% ../nbs/02_tools.ipynb #de2cd1e8
 def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None, optin=()):
-    "Tools the host (by `Host.provides`) and extensions support; `drop` removes, `optin` adds."
+    "The tools for `host`: a group per capability it declares, plus skills, images and extensions, less `drop` and plus `optin`."
     # `generate_image` saves files, so it needs a writable host
     image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
              if image_available() and host.writes and 'image' not in set(drop or ()) else None)
@@ -145,7 +145,7 @@ class ToolEntry:
 
 
 class ToolCatalog:
-    "One immutable view of tools and their Shalya metadata."
+    "An immutable list of tools that answers each one's group, whether it writes, and whether it has effects."
     def __init__(self, tools=()):
         self.entries = tuple(ToolEntry(t, group_of(getattr(t, '__name__', ''), 'extension'))
                              for t in tools)
@@ -344,7 +344,7 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
              block=NO_SUB,      # tool names withheld from the sub-agent
              timeout=0,         # seconds before the run is cancelled; 0 never
              slots=None):       # a shared `Slots`, held while the sub-agent works
-    "Ask `question` in a throwaway conversation on `backend`'s engine. Returns the answer text."
+    "Ask `question` of a sub-agent in a separate conversation on `backend`'s engine, and return its answer text."
     run = run or Run(f'run_{uuid.uuid4().hex[:12]}', 'child', str(question), backend.spec.name, current_run())
     with slots.hold(run) if slots is not None else nullcontext(True) as held:
         if not held: return _stopped(run)
@@ -394,7 +394,7 @@ def _delegate(backend, question, tools, sp, max_steps, skills, writes, approve, 
 # %% ../nbs/02_tools.ipynb #fe517832
 def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS, n_workers=4,
                   skills=(), writes=False, approve=None, parent=None, images=(), block=NO_SUB, timeout=0, slots=None):
-    "Ask several questions, registering every child before any worker starts."
+    "Ask several questions of one sub-agent each, and return the answers in question order."
     qs = L(questions)
     if not qs: return L()
     parent = parent or current_run()
@@ -555,7 +555,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
                    get_notes=None,      # callable spec -> the briefing notes for that model's family, or ''
                    slots=None,          # a shared `Slots` bounding sub-agents at once
                    block=NO_SUB):       # names withheld from the sub-agent, when `get_tools` does not decide
-    "The delegation tools, routed to the configured sub-agent backend. Arguments are callables, read per call."
+    "The four delegation tools, with every argument a callable read on each call so they follow the session's current settings."
     bg = ifnone(background, Background())
     def _writes(): return bool(get_writes()) if get_writes is not None else False
     def _timeout(): return float(get_timeout() or 0) if get_timeout is not None else 0
@@ -690,7 +690,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
 
 # %% ../nbs/02_tools.ipynb #ec2dc8d6
 def parse_plan_items(items):
-    "Newline text, a JSON list, or a Python list -> todo texts."
+    "The item texts from newline text, a JSON list, or a Python list."
     if items is None or items == '': return []
     if isinstance(items, (list, tuple)): return [str(x).strip() for x in items if str(x).strip()]
     s = str(items).strip()
@@ -754,7 +754,7 @@ def _human(n):
     return f'{n / 1024:.1f}GB'
 
 def media_path(s):
-    "One path in whatever shape a terminal delivered it, or None."
+    "A `Path` from one path as a terminal delivered it, quoted, escaped or as a `file://` URL, or None."
     s = str(s).strip().strip('[]').strip()
     if len(s) >= 2 and s[0] == s[-1] and s[0] in '"\'': s = s[1:-1]
     if s.startswith('file://'): s = unquote(urlparse(s).path)
@@ -822,7 +822,7 @@ class Attachment:
     def __repr__(self): return f'Attachment({self.kind} {self.label()})'
 
 def sendable(atts, spec=None):
-    "The attachment kinds `spec`'s model accepts: images always, audio if it hears."
+    "The attachment kinds `spec`'s model accepts: images always, and audio when it takes audio input or no spec is given."
     kinds = {'image'}
     if spec is None or accepts(spec, 'audio'): kinds.add('audio')
     return kinds

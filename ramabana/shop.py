@@ -165,7 +165,7 @@ class FakeCart(Cart):
 
 # %% ../nbs/08_shop.ipynb #d7cea0d5
 def cart_tools(cart):
-    "The trolley as tools; `cart_add` and `cart_remove` are in `WRITE_TOOLS`."
+    "Return the six tools that let a model shop with `cart`."
 
     @summary(lambda a: 'List stores')
     def cart_stores() -> str:

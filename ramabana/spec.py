@@ -110,7 +110,7 @@ def parse_ops(spec):
 
 # %% ../nbs/10_spec.ipynb #spec07
 class SpecHost(LocalHost):
-    "`LocalHost` plus named API specs (OpenAPI / Discovery / GraphQL) loaded on demand."
+    "`LocalHost` plus named API specifications (OpenAPI or Google Discovery), loaded on demand."
 
     @delegates(LocalHost.__init__)
     def __init__(self,
@@ -181,7 +181,7 @@ class SpecHost(LocalHost):
         return len(self.api_ops(group=group, name=name, match=match, limit=0))
 
     def api_creds(self, name, headers=None):
-        "Set what is sent with calls to one spec and nothing else. `headers=None` clears it."
+        "Set the headers sent with calls to spec `name` and no other, or clear them when `headers` is None."
         if headers: self._creds[str(name)] = dict(headers)
         else: self._creds.pop(str(name), None)
         self._clients.pop(str(name), None)   # a built client captured the old headers

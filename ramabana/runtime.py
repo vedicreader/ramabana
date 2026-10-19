@@ -1,4 +1,4 @@
-"""Native output capture, context-window management, and model execution.
+"""Run model turns, keep each conversation inside its context window, and capture what native engines print.
 
 Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 
@@ -80,7 +80,7 @@ class _Tee:
 
 # %% ../nbs/01_runtime.ipynb #821d64c1
 class captured:
-    "Context manager: `with captured() as cap: ...`, then read `cap.text`."
+    "Copy what is written to descriptors 1 and 2 into `text`, while the output still reaches the terminal."
     _lock = threading.Lock()
     def __init__(self, fds=(1, 2), enabled=None):
         self.fds = fds
@@ -294,7 +294,7 @@ def surgical_history(msgs, policy=None, count=None):
 
 # %% ../nbs/01_runtime.ipynb #83afe271
 def reorient(kernel_alive=True, skills=()):
-    "Builds the system reminder shown after context rewriting."
+    "The system reminder placed after a compacted or otherwise rewritten conversation."
     live = ("Context was rewritten, but the kernel is unchanged. The user's namespace, imports, and "
             "variables remain available. Do not re-import, rebuild, or rerun setup; use `inspect_python()` "
             "to inspect them."
@@ -480,7 +480,7 @@ def answer_only(text):
 
 # %% ../nbs/01_runtime.ipynb #b3f10a21
 def prefills_think(chat):
-    "Does this model's chat template open a `<think>` block and leave the model to close it?"
+    "Whether this model's chat template opens a `<think>` block and leaves the model to close it."
     tok = getattr(chat, 'tokenizer', None)
     if tok is None: return False
     try: p = tok.apply_chat_template([{'role': 'user', 'content': 'x'}], add_generation_prompt=True, tokenize=False)
@@ -513,6 +513,7 @@ ONESHOT_CUT = '[earlier text omitted]\n'
 
 @dataclass
 class Usage:
+    "Token counts and cost for a turn or a session; values add up."
     model:str=''; input:int=0; output:int=0; total:int=0; cached:int=0
     cache_write:int=0; reasoning:int=0; cost:float=0.; turns:int=0
     def __add__(self,o):
@@ -552,6 +553,7 @@ def _parts(msg):
 
 # %% ../nbs/01_runtime.ipynb #197644e7
 class Backend:
+    "The contract a model engine meets: start, send or stream a turn, count tokens, and replace history."
     kind='?'
     narrates=True   # the text before each tool call reaches `hist` or the stream; see `QUIET_RUNTIMES`
     _tag_reminded=False
@@ -798,6 +800,7 @@ CLAUDE_EFFORT = 'high'   #: what a Claude turn asks for; Claude Code otherwise r
 ROUTINE_CBS = frozenset({'ToolReminderCallback','_ToolReminderCallback','SlidingWindowCallback'})   #: rishi's defaults (litert has its own reminder): a nag on every message, and a window that forgets with no summary
 
 class RishiBackend(Backend):
+    "The `Backend` that runs every model, local or hosted, through rishi's `Chat`."
     kind='rishi'
     def __init__(self,*a,max_steps=MAX_STEPS,**kw):
         self.max_steps,self._prefill,self._seen_use=max_steps,None,None; super().__init__(*a,**kw)
@@ -1156,6 +1159,7 @@ def current_run(): return _current_run.get()
 
 @contextmanager
 def run_context(run):
+    "Make `run` the current run inside a `with` block."
     token = _current_run.set(run)
     try: yield run
     finally: _current_run.reset(token)
@@ -1178,7 +1182,7 @@ def _start_callbacks(self:Backend): self._sync_callbacks()
 
 @patch(as_prop=True)
 def takes_pictures(self:Backend):
-    "Does a picture a tool returns reach this model: it takes images and its transport carries them?"
+    "Whether a picture a tool returns can reach this model: it accepts images and its transport carries them."
     c = self.chat
     return bool(accepts(self.spec, 'image') and (c is None or c is self or getattr(c, '_media_ok', True)))
 

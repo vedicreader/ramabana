@@ -5,7 +5,7 @@ Modules:
 - `ramabana.coding_patterns`: Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
 - `ramabana.racp`: Ramabana as an [Agent Client Protocol](https://agentclientprotocol.com/) agent: an editor drives this host through its own files and terminal.
 - `ramabana.theory`: Naur's programming-as-theory-building, in the sense this team uses the word.
-- `ramabana.vault`: Memory that outlives the process: one vishalakshi vault behind `Host`, and the standing watches that return work to the agent.
+- `ramabana.vault`: Memory that outlives the process: a vishalakshi vault behind the host, and the watches that bring work back to the agent later.
 - `ramabana.write_docs`: The voiceless register for the prose that ships with code, adapted from Answer.AI's write_docs.
 - `ramabana.write_prose`: Anti-slop rules for narrative prose, adapted from Answer.AI's write_prose."""
 

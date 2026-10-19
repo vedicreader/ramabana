@@ -8,18 +8,40 @@
 <img src="media/rama-arrow.png" alt="rama's arrow" width="96" />
 </p>
 
-[`Agent`](https://vedicreader.github.io/ramabana/agent.html#agent) runs a model against the tools a host supplies. A host defines the folders, network access, memory, and approval gate the model gets. The terminal, MCP server, and Agent Client Protocol server share the same agent and tool contracts.
+Ramabana runs a language model as a coding assistant. You describe a task in plain words. The model searches the code, reads and edits files, runs commands and Python, and tells you what it did. Ramabana runs that loop, decides which tools the model may call, keeps every write inside the folders you opened, and stops to ask you before anything changes.
 
-Start with one folder. Ramabana writes only inside the folders `--root` names, and reads stay inside them too. `--read-outside` lets reads reach the whole machine.
+The same agent runs in four places: a terminal session, an editor that speaks the Agent Client Protocol, an MCP server that lends its tools to another assistant, and your own Python program. Each of them builds the same [`Agent`](https://vedicreader.github.io/ramabana/agent.html#agent) over the same tools, so a behaviour you see in one appears in the others.
+
+Start with one folder. Ramabana writes only inside the folders that `--root` names, and its reads stay inside them too unless you pass `--read-outside`.
 
 <p align="center">
 
 <img src="media/ramabana-cli-demo.gif" alt="ramabana CLI on Gemma 4 LiteRT" width="820" />
 </p>
 
+## How the pieces fit
+
+A few words recur on every page of these docs.
+
+A turn is one prompt from you and everything the agent does to answer it. During a turn Ramabana calls the model, runs the tools the model asked for, sends back their results, and calls the model again. Each round of one model call and its tool calls is a step. The turn ends when the model answers without asking for a tool, or when it runs out of one of its budgets.
+
+A tool is a Python function the model may call. Its name, arguments and docstring are what the model sees. Tools come in groups: code search, files, notebooks, the web, memory, shell commands, git, Python, and a few more. The toolset itself lives in [shalya](https://github.com/vedicreader/shalya), and Ramabana imports it.
+
+A host is the object that gives the tools their reach into the world: which folders they may read and write, whether the network is on, where memory is kept, and which approval gate guards a write. A host lists the groups it supports by inheriting one class per group, such as `CodeHost` or `WebHost`, and the agent offers only the tools of those groups. The terminal runs on shalya’s `LocalHost`. The tests run on an in-memory host from `ramabana.testing`.
+
+The approval gate sits between the model and any tool with an effect, such as editing a file, running a command or making a git commit. In the default mode it asks you about each one. The [Approvals](#approvals) section lists the other modes.
+
+The briefing is the system prompt Ramabana writes for each session. It names the open folders, sets out how to work, lists the skills it found, and adds the project’s own instructions from files such as `AGENTS.md` and `CLAUDE.md` in each open folder.
+
+A skill is a markdown file of guidance the agent reads only when the work calls for it. The briefing lists each skill in one line and the `read_skill` tool returns one in full.
+
+A sub-agent is a second agent that the running one starts for a piece of the work, through the [`delegate`](https://vedicreader.github.io/ramabana/tools.html#delegate) tools. It has its own steps and transcript, works under the same approval gate, and reports back to the turn that started it.
+
+A job is a kind of model call other than the turn itself, such as a completion, a summary or a sub-agent. Ramabana routes each job to a model suited to it, as [Point it at a model](#point-it-at-a-model) explains.
+
 ## Install
 
-Ramabana needs Python 3.12 or newer. The core is the agent, its hosts, and the file, code, shell and git tools. Each extra adds one use:
+Ramabana needs Python 3.12 or newer. The core package holds the agent, its hosts, and the file, code, shell and git tools, which is enough to build an agent into your own program. Each extra adds one way of using it:
 
 ``` sh
 pip install ramabana           # the core, to build an agent or an app on
@@ -32,26 +54,26 @@ pip install 'ramabana[all]'    # every extra
 | `[search]` | semantic code search, the vault’s memory and watches, the web tools |
 | `[python]` | the Python prompt and `--attach`, on dhrishti |
 | `[serve]` | `ramabana-mcp` and `ramabana-acp` |
-| `[dhrona]` | warm starts from dhrona’s example rounds |
+| `[dhrona]` | `--warm`, which starts a chat with example rounds from dhrona |
 | `[cli]` | the terminal session, plus `[search]` and `[python]` |
 
-A framework picks what it needs, such as `ramabana[search,serve]`. Without an extra, its tool groups drop out of the catalog, and its commands name the extra to install.
+A program that embeds Ramabana installs only the extras it needs, such as `ramabana[search,serve]`. When an extra is missing, the tools that need it are left out of what the model is offered, and any command that needs it names the extra to install.
 
-The core install includes what shalya needs: dhrishti, jupyter-client, fossick, litesearch and vishalakshi, which brings in mcp. The extras add the CLI, serve, python and search pieces.
+The core install already brings in the packages shalya depends on: dhrishti, jupyter-client, fossick, litesearch and vishalakshi, which in turn brings in mcp. The extras add the terminal, the two servers, the Python prompt and the search pieces on top.
 
-For the terminal on its own, `uv tool install 'ramabana[cli]'`, then `ramabana`. The first interactive run starts inside a tmux server of ramabana’s own, so the now pane and shift+enter need no tmux setup. When tmux is missing, it offers the install command once. `ramabana --doctor` checks tmux, extended keys, the config and `ramabana-pane`. `--tmux off` or `RAMABANA_TMUX=off` keeps the session in the terminal you started it in. Detaching or closing the window ends the session, and `--resume latest` reopens it.
+To use the terminal on its own, run `uv tool install 'ramabana[cli]'` and then `ramabana`. The first interactive run starts inside a tmux server that belongs to Ramabana. tmux is the terminal multiplexer that splits one window into panes. Running inside it gives you the now pane, a live view of what the agent is doing in a split beside the session, and lets `shift+enter` queue a message, with no tmux setup on your part. When tmux is missing, it offers the install command once. `ramabana --doctor` checks tmux, extended keys, the config and `ramabana-pane`. `--tmux off` or `RAMABANA_TMUX=off` keeps the session in the terminal you started it in. Detaching or closing the window ends the session, and `--resume latest` reopens it.
 
 | command | what it is |
 |----|----|
-| `ramabana` | the terminal session, on teleprint. Needs `[cli]` |
+| `ramabana` | the terminal session, drawn with teleprint. Needs `[cli]` |
 | `ramabana-mcp` | the MCP server. Needs `[serve]` |
 | `ramabana-acp` | the Agent Client Protocol server an editor launches. Needs `[serve]` |
-| `ramabana --python` | the Python prompt, on dhrishti. Needs `[python]` |
-| `ramabana-tick` | the scheduled beat, on pobblebonk |
+| `ramabana --python` | the Python prompt, with the kernel inspected through dhrishti. Needs `[python]` |
+| `ramabana-tick` | one beat of the schedules, run on a timer by pobblebonk |
 
 ## Point it at a model
 
-`--model` names the model this session’s turns run on. Without it the turn model is `$RAMABANA_MODEL`, then `$LEELA_MODEL`, then `claude-opus-5-5` through Claude Code. A turn runs on the device only when you name a local model.
+`--model` names the model that this session’s turns run on, called the turn model. Without it the turn model is `$RAMABANA_MODEL`, then `$LEELA_MODEL`, then `claude-opus-5-5` through Claude Code. A turn runs on this machine only when you name a local model.
 
 ``` sh
 ramabana --root . --model sonnet
@@ -72,7 +94,7 @@ export RAMABANA_MODEL=sonnet    # the same choice in every session
 
 `/models` lists what this machine can reach and marks the one running. `/model NAME` changes model without ending the session. `/model` alone prints the routing summary.
 
-Short jobs route away from the turn model. Completions and classification run on `claude-haiku-5-5`. Inline edits, summaries and other one-shot work run on `gpt-6-luna` through your Codex login. Delegated sub-agents run on `claude-sonnet-5-5`. When the turn model is local, every job without a model of its own stays on it. When a job’s model cannot run, the job moves to another cloud route. Without a Codex login, the default Luna jobs fall back to the turn model. A cloud model whose one-shot answer fails or comes back empty is set aside for five minutes, and its jobs move the same way. With no cloud route left, a job runs on `gemma-e4b` on the device, and the turn never moves. The session reports each fallback once. With nothing left at all, the error names the job, the model and the key or CLI it needs.
+Not every model call needs the turn model. Ramabana sorts the smaller calls into jobs and sends each job to a cheaper or faster model. Completions and classification run on `claude-haiku-5-5`. Inline edits, summaries and other one-shot work run on `gpt-6-luna` through your Codex login. Delegated sub-agents run on `claude-sonnet-5-5`. When the turn model is local, every job without a model of its own stays on it. When a job’s model cannot run, the job moves to another cloud route. Without a Codex login, the default Luna jobs fall back to the turn model. A cloud model whose one-shot answer fails or comes back empty is set aside for five minutes, and its jobs move the same way. With no cloud route left, a job runs on `gemma-e4b` on the device, and the turn never moves. The session reports each fallback once. With nothing left at all, the error names the job, the model and the key or CLI it needs.
 
 `$RAMABANA_MODEL_<JOB>` overrides one job. `<JOB>` is `ONESHOT`, `INLINE`, `COMPLETION`, `CLASSIFY`, `SUMMARY` or `SUBAGENT`. The turn model uses `$RAMABANA_MODEL` and has no `_TURN` variable. `/model JOB NAME` sets one job inside a session:
 
@@ -196,7 +218,7 @@ At an approval prompt:
 - `ctrl+y` approves with a note.
 - A typed reason and enter refuses with that reason.
 
-`shift+tab` cycles `ask`, `edits`, `auto` and back to `ask`. From `off` it comes back in at `ask`. `ctrl+g` moves one step stricter, from `auto` to `ask` to `off`, and never the other way. `/approve MODE` moves in either direction and answers any prompt already waiting.
+`shift+tab` cycles `ask`, `edits`, `auto` and back to `ask`. From `off` it comes back in at `ask`. `ctrl+g` moves one step stricter, from `auto` to `edits` to `ask` to `off`, and never the other way. `/approve MODE` moves in either direction and answers any prompt already waiting.
 
 The gate covers every tool with an effect:
 
@@ -217,7 +239,7 @@ ramabana --root .,~/notes,/srv/app
 
 Writes reach those folders and nowhere else. Reads start out in the same folders. `--read-outside` widens reads to any path on the machine and leaves writes where they were. `/root` prints the open folders, and `/root add PATH` opens another mid-session for reading and writing.
 
-Delegated sub-agents may write, run commands and run Python by default. Every write remains behind this session’s approvals. `--no-subagent-writes` or `/subagents off` restricts them to read-only tools. A read-only session refuses `delegate_async(writes=True)`.
+A sub-agent is a second agent that the running one starts, through the [`delegate`](https://vedicreader.github.io/ramabana/tools.html#delegate) tools, to do one part of the work. Sub-agents may write, run commands and run Python by default. Every write remains behind this session’s approvals. `--no-subagent-writes` or `/subagents off` restricts them to read-only tools. A read-only session refuses `delegate_async(writes=True)`.
 
 A sub-agent takes at most 60 steps and runs for at most 1800 seconds by default. `/subagents steps N` and `/subagents timeout S` change those limits. `timeout 0` removes the time limit. A delegation’s `max_steps` stays within the session cap and has a floor of 60 steps unless the session cap is lower. Two levels of sub-agents may delegate again by default. `/subagents nest 0` disables nesting. A nested sub-agent gets only `delegate_search`. The sub-agents under one turn share one tool-call budget the size of the turn’s own. At most four run at once.
 
@@ -270,7 +292,7 @@ Other terminals can share a live session. `ramabana --kernels` lists the ones ru
 
 `--spec` adds `api_load`, `api_ops` and `api_call`. Point `api_load` at an OpenAPI, Azure or Google Discovery document and the agent can call the operations it describes.
 
-`ramabana-tick` runs the due schedules and leaves their findings as notes for the next session. It schedules itself through cron, launchd or `schtasks`. A beat fires when no session is open:
+Some work should happen on a timer even when no session is open. A schedule is a callback that pobblebonk fires at set times. A package registers one under the `ramabana.ticks` entry point, as dhrona does, and Python code registers one with `ramabana.monitor.on_tick(name)`. A beat is one pass that runs every schedule that has come due. `ramabana-tick` runs one beat and leaves what the schedules found as notes, which the next session reads. `--install` hands the command to cron, launchd or `schtasks`, so beats keep firing while no session is open:
 
 ``` sh
 ramabana-tick --install --every 300    # a beat every five minutes
@@ -287,11 +309,11 @@ A skill is markdown the agent reads when the work calls for it. Ramabana looks f
 - `~/.agents/skills`
 - `.leela/skills` and `.agents/skills` under each open folder
 
-When two skills share a name, the later folder wins. Each skill is a folder holding a `SKILL.md`. Four skills ship in the package: `coding_patterns`, `theory`, `write_prose` and `write_docs`. `/skills` lists what this session found, and `/skill NAME` prints one.
+When two skills share a name, the later folder wins. In each folder, a skill is a subfolder holding a `SKILL.md`. Four skills ship inside the package as Python modules: `coding_patterns`, `theory`, `write_prose` and `write_docs`. Any folder above overrides them. `/skills` lists what this session found, and `/skill NAME` prints one.
 
-`<cfg>/learned` holds what Dhrona kept from earlier sessions. Its skills override the packaged ones and lose to every folder you write. Its `AGENTS.md` goes in the briefing after Ramabana’s own rules and before the project instructions, and the project instructions outrank it. `--no-learned` starts a session without the folder.
+`<cfg>/learned` holds what dhrona, a separate package that learns from past sessions, kept from earlier ones. Its skills override the packaged ones and lose to every folder you write. Its `AGENTS.md` goes in the briefing after Ramabana’s own rules and before the project instructions, and the project instructions outrank it. `--no-learned` starts a session without the folder.
 
-An extension is a Python file in `<cfg>/extensions` with a `setup(reg)` function. It can:
+An extension adds behaviour without changing Ramabana. It is a Python file in `<cfg>/extensions` with a `setup(reg)` function, and through `reg` it can:
 
 - add a tool
 - add a slash command
@@ -355,23 +377,25 @@ The editor names the folder. `--root` here is the fallback for a client that nam
 
 ## Drive it from Python
 
-[`ramabana.agent.mk_agent`](https://vedicreader.github.io/ramabana/agent.html#mk_agent) builds what the terminal runs: a host over the named folders, and an [`Agent`](https://vedicreader.github.io/ramabana/agent.html#agent) gated the way `approve` says. The example below uses the same [`Agent.ask`](https://vedicreader.github.io/ramabana/agent.html#agent.ask) path with [`fake_agent`](https://vedicreader.github.io/ramabana/testing.html#fake_agent), which supplies a deterministic backend and an in-memory project. It runs without credentials, downloads, or writes to disk.
+[`ramabana.agent.mk_agent`](https://vedicreader.github.io/ramabana/agent.html#mk_agent) builds what the terminal runs: a host over the folders you name, and an [`Agent`](https://vedicreader.github.io/ramabana/agent.html#agent) whose approval gate works the way `approve` says. `agent.ask(prompt)` runs one turn and returns the answer.
 
-A long-running host, such as a web app that runs agent jobs, uses the same calls with these options:
+The example below goes through the same [`Agent.ask`](https://vedicreader.github.io/ramabana/agent.html#agent.ask) path with [`fake_agent`](https://vedicreader.github.io/ramabana/testing.html#fake_agent) from `ramabana.testing`. Instead of a real model it uses a backend that returns the replies you give it, and instead of your disk it uses a small in-memory project, so it needs no credentials or downloads and writes nothing.
 
-- **Read roots.** `mk_agent(read_roots=[...])` opens folders that the read tools search and no write touches. The system prompt names them.
-- **Many asks.** [`Approvals`](https://vedicreader.github.io/ramabana/agent.html#approvals) holds every waiting ask. `answer(id, ok)` resolves any of them, and `waiting` lists them oldest first. Each ask appears through `on_activity` as an `awaiting` row with its `ask_id` before its call runs.
-- **A policy.** `Approvals(policy=fn)` is consulted before rules and modes. `fn(name, args)` returns `'allow'`, `'deny'`, `'ask'` or `None`.
-- **Waiting and timeouts.** `no_listener='wait'` holds an ask until a page listens, and that page is shown the asks already waiting. `on_timeout='allow'` lets an unanswered ask through, except one that the policy or the loop guard put to a person.
-- **A typed result.** `agent.ask(prompt, schema=Model)` returns a [`TurnResult`](https://vedicreader.github.io/ramabana/agent.html#turnresult) whose `result` is a validated `Model`.
-- **Sessions.** `Agent(session_id=...)` names the session. A turn in a session another live process holds raises [`SessionBusy`](https://vedicreader.github.io/ramabana/agent.html#sessionbusy).
-- **Budgets.** `max_cost`, `max_tokens`, `session_max_cost` and `session_max_tokens` stop a turn that passes them. The turn is recorded with state `budget`.
-- **An event file.** `agent.events_to(path)` writes one JSON line per call, ask, plan change, turn start and end, and steering delivered. A file past `max_bytes` rolls over to `<name>.1`.
-- **A queue.** `agent.queue(prompt)` holds a prompt, and `agent.run_queued()` runs what is held, in order. Steering a turn never read joins the next turn.
-- **A full resume.** `resume_session(id, full=True)` restores the conversation as its last turn left it, every tool result whole. A stop that leaves a backend running hands its conversation to the next one.
-- **Defaults for a host.** `mk_agent(python='off')` withholds Python, or a Dhrishti URL runs it in that kernel. `mk_agent(global_skills=False)` leaves `~/.agents/skills` out. `rules_path=` names the job’s own rules file. `Agent(extra_sp=...)` adds to the briefing.
-- **A worktree.** `host.add_worktree(repo, branch)` makes a git worktree for the job and opens it as a root.
-- **A control socket.** `ramabana.control.Control(agent).start()` listens on a socket in the session’s run folder, and `control_call(path, method, ...)` prompts, steers, cancels and answers it from another process.
+A long-running program, such as a web app that runs agent jobs, uses the same calls with these options:
+
+- Read roots: `mk_agent(read_roots=[...])` opens folders that the read tools search and no write touches. The system prompt names them.
+- Many asks: an ask is one approval request waiting for an answer. [`Approvals`](https://vedicreader.github.io/ramabana/agent.html#approvals) holds every waiting ask. `answer(id, ok)` resolves any of them, and `waiting` lists them oldest first. Each ask appears through `on_activity` as an `awaiting` row with its `ask_id` before its call runs.
+- A policy: `Approvals(policy=fn)` is consulted before rules and modes. `fn(name, args)` returns `'allow'`, `'deny'`, `'ask'` or `None`.
+- Waiting and timeouts: `no_listener='wait'` holds an ask until a page listens, and that page is shown the asks already waiting. `on_timeout='allow'` lets an unanswered ask through, except one that the policy or the loop guard put to a person.
+- A typed result: `agent.ask(prompt, schema=Model)` returns a [`TurnResult`](https://vedicreader.github.io/ramabana/agent.html#turnresult) whose `result` is a validated `Model`.
+- Sessions: `Agent(session_id=...)` names the session. A turn in a session another live process holds raises [`SessionBusy`](https://vedicreader.github.io/ramabana/agent.html#sessionbusy).
+- Budgets: `max_cost`, `max_tokens`, `session_max_cost` and `session_max_tokens` stop a turn that passes them. The turn is recorded with state `budget`.
+- An event file: `agent.events_to(path)` writes one JSON line per call, ask, plan change, turn start and end, and steering delivered. A file past `max_bytes` rolls over to `<name>.1`.
+- A queue: `agent.queue(prompt)` holds a prompt, and `agent.run_queued()` runs what is held, in order. Steering a turn never read joins the next turn.
+- A full resume: `resume_session(id, full=True)` restores the conversation as its last turn left it, every tool result whole. A stop that leaves a backend running hands its conversation to the next one.
+- Defaults for a host: `mk_agent(python='off')` withholds Python, or a Dhrishti URL runs it in that kernel. `mk_agent(global_skills=False)` leaves `~/.agents/skills` out. `rules_path=` names the job’s own rules file. `Agent(extra_sp=...)` adds to the briefing.
+- A worktree: `host.add_worktree(repo, branch)` makes a git worktree for the job and opens it as a root.
+- A control socket: `ramabana.control.Control(agent).start()` listens on a socket in the session’s run folder, and `control_call(path, method, ...)` prompts, steers, cancels and answers it from another process.
 
 `examples/embed_host.py` runs one such job end to end.
 

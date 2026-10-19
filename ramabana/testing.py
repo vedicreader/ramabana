@@ -109,7 +109,7 @@ class FullHost(LocalHost):
         return AttrDict(text=text, url=str(url))
 
     def research(self, query):
-        "Read every page that matches, into one cited digest. What a real research pass returns."
+        "Read every page that matches into one digest with a source line under each."
         hits = self.web_search(query)
         if not hits: return ''
         parts = []
@@ -170,11 +170,11 @@ class FullHost(LocalHost):
 
     @property
     def scopes(self):
-        "Both. The overlay branch of `inspect_python` has somewhere to be tested."
+        "Both scopes, so the overlay branch of `inspect_python` can be tested."
         return ('isolated', 'overlay')
 
     def inspect_python(self, code, scope='isolated'):
-        "Isolated runs on a copy; overlay runs against the real namespace but restores every pre-existing binding."
+        "Run `code` on a copy of the namespace, or with `overlay` on the real one, restoring every binding that existed before."
         if scope != 'overlay': return super().inspect_python(code, scope)
         before = dict(self.ns)
         try: return self._exec(code, self.ns)
@@ -238,7 +238,7 @@ class FakeBackend(Backend):
 
 # %% ../nbs/04_testing.ipynb #10360a7c
 def fake_agent(host=None, replies=(), **kw):
-    "Return `(agent, backend)`, every job (`SPEC` included) routed to one `FakeBackend`."
+    "Build an `Agent` whose every job runs on one `FakeBackend`, and return `(agent, backend)`."
     # `auto` would brief the 1k `SPEC` small
     a = Agent(host or MemHost({'/proj/a.py': 'def a(): pass\n'}), extensions=False, **{'profile': 'full', **kw})
     be = FakeBackend(SPEC, replies=replies)
@@ -264,7 +264,7 @@ def recorded(path=None, record=None):
 
 # %% ../nbs/04_testing.ipynb #nomodel01
 def no_model(model=None, **kw):
-    "A quiet `graph_chat` or `mk_chat` for tests: every answer is `{}`, so nothing loads."
+    "Return a stand-in chat that answers `{}` to everything, for use as `graph_chat` or `mk_chat` in tests."
     class _Quiet:
         def oneshot(self, prompt, sp='', **kw): return '{}'
         def __call__(self, prompt, **kw): return {'role': 'assistant', 'content': '{}'}

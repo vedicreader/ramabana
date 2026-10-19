@@ -1,4 +1,4 @@
-"""Ramabana's tools, and Ramabana's whole agent, as an MCP server.
+"""Serve Ramabana's tools, and optionally its whole agent, to another assistant over MCP.
 
 Docs: https://vedicreader.github.io/ramabana/mcp.html.md"""
 

@@ -1,4 +1,4 @@
-"""Code and unified diffs coloured with fastpylight, for any rich surface.
+"""Syntax colouring for code and for unified diffs, in the terminal or as HTML.
 
 Docs: https://vedicreader.github.io/ramabana/hl.html.md"""
 
@@ -34,7 +34,7 @@ def scope_style(scope, theme='github_dark'):
     return ' '.join([s['fg']] + ['bold'] * bool(s['bold']) + ['italic'] * bool(s['italic']))
 
 def hl_text(code, lang, theme='github_dark'):
-    "`code` coloured by fastpylight, whose offsets count UTF-8 bytes where rich counts characters."
+    "`code` as a rich `Text`, coloured by fastpylight with Lumis `theme`."
     t = Text(code)
     if lang == 'plaintext': return t
     code = t.plain

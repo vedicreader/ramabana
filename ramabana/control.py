@@ -22,7 +22,7 @@ REQUEST_MAX = 1_000_000   #: bytes one request line may take
 EVENTS_MAX = 1_000_000    #: bytes of the event file one `events` call returns
 
 class Control:
-    "A Unix socket for an agent run in a detached process: one JSON request a line, one JSON reply a line."
+    "A Unix socket through which another process prompts, steers, stops and answers an agent running in this one."
     def __init__(self, agent,
                  path=None):   # the socket; None puts it in the session's run folder as `CONTROL`
         self.agent, self.last = agent, None
@@ -33,7 +33,7 @@ class Control:
         self._lock, self._running, self._server, self._inode = threading.Lock(), False, None, None
 
     def start(self):
-        "Listen on `path`, readable by this user only. Refuses a path another runner answers on, or one that is not a socket. Returns self."
+        "Listen on `path` for this user only and return self, refusing a path another runner or a non-socket holds."
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.exists() or self.path.is_symlink():
             if not stat.S_ISSOCK(self.path.lstat().st_mode): raise RuntimeError(f'{self.path} is not a socket; nothing was removed')

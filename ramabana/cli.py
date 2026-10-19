@@ -2239,7 +2239,7 @@ def begin(self:Ui):
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
 class AppTty(RealTty):
-    "`RealTty` that notices a hung-up terminal: `read` stops at the end of input, where `RealTty.read` spins, and writes and restores to a dead one are dropped."
+    "`RealTty` that stops reading and drops writes once the terminal hangs up."
     gone = False
     def read(self, timeout=0.02):
         out = b''
@@ -2259,8 +2259,7 @@ class AppTty(RealTty):
 
 @contextlib.contextmanager
 def stderr_to(path):
-    """Python's `sys.stderr` into `path`, appended, while the TUI owns the screen: a bar or warning written to the
-    terminal scrolls it under teleprint's frames. `faulthandler` writes a hard crash's stack there too."""
+    "Append Python's `sys.stderr` and `faulthandler` crash traces to `path` while the TUI owns the screen."
     import faulthandler
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     was = faulthandler.is_enabled()

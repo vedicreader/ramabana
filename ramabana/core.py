@@ -1,4 +1,4 @@
-"""The error type, the environment convention, and the model policy.
+"""Shared errors, environment settings, and the rules that decide which model runs each job.
 
 Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 
@@ -194,7 +194,7 @@ def _ollama_available():
 
 # %% ../nbs/00_core.ipynb #174500b5
 def runtime_available(runtime):
-    "Whether Rishi's optional dependency for `runtime` can be reached. Never raises."
+    "Whether `runtime` can run models on this machine; never raises."
     if runtime == 'remote': return True
     if runtime == 'claude': return _claude_available()
     if runtime == 'copilot': return _copilot_available()
@@ -231,7 +231,7 @@ def _codex_login():
     return bool(os.getenv('CODEX_AUTH_TOKEN') or _json_has(os.getenv('CODEX_AUTH_PATH', '~/.codex/auth.json'), 'tokens', 'access_token'))
 
 def auth_status():
-    'Credential sources FastLLM can use, without reading or returning any secret.'
+    'Which credential sources this machine has, per vendor, without reading or returning any secret.'
     codex = _codex_login()
     claude_login = _claude_login() and _claude_available()
     copilot = _copilot_available()
@@ -318,7 +318,7 @@ def local_window(runtime, model_id):
     return 0
 
 def local_ctx(name, dflt=DFLT_LOCAL_CTX):
-    "How much of a local model to use: `$LEELA_LOCAL_CTX` if it says, else the table."
+    "The context window to use for local model `name`: `$RAMABANA_LOCAL_CTX` if it sets one, else the table."
     if (ovr := (env('LOCAL_CTX') or '').strip()):
         if ovr.isdigit(): return int(ovr)
         for part in ovr.split(','):
@@ -355,6 +355,7 @@ def _cloud_ctx(model_id):
 
 # %% ../nbs/00_core.ipynb #1d37d28a
 def unknown_model(name):
+    "The error message for a model name nobody knows, with the closest known names."
     near = difflib.get_close_matches(str(name), MODELS, n=2, cutoff=0.6)
     hint = f'; did you mean {" or ".join(repr(n) for n in near)}?' if near else '.'
     return (f'unknown model {name!r}{hint} `/models` lists what is configured, and any vendor/model spec works too.')
@@ -461,7 +462,7 @@ def profile_for(spec, profile='auto'):
 
 # %% ../nbs/00_core.ipynb #3e2adbad
 def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):
-    "Register a configurable model alias for this process. `save_model` is the persistent form."
+    "Add a model name that lasts until this process exits; `save_model` keeps one on disk."
     name, model_id = (name or '').strip(), (model_id or '').strip()
     if model_id.startswith(('https://huggingface.co/', 'http://huggingface.co/')): 
         model_id = model_id.split('huggingface.co/', 1)[1].strip('/').split('/tree/', 1)[0]
@@ -581,7 +582,7 @@ def is_local(name):
 
 @dataclass
 class Routing:
-    "Job -> model: the policy, and the one place that decides what runs where."
+    "Which model runs each job, and where a job goes when its model cannot run here."
     turn: str = None
     policy: dict = field(default_factory=lambda: dict(DEFAULT_POLICY))
 
