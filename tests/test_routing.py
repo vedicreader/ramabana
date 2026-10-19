@@ -23,13 +23,30 @@ def test_a_model_that_is_not_here_moves_a_cheap_job_and_never_the_turn(hide_runt
     assert r.spec('inline').name == 'gpt-mini'       # the turn model, which is by definition here
     assert 'unavailable' in r.notes['inline']
 
-    with pytest.raises(Exception): Routing(turn='mlx/not-installed-here').spec('turn')
+    t = Routing(turn='mlx/not-installed-here').spec('turn')
+    assert t.name == 'mlx/not-installed-here' and 'mlx_lm is not installed' in t.missing, 'the turn is never moved'
 
     assert not core.runtime_available('mlx')
     assert all(row['provider'] != 'mlx' for row in available_models())
-    with pytest.raises(RuntimeError, match=r'install rishi\[mlx\]'):
-        resolve('mlx/mlx-community/example')
+    assert 'install rishi[mlx]' in resolve('mlx/mlx-community/example').missing
 
+
+def test_without_claude_code_on_path_the_agent_builds_and_the_turn_fails_saying_why(tmp_path, monkeypatch):
+    "`resolve` raised for the default turn model, so building an Agent, `agent.model` and the history failed on a machine without Claude Code."
+    import shutil
+    no_model_env(monkeypatch)
+    monkeypatch.setenv('PATH', str(tmp_path))
+    assert shutil.which('claude') is None
+    a = Agent(MemHost(), cfg=tmp_path/'cfg', extensions=False, subagents=False)
+    assert a.model.name == core.DFLT_TURN and '`claude` is not on PATH' in a.model.missing
+    assert a.sessions() == []
+    out = a.ask('hello')
+    assert out == a.note and '`claude` is not on PATH' in out and 'install Claude Code' in out, out
+    assert 'runs here' in out or 'no model runs' in out, out
+    assert not a.ready and a.model.name == core.DFLT_TURN, 'never switched'
+    rows = a.session_turns(a.session_id)
+    assert rows and rows[-1]['state'] == 'failed' and '`claude` is not on PATH' in rows[-1]['error'], rows
+    assert a.set_model('claude-sonnet-5-5').missing and a.model.name == 'claude-sonnet-5-5'
 
 def test_a_name_is_resolved_or_refused_but_never_guessed():
     "Silently running a typo on a frontier model is the kind of surprise that shows up on a bill."
@@ -227,7 +244,7 @@ def test_a_job_no_cloud_route_can_run_falls_to_local_gemma_and_the_turn_never_do
     r = Routing()
     for job in ('summary', 'classify', 'subagent'): assert r.spec(job).name == core.DFLT_FALLBACK, job
     assert r.spec('summary').local and core.DFLT_FALLBACK in r.notes['summary']
-    with pytest.raises(core.AgentError): r.spec('turn')
+    assert 'claude runtime is unavailable' in r.spec('turn').missing, 'the turn is not moved; Agent.start says why'
     monkeypatch.setattr(core, 'runtime_available', lambda rt: False)
     with pytest.raises(core.AgentError, match='summary job'): Routing().spec('summary')
 

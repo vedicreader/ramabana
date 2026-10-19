@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.43
+
+- A model whose runtime is missing on this machine no longer raises in `resolve`. On a machine without Claude Code, building an `Agent`, reading `agent.model`, listing sessions and `set_model` raised for the default `claude-opus-5-5`. `resolve` now returns the spec with `missing` set: which binary or package is absent and how to get it, for example "claude runtime is unavailable (`claude` is not on PATH); install Claude Code ...". A missing API key already worked this way.
+- `Agent.start` reports a missing runtime as a failed turn, recorded like any other. The note names a model that does run here, taken from `available_models`. The turn model is never switched. Jobs other than the turn fall back as their routing already says. `missing_runtime(spec)` asks the same question live, so a runtime installed mid-session is picked up on the next turn. `model_note` shows the reason.
+- `resume_session` keeps the current model when the conversation's model cannot run here, and says so. A lent factory and a delegated fan-out skip a model whose runtime is missing.
+- A one-shot `ramabana -p` on a missing runtime prints the reason and exits 1, as it does for a missing key, where it used to exit 2 before the turn.
+
 ## 0.2.42
 
 - The `dhrona` extra requires dhrona 0.1.13. Under 0.1.12, about one compaction in ten that folded in a candidate lost the candidate's id to scrubbing, so accepting the compaction left that candidate pending.

@@ -25,14 +25,14 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import contextvars, datetime, fnmatch, functools, hashlib, json, os, re, shlex, threading, time, tomllib, uuid
 from glob import escape as glob_escape
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from fastcore.basics import first, ifnone, patch
 from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
-from .core import accepts, AgentError, agent_err, available_models, missing_key, needs, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
+from .core import accepts, AgentError, agent_err, available_models, missing_key, missing_runtime, needs, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .runtime import QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
@@ -1376,7 +1376,7 @@ def _cloud_backend_or_none(self:Agent, model):
         except KeyError:   # `gpt-6-sol` for the sub-agent's own `openai/gpt-6-sol`
             sub = str(self.routing.name_for('subagent') or '')
             return self._be_or_none('subagent') if str(model) == sub.rsplit('/', 1)[-1] else None
-        if spec.local: return None
+        if spec.local or missing_runtime(spec): return None
         key = (spec.backend, spec.model_id)
         if key not in self._backends: self._backends[key] = make_backend(spec)
         backend = self._backends[key]
@@ -2170,6 +2170,10 @@ def start(self:Agent):
     if (k := missing_key(b.spec)):
         self.note = f'turn job: {b.spec.name} {needs(k)}'
         return None
+    if (m := missing_runtime(b.spec)):
+        self.note = f'turn job: {b.spec.name} cannot run here: {m}. {reachable_hint()}'
+        return None
+    if getattr(b.spec, 'missing', ''): b.spec = replace(b.spec, missing='')
     if b.start() is None:
         self.note = b.note
         return None
@@ -2286,8 +2290,9 @@ def lend_model(self:Agent):
 def _spec_for(self:Agent, model=None):
     "The `ModelSpec` a lent factory should build on. `None` means the cheap jobs' model."
     if model:
-        try: return self.routing._resolve(str(model))
+        try: spec = self.routing._resolve(str(model))
         except Exception: return None
+        return None if missing_runtime(spec) else spec
     b = self._be_or_none('oneshot')
     return None if b is None or b.chat is None else b.spec
 
@@ -2633,7 +2638,11 @@ def resume_session(self:Agent, selector='latest',
         raise RuntimeError(f"session {order[0]['id']} is in use by process {(self.session_owner(order[0]['id']) or {}).get('pid', '?')}; quit it there first")
     self.resumed_roots = self.session_added_roots(picked['id'])
     turns = self.replayed_turns(picked['id'])
-    if picked['model'] and not keep_model: self.set_model(picked['model'])
+    if picked['model'] and not keep_model:
+        try: gone = '' if missing_runtime(self.model) else missing_runtime(self.routing._resolve(picked['model']))
+        except Exception: gone = ''
+        if gone: self.host.note(f"{picked['model']} cannot run here: {gone}; the conversation stays on {self.model.name}")
+        else: self.set_model(picked['model'])
     saved = (_read_json(self.cfg/'runs'/picked['id']/HIST) if full and self.cfg is not None else None) or {}
     spec = self.routing.spec('turn')
     at = {t.get('turn_id'): i for i, t in enumerate(self.session_turns(picked['id']))}   # every turn, a budget's stop included

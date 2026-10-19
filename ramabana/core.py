@@ -14,10 +14,10 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'KEY_ENVS', 'CODEX_LOGIN', 'DOWN_TTL', 'BranchChanged', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx',
            'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail',
            'runtime_available', 'auth_status', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx',
-           'ModelSpec', 'unknown_model', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for',
-           'profile_for', 'register_model', 'unregister_model', 'alias_path', 'saved_models', 'load_models',
-           'save_model', 'delete_model', 'force_tags', 'forget_forced_tags', 'tool_channel', 'missing_key', 'needs',
-           'is_local', 'Routing']
+           'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts',
+           'model_note', 'Budget', 'budget_for', 'profile_for', 'register_model', 'unregister_model', 'alias_path',
+           'saved_models', 'load_models', 'save_model', 'delete_model', 'force_tags', 'forget_forced_tags',
+           'tool_channel', 'missing_key', 'needs', 'is_local', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
@@ -26,7 +26,7 @@ from shalya.host import HostError
 from .setup import ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES
 import urai, rishi.core   # registers rishi's backends with urai
 from .models import CATALOG, claude_ids, claude_aliases, provider_models
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 # %% ../nbs/00_core.ipynb #2049138c
 ENV_PREFIX, ENV_FALLBACK = ENV_DEFAULT
@@ -327,8 +327,10 @@ def local_ctx(name, dflt=DFLT_LOCAL_CTX):
     return _LOCAL_CTX.get(name, dflt)
 
 # %% ../nbs/00_core.ipynb #64093121
+@dataclass(frozen=True)
 class ModelSpec(urai.ModelSpec):
     "urai's `ModelSpec`, with `backend` and `config` as views of `runtime` and `opts`."
+    missing: str = field(default='', compare=False)   # why its runtime cannot run here, or ''
     @property
     def backend(self): return self.runtime
     @property
@@ -363,14 +365,38 @@ def unknown_model(name):
 PREFIXES = RUNTIME_NAMES
 RETIRED = {'claude_code': 'use `claude/` instead: the same models, through Claude Code itself', 'cursor': 'the Cursor backend was removed'}
 
+def _runtime_why(rt):
+    "The piece `rt` lacks here: a binary not on PATH, or a package not installed."
+    if rt == 'claude': return 'claude_agent_sdk is not installed' if shutil.which('claude') else '`claude` is not on PATH'
+    if rt in _RUNTIME_DEPS: return f'{_RUNTIME_DEPS[rt]} is not installed'
+    if rt == 'ollama': return 'the ollama daemon does not answer and `ollama` is not on PATH'
+    return runtime_detail(rt)
+
+def missing_runtime(spec):
+    "Why `spec`'s runtime cannot run on this machine and how to get it; '' when it can. Asked live, never cached."
+    rt = getattr(spec, 'runtime', '')
+    if rt == 'remote' or rt not in RUNTIME_NAMES or runtime_available(rt): return ''
+    if rt == 'copilot': return COPILOT_UNAVAILABLE
+    why = _runtime_why(rt)
+    return f"{rt} runtime is unavailable{f' ({why})' if why else ''}; {runtime_remedy(rt)}"
+
+def reachable_hint():
+    "Which model to try instead, from `available_models`. A suggestion: nothing is switched."
+    try: alt = next((r['value'] for r in available_models()), None)
+    except Exception: alt = None
+    return f'{alt} runs here; choose it with `/model {alt}` or the model picker' if alt else 'no model runs on this machine yet'
+
 def resolve(name):
-    'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec; none is `DFLT_TURN`.'
+    'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec; none is `DFLT_TURN`. A runtime this machine lacks is named in `missing`, not raised.'
+    spec = _spec_for(name)
+    return replace(spec, missing=m) if (m := missing_runtime(spec)) else spec
+
+def _spec_for(name):
     if not name: name = DFLT_TURN
     if name in MODELS:
         backend, mid = MODELS[name]
         config = CUSTOM.get(name, {}).get('config', {})
         if backend not in ('remote', 'copilot'):
-            if not runtime_available(backend): raise RuntimeError(f'{backend} runtime is unavailable; {runtime_remedy(backend)}')
             ctx = claude_ctx(mid) if backend == 'claude' else DFLT_AGENT_CTX if backend in AGENTS else local_ctx(name)
             return ModelSpec(name, backend, mid, ctx, opts=config)
         if backend == 'copilot':
@@ -379,23 +405,19 @@ def resolve(name):
         ctx, note = _cloud_ctx(mid)
         return ModelSpec(name, backend, mid, ctx, note, config)
     if re.match(r'^(?:claude-|(?:opus|sonnet|haiku|fable)-\d)', name):    # an untabled Claude id; Claude Code decides
-        if not runtime_available('claude'): raise RuntimeError(f'claude runtime is unavailable; {runtime_remedy("claude")}')
         mid = name if name.startswith('claude-') else f'claude-{name}'
         return ModelSpec(name, 'claude', mid, claude_ctx(mid))
     if '/' in name:
         runtime, model_id = name.split('/', 1)
         if runtime in RETIRED: raise KeyError(f'{name!r}: the {runtime!r} prefix was removed -- {RETIRED[runtime]}')
         if runtime == 'copilot':
-            if not runtime_available('copilot'): raise RuntimeError(COPILOT_UNAVAILABLE)
             ctx, note = _copilot_ctx(model_id)
             return ModelSpec(name, 'copilot', model_id, ctx, note)
         if runtime in (*LOCAL_RUNTIMES, *AGENTS):
-            if not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
             ctx = claude_ctx(model_id) if runtime == 'claude' else DFLT_AGENT_CTX if runtime in AGENTS else local_ctx(name)
             return ModelSpec(name, runtime, model_id, ctx)
         from urai import infer_runtime
         if (inferred := infer_runtime(name)) in ('litert', 'mlx', 'llama'):
-            if not runtime_available(inferred): raise RuntimeError(f'{inferred} runtime is unavailable; {runtime_remedy(inferred)}')
             return ModelSpec(name, inferred, name, local_ctx(name))
         ctx, note = _cloud_ctx(name)
         return ModelSpec(name, 'remote', name, ctx, note)
@@ -423,7 +445,7 @@ def model_note(spec):
     where = 'local' if spec.local else 'cloud'
     out = f'{spec.name} · {where} · {spec.ctx//1000}k ctx'
     if (c := spec_caps(spec)) is not None and (m := c.fmt()): out += f' · {m}'
-    return out + (f' · {spec.note}' if spec.note else '')
+    return out + (f' · {spec.note}' if spec.note else '') + (f' · {spec.missing}' if getattr(spec, 'missing', '') else '')
 
 # %% ../nbs/00_core.ipynb #4e529923
 SMALL_CTX = 24_000
@@ -610,8 +632,8 @@ class Routing:
         return self.turn
 
     def _resolve(self, name):
-        "Resolve `name`, cached."
-        if name not in self._cache: self._cache[name] = resolve(name)
+        "Resolve `name`, cached; one whose runtime was missing is asked again."
+        if name not in self._cache or self._cache[name].missing: self._cache[name] = resolve(name)
         return self._cache[name]
 
     def _usable(self, name):
@@ -619,6 +641,7 @@ class Routing:
         spec = self._resolve(name)
         if (d := self.down.get(name)) and time.time() - d[1] < DOWN_TTL: raise AgentError(d[0])
         if (k := missing_key(spec)): raise AgentError(needs(k))
+        if (m := missing_runtime(spec)): raise AgentError(m)
         return spec
 
     def alternatives(self, job):
@@ -641,7 +664,7 @@ class Routing:
     def spec(self, job='turn', fallback=True):
         "The `ModelSpec` for `job`, else another cloud route, else `DFLT_FALLBACK`; failing that, an error naming the job, the model and what it needs."
         n = self.name_for(job)
-        try: return self._resolve(n) if job == 'turn' else self._usable(n)   # the turn's key is `Agent.start`'s to report
+        try: return self._resolve(n) if job == 'turn' else self._usable(n)   # the turn's key and runtime are `Agent.start`'s to report
         except Exception as e:
             why = str(e) if isinstance(e, AgentError) else f'unavailable ({agent_err(e)})'
             err = AgentError(f'{job} job: {n} {why}')
