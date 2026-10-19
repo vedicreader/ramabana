@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.40
+
+- `ramabana.learned.compact(folder)` asks Dhrona for a shorter learned `AGENTS.md` and returns `{ok, id, before, after}`, where `before` and `after` are character counts, or `{ok: False, error}`. Dhrona's editor model merges and shortens the paragraphs Dhrona proposed and keeps every paragraph a person wrote byte for byte. The result waits as one more pending candidate, so `diff`, `accept` and `reject` act on it. Without Dhrona it returns an error naming the `dhrona` extra.
+- `/learned compact` in a session and `ramabana-learned compact` from a shell run it. The help and the guide name it.
+- An accept refused past the 2,000 characters Dhrona allows now says to reject the candidate, run `/learned compact`, or trim `AGENTS.md` and commit that first.
+- The `dhrona` extra requires dhrona 0.1.11, which has `compact_learned`.
+
 ## 0.2.39
 
 - `/learned` reviews what Dhrona proposes from inside a session: `/learned` lists, and `/learned diff|accept|reject ID` acts on one. Tab completion offers it, and the help and guide name it. `learned_command` is the text form `/learned` and `ramabana-learned` share.

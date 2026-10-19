@@ -120,3 +120,46 @@ def test_the_learned_command_in_the_interface(tmp_path):
 def test_the_learned_command_without_a_config_folder():
     agent, _ = fake_agent()
     assert agent.command('/learned') == 'no config folder, so no learned folder'
+
+
+def test_the_learned_compact_command_in_the_interface(tmp_path, monkeypatch):
+    "`/learned compact` proposes a shorter AGENTS.md through Dhrona, and the accept-past-limit error points at it."
+    import asyncio, subprocess
+    import dhrona.improve
+    from teleprint.compositor import Compositor
+    from teleprint.testing import EmuTty
+    from ramabana.cli import GUIDE, HELP, Ui
+    f, b = tmp_path/'learned', '20261019-020202-bbbbbb'
+    f.mkdir(); (f/'AGENTS.md').write_text('A rule a person wrote.\n')
+    for c in (['init', '-q'], ['add', '-A'], ['-c', 'user.name=t', '-c', 'user.email=t@x', 'commit', '-qm', 'by hand']):
+        subprocess.run(['git', '-C', str(f), *c], check=True)
+    _propose(f, {'AGENTS.md': 'A rule a person wrote.\n\n' + 'Read sizes with ls -l. ' * 50 + '\n'}, b)
+    subprocess.run(['git', '-C', str(f), 'merge', '-q', '--ff-only', f'pending/{b}'], check=True)
+    subprocess.run(['git', '-C', str(f), 'branch', '-D', f'pending/{b}'], check=True, capture_output=True)
+    sent = []
+    monkeypatch.setattr(dhrona.improve, '_editor', lambda *a, **k: lambda prompt: sent.append(prompt) or '[kept 1]\n\nRead sizes with ls -l.')
+    agent, _ = fake_agent(cfg=tmp_path)
+    tty = EmuTty(100, 30); comp = Compositor(tty); comp._register_signals = lambda: None
+    asyncio.run(comp.start())
+    ui = Ui(comp, agent)
+    def run(line):
+        ui.buf.insert(line); ui.submit()
+        return [blk.source for blk in ui.comp.blocks.values() if blk.tag == 'note'][-1]
+    try:
+        out = run('/learned compact')
+        assert out.startswith('compaction pending as ') and '→' in out and sent, out
+        id = out.split()[3].rstrip(':')
+        assert id in run('/learned') and 'Compact learned AGENTS.md' in run('/learned')
+        assert '+Read sizes with ls -l.' in run(f'/learned diff {id}')
+        assert 'already pending' in run('/learned compact')
+        assert run(f'/learned accept {id}').startswith(f'accepted {id} as ')
+        assert (f/'AGENTS.md').read_text() == 'A rule a person wrote.\n\nRead sizes with ls -l.\n'
+        assert '/learned compact' in HELP and '/learned compact' in GUIDE and "say /learned, /learned compact" in run('/learned nope')
+    finally: tty.close()
+
+
+def test_accept_past_the_limit_points_at_compact(tmp_path):
+    from ramabana.learned import accept
+    a = '20261019-010101-aaaaaa'
+    _propose(tmp_path/'learned', {'AGENTS.md': 'x' * 2001}, a)
+    assert 'run `/learned compact`' in accept(tmp_path/'learned', a)['error']
