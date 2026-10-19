@@ -8,7 +8,7 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT', 'INLINE_SKILLS',
-           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'LEARNED', 'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS',
+           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS',
            'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES',
            'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL',
            'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS',
@@ -35,7 +35,7 @@ from urai import parse_args, tc_name, tool_media
 from .core import accepts, AgentError, agent_err, available_models, missing_key, needs, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .runtime import QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
-from shalya.tools import OPTIN, group_of, git_repo, lesson_text
+from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
@@ -696,7 +696,7 @@ def project_context(host, mx=MAX_CONTEXT_FILE, cfg=None):
             'override the general guidance above where they disagree.\n\n' + '\n\n'.join(out) +
             '\n</project_context>')
 
-LEARNED = 'learned'   #: the folder under the config dir where Dhrona keeps what it learned
+from .learned import LEARNED   # the folder under the config dir; `ramabana.learned` reviews what Dhrona proposes for it
 
 def learned_context(learned, mx=MAX_CONTEXT_FILE):
     "`<learned>/AGENTS.md` as a briefing block, or '' when `learned` is None or holds none."
@@ -1789,6 +1789,18 @@ def memory_context(self:Agent, surface, max_chars=MEMORY_CHARS):
     "The project's memory file, its tail when long. An embedder with a vault overrides it."
     p = getattr(self, 'memory_path', None)
     return p.read_text()[-max_chars:] if p is not None and p.exists() else ''
+
+@patch
+def lessons(self:Agent, limit=50):
+    "The lessons `remember` kept for this project, read with shalya's `lessons` from the vault or the memory file alike."
+    if 'memory' in self.host.provides:
+        try: rows = self.host.memory_search('lesson:', limit)
+        except Exception: return []
+        rows = (rows.get('results') or []) if isinstance(rows, dict) else rows   # a vault's context: sections under `results`
+        text = '\n\n'.join(f"{r.get('title') or ''}\n{r.get('text') or ''}" if isinstance(r, dict) else str(r) for r in rows)
+        return list({l['lesson']: l for l in lesson_rows(text)}.values())[:limit]   # a title can repeat its note's first line
+    p = self.memory_path
+    return lesson_rows(p.read_text())[-limit:] if p is not None and p.exists() else []
 
 def note_tools(note):
     "The memory tool a host without a vault still gets: shalya's `remember`, on the project's memory file."

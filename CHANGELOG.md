@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.38
+
+- `ramabana.learned` is the review queue for `<cfg>/learned`. Dhrona 0.1.10 commits each candidate on a `pending/<id>` branch and leaves the folder's files, which the briefing and skill discovery read, alone. `pending(folder)` lists the candidates, and `diff`, `accept` and `reject` act on one and return `{ok, id, ...}`, with `error` when `ok` is False. `accept` picks the candidate in a throwaway worktree, so a conflict never reaches the files a session briefs from. All three refuse while a Dhrona batch holds the folder's lock. `learned_folder(cfg)` names the folder.
+- `ramabana-learned` runs the same from a terminal: `ramabana-learned` lists, and `ramabana-learned diff|accept|reject ID` acts on one.
+- `Agent.lessons()` returns this project's lessons as dicts of `lesson`, `cue`, `component`, `evidence` and `confidence`, read with shalya's `lessons` from the vault or the memory file alike. Requires shalya 0.1.14.
+
 ## 0.2.37
 
 - `local_window` reads a llama model through rishi's public `llama.get_model`. Requires rishi 0.1.45.

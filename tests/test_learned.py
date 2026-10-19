@@ -53,3 +53,23 @@ def test_a_start_file_is_kept(tmp_path):
     p.write_text('[{"repo": "/r"}]')
     a.ask('read a.py')
     assert p.read_text() == '[{"repo": "/r"}]'
+
+
+def test_lessons_read_back_from_the_memory_file(tmp_path):
+    "The no-vault layout, read by the same shalya reader Dhrona uses."
+    a, _ = fake_agent(cfg=tmp_path)
+    rem = next(t for t in a.tools if t.__name__ == 'remember')
+    rem('filter on the root-relative path', cue='an empty filtered search', component='tool', confidence='high')
+    rem('a plain note')
+    assert a.lessons() == [dict(lesson='filter on the root-relative path', cue='an empty filtered search', component='tool', confidence='high')]
+
+
+def test_lessons_read_back_from_a_vault(tmp_path):
+    from shalya.tools import lesson_text
+    from ramabana.testing import MemHost
+    t = lesson_text('use ls', cue='sizes', component='skill')
+    class Vault(MemHost):
+        provides = property(lambda self: frozenset(MemHost.provides.fget(self)) | {'memory'})
+        def memory_search(self, q, n): return dict(results=[dict(title=t.splitlines()[0], text=t), dict(title='x', text='a plain note')])
+    a, _ = fake_agent(Vault({'/proj/a.py': ''}), cfg=tmp_path)
+    assert a.lessons() == [dict(lesson='use ls', cue='sizes', component='skill')]
