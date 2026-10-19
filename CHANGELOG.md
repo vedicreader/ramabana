@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.35
+
+- `recorded()` treats every runtime as available while it replays. A page that replays Claude's answers now runs on a machine without Claude Code, such as the docs build.
+- A `WorkspaceHost` without a vault drops `mk_chat`, `pii` and `pii_ner` again, so `Agent.lend_model` leaves it alone. The line that did this had ended up after a `return` and never ran.
+- `dev` is an extra, and the `dev` dependency group installs it. CI and the docs build install `.[dev]`, which installed nothing before. `dev` requires nbdev 3.3.25, which leaves modules with no exports out of `_modidx.py`, as CI's nbdev does.
+- The routing examples in `core` show the current policy's output.
+
 ## 0.2.34
 
 - `ramabana-tick --install` quotes the tick's path in the launcher it writes. uv installs tools under `~/Library/Application Support` on macOS, and the unquoted path split at the space, so an installed beat never ran. Run `ramabana-tick --install` again to rewrite an existing launcher.
