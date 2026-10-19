@@ -311,7 +311,7 @@ A skill is markdown the agent reads when the work calls for it. Ramabana looks f
 
 When two skills share a name, the later folder wins. In each folder, a skill is a subfolder holding a `SKILL.md`. Four skills ship inside the package as Python modules: `coding_patterns`, `theory`, `write_prose` and `write_docs`. Any folder above overrides them. `/skills` lists what this session found, and `/skill NAME` prints one.
 
-`<cfg>/learned` holds what dhrona, a separate package that learns from past sessions, kept from earlier ones. Its skills override the packaged ones and lose to every folder you write. Its `AGENTS.md` goes in the briefing after Ramabana’s own rules and before the project instructions, and the project instructions outrank it. `--no-learned` starts a session without the folder.
+`<cfg>/learned` holds what dhrona, a separate package that learns from past sessions, kept from earlier ones. Its skills override the packaged ones and lose to every folder you write. Its `AGENTS.md` goes in the briefing after Ramabana’s own rules and before the project instructions, and the project instructions outrank it. A learned skill is listed like any other and read when a task needs it; one that replaces an inlined skill is clipped in the briefing to the same cap as `AGENTS.md`. `--no-learned` starts a session without the folder.
 
 An extension adds behaviour without changing Ramabana. It is a Python file in `<cfg>/extensions` with a `setup(reg)` function, and through `reg` it can:
 
@@ -423,17 +423,17 @@ agent.turn_lines(), repr(agent.turn_use)
 
 Start with the page for the contract you need:
 
-- [core](00_core.ipynb): errors, routing, model budgets, and shared values
-- [models](01b_models.ipynb): the model catalog, curated and discovered
-- [runtime](01_runtime.ipynb): backends, usage, runs, and compaction
-- [tools](02_tools.ipynb): hosts, tool construction, and delegation
-- [agent](03_agent.ipynb): turns, approvals, activity, plans, history, and branching
-- [testing](04_testing.ipynb): in-memory hosts and deterministic backends
-- [terminal](05_cli.ipynb), [MCP](06_mcp.ipynb), [PyREPL](11_pyrepl.ipynb), and [ACP](16_acp.ipynb): frontend adapters, the [now pane](18_pane.ipynb) beside the terminal, and the [first-run setup](19_setup.ipynb) that starts it in tmux
-- [vault](07_vault.ipynb), [API specifications](10_spec.ipynb), and [folder monitoring](17_monitor.ipynb): optional capabilities
-- [control](20_control.ipynb): a local socket a detached job runner listens on
-- [shop](08_shop.ipynb): product search tools
-- [coding patterns](09_coding_patterns.ipynb), [theory](13_theory.ipynb), [prose](14_write_prose.ipynb), and [documentation](15_write_docs.ipynb): bundled agent skills
+- [core](https://vedicreader.github.io/ramabana/core.html): errors, routing, model budgets, and shared values
+- [models](https://vedicreader.github.io/ramabana/models.html): the model catalog, curated and discovered
+- [runtime](https://vedicreader.github.io/ramabana/runtime.html): backends, usage, runs, and compaction
+- [tools](https://vedicreader.github.io/ramabana/tools.html): hosts, tool construction, and delegation
+- [agent](https://vedicreader.github.io/ramabana/agent.html): turns, approvals, activity, plans, history, and branching
+- [testing](https://vedicreader.github.io/ramabana/testing.html): in-memory hosts and deterministic backends
+- [terminal](https://vedicreader.github.io/ramabana/cli.html), [MCP](https://vedicreader.github.io/ramabana/mcp.html), [PyREPL](https://vedicreader.github.io/ramabana/pyrepl.html), and [ACP](https://vedicreader.github.io/ramabana/acp.html): frontend adapters, the [now pane](https://vedicreader.github.io/ramabana/pane.html) beside the terminal, and the [first-run setup](https://vedicreader.github.io/ramabana/setup.html) that starts it in tmux
+- [vault](https://vedicreader.github.io/ramabana/vault.html), [API specifications](https://vedicreader.github.io/ramabana/spec.html), and [folder monitoring](https://vedicreader.github.io/ramabana/monitor.html): optional capabilities
+- [control](https://vedicreader.github.io/ramabana/control.html): a local socket a detached job runner listens on
+- [shop](https://vedicreader.github.io/ramabana/shop.html): product search tools
+- [coding patterns](https://vedicreader.github.io/ramabana/coding_patterns.html), [theory](https://vedicreader.github.io/ramabana/theory.html), [prose](https://vedicreader.github.io/ramabana/write_prose.html), and [documentation](https://vedicreader.github.io/ramabana/write_docs.html): bundled agent skills
 
 The toolset itself is [shalya](https://github.com/vedicreader/shalya), the git plumbing is [gheasy](https://github.com/vedicreader/gheasy), and the scheduler is [pobblebonk](https://github.com/vedicreader/pobblebonk).
 

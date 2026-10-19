@@ -41,8 +41,8 @@ from shalya import (MAX_TOOL_CHARS, Host, HostError, NO_ROOTS, implemented, imag
 from shalya.core import Media
 from urai import tool_media
 from shalya.core import one_line as _1
-from shalya.host import LocalHost, _fuse
-from shalya.tools import _post_responses, image_tools as _image_tools, tools_for as _tools_for, mime_for
+from shalya.host import LocalHost, fuse
+from shalya.tools import post_responses, image_tools as _image_tools, tools_for as _tools_for, mime_for
 from .core import AgentError, agent_err, spec_caps, accepts, installed
 from .runtime import REPEAT_CALLS, Run, current_run, run_context
 
@@ -717,16 +717,14 @@ def mod_doc(modpath):
     try: return ast.get_docstring(ast.parse(Path(spec.origin).read_bytes()), clean=False)
     except (OSError, SyntaxError, ValueError): return None
 
-try:   # shalya's private helpers: if they move, listing keeps shalya's own importing behaviour
-    from shalya.skills import Skill, _describe, _mod_skill as _shalya_mod_skill
-    def _mod_skill(name, modpath):
-        "shalya's pyskill, described from source so listing skills imports nothing."
-        if (doc := mod_doc(modpath)) is None: return _shalya_mod_skill(name, modpath)
-        if not doc.strip(): return None
-        return Skill(name=name, source='pyskill', description=_describe(doc), where=modpath,
-                     _text=lambda: importlib.import_module(modpath).__doc__ or '')
-    shalya.skills._mod_skill = _mod_skill
-except ImportError: pass
+from shalya.skills import Skill, describe, mod_skill as _shalya_mod_skill
+def _mod_skill(name, modpath):
+    "shalya's pyskill, described from source so listing skills imports nothing."
+    if (doc := mod_doc(modpath)) is None: return _shalya_mod_skill(name, modpath)
+    if not doc.strip(): return None
+    return Skill(name=name, source='pyskill', description=describe(doc), where=modpath,
+                 _text=lambda: importlib.import_module(modpath).__doc__ or '')
+shalya.skills.mod_skill = _mod_skill   # `discover` calls it by this name
 
 # %% ../nbs/02_tools.ipynb #7e327a30
 # attachments live here, not in the terminal module: a host that only sends files must not load the TUI

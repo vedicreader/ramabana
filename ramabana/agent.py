@@ -830,6 +830,12 @@ def skill_catalogue(skills):
     rows = '\n'.join(f'- `{s.name}`: {first(s.description)}' for s in skills)
     return f'\n\n## Skills\n\nRead a skill with `read_skill(name)` before the work it covers.{point}\n\n{rows}'
 
+def _inline_text(s, learned, mx=MAX_CONTEXT_FILE):
+    "An inlined skill's text; one from `learned` is clipped to the cap `learned_context` keeps."
+    t = s.text()
+    if learned is None or len(t) <= mx or Path(learned).resolve() not in Path(str(s.where or '')).resolve().parents: return t
+    return t[:mx] + f'\n…[truncated; read_skill("{s.name}") for the rest]'
+
 def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=(), cfg=None,
                   pictures=True,    # does the turn model see a picture a tool returns
                   learned=None):    # the folder `learned_context` reads; None leaves it out
@@ -860,7 +866,7 @@ How to work:
     idx = skill_catalogue(skills)
     if idx: sp += idx
     for name in inline or ():
-        if (s := find(skills, name)): sp += f'\n\n## {s.name}\n\n{s.text()}'
+        if (s := find(skills, name)): sp += f'\n\n## {s.name}\n\n{_inline_text(s, learned)}'
     sp += learned_context(learned) + project_context(host, cfg=cfg)
     return sp + (f'\n\n{extra}' if extra else '')
 
@@ -2392,11 +2398,11 @@ def repo_state(folder):
 
 @patch
 def _record_start(self:Agent):
-    "Write each open folder's `repo_state` to `<runs_dir>/start.json`, once; a resumed session keeps the state it began from."
+    "Write each open folder's `repo_state` to `<runs_dir>/start.json` before a session's first turn; a session with turns already began elsewhere."
     d = getattr(self, 'runs_dir', None)
-    if d is None or (p := d/'start.json').exists(): return
+    if d is None or (p := d/'start.json').exists() or self.session_turns(self.session_id): return
     d.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps([s for f in self.host.roots if (s := repo_state(f))], indent=1))
+    with atomic_save(p, 'w') as f: json.dump([s for r in self.host.roots if (s := repo_state(r))], f, indent=1)
 
 @patch
 def _begin_turn(self:Agent, run=None):

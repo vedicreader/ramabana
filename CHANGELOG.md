@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.36
+
+- A session that already has turns writes no `start.json`. A session resumed from before that file existed used to write the state at the resume as the state it began from, and Dhrona replayed its first turn from the wrong commit. `start.json` is written atomically.
+- A learned skill that takes an inlined skill's name, such as `exhash`, is clipped in the briefing to the cap the learned `AGENTS.md` has, `MAX_CONTEXT_FILE`. `read_skill` still returns it whole.
+- `demo_agent` briefs the same on every machine.
+- Requires shalya 0.1.12 and imports its public `mod_skill`, `describe`, `fuse` and `post_responses` instead of the `_` names.
+
 ## 0.2.35
 
 - `recorded()` treats every runtime as available while it replays. A page that replays Claude's answers now runs on a machine without Claude Code, such as the docs build.
