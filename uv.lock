@@ -3971,7 +3971,7 @@ requires-dist = [
     { name = "rich", marker = "extra == 'all'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'python'", specifier = ">=15.0.0" },
-    { name = "rishi", specifier = ">=0.1.41" },
+    { name = "rishi", specifier = ">=0.1.43" },
     { name = "shalya", specifier = ">=0.1.9" },
     { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.9" },
     { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.9" },
@@ -4136,7 +4136,7 @@ wheels = [
 
 [[package]]
 name = "rishi"
-version = "0.1.41"
+version = "0.1.43"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
@@ -4152,9 +4152,9 @@ dependencies = [
     { name = "truststore" },
     { name = "uraiyadal" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/48/46/0a433e130125245750ab363cd5a7fa4e9c0a4190dc31db64d05a416ea435/rishi-0.1.41.tar.gz", hash = "sha256:4659d15b4231f122f3740d51cc62ae927ef6f9310bd9acc290d62fd28796f050", size = 77731, upload-time = "2026-10-09T02:37:30.152Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/3c/5d1e14a9c650369f6190373c2e96840ac887bdf449321c45d394e0395214/rishi-0.1.43.tar.gz", hash = "sha256:7dac6444c5e766ae938c0648cfaae05f88bfbdbe7cff611905bd994087093145", size = 78098, upload-time = "2026-10-19T00:46:22.648Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b8/6a/8169e4d43c5af7861f58c715822969436cdeca1229916fda5e2c650bf153/rishi-0.1.41-py3-none-any.whl", hash = "sha256:507a6e55c75953dc9116ecf0b2b88ae11b52de16545b18b33b6aac5689e24d3e", size = 86827, upload-time = "2026-10-09T02:37:28.722Z" },
+    { url = "https://files.pythonhosted.org/packages/68/5d/db94ba402ed51af2f186a3b147ba8bdd9fcc1b26b62c71e6990c6b9c9a2c/rishi-0.1.43-py3-none-any.whl", hash = "sha256:bd6a0a588479234b232739ecac4f4e7a03d32836d98a9b511ed6afa86a0af8bb", size = 87206, upload-time = "2026-10-19T00:46:21.363Z" },
 ]
 
 [package.optional-dependencies]
