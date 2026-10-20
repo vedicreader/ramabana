@@ -13,16 +13,16 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
            'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
            'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
-           'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'ALIVE_EVERY', 'REOPEN_EVERY',
-           'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'set_theme',
-           'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture',
-           'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
-           'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'OpenDiff',
-           'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index',
-           'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'amain', 'headless_prompt',
-           'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA',
-           'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs',
-           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
+           'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'ALIVE_EVERY',
+           'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg',
+           'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
+           'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option',
+           'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table',
+           'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md',
+           'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'loop_error',
+           'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'pane_cmd', 'MAX_MEDIA',
+           'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING',
+           'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -2248,21 +2248,28 @@ def begin(self:Ui):
     self.start_turn(self.warm_up())
 
 # %% ../nbs/05_cli.ipynb #ccb8ca7b
+WRITE_WAIT = 5.0   #: seconds a write waits for a full terminal to drain before it drops the rest of the frame
+
 class AppTty(RealTty):
-    "`RealTty` that stops reading and drops writes once the terminal hangs up."
-    gone = False
+    "`RealTty` that waits out a full terminal, and stops reading and drops writes once it hangs up."
+    gone = dropped = False
     def read(self, timeout=0.02):
         out = b''
         while not self.gone and select.select([self.fd], [], [], timeout)[0]:
             try: b = os.read(self.fd, 1024)
+            except (BlockingIOError, InterruptedError): break
             except OSError: b = b''
             if not b: self.gone = True
             out, timeout = out + b, 0.005
         return out
     def write(self, data):
         if self.gone: return
-        try: super().write(data)
-        except OSError: self.gone = True
+        fd, v = sys.stdout.fileno(), memoryview(data.encode() if isinstance(data, str) else data)
+        while v:   # a tty another process left non-blocking takes part of a frame, or none until it drains
+            try: v = v[os.write(fd, v):]
+            except BlockingIOError:
+                if not select.select([], [fd], [], WRITE_WAIT)[1]: self.dropped = True; return
+            except OSError: self.gone = True; return
     def restore(self):
         try: super().restore()
         except (termios.error, OSError): pass
@@ -2315,6 +2322,16 @@ def pick_session(agent,
 
 RESUME_SHOWN = 10   #: the most recent turns a resumed session draws
 
+def loop_error(ui):
+    "An event-loop exception handler that keeps asyncio's report in stderr.log and shows the error in the session, which carries on."
+    def handle(loop, ctx):
+        loop.default_exception_handler(ctx)
+        if ui.closed: return
+        e = ctx.get('exception')
+        ui.note(f"{ctx.get('message') or 'error'}: {agent_err(e) if e else ''}", 'error')
+        ui.paint()
+    return handle
+
 @patch
 def show_resumed(self:Ui, n=RESUME_SHOWN):
     "Draw the resumed session's last `n` turns: each request, what was sent during it, and its reply."
@@ -2332,6 +2349,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
                 resumed=False):   # draw the resumed session's turns before the first prompt
     "The tty loop: one terminal, one event loop, one keyboard owner."
     tty = AppTty()
+    os.set_blocking(sys.stdout.fileno(), True)   # a process that shared this terminal may have left it non-blocking
     tty.write('\x1b[?2004h')
     done = asyncio.Event()
     ui = None
@@ -2342,6 +2360,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         ui.bell = bell
         ui.hint = hint
         comp.on_task_error = lambda e, t: ui.say(Text(f'{t.get_name()} failed: {e!r}'), 'error')
+        asyncio.get_running_loop().set_exception_handler(loop_error(ui))   # a key handler or a posted notice that raises
         comp.spawn(ui.animate(), name='spinner')
         def on_key(k):
             out = ui.on_key(k)
@@ -2372,11 +2391,13 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
             while not done.is_set():
                 try: await asyncio.wait_for(done.wait(), 0.2)
                 except asyncio.TimeoutError: comp.flush_input()
+                if tty.dropped: tty.dropped = False; comp._invalidate(); ui.paint()   # repaint the rows a dropped frame never drew
         finally:
             loop.remove_reader(tty.fd)
             comp.stop()
     finally:
         if ui is not None: ui.close_pane()
+        with contextlib.suppress(OSError): os.set_blocking(sys.stdout.fileno(), True)   # the shell gets the terminal back blocking
         tty.write('\x1b[?2004l' + MOUSE_OFF + (KEYS_OFF if ext_keys_ok(tty) else '') + '\r\n')   # `stop` never ran if setup raised
         tty.restore()
         if ui is not None: ui.closed = True
