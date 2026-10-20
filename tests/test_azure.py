@@ -155,7 +155,9 @@ def test_a_bedrock_mantle_definition_resolves_with_its_window(monkeypatch):
     monkeypatch.setenv('AWS_BEARER_TOKEN_BEDROCK', 'k')
     _write('[model."bedrock-gpt"]\nmodel_id = "openai.gpt-5.4"\nbase_url = "https://bedrock-mantle.us-east-1.api.aws/v1"\napi_key_env = "AWS_BEARER_TOKEN_BEDROCK"\napi_name = "openai"\n')
     spec = resolve('bedrock-gpt')
-    assert (spec.runtime, spec.model_id, spec.ctx, spec.note) == ('remote', 'openai.gpt-5.4', 272000, '')
+    from fastllm.types import get_model_info
+    win = get_model_info('openai.gpt-5.4', 'bedrock_mantle')['max_input_tokens']   # fastllm's Bedrock table, not a number of ours
+    assert (spec.runtime, spec.model_id, spec.ctx, spec.note) == ('remote', 'openai.gpt-5.4', win, '')
     assert core.provider_ready('bedrock') and core.remote_models() == ['bedrock-gpt']
     assert 'no images endpoint' in (_write('[model."bedrock-gpt"]\nmodel_id = "openai.gpt-5.4"\nbase_url = "https://bedrock-mantle.us-east-1.api.aws/v1"\napi_key_env = "AWS_BEARER_TOKEN_BEDROCK"\n[jobs]\nimage = "bedrock-gpt"\n') and core.image_route())
 
