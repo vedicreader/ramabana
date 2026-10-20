@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="A Python prompt you own, and an agent in the layer above it.">
+
+<title>pyrepl – ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-f2788e636de456f6409e966386820849.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="pyrepl – ramabana">
+<meta property="og:description" content="A Python prompt you own, and an agent in the layer above it.">
+<meta property="og:site_name" content="ramabana">
+<meta name="twitter:title" content="pyrepl – ramabana">
+<meta name="twitter:description" content="A Python prompt you own, and an agent in the layer above it.">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./pyrepl.html">pyrepl</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./shop.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">shop</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pyrepl.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">pyrepl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./acp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">racp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#outputs" id="toc-outputs" class="nav-link active" data-scroll-target="#outputs">Outputs</a></li>
+  <li><a href="#the-kernel" id="toc-the-kernel" class="nav-link" data-scroll-target="#the-kernel">The kernel</a></li>
+  <li><a href="#the-host" id="toc-the-host" class="nav-link" data-scroll-target="#the-host">The host</a>
+  <ul class="collapse">
+  <li><a href="#completion-with-the-namespace-described" id="toc-completion-with-the-namespace-described" class="nav-link" data-scroll-target="#completion-with-the-namespace-described">Completion, with the namespace described</a></li>
+  </ul></li>
+  <li><a href="#attaching-to-a-session-someone-else-owns" id="toc-attaching-to-a-session-someone-else-owns" class="nav-link" data-scroll-target="#attaching-to-a-session-someone-else-owns">Attaching to a session someone else owns</a>
+  <ul class="collapse">
+  <li><a href="#colour" id="toc-colour" class="nav-link" data-scroll-target="#colour">Colour</a></li>
+  </ul></li>
+  <li><a href="#the-prompt-against-a-live-kernel" id="toc-the-prompt-against-a-live-kernel" class="nav-link" data-scroll-target="#the-prompt-against-a-live-kernel">The prompt, against a live kernel</a>
+  <ul class="collapse">
+  <li><a href="#typing-more-than-one-line" id="toc-typing-more-than-one-line" class="nav-link" data-scroll-target="#typing-more-than-one-line">Typing more than one line</a></li>
+  <li><a href="#getting-back-out-of-python-mode" id="toc-getting-back-out-of-python-mode" class="nav-link" data-scroll-target="#getting-back-out-of-python-mode">Getting back out of Python mode</a></li>
+  <li><a href="#tab-against-the-live-kernel" id="toc-tab-against-the-live-kernel" class="nav-link" data-scroll-target="#tab-against-the-live-kernel">Tab, against the live kernel</a></li>
+  </ul></li>
+  <li><a href="#promote" id="toc-promote" class="nav-link" data-scroll-target="#promote"><code>/promote</code></a>
+  <ul class="collapse">
+  <li><a href="#attaching-to-the-live-session" id="toc-attaching-to-the-live-session" class="nav-link" data-scroll-target="#attaching-to-the-live-session">Attaching to the live session</a></li>
+  </ul></li>
+  <li><a href="#the-agent-at-the-python-prompt" id="toc-the-agent-at-the-python-prompt" class="nav-link" data-scroll-target="#the-agent-at-the-python-prompt">The agent at the Python prompt</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="pyrepl.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">pyrepl</h1>
+</div>
+
+<div>
+  <div class="description">
+    A Python prompt you own, and an agent in the layer above it.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<section id="outputs" class="level2">
+<h2 class="anchored" data-anchor-id="outputs">Outputs</h2>
+<p>A kernel reports what a cell produced as a stream of messages: text printed to stdout, a result value, a rich display, an error. A notebook stores the same things as a list of dicts in nbformat, the notebook file format. <a href="https://vedicreader.github.io/ramabana/pyrepl.html#execoutcome"><code>ExecOutcome</code></a> holds the result of one request in that shape: whether it succeeded, its outputs, its execution count and its error, if any. The terminal, the session log that <code>log_cell</code> writes, and the tests all read the same list.</p>
+<p><a href="https://vedicreader.github.io/ramabana/pyrepl.html#output_text"><code>output_text</code></a> flattens such a list to plain text, which is what tests, logs and a plain terminal need. The cell below shows each kind of output.</p>
+<div id="0f466d04" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.744196+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.764842+00:00&quot;,&quot;total&quot;:0.020650017999997772}}" data-execution_count="4">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L30" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="output_text" class="level3">
+<h3 class="anchored" data-anchor-id="output_text">output_text</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> output_text(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    outputs</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Flatten notebook outputs for tests, logs and plain terminal fallbacks.</em></p>
+</section>
+</div>
+<div id="70aecc60" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.764974+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.773045+00:00&quot;,&quot;total&quot;:0.008074636000003466}}" data-execution_count="5">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L23" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="execoutcome" class="level3">
+<h3 class="anchored" data-anchor-id="execoutcome">ExecOutcome</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> ExecOutcome(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    ok:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, outputs:<span class="bu">list</span><span class="op">=&lt;</span>factory<span class="op">&gt;</span>, execution_count:<span class="bu">int</span> <span class="op">|</span> <span class="va">None</span><span class="op">=</span><span class="va">None</span>, error:<span class="bu">str</span> <span class="op">|</span> <span class="va">None</span><span class="op">=</span><span class="va">None</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>One kernel request in nbformat’s output shape.</em></p>
+</section>
+</div>
+<div id="pyr0007" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>outs <span class="op">=</span> [{<span class="st">'output_type'</span>: <span class="st">'stream'</span>, <span class="st">'text'</span>: <span class="st">'hello</span><span class="ch">\n</span><span class="st">'</span>},</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>        {<span class="st">'output_type'</span>: <span class="st">'execute_result'</span>, <span class="st">'data'</span>: {<span class="st">'text/plain'</span>: <span class="st">'42'</span>}},</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>        {<span class="st">'output_type'</span>: <span class="st">'error'</span>, <span class="st">'ename'</span>: <span class="st">'ValueError'</span>, <span class="st">'evalue'</span>: <span class="st">'bad'</span>, <span class="st">'traceback'</span>: []}]</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>test_eq(output_text(outs), <span class="st">'hello</span><span class="ch">\n</span><span class="st">42</span><span class="ch">\n</span><span class="st">ValueError: bad'</span>)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>test_eq(output_text([{<span class="st">'output_type'</span>: <span class="st">'stream'</span>, <span class="st">'text'</span>: [<span class="st">'a'</span>, <span class="st">'b'</span>]}]), <span class="st">'ab'</span>)</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>test_eq(output_text([{<span class="st">'output_type'</span>: <span class="st">'error'</span>, <span class="st">'ename'</span>: <span class="st">'E'</span>, <span class="st">'evalue'</span>: <span class="st">'v'</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>                      <span class="st">'traceback'</span>: [<span class="st">'line one'</span>, <span class="st">'line two'</span>]}]), <span class="st">'line one</span><span class="ch">\n</span><span class="st">line two'</span>)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>test_eq(output_text([]), <span class="st">''</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="the-kernel" class="level2">
+<h2 class="anchored" data-anchor-id="the-kernel">The kernel</h2>
+<p><a href="https://vedicreader.github.io/ramabana/pyrepl.html#kernel"><code>Kernel</code></a> starts and drives a private ipykernel, the standard Python kernel for Jupyter. <code>start</code> launches it in <code>cwd</code>, waits until it is ready, and runs a bootstrap cell that starts Dhrishti inside it. Dhrishti serves the kernel’s namespace from a background thread. The bootstrap prints the server’s port behind a marker, and <code>start</code> reads the marker to set <code>base</code>, the server’s address. The session is registered under the name <code>&lt;project&gt;-pyrepl-&lt;pid&gt;</code>, so another terminal can find it.</p>
+<p><code>execute</code> runs one cell and returns an <a href="https://vedicreader.github.io/ramabana/pyrepl.html#execoutcome"><code>ExecOutcome</code></a>. It passes each output to <code>on_output</code> as it arrives, so the terminal can show it at once. <code>complete</code> asks the kernel for tab completions at a cursor position, <code>interrupt</code> stops the running cell, and <code>shutdown</code> stops the kernel, forcing it when it does not stop within <code>timeout</code>. A <a href="https://vedicreader.github.io/ramabana/pyrepl.html#kernel"><code>Kernel</code></a> that is not running answers <code>execute</code> with an error and <code>complete</code> with no matches, as the second cell shows.</p>
+<div id="ad3e7ffd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.789019+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.794906+00:00&quot;,&quot;total&quot;:0.005891523000002508}}" data-execution_count="7">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L48" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="kernel" class="level3">
+<h3 class="anchored" data-anchor-id="kernel">Kernel</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> Kernel(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    cwd:<span class="bu">str</span><span class="op">=</span><span class="st">'.'</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A private ipykernel with Dhrishti serving its live namespace.</em></p>
+</section>
+</div>
+<div id="pyr0010" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>kernel <span class="op">=</span> <span class="cf">await</span> Kernel(<span class="st">'.'</span>).start()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> kernel.execute(<span class="st">'a = 6 * 7</span><span class="ch">\n</span><span class="st">a'</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>test_eq((r.ok, output_text(r.outputs)), (<span class="va">True</span>, <span class="st">'42'</span>))</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kernel.base.startswith(<span class="st">'http://127.0.0.1:'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="pyr0011" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>dead <span class="op">=</span> Kernel(<span class="st">'.'</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> dead.execute(<span class="st">'1 + 1'</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>test_eq((r.ok, r.error), (<span class="va">False</span>, <span class="st">'kernel is not running'</span>))</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> kernel.execute(<span class="st">'1/0'</span>)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>test_eq(r.ok, <span class="va">False</span>)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'ZeroDivisionError'</span> <span class="kw">in</span> r.error <span class="kw">and</span> <span class="st">'ZeroDivisionError'</span> <span class="kw">in</span> output_text(r.outputs)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> kernel.execute(<span class="st">"for i in range(3): print(i)"</span>)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>([o <span class="cf">for</span> o <span class="kw">in</span> r.outputs <span class="cf">if</span> o[<span class="st">'output_type'</span>] <span class="op">==</span> <span class="st">'stream'</span>]), <span class="dv">1</span>)</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>test_eq(output_text(r.outputs), <span class="st">'0</span><span class="ch">\n</span><span class="st">1</span><span class="ch">\n</span><span class="st">2'</span>)</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> kernel.execute(<span class="st">'import json'</span>)</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>matches, start <span class="op">=</span> <span class="cf">await</span> kernel.complete(<span class="st">'json.du'</span>, <span class="dv">7</span>)</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>test_eq((<span class="bu">sorted</span>(matches), start), ([<span class="st">'dump'</span>, <span class="st">'dumps'</span>], <span class="dv">5</span>))</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="cf">await</span> dead.complete(<span class="st">'json.du'</span>, <span class="dv">7</span>), ([], <span class="dv">7</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="the-host" class="level2">
+<h2 class="anchored" data-anchor-id="the-host">The host</h2>
+<p>The agent needs a host whose Python tools reach this kernel. Its file, search and web tools stay the ordinary ones. <a href="https://vedicreader.github.io/ramabana/pyrepl.html#dhrishti"><code>Dhrishti</code></a> is the piece that changes: it sends the agent’s <code>run_python</code>, <code>inspect_python</code> and variable listing over HTTP to the agent half of the Dhrishti API. Every call it makes goes to <code>/agent/api/...</code>, which needs no token, and none of these paths reads the owner token that opens <code>/api/exec</code>, <code>/api/set</code> and <code>/api/promote</code>. So no tool call can change the owner’s namespace. The only code here that reads the owner token is <a href="https://vedicreader.github.io/ramabana/pyrepl.html#promote"><code>promote</code></a>, which runs when the person types <code>/promote</code>.</p>
+<p><code>log_cell</code> keeps the whole session in one notebook, the session log that Dhrishti keeps. The person’s cells go in as code cells with their real outputs, and each agent turn goes in as markdown cells for the prompt and the answer, in the order they happened.</p>
+<div id="9636f59d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.810674+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.820112+00:00&quot;,&quot;total&quot;:0.009441476999995757}}" data-execution_count="9">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L262" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="dhrishtihost" class="level3">
+<h3 class="anchored" data-anchor-id="dhrishtihost">DhrishtiHost</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> DhrishtiHost(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    roots, <span class="co"># the folders the agent is confined to; each must exist</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    base, <span class="op">*</span>, ns:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># live namespace; fresh dict when None</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    approvals:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># write approval handler</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    note:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># status callback</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    web:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, <span class="co"># use fossick when installed</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    index:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, <span class="co"># start a Kosha sync for every open root</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    graph:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># build Kosha's call graph during sync</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    rerank:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, <span class="co"># rerank Kosha hits with flashrank</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    rerank_model:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># flashrank model; None uses its default</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    memory:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># memory, ask and watch backend</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    apis:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># API specification backend</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    kernel:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># live kernel; None runs in process</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>    read_outside:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># let read-only tools name any path on this machine</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>    deny:<span class="bu">tuple</span><span class="op">=</span>(<span class="st">'*/.ssh/*'</span>, <span class="st">'*/.aws/*'</span>, <span class="st">'*/.gnupg/*'</span>, <span class="st">'*/.config/gcloud/*'</span>, <span class="st">'*/.netrc'</span>, <span class="st">'*/.git-credentials'</span>, <span class="st">'*/.codex/auth.json'</span>, <span class="st">'*/.claude/.credentials.json'</span>, <span class="st">'*/.env'</span>, <span class="st">'*/.env.*'</span>, <span class="st">'*/id_rsa*'</span>, <span class="st">'*/id_ed25519*'</span>, <span class="st">'*.pem'</span>, <span class="st">'*.key'</span>, <span class="st">'*.p12'</span>), <span class="co"># what `read_outside` still refuses to open</span></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>    read_roots:<span class="bu">tuple</span><span class="op">=</span>(), <span class="co"># folders the read tools search and no write may touch</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>    tmux:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># None detects `$TMUX`; False off; True on; or this host's own pane (target or `Pane`)</span></span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>    read_guard:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># `(ReadCheck) -&gt; None | str | Refusal`: what the read tools may send</span></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>    model_local:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># `() -&gt; (local, model)` for the turn's model</span></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A <code>LocalHost</code> that starts on a Dhrishti overlay, for callers that build one directly.</em></p>
+</section>
+</div>
+<div id="e36f5d67" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.820401+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.844222+00:00&quot;,&quot;total&quot;:0.023827469000011092}}" data-execution_count="10">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L256" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="use_kernel" class="level3">
+<h3 class="anchored" data-anchor-id="use_kernel">use_kernel</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> use_kernel(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    host, base</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Point <code>host</code>’s Python at a Dhrishti overlay in place, keeping every other tool group.</em></p>
+</section>
+</div>
+<div id="fcd202a2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.844405+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.872458+00:00&quot;,&quot;total&quot;:0.02805918599999302}}" data-execution_count="11">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L198" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="dhrishti" class="level3">
+<h3 class="anchored" data-anchor-id="dhrishti">Dhrishti</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> Dhrishti(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    base</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The agent half of a Dhrishti session, in the shape of a kernel a <code>LocalHost</code> can hold.</em></p>
+</section>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/pyrepl.html#dhrishti"><code>Dhrishti</code></a> is everything a <code>LocalHost</code> needs from a kernel: the calls <code>run</code>, <code>inspect</code>, <code>list_vars</code>, <code>log_cell</code> and <code>describe</code>, and the two facts <code>scopes</code> and <code>kind</code>. <code>run</code> always uses the overlay, whatever scope the model asks for, and <code>inspect</code> accepts only the <code>isolated</code> and <code>overlay</code> scopes. The cells below run code in the overlay and read it back.</p>
+<div id="6ea0d2fe" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.872664+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.873696+00:00&quot;,&quot;total&quot;:0.0010350570000099424}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shalya.host <span class="im">import</span> LocalHost</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="70530303" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>k <span class="op">=</span> Dhrishti(kernel.base)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>k.scopes, k.kind, k.run(<span class="st">'from_the_kernel = 1'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="1501eb53" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>test_eq(k.scopes, (<span class="st">'isolated'</span>, <span class="st">'overlay'</span>))</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>test_eq(k.kind, <span class="st">'ipykernel'</span>)</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>test_eq(k.run(<span class="st">'from_the_kernel = 1'</span>), <span class="st">'(ok)'</span>)</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>test_eq(k.inspect(<span class="st">'from_the_kernel + 1'</span>, <span class="st">'overlay'</span>), <span class="st">'2'</span>)</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'from_the_kernel'</span> <span class="kw">in</span> k.list_vars()</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'only honours'</span> <span class="kw">in</span> k.inspect(<span class="st">'1+1'</span>, scope<span class="op">=</span><span class="st">'nonsense'</span>)</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>test_eq(k.base, kernel.base)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>There are two ways to give a host this kernel. <code>use_kernel(host, base)</code> takes the host a session already has and points its Python at the Dhrishti session at <code>base</code>, in place. Every other tool group stays as it was, so a host with a vault keeps its memory tools. The terminal calls it when you switch to Python mode or attach to a session, and so does <code>mk_agent(python=URL)</code>. <code>DhrishtiHost(roots, base)</code> builds a new <code>LocalHost</code> that starts on a Dhrishti session, for code that creates its host directly.</p>
+<p>The first cell below compares the tool names of a host with memory before and after <a href="https://vedicreader.github.io/ramabana/pyrepl.html#use_kernel"><code>use_kernel</code></a>, and nothing is added or lost. After that, a <a href="https://vedicreader.github.io/ramabana/pyrepl.html#dhrishtihost"><code>DhrishtiHost</code></a> shows the overlay at work: the agent’s <code>owner = None</code> leaves the person’s <code>owner</code> as it was. The cells after it check <code>log_cell</code>, a session that has no log, and <code>describe</code>, which keeps falsy values such as <code>0</code> and <code>''</code>.</p>
+<div id="c610bd75" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.874421+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.880858+00:00&quot;,&quot;total&quot;:0.0064412919999909946}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> shalya.tools <span class="im">import</span> tools_for</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="8abb1012" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Store:</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> tree(<span class="va">self</span>, document<span class="op">=</span><span class="st">''</span>): <span class="cf">return</span> []</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> search(<span class="va">self</span>, query, limit<span class="op">=</span><span class="dv">8</span>): <span class="cf">return</span> []</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> read(<span class="va">self</span>, node_id): <span class="cf">return</span> {}</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> topics(<span class="va">self</span>, limit<span class="op">=</span><span class="dv">12</span>): <span class="cf">return</span> []</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> forget(<span class="va">self</span>, doc_id): <span class="cf">return</span> <span class="va">False</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> remember(<span class="va">self</span>, text, title<span class="op">=</span><span class="va">None</span>, tags<span class="op">=</span>()): <span class="cf">return</span> {<span class="st">'doc_id'</span>: <span class="st">'d1'</span>, <span class="st">'title'</span>: <span class="st">'x'</span>}</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> ask(<span class="va">self</span>, q, ref<span class="op">=</span><span class="va">None</span>, instruction<span class="op">=</span><span class="st">''</span>, <span class="op">**</span>kw): <span class="cf">return</span> {<span class="st">'answer'</span>: <span class="st">''</span>, <span class="st">'cited'</span>: []}</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> watch(<span class="va">self</span>, target, <span class="op">**</span>kw): <span class="cf">return</span> {<span class="st">'id'</span>: <span class="st">'w1'</span>}</span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> watches(<span class="va">self</span>, due_only<span class="op">=</span><span class="va">False</span>): <span class="cf">return</span> []</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> unwatch(<span class="va">self</span>, watch_id): <span class="cf">return</span> <span class="va">False</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> poll(<span class="va">self</span>): <span class="cf">return</span> {<span class="st">'ran'</span>: <span class="dv">0</span>, <span class="st">'checked'</span>: <span class="dv">0</span>, <span class="st">'results'</span>: []}</span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>vaulted <span class="op">=</span> LocalHost([<span class="st">'.'</span>], index<span class="op">=</span><span class="va">False</span>, web<span class="op">=</span><span class="va">False</span>, memory<span class="op">=</span>Store())</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>before <span class="op">=</span> {t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> tools_for(vaulted)}</span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>use_kernel(vaulted, kernel.base)</span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>after <span class="op">=</span> {t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> tools_for(vaulted)}</span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(before), <span class="bu">sorted</span>(before <span class="op">-</span> after), <span class="bu">sorted</span>(after <span class="op">-</span> before)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="7b7c960a" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>test_eq(before <span class="op">-</span> after, <span class="bu">set</span>())</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>test_eq(after <span class="op">-</span> before, <span class="bu">set</span>())</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'memory_read'</span> <span class="kw">in</span> after <span class="kw">and</span> <span class="st">'run_python'</span> <span class="kw">in</span> after</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>test_eq(vaulted.scopes, (<span class="st">'isolated'</span>, <span class="st">'overlay'</span>))</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>test_eq(vaulted.kernel_kind, <span class="st">'ipykernel'</span>)</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>test_eq(vaulted.run_python(<span class="st">'after_the_swap = 2'</span>), <span class="st">'(ok)'</span>)</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'after_the_swap'</span> <span class="kw">in</span> vaulted.list_vars()</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>test_eq(use_kernel(vaulted, kernel.base), vaulted)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="pyr0014" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>host <span class="op">=</span> DhrishtiHost([<span class="st">'.'</span>], kernel.base, web<span class="op">=</span><span class="va">False</span>, index<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> kernel.execute(<span class="st">"owner = {'kept': 1}"</span>)</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>test_eq(host.run_python(<span class="st">'mine = len(owner)'</span>), <span class="st">'(ok)'</span>)</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'mine'</span> <span class="kw">in</span> host.list_vars() <span class="kw">and</span> <span class="st">'owner'</span> <span class="kw">in</span> host.list_vars()</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>host.run_python(<span class="st">'owner = None'</span>)</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> kernel.execute(<span class="st">'owner'</span>)</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>test_eq(output_text(r.outputs), <span class="st">"{'kept': 1}"</span>)</span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'Error'</span> <span class="kw">in</span> DhrishtiHost([<span class="st">'.'</span>], <span class="st">'http://127.0.0.1:1'</span>, web<span class="op">=</span><span class="va">False</span>, index<span class="op">=</span><span class="va">False</span>).run_python(<span class="st">'1'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="565c6451" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.883334+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.889486+00:00&quot;,&quot;total&quot;:0.006156971999999428}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastcore.nbio <span class="im">import</span> read_nb</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="pyr0015" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> kernel.execute(<span class="st">'logged = 1'</span>)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>host.log_cell(<span class="st">'logged = 1'</span>, r.outputs)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>host.log_cell(<span class="st">'**user**</span><span class="ch">\n\n</span><span class="st">what is logged?'</span>, cell_type<span class="op">=</span><span class="st">'markdown'</span>)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>nb <span class="op">=</span> read_nb(host.agent_log)</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>test_eq([c.cell_type <span class="cf">for</span> c <span class="kw">in</span> nb.cells[<span class="op">-</span><span class="dv">2</span>:]], [<span class="st">'code'</span>, <span class="st">'markdown'</span>])</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>test_eq(nb.cells[<span class="op">-</span><span class="dv">2</span>].outputs, r.outputs)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="2265b5f5" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>_real_api <span class="op">=</span> _api</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>_api <span class="op">=</span> <span class="kw">lambda</span> base, path, params<span class="op">=</span><span class="va">None</span>, timeout<span class="op">=</span><span class="dv">60</span>: {<span class="st">'log'</span>: <span class="va">None</span>}</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>: nolog <span class="op">=</span> DhrishtiHost([<span class="st">'.'</span>], kernel.base, web<span class="op">=</span><span class="va">False</span>, index<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>: _api <span class="op">=</span> _real_api</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>dead_host <span class="op">=</span> DhrishtiHost([<span class="st">'.'</span>], <span class="st">'http://127.0.0.1:1'</span>, web<span class="op">=</span><span class="va">False</span>, index<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>test_eq((nolog.agent_log, dead_host.agent_log), (<span class="va">None</span>, <span class="va">None</span>))</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>test_eq([h.log_cell(<span class="st">'x = 1'</span>, []) <span class="cf">for</span> h <span class="kw">in</span> (nolog, dead_host)], [<span class="va">None</span>, <span class="va">None</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="833b9854" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>_real_api <span class="op">=</span> _api</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _fake_rows_api(base, path, params<span class="op">=</span><span class="va">None</span>, timeout<span class="op">=</span><span class="dv">60</span>):</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">'groups'</span>: [{<span class="st">'nodes'</span>: [</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>        {<span class="st">'name'</span>: <span class="st">'zero_val'</span>, <span class="st">'type'</span>: <span class="st">'int'</span>, <span class="st">'value'</span>: <span class="dv">0</span>},</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>        {<span class="st">'name'</span>: <span class="st">'blank_val'</span>, <span class="st">'type'</span>: <span class="st">'str'</span>, <span class="st">'value'</span>: <span class="st">''</span>},</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>        {<span class="st">'name'</span>: <span class="st">'missing_val'</span>, <span class="st">'type'</span>: <span class="st">'NoneType'</span>, <span class="st">'value'</span>: <span class="va">None</span>},</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>    ]}]}</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>_api <span class="op">=</span> _fake_rows_api</span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>: described <span class="op">=</span> host.describe()</span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>: _api <span class="op">=</span> _real_api</span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>test_eq(described[<span class="st">'zero_val'</span>], <span class="st">'0'</span>)</span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>test_eq(described[<span class="st">'blank_val'</span>], <span class="st">''</span>)</span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>test_eq(described[<span class="st">'missing_val'</span>], <span class="st">'NoneType'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="completion-with-the-namespace-described" class="level3">
+<h3 class="anchored" data-anchor-id="completion-with-the-namespace-described">Completion, with the namespace described</h3>
+<p>Tab completion at the Python prompt draws on two sources. The kernel supplies the candidates. Its completer is IPython’s, with jedi behind it, so it knows imports, attribute chains, dictionary keys and file paths. Dhrishti has no completion endpoint, and its view of the namespace covers only top-level names, so it would complete worse.</p>
+<p>Dhrishti supplies the descriptions instead. <a href="https://vedicreader.github.io/ramabana/pyrepl.html#annotate"><code>annotate</code></a> adds the type and shape Dhrishti reports to each candidate that names a live variable, so the menu shows <code>df -&gt; DataFrame [1200×8]</code> rather than <code>df</code>. Reading descriptions needs no token, so they come from the agent half of the API. They are optional: if the lookup is slow or fails, the menu shows the bare names, never an empty list.</p>
+<div id="c1f33f7a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.901400+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.928290+00:00&quot;,&quot;total&quot;:0.026895774999999844}}" data-execution_count="16">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L276" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="annotate" class="level3">
+<h3 class="anchored" data-anchor-id="annotate">annotate</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> annotate(</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    matches, described</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Candidate names with their type and shape where the session knows one.</em></p>
+</section>
+</div>
+<div id="011dd38d" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>test_eq(annotate([<span class="st">'df'</span>, <span class="st">'dfs'</span>], {<span class="st">'df'</span>: <span class="st">'DataFrame [3×2]'</span>}), [<span class="st">'df -&gt; DataFrame [3×2]'</span>, <span class="st">'dfs'</span>])</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>test_eq(annotate([<span class="st">'x'</span>], {}), [<span class="st">'x'</span>])</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>test_eq(annotate([], {<span class="st">'x'</span>: <span class="st">'int'</span>}), [])</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>test_eq(annotate([<span class="st">'df.copy'</span>], {<span class="st">'df'</span>: <span class="st">'DataFrame [3×2]'</span>}), [<span class="st">'df.copy'</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+</section>
+<section id="attaching-to-a-session-someone-else-owns" class="level2">
+<h2 class="anchored" data-anchor-id="attaching-to-a-session-someone-else-owns">Attaching to a session someone else owns</h2>
+<p>Sometimes the kernel already exists. Leela, for example, runs a Python session with its own Dhrishti server, and you want a Ramabana agent beside it rather than a second kernel. <code>ramabana --attach NAME</code> starts no kernel. It finds the running server and points the agent’s host at it. The other program keeps the person’s prompt, so in this case there is no Python mode, and Ramabana is only the agent.</p>
+<p><code>find_session(attach)</code> turns a name into the server’s address. A URL passes straight through. Otherwise it reads Dhrishti’s registry of live sessions and tries, in order, an exact session name, a name of the form <code>&lt;attach&gt;-pyrepl-&lt;pid&gt;</code>, and the name of the folder the session runs in. When two sessions match it raises with both rather than pick one, and when none matches it names the sessions that are running. <a href="https://vedicreader.github.io/ramabana/pyrepl.html#sessions"><code>sessions()</code></a> lists the live sessions, which is what <code>/kernels</code> and <code>ramabana --kernels</code> print.</p>
+<p><a href="https://vedicreader.github.io/ramabana/pyrepl.html#find_session"><code>find_session</code></a> only reads the registry and never calls Dhrishti’s <code>serve_in_kernel</code> again. Called on a session that is already serving, <code>serve_in_kernel</code> returns the right port but also repoints that session’s logs and resets its agent mode, so a <code>readonly</code> session would come back <code>restricted</code>.</p>
+<p>Promotion is not available here. The agent’s work shows in the shared session notebook and over the API that the owning program already watches, and the person promotes from that program, which holds the token.</p>
+<div id="294d5770" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.937207+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.945094+00:00&quot;,&quot;total&quot;:0.007892126000001554}}" data-execution_count="18">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L309" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="sessions" class="level3">
+<h3 class="anchored" data-anchor-id="sessions">sessions</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> sessions():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Every live Dhrishti session: what to pass to <code>--attach</code>, and where it is.</em></p>
+</section>
+</div>
+<div id="b51f4ae0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.945222+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:06.964947+00:00&quot;,&quot;total&quot;:0.019730395999999928}}" data-execution_count="19">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L286" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="find_session" class="level3">
+<h3 class="anchored" data-anchor-id="find_session">find_session</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> find_session(</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    attach</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Base URL of the live Dhrishti session named <code>attach</code>, or <code>attach</code> if it is a URL.</em></p>
+</section>
+</div>
+<div id="pyr0902" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>test_eq(find_session(<span class="st">'http://127.0.0.1:9999'</span>), <span class="st">'http://127.0.0.1:9999'</span>)</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: find_session(<span class="st">'no-such-session-anywhere'</span>), contains<span class="op">=</span><span class="st">'no live dhrishti session'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The real registry is shared by every Dhrishti session on this machine, so the next cell replaces <code>dhrishti.serving.active</code> with a fixed list for each check and runs the real resolution code against it. It covers a match by full name and by project name, a refusal when two sessions share a name, a project name that must not match a longer one that starts the same way, and a match by folder name.</p>
+<div id="pyr0907" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:06.966090+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.029541+00:00&quot;,&quot;total&quot;:0.06345797900000605}}" data-execution_count="20">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> unittest.mock <span class="im">import</span> patch</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _entry(name, port, cwd<span class="op">=</span><span class="st">'/x/proj'</span>):</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">'name'</span>: name, <span class="st">'port'</span>: port, <span class="st">'pid'</span>: port, <span class="st">'cwd'</span>: cwd, <span class="st">'base'</span>: <span class="ss">f'http://127.0.0.1:</span><span class="sc">{</span>port<span class="sc">}</span><span class="ss">'</span>, <span class="st">'started'</span>: <span class="dv">0</span>}</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>one <span class="op">=</span> [_entry(<span class="st">'proj-pyrepl-111'</span>, <span class="dv">9001</span>, <span class="st">'/home/proj'</span>)]</span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>dupe_name <span class="op">=</span> [_entry(<span class="st">'proj-pyrepl-111'</span>, <span class="dv">9001</span>, <span class="st">'/home/a'</span>), _entry(<span class="st">'proj-pyrepl-111'</span>, <span class="dv">9002</span>, <span class="st">'/home/b'</span>)]</span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>by_cwd <span class="op">=</span> [_entry(<span class="st">'some-other-name-222'</span>, <span class="dv">9003</span>, <span class="st">'/home/leela'</span>)]</span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> patch(<span class="st">'dhrishti.serving.active'</span>, <span class="kw">lambda</span>: one):</span>
+<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a>    test_eq(find_session(<span class="st">'proj-pyrepl-111'</span>), <span class="st">'http://127.0.0.1:9001'</span>)</span>
+<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a>    test_eq(find_session(<span class="st">'proj'</span>), <span class="st">'http://127.0.0.1:9001'</span>)</span>
+<span id="cb26-13"><a href="#cb26-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-14"><a href="#cb26-14" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> patch(<span class="st">'dhrishti.serving.active'</span>, <span class="kw">lambda</span>: dupe_name):</span>
+<span id="cb26-15"><a href="#cb26-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb26-16"><a href="#cb26-16" aria-hidden="true" tabindex="-1"></a>        find_session(<span class="st">'proj-pyrepl-111'</span>)</span>
+<span id="cb26-17"><a href="#cb26-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="va">False</span>, <span class="st">'expected a refusal'</span></span>
+<span id="cb26-18"><a href="#cb26-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">RuntimeError</span> <span class="im">as</span> e:</span>
+<span id="cb26-19"><a href="#cb26-19" aria-hidden="true" tabindex="-1"></a>        msg <span class="op">=</span> <span class="bu">str</span>(e)</span>
+<span id="cb26-20"><a href="#cb26-20" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">'matches more than one'</span> <span class="kw">in</span> msg</span>
+<span id="cb26-21"><a href="#cb26-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">'/home/a'</span> <span class="kw">in</span> msg <span class="kw">and</span> <span class="st">'/home/b'</span> <span class="kw">in</span> msg</span>
+<span id="cb26-22"><a href="#cb26-22" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">'9001'</span> <span class="kw">in</span> msg <span class="kw">and</span> <span class="st">'9002'</span> <span class="kw">in</span> msg</span>
+<span id="cb26-23"><a href="#cb26-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-24"><a href="#cb26-24" aria-hidden="true" tabindex="-1"></a>cross_project <span class="op">=</span> [_entry(<span class="st">'ramabana-pyrepl-1'</span>, <span class="dv">9004</span>, <span class="st">'/home/ramabana'</span>),</span>
+<span id="cb26-25"><a href="#cb26-25" aria-hidden="true" tabindex="-1"></a>                 _entry(<span class="st">'ramabana-extra-pyrepl-2'</span>, <span class="dv">9005</span>, <span class="st">'/home/ramabana-extra'</span>)]</span>
+<span id="cb26-26"><a href="#cb26-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-27"><a href="#cb26-27" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> patch(<span class="st">'dhrishti.serving.active'</span>, <span class="kw">lambda</span>: cross_project):</span>
+<span id="cb26-28"><a href="#cb26-28" aria-hidden="true" tabindex="-1"></a>    test_eq(find_session(<span class="st">'ramabana'</span>), <span class="st">'http://127.0.0.1:9004'</span>)</span>
+<span id="cb26-29"><a href="#cb26-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-30"><a href="#cb26-30" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> patch(<span class="st">'dhrishti.serving.active'</span>, <span class="kw">lambda</span>: by_cwd):</span>
+<span id="cb26-31"><a href="#cb26-31" aria-hidden="true" tabindex="-1"></a>    test_eq(find_session(<span class="st">'leela'</span>), <span class="st">'http://127.0.0.1:9003'</span>)</span>
+<span id="cb26-32"><a href="#cb26-32" aria-hidden="true" tabindex="-1"></a>    test_fail(<span class="kw">lambda</span>: find_session(<span class="st">'eela'</span>), contains<span class="op">=</span><span class="st">'no live dhrishti session'</span>)</span>
+<span id="cb26-33"><a href="#cb26-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-34"><a href="#cb26-34" aria-hidden="true" tabindex="-1"></a>test_eq(find_session(<span class="st">'http://127.0.0.1:9999'</span>), <span class="st">'http://127.0.0.1:9999'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="colour" class="level3">
+<h3 class="anchored" data-anchor-id="colour">Colour</h3>
+<p><a href="https://vedicreader.github.io/ramabana/pyrepl.html#hl"><code>hl</code></a> colours a line of Python for the terminal with rich’s syntax highlighter, which uses pygments. Both are already installed for the transcript. It returns a rich <code>Text</code> whose <code>.plain</code> is exactly the source, or uncoloured <code>Text</code> when pygments cannot read it. Colour changes only what is drawn. <code>log_cell</code>, the session notebook and <code>/copy</code> keep the plain source, because text with colour codes in it cannot be pasted back as code.</p>
+<div id="8c06e415" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:07.033233+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.042838+00:00&quot;,&quot;total&quot;:0.009609733000004894}}" data-execution_count="22">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L322" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="hl" class="level3">
+<h3 class="anchored" data-anchor-id="hl">hl</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> hl(</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    src</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>src</code> as highlighted <code>Text</code> with <code>.plain == src</code>, or plain <code>Text</code> if pygments cannot lex it.</em></p>
+</section>
+</div>
+<div id="1481ee33" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>t <span class="op">=</span> hl(<span class="st">'x = 1  # note'</span>)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>test_eq(t.plain, <span class="st">'x = 1  # note'</span>)</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> t.spans</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>test_eq(hl(<span class="st">''</span>).plain, <span class="st">''</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+</section>
+<section id="the-prompt-against-a-live-kernel" class="level2">
+<h2 class="anchored" data-anchor-id="the-prompt-against-a-live-kernel">The prompt, against a live kernel</h2>
+<p>The prompt is the terminal’s <code>cli.Ui</code>, and Python mode is one of its modes. The cells below drive it from here because this notebook has the live kernel. They draw the terminal on an emulated screen, <code>EmuTty</code>, and use <a href="https://vedicreader.github.io/ramabana/testing.html#fake_agent"><code>fake_agent</code></a> in place of a model. Agent mode is unchanged: the same blocks, folding, approvals, slash commands and status bar. Python mode changes what a typed line means, from a prompt for the model to code for the kernel.</p>
+<p>The cells check switching modes with <code>/agent</code> and <code>/python</code> (or <code>/py</code>), <code>/help</code> and <code>/vars</code> in Python mode, prompt history, how each kind of kernel output is shown, a turn that reaches the model and is written to the session notebook, attaching an image in agent mode, and that an <code>@</code> inside Python code is never taken for an attachment.</p>
+<div id="bfd5d81a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:07.043271+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.044733+00:00&quot;,&quot;total&quot;:0.0014661679999932176}}" data-execution_count="23">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.testing <span class="im">import</span> fake_agent</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.cli <span class="im">import</span> CompletionMenu, Ui, run_turn</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> teleprint.compositor <span class="im">import</span> Compositor</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> teleprint.keys <span class="im">import</span> Key</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> teleprint.testing <span class="im">import</span> EmuTty        <span class="co"># not `pyghostty.EmuTty`; see nbs/05_cli.ipynb</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="82a55404" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>tty <span class="op">=</span> EmuTty(<span class="dv">80</span>, <span class="dv">40</span>)   <span class="co"># tall enough for /help: `term.text()` has no scrollback</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>comp <span class="op">=</span> Compositor(tty)</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>comp._register_signals <span class="op">=</span> <span class="kw">lambda</span>: <span class="va">None</span>    <span class="co"># nbdev runs this async cell on a worker thread</span></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> comp.start()</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>agent, be <span class="op">=</span> fake_agent(host<span class="op">=</span>host, replies<span class="op">=</span>[<span class="st">'`owner` is a dict with one key.'</span>])</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>ui <span class="op">=</span> Ui(comp, agent)</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>ui.kernel <span class="op">=</span> kernel          <span class="co"># `enter_python` adopts it rather than start a second</span></span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> ui.enter_python()</span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>comp.on_key <span class="op">=</span> ui.on_key</span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>ui.paint()</span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a>test_eq(ui.mode, <span class="st">'python'</span>)</span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'python'</span> <span class="kw">in</span> ui.status().plain</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="e2aa5c49" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'/agent'</span>)<span class="op">;</span> test_eq(ui.submit(), <span class="va">None</span>)</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>test_eq(ui.mode, <span class="st">'agent'</span>)</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ui.prompt().plain.startswith(<span class="st">'▌'</span>)</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'/py'</span>)<span class="op">;</span> <span class="cf">await</span> ui.submit()</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>test_eq(ui.mode, <span class="st">'python'</span>)</span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'/help'</span>)<span class="op">;</span> ui.submit()</span>
+<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'python'</span> <span class="kw">in</span> tty.term.text()</span>
+<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'/vars'</span>)<span class="op">;</span> test_eq(ui.submit(), <span class="va">None</span>)</span>
+<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'owner'</span> <span class="kw">in</span> ui.transcript.block_text(<span class="bu">list</span>(comp.blocks.values())[<span class="op">-</span><span class="dv">1</span>])</span>
+<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-13"><a href="#cb31-13" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span>
+<span id="cb31-14"><a href="#cb31-14" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'/detach nothing.png'</span>)</span>
+<span id="cb31-15"><a href="#cb31-15" aria-hidden="true" tabindex="-1"></a>ui.complete <span class="op">=</span> CompletionMenu(ui.buf, [<span class="st">'/detach'</span>], start<span class="op">=</span><span class="dv">0</span>, show<span class="op">=</span><span class="dv">8</span>)</span>
+<span id="cb31-16"><a href="#cb31-16" aria-hidden="true" tabindex="-1"></a>test_eq(ui.submit(), <span class="va">None</span>)</span>
+<span id="cb31-17"><a href="#cb31-17" aria-hidden="true" tabindex="-1"></a>test_eq((ui.complete, ui.buf.text), (<span class="va">None</span>, <span class="st">''</span>))</span>
+<span id="cb31-18"><a href="#cb31-18" aria-hidden="true" tabindex="-1"></a>test_eq(ui.history[<span class="op">-</span><span class="dv">1</span>], <span class="st">'/detach nothing.png'</span>)</span>
+<span id="cb31-19"><a href="#cb31-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-20"><a href="#cb31-20" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'recalled_py = 1'</span>)</span>
+<span id="cb31-21"><a href="#cb31-21" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> ui.submit()</span>
+<span id="cb31-22"><a href="#cb31-22" aria-hidden="true" tabindex="-1"></a>test_eq(ui.history[<span class="op">-</span><span class="dv">1</span>], <span class="st">'recalled_py = 1'</span>)</span>
+<span id="cb31-23"><a href="#cb31-23" aria-hidden="true" tabindex="-1"></a>ui.recall(<span class="op">-</span><span class="dv">1</span>)</span>
+<span id="cb31-24"><a href="#cb31-24" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">'recalled_py = 1'</span>)</span>
+<span id="cb31-25"><a href="#cb31-25" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="98b40cf3" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>ui.on_output({<span class="st">'output_type'</span>: <span class="st">'stream'</span>, <span class="st">'name'</span>: <span class="st">'stdout'</span>, <span class="st">'text'</span>: <span class="st">'printed</span><span class="ch">\n</span><span class="st">'</span>})</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>ui.on_output({<span class="st">'output_type'</span>: <span class="st">'execute_result'</span>, <span class="st">'data'</span>: {<span class="st">'text/plain'</span>: <span class="st">'42'</span>}})</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>ui.on_output({<span class="st">'output_type'</span>: <span class="st">'error'</span>, <span class="st">'ename'</span>: <span class="st">'ValueError'</span>, <span class="st">'evalue'</span>: <span class="st">'bad'</span>, <span class="st">'traceback'</span>: []})</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>kinds <span class="op">=</span> [b.tag <span class="cf">for</span> b <span class="kw">in</span> comp.blocks.values()][<span class="op">-</span><span class="dv">3</span>:]</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>test_eq(kinds, [<span class="st">'note'</span>, <span class="st">'reply'</span>, <span class="st">'error'</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="fc271615" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> ui.run_code(<span class="st">'from_the_prompt = 99'</span>)</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> kernel.execute(<span class="st">'from_the_prompt'</span>)</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>test_eq(output_text(r.outputs), <span class="st">'99'</span>)</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>ui.mode <span class="op">=</span> <span class="st">'agent'</span></span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> run_turn(ui, <span class="st">'what is in owner?'</span>)</span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> be.sent, <span class="st">'the turn reached the backend'</span></span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>test_eq([c.cell_type <span class="cf">for</span> c <span class="kw">in</span> read_nb(host.agent_log).cells[<span class="op">-</span><span class="dv">2</span>:]], [<span class="st">'markdown'</span>, <span class="st">'markdown'</span>])</span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>ui.mode <span class="op">=</span> <span class="st">'python'</span></span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>_real_host <span class="op">=</span> agent.host</span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> h <span class="kw">in</span> (nolog, dead_host):</span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a>        agent.host <span class="op">=</span> h</span>
+<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">await</span> ui.run_code(<span class="st">'logless = 1'</span>)</span>
+<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a>        test_eq(ui.turn, <span class="va">None</span>)</span>
+<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>: agent.host <span class="op">=</span> _real_host</span>
+<span id="cb33-17"><a href="#cb33-17" aria-hidden="true" tabindex="-1"></a>test_eq(output_text((<span class="cf">await</span> kernel.execute(<span class="st">'logless'</span>)).outputs), <span class="st">'1'</span>)</span>
+<span id="cb33-18"><a href="#cb33-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-19"><a href="#cb33-19" aria-hidden="true" tabindex="-1"></a>_real_log <span class="op">=</span> host.log_cell</span>
+<span id="cb33-20"><a href="#cb33-20" aria-hidden="true" tabindex="-1"></a>host.log_cell <span class="op">=</span> <span class="kw">lambda</span> <span class="op">*</span>a, <span class="op">**</span>kw: <span class="dv">1</span><span class="op">/</span><span class="dv">0</span></span>
+<span id="cb33-21"><a href="#cb33-21" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>: <span class="cf">await</span> ui.run_code(<span class="st">'wedge_check = 1'</span>)</span>
+<span id="cb33-22"><a href="#cb33-22" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ZeroDivisionError</span>: <span class="cf">pass</span></span>
+<span id="cb33-23"><a href="#cb33-23" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>: host.log_cell <span class="op">=</span> _real_log</span>
+<span id="cb33-24"><a href="#cb33-24" aria-hidden="true" tabindex="-1"></a>test_eq(ui.turn, <span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="7caeb788" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:07.048008+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.048990+00:00&quot;,&quot;total&quot;:0.0009867960000065068}}" data-execution_count="24">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dataclasses <span class="im">import</span> replace</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="775e6daa" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>pics <span class="op">=</span> Path(tempfile.mkdtemp())</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>(pics <span class="op">/</span> <span class="st">'shot.png'</span>).write_bytes(<span class="st">b'</span><span class="ch">\x89</span><span class="st">PNG</span><span class="ch">\r\n\x1a\n</span><span class="st">'</span> <span class="op">+</span> <span class="st">b'0'</span> <span class="op">*</span> <span class="dv">64</span>)</span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>shot <span class="op">=</span> pics <span class="op">/</span> <span class="st">'shot.png'</span></span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>ui.mode <span class="op">=</span> <span class="st">'agent'</span></span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>be.spec <span class="op">=</span> replace(be.spec, ctx<span class="op">=</span><span class="dv">128_000</span>)</span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="ss">f'/attach </span><span class="sc">{</span>shot<span class="sc">}</span><span class="ss">'</span>)<span class="op">;</span> ui.submit()</span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'shot.png'</span> <span class="kw">in</span> ui.attach_row().plain</span>
+<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'what is in the picture?'</span>)</span>
+<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> ui.submit()</span>
+<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(be.sent[<span class="op">-</span><span class="dv">1</span>], <span class="bu">list</span>) <span class="kw">and</span> shot.read_bytes() <span class="kw">in</span> be.sent[<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb35-12"><a href="#cb35-12" aria-hidden="true" tabindex="-1"></a>test_eq(ui.attachments, [])</span>
+<span id="cb35-13"><a href="#cb35-13" aria-hidden="true" tabindex="-1"></a>ui.mode <span class="op">=</span> <span class="st">'python'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="2c0b0bd9" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>leak <span class="op">=</span> pics <span class="op">/</span> <span class="st">'@leak.png'</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>leak.write_bytes(<span class="st">b'</span><span class="ch">\x89</span><span class="st">PNG</span><span class="ch">\r\n\x1a\n</span><span class="st">'</span> <span class="op">+</span> <span class="st">b'0'</span> <span class="op">*</span> <span class="dv">64</span>)</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>ui.mode <span class="op">=</span> <span class="st">'python'</span></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">"py_matmul = type('M', (), {'__matmul__': lambda self, o: 42})() @ 1"</span>)</span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> ui.submit()</span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> kernel.execute(<span class="st">'py_matmul'</span>)</span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>test_eq(output_text(r.outputs), <span class="st">'42'</span>)</span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>test_eq(ui.attachments, [])</span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="ss">f'py_leak = 5  # not an attachment: @</span><span class="sc">{</span>leak<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> ui.submit()</span>
+<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> kernel.execute(<span class="st">'py_leak'</span>)</span>
+<span id="cb36-14"><a href="#cb36-14" aria-hidden="true" tabindex="-1"></a>test_eq(output_text(r.outputs), <span class="st">'5'</span>)</span>
+<span id="cb36-15"><a href="#cb36-15" aria-hidden="true" tabindex="-1"></a>test_eq(ui.attachments, [])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="typing-more-than-one-line" class="level3">
+<h3 class="anchored" data-anchor-id="typing-more-than-one-line">Typing more than one line</h3>
+<p><a href="https://vedicreader.github.io/ramabana/cli.html#ui"><code>Ui</code></a> submits a line when you press enter. That suits a sentence and fails for a block of code, because <code>for i in range(3):</code> is not a program yet. <code>code_state(src)</code> uses the standard library’s <code>codeop.compile_command</code> to say whether the text is <code>complete</code>, <code>incomplete</code>, or <code>invalid</code>, meaning it can never compile. On enter, an incomplete buffer gets a new line under a continuation prompt, a complete one runs, and an invalid one is reported at the prompt without a trip to the kernel. An empty line submits what is pending, as at every Python prompt, and pasted text that compiles runs as one cell.</p>
+<p>The first cell below lists the cases. The ones after it type a loop line by line, enter a broken line, and paste two statements.</p>
+<div id="1705a4af" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:07.052825+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.058424+00:00&quot;,&quot;total&quot;:0.005603948000000969}}" data-execution_count="26">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L349" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="code_state" class="level3">
+<h3 class="anchored" data-anchor-id="code_state">code_state</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> code_state(</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>    src</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Whether <code>src</code> is a finished statement, an unfinished one, or one that cannot compile.</em></p>
+</section>
+</div>
+<div id="b769f535" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'x = 1'</span>), <span class="st">'complete'</span>)</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'for i in range(3):'</span>), <span class="st">'incomplete'</span>)</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'x = ('</span>), <span class="st">'incomplete'</span>)</span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'x = )'</span>), <span class="st">'invalid'</span>)</span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">''</span>), <span class="st">'complete'</span>)</span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'for i in range(3):</span><span class="ch">\n</span><span class="st">    print(i)'</span>), <span class="st">'incomplete'</span>)</span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'for i in range(3):</span><span class="ch">\n</span><span class="st">    print(i)</span><span class="ch">\n</span><span class="st">'</span>), <span class="st">'complete'</span>)</span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'x = 1</span><span class="ch">\n</span><span class="st">y = 2</span><span class="ch">\n</span><span class="st">'</span>), <span class="st">'complete'</span>)</span>
+<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'import os</span><span class="ch">\n</span><span class="st">print(os.getcwd())'</span>), <span class="st">'complete'</span>)</span>
+<span id="cb38-11"><a href="#cb38-11" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'import os</span><span class="ch">\n</span><span class="st">for i in range(2):</span><span class="ch">\n</span><span class="st">    print(i)'</span>), <span class="st">'complete'</span>)</span>
+<span id="cb38-12"><a href="#cb38-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-13"><a href="#cb38-13" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'x = 1</span><span class="ch">\n</span><span class="st">y = )'</span>), <span class="st">'invalid'</span>)</span>
+<span id="cb38-14"><a href="#cb38-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'unmatched'</span> <span class="kw">in</span> _syntax_note(<span class="st">'x = 1</span><span class="ch">\n</span><span class="st">y = )'</span>)</span>
+<span id="cb38-15"><a href="#cb38-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'multiple statements'</span> <span class="kw">not</span> <span class="kw">in</span> _syntax_note(<span class="st">'x = 1</span><span class="ch">\n</span><span class="st">y = )'</span>)</span>
+<span id="cb38-16"><a href="#cb38-16" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'x = 1</span><span class="ch">\n</span><span class="st">y = ('</span>), <span class="st">'incomplete'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="e548b99c" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> kernel.execute(<span class="st">'multiline_ran = []'</span>)</span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'for i in range(3):'</span>)</span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>ui.on_key(Key(<span class="st">'enter'</span>))</span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">'for i in range(3):</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ui.turn <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ui.CONT.strip() <span class="kw">in</span> tty.term.text()</span>
+<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-9"><a href="#cb39-9" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'    multiline_ran.append(i)'</span>)</span>
+<span id="cb39-10"><a href="#cb39-10" aria-hidden="true" tabindex="-1"></a>rows, (row, line_no, col) <span class="op">=</span> ui.tail()</span>
+<span id="cb39-11"><a href="#cb39-11" aria-hidden="true" tabindex="-1"></a>test_eq(row, <span class="bu">len</span>(rows) <span class="op">-</span> <span class="dv">1</span>)</span>
+<span id="cb39-12"><a href="#cb39-12" aria-hidden="true" tabindex="-1"></a>test_eq(line_no, <span class="dv">1</span>)</span>
+<span id="cb39-13"><a href="#cb39-13" aria-hidden="true" tabindex="-1"></a>test_eq(col, Text(ui.CONT <span class="op">+</span> <span class="st">'    multiline_ran.append(i)'</span>).cell_len)</span>
+<span id="cb39-14"><a href="#cb39-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ui.CONT <span class="kw">in</span> ui.prompt().plain</span>
+<span id="cb39-15"><a href="#cb39-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ui.prompt().spans</span>
+<span id="cb39-16"><a href="#cb39-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-17"><a href="#cb39-17" aria-hidden="true" tabindex="-1"></a>ui.on_key(Key(<span class="st">'enter'</span>))</span>
+<span id="cb39-18"><a href="#cb39-18" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">'for i in range(3):</span><span class="ch">\n</span><span class="st">    multiline_ran.append(i)</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb39-19"><a href="#cb39-19" aria-hidden="true" tabindex="-1"></a>out <span class="op">=</span> ui.on_key(Key(<span class="st">'enter'</span>))</span>
+<span id="cb39-20"><a href="#cb39-20" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">''</span>)</span>
+<span id="cb39-21"><a href="#cb39-21" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> out</span>
+<span id="cb39-22"><a href="#cb39-22" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> kernel.execute(<span class="st">'multiline_ran'</span>)</span>
+<span id="cb39-23"><a href="#cb39-23" aria-hidden="true" tabindex="-1"></a>test_eq(output_text(r.outputs), <span class="st">'[0, 1, 2]'</span>)</span>
+<span id="cb39-24"><a href="#cb39-24" aria-hidden="true" tabindex="-1"></a>test_eq(read_nb(host.agent_log).cells[<span class="op">-</span><span class="dv">1</span>].source, <span class="st">'for i in range(3):</span><span class="ch">\n</span><span class="st">    multiline_ran.append(i)</span><span class="ch">\n</span><span class="st">'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="c82f67a4" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'x = )'</span>)</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>ui.on_key(Key(<span class="st">'enter'</span>))</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'invalid'</span> <span class="kw">in</span> tty.term.text() <span class="kw">and</span> ui.turn <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a>ui.mode <span class="op">=</span> <span class="st">'agent'</span></span>
+<span id="cb40-8"><a href="#cb40-8" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'for the record:'</span>)</span>
+<span id="cb40-9"><a href="#cb40-9" aria-hidden="true" tabindex="-1"></a>out <span class="op">=</span> ui.on_key(Key(<span class="st">'enter'</span>))</span>
+<span id="cb40-10"><a href="#cb40-10" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">''</span>)</span>
+<span id="cb40-11"><a href="#cb40-11" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> out <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>: <span class="cf">await</span> out</span>
+<span id="cb40-12"><a href="#cb40-12" aria-hidden="true" tabindex="-1"></a>ui.mode <span class="op">=</span> <span class="st">'python'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="pyr0033" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>ui.paste(<span class="st">'pasted_a = 3</span><span class="ch">\n</span><span class="st">pasted_b = pasted_a * 2'</span>)</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(ui.buf.text), <span class="st">'complete'</span>)</span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>out <span class="op">=</span> ui.on_key(Key(<span class="st">'enter'</span>))</span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">''</span>)</span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> out <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>: <span class="cf">await</span> out</span>
+<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> <span class="cf">await</span> kernel.execute(<span class="st">'pasted_b'</span>)</span>
+<span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a>test_eq(output_text(r.outputs), <span class="st">'6'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="6a0c5f3c" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()<span class="op">;</span> ui.buf.insert(<span class="st">'df2 = df.copy()'</span>)</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ui.prompt().spans</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>blk <span class="op">=</span> ui.say(hl(<span class="st">'df2 = df.copy()'</span>), <span class="st">'user'</span>, source<span class="op">=</span><span class="st">'df2 = df.copy()'</span>)</span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>test_eq(ui.transcript.block_text(blk), <span class="st">'df2 = df.copy()'</span>)</span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="getting-back-out-of-python-mode" class="level3">
+<h3 class="anchored" data-anchor-id="getting-back-out-of-python-mode">Getting back out of Python mode</h3>
+<p>A line that starts with <code>/</code> is a command. It goes to <code>submit</code> without being compiled, because as Python <code>/agent</code> is invalid and Python mode would have no way out. Tab after <code>/mod</code> completes the command name, as it does in agent mode.</p>
+<div id="pyrfix02" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _line(u, s):</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> ch <span class="kw">in</span> s: u.on_key(Key(ch, char<span class="op">=</span>ch))</span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> u.on_key(Key(<span class="st">'enter'</span>))</span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>test_eq(code_state(<span class="st">'/agent'</span>), <span class="st">'invalid'</span>)</span>
+<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>test_eq(_line(ui, <span class="st">'/agent'</span>), <span class="va">None</span>)</span>
+<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a>test_eq((ui.mode, ui.buf.text), (<span class="st">'agent'</span>, <span class="st">''</span>))</span>
+<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> _line(ui, <span class="st">'/python'</span>)</span>
+<span id="cb43-9"><a href="#cb43-9" aria-hidden="true" tabindex="-1"></a>test_eq((ui.mode, ui.buf.text), (<span class="st">'python'</span>, <span class="st">''</span>))</span>
+<span id="cb43-10"><a href="#cb43-10" aria-hidden="true" tabindex="-1"></a>test_eq(_line(ui, <span class="st">'/help'</span>), <span class="va">None</span>)</span>
+<span id="cb43-11"><a href="#cb43-11" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">''</span>)</span>
+<span id="cb43-12"><a href="#cb43-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'python'</span> <span class="kw">in</span> tty.term.text()</span>
+<span id="cb43-13"><a href="#cb43-13" aria-hidden="true" tabindex="-1"></a>test_eq(_line(ui, <span class="st">'/quit'</span>), <span class="st">'quit'</span>)</span>
+<span id="cb43-14"><a href="#cb43-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb43-15"><a href="#cb43-15" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()<span class="op">;</span> ui.buf.insert(<span class="st">'/mod'</span>)</span>
+<span id="cb43-16"><a href="#cb43-16" aria-hidden="true" tabindex="-1"></a>test_eq(ui.on_key(Key(<span class="st">'tab'</span>)), <span class="va">None</span>)</span>
+<span id="cb43-17"><a href="#cb43-17" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">'/model'</span>)</span>
+<span id="cb43-18"><a href="#cb43-18" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ui.complete <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb43-19"><a href="#cb43-19" aria-hidden="true" tabindex="-1"></a>ui.complete <span class="op">=</span> <span class="va">None</span><span class="op">;</span> ui.buf.clear()</span>
+<span id="cb43-20"><a href="#cb43-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb43-21"><a href="#cb43-21" aria-hidden="true" tabindex="-1"></a>_line(ui, <span class="st">'for i in range(3):'</span>)</span>
+<span id="cb43-22"><a href="#cb43-22" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">'for i in range(3):</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb43-23"><a href="#cb43-23" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The main prompt leaves mouse selection to the terminal, so you can select and copy text as usual. <code>enter_transcript</code> turns mouse handling on only while the transcript view is open.</p>
+</section>
+<section id="tab-against-the-live-kernel" class="level3">
+<h3 class="anchored" data-anchor-id="tab-against-the-live-kernel">Tab, against the live kernel</h3>
+<p><code>complete_python</code> asks the kernel for completions at the cursor. One match completes the buffer in place. Several matches fill in their common prefix and open a menu, each entry described by <a href="https://vedicreader.github.io/ramabana/pyrepl.html#annotate"><code>annotate</code></a>. The descriptions are fetched off the event loop’s thread, and typing while they are on their way closes the menu without waiting for them, as the last two cells check.</p>
+<div id="0d8d3222" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> kernel.execute(<span class="st">'completing = {"a": 1}'</span>)</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()<span class="op">;</span> ui.buf.insert(<span class="st">'complet'</span>)</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>ui.buf.cursor <span class="op">=</span> <span class="bu">len</span>(ui.buf.text)</span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> ui.complete_python()</span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">'completing'</span>)</span>
+<span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span>
+<span id="cb44-7"><a href="#cb44-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-8"><a href="#cb44-8" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> kernel.execute(<span class="st">'twovals_a = 1</span><span class="ch">\n</span><span class="st">twovals_b = 2'</span>)</span>
+<span id="cb44-9"><a href="#cb44-9" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()<span class="op">;</span> ui.buf.insert(<span class="st">'twovals_'</span>)<span class="op">;</span> ui.buf.cursor <span class="op">=</span> <span class="bu">len</span>(<span class="st">'twovals_'</span>)</span>
+<span id="cb44-10"><a href="#cb44-10" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> ui.complete_python()</span>
+<span id="cb44-11"><a href="#cb44-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ui.complete <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>, <span class="st">'several matches arm the menu'</span></span>
+<span id="cb44-12"><a href="#cb44-12" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">sorted</span>(ui.complete.matches), [<span class="st">'twovals_a'</span>, <span class="st">'twovals_b'</span>])</span>
+<span id="cb44-13"><a href="#cb44-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">all</span>(<span class="st">'-&gt;'</span> <span class="kw">in</span> d <span class="cf">for</span> d <span class="kw">in</span> ui.desc), ui.desc</span>
+<span id="cb44-14"><a href="#cb44-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-15"><a href="#cb44-15" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()<span class="op">;</span> ui.buf.insert(<span class="st">'twoval'</span>)<span class="op">;</span> ui.buf.cursor <span class="op">=</span> <span class="bu">len</span>(<span class="st">'twoval'</span>)</span>
+<span id="cb44-16"><a href="#cb44-16" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> ui.complete_python()</span>
+<span id="cb44-17"><a href="#cb44-17" aria-hidden="true" tabindex="-1"></a>test_eq((ui.buf.text, ui.buf.cursor), (<span class="st">'twovals_'</span>, <span class="dv">8</span>))</span>
+<span id="cb44-18"><a href="#cb44-18" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(ui.complete.matches), <span class="dv">2</span>)</span>
+<span id="cb44-19"><a href="#cb44-19" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="39675662" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>loop_thread <span class="op">=</span> threading.current_thread()</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>seen_thread <span class="op">=</span> {}</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>_real_describe <span class="op">=</span> host.describe</span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _watched_describe():</span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a>    seen_thread[<span class="st">'t'</span>] <span class="op">=</span> threading.current_thread()</span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> _real_describe()</span>
+<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a>host.describe <span class="op">=</span> _watched_describe</span>
+<span id="cb45-8"><a href="#cb45-8" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb45-9"><a href="#cb45-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> kernel.execute(<span class="st">'threadcheck_a = 1</span><span class="ch">\n</span><span class="st">threadcheck_b = 2'</span>)</span>
+<span id="cb45-10"><a href="#cb45-10" aria-hidden="true" tabindex="-1"></a>    ui.buf.clear()<span class="op">;</span> ui.buf.insert(<span class="st">'threadcheck_'</span>)<span class="op">;</span> ui.buf.cursor <span class="op">=</span> <span class="bu">len</span>(<span class="st">'threadcheck_'</span>)</span>
+<span id="cb45-11"><a href="#cb45-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> ui.complete_python()</span>
+<span id="cb45-12"><a href="#cb45-12" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>:</span>
+<span id="cb45-13"><a href="#cb45-13" aria-hidden="true" tabindex="-1"></a>    host.describe <span class="op">=</span> _real_describe</span>
+<span id="cb45-14"><a href="#cb45-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> seen_thread.get(<span class="st">'t'</span>) <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> seen_thread[<span class="st">'t'</span>] <span class="kw">is</span> <span class="kw">not</span> loop_thread</span>
+<span id="cb45-15"><a href="#cb45-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">all</span>(<span class="st">'-&gt;'</span> <span class="kw">in</span> d <span class="cf">for</span> d <span class="kw">in</span> ui.desc), ui.desc</span>
+<span id="cb45-16"><a href="#cb45-16" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="2aef2cf9" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>release <span class="op">=</span> threading.Event()</span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _blocked_describe():</span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>    release.wait(<span class="dv">5</span>)</span>
+<span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">'twovals_a'</span>: <span class="st">'int'</span>, <span class="st">'twovals_b'</span>: <span class="st">'int'</span>}</span>
+<span id="cb46-5"><a href="#cb46-5" aria-hidden="true" tabindex="-1"></a>_real_describe <span class="op">=</span> host.describe</span>
+<span id="cb46-6"><a href="#cb46-6" aria-hidden="true" tabindex="-1"></a>host.describe <span class="op">=</span> _blocked_describe</span>
+<span id="cb46-7"><a href="#cb46-7" aria-hidden="true" tabindex="-1"></a>ui.complete, ui.desc <span class="op">=</span> <span class="va">None</span>, []</span>
+<span id="cb46-8"><a href="#cb46-8" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb46-9"><a href="#cb46-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> kernel.execute(<span class="st">'twovals_a = 1</span><span class="ch">\n</span><span class="st">twovals_b = 2'</span>)</span>
+<span id="cb46-10"><a href="#cb46-10" aria-hidden="true" tabindex="-1"></a>    ui.buf.clear()<span class="op">;</span> ui.buf.insert(<span class="st">'twovals_'</span>)<span class="op">;</span> ui.buf.cursor <span class="op">=</span> <span class="bu">len</span>(<span class="st">'twovals_'</span>)</span>
+<span id="cb46-11"><a href="#cb46-11" aria-hidden="true" tabindex="-1"></a>    task <span class="op">=</span> asyncio.ensure_future(ui.complete_python())</span>
+<span id="cb46-12"><a href="#cb46-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">500</span>):</span>
+<span id="cb46-13"><a href="#cb46-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> ui.complete <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>: <span class="cf">break</span></span>
+<span id="cb46-14"><a href="#cb46-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">await</span> asyncio.sleep(<span class="fl">0.01</span>)</span>
+<span id="cb46-15"><a href="#cb46-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ui.complete <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> ui.desc <span class="op">==</span> []</span>
+<span id="cb46-16"><a href="#cb46-16" aria-hidden="true" tabindex="-1"></a>    ui.on_key(Key(<span class="st">'x'</span>, char<span class="op">=</span><span class="st">'x'</span>))</span>
+<span id="cb46-17"><a href="#cb46-17" aria-hidden="true" tabindex="-1"></a>    test_eq(ui.buf.text, <span class="st">'twovals_x'</span>)</span>
+<span id="cb46-18"><a href="#cb46-18" aria-hidden="true" tabindex="-1"></a>    test_eq(ui.complete, <span class="va">None</span>)</span>
+<span id="cb46-19"><a href="#cb46-19" aria-hidden="true" tabindex="-1"></a>    release.<span class="bu">set</span>()</span>
+<span id="cb46-20"><a href="#cb46-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> task</span>
+<span id="cb46-21"><a href="#cb46-21" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>:</span>
+<span id="cb46-22"><a href="#cb46-22" aria-hidden="true" tabindex="-1"></a>    host.describe <span class="op">=</span> _real_describe</span>
+<span id="cb46-23"><a href="#cb46-23" aria-hidden="true" tabindex="-1"></a>    release.<span class="bu">set</span>()</span>
+<span id="cb46-24"><a href="#cb46-24" aria-hidden="true" tabindex="-1"></a>test_eq((ui.complete, ui.desc), (<span class="va">None</span>, []))</span>
+<span id="cb46-25"><a href="#cb46-25" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">'twovals_x'</span>)</span>
+<span id="cb46-26"><a href="#cb46-26" aria-hidden="true" tabindex="-1"></a>ui.buf.clear()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+</section>
+<section id="promote" class="level2">
+<h2 class="anchored" data-anchor-id="promote"><code>/promote</code></h2>
+<p>Values the agent makes live in its overlay. <code>/promote NAME</code> moves one into the owner’s namespace, where it becomes an ordinary variable at your prompt. Promotion is the owner’s act: it is a slash command the person types and never a tool, so the model can ask for it in words but cannot do it. <code>promote(base, name)</code> reads the session’s owner token and calls Dhrishti’s <code>/api/promote</code>. It works only on a kernel this session started. An attached session’s token belongs to the program that started it, and the terminal says so. The test checks that the command runs off the event loop’s thread and that <code>/promote</code> alone prints its usage.</p>
+<div id="41eb33a4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:07.072100+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.085369+00:00&quot;,&quot;total&quot;:0.013275313999997707}}" data-execution_count="28">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L358" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="promote-1" class="level3">
+<h3 class="anchored" data-anchor-id="promote-1">promote</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> promote(</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>    base, name</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Move the agent-layer variable <code>name</code> into the owner namespace of a kernel this session started.</em></p>
+</section>
+</div>
+<div id="pyr0951" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>test_eq(promote(<span class="st">''</span>, <span class="st">'x'</span>), <span class="st">'no kernel of our own; promote from the surface that started the session'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="c179f7a9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:07.085669+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.088679+00:00&quot;,&quot;total&quot;:0.003014018999991208}}" data-execution_count="29">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> ramabana.pyrepl <span class="im">as</span> _pyr</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="pyr0953" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>seen <span class="op">=</span> {}</span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _fake_promote(base, name):</span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>    seen.update(base<span class="op">=</span>base, name<span class="op">=</span>name, thread<span class="op">=</span>threading.current_thread())</span>
+<span id="cb50-4"><a href="#cb50-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ss">f'promoted </span><span class="sc">{</span>name<span class="sc">}</span><span class="ss">'</span></span>
+<span id="cb50-5"><a href="#cb50-5" aria-hidden="true" tabindex="-1"></a>_real_promote, _pyr.promote <span class="op">=</span> _pyr.promote, _fake_promote</span>
+<span id="cb50-6"><a href="#cb50-6" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb50-7"><a href="#cb50-7" aria-hidden="true" tabindex="-1"></a>    ui.buf.insert(<span class="st">'/promote answer_42'</span>)</span>
+<span id="cb50-8"><a href="#cb50-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> ui.submit()</span>
+<span id="cb50-9"><a href="#cb50-9" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>: _pyr.promote <span class="op">=</span> _real_promote</span>
+<span id="cb50-10"><a href="#cb50-10" aria-hidden="true" tabindex="-1"></a>test_eq((seen[<span class="st">'base'</span>], seen[<span class="st">'name'</span>]), (kernel.base, <span class="st">'answer_42'</span>))</span>
+<span id="cb50-11"><a href="#cb50-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> seen[<span class="st">'thread'</span>] <span class="kw">is</span> <span class="kw">not</span> threading.current_thread()</span>
+<span id="cb50-12"><a href="#cb50-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'promoted answer_42'</span> <span class="kw">in</span> tty.term.text()</span>
+<span id="cb50-13"><a href="#cb50-13" aria-hidden="true" tabindex="-1"></a>test_eq(ui.buf.text, <span class="st">''</span>)</span>
+<span id="cb50-14"><a href="#cb50-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb50-15"><a href="#cb50-15" aria-hidden="true" tabindex="-1"></a>ui.buf.insert(<span class="st">'/promote'</span>)</span>
+<span id="cb50-16"><a href="#cb50-16" aria-hidden="true" tabindex="-1"></a>test_eq(ui.submit(), <span class="va">None</span>)</span>
+<span id="cb50-17"><a href="#cb50-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'usage: /promote'</span> <span class="kw">in</span> tty.term.text()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="attaching-to-the-live-session" class="level3">
+<h3 class="anchored" data-anchor-id="attaching-to-the-live-session">Attaching to the live session</h3>
+<p>The kernel this notebook started is itself a live Dhrishti session, so attaching can be tested against a real server. <a href="https://vedicreader.github.io/ramabana/pyrepl.html#find_session"><code>find_session</code></a> finds it by its registry name, <code>&lt;project&gt;-pyrepl-&lt;pid&gt;</code>, as <a href="https://vedicreader.github.io/ramabana/pyrepl.html#kernel._bootstrap"><code>Kernel._bootstrap</code></a> sets it. The process id keeps the name apart from any session left over from an earlier run. The cell after it checks that <code>shutdown</code> forces a kernel that does not stop when asked, and the last one shuts this notebook’s kernel down.</p>
+<div id="238bf6e6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:07.089673+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.090337+00:00&quot;,&quot;total&quot;:0.000668163000000277}}" data-execution_count="30">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dhrishti.serving <span class="im">import</span> active</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="pyr0904" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>own <span class="op">=</span> <span class="bu">next</span>((e <span class="cf">for</span> e <span class="kw">in</span> active() <span class="cf">if</span> e.get(<span class="st">'base'</span>) <span class="op">==</span> kernel.base), <span class="va">None</span>)</span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> own, <span class="st">'the kernel above is serving'</span></span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>test_eq(find_session(own[<span class="st">'name'</span>]), kernel.base)</span>
+<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a>attached <span class="op">=</span> DhrishtiHost([<span class="st">'.'</span>], find_session(own[<span class="st">'name'</span>]), web<span class="op">=</span><span class="va">False</span>, index<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb52-6"><a href="#cb52-6" aria-hidden="true" tabindex="-1"></a>test_eq(attached.kernel_kind, <span class="st">'ipykernel'</span>)</span>
+<span id="cb52-7"><a href="#cb52-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'owner'</span> <span class="kw">in</span> attached.list_vars()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="shutdn01" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _StuckKm:</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>    has_kernel <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>): <span class="va">self</span>.forced <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> shutdown_kernel(<span class="va">self</span>, now<span class="op">=</span><span class="va">False</span>):</span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.forced <span class="op">=</span> now</span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="kw">not</span> now: <span class="cf">await</span> asyncio.sleep(<span class="dv">30</span>)</span>
+<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a>stuck, km <span class="op">=</span> Kernel(<span class="st">'.'</span>), _StuckKm()</span>
+<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a>stuck.km, stuck.kc <span class="op">=</span> km, <span class="va">None</span></span>
+<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> stuck.shutdown(timeout<span class="op">=</span><span class="fl">0.05</span>)</span>
+<span id="cb53-11"><a href="#cb53-11" aria-hidden="true" tabindex="-1"></a>test_eq(km.forced, <span class="va">True</span>)</span>
+<span id="cb53-12"><a href="#cb53-12" aria-hidden="true" tabindex="-1"></a>test_eq(stuck.km, <span class="va">None</span>)</span>
+<span id="cb53-13"><a href="#cb53-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> stuck.base <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb53-14"><a href="#cb53-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-15"><a href="#cb53-15" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _GoodKm(_StuckKm):</span>
+<span id="cb53-16"><a href="#cb53-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> shutdown_kernel(<span class="va">self</span>, now<span class="op">=</span><span class="va">False</span>): <span class="va">self</span>.forced <span class="op">=</span> now</span>
+<span id="cb53-17"><a href="#cb53-17" aria-hidden="true" tabindex="-1"></a>good <span class="op">=</span> _GoodKm()<span class="op">;</span> ok <span class="op">=</span> Kernel(<span class="st">'.'</span>)<span class="op">;</span> ok.km, ok.kc <span class="op">=</span> good, <span class="va">None</span></span>
+<span id="cb53-18"><a href="#cb53-18" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> ok.shutdown(timeout<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb53-19"><a href="#cb53-19" aria-hidden="true" tabindex="-1"></a>test_eq(good.forced, <span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="pyr0905" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> kernel.shutdown()</span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>test_eq(kernel.alive, <span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+</section>
+<section id="the-agent-at-the-python-prompt" class="level2">
+<h2 class="anchored" data-anchor-id="the-agent-at-the-python-prompt">The agent at the Python prompt</h2>
+<p><code>--agent-proxy</code>, or <code>/agent_proxy</code> inside a session, makes the session’s agent reachable from Python as <code>ramabana_agent</code>, so code at the prompt can read the agent’s token use or attach a chat callback. <code>ramabana_agents</code> holds every agent bound in that namespace, by label.</p>
+<p><a href="https://vedicreader.github.io/ramabana/pyrepl.html#agentbridge"><code>AgentBridge</code></a> runs in the Ramabana process. It serves one HTTP path, <code>/agent</code>, on the loopback address, and answers only requests that carry its random token. It offers a fixed set of operations. <code>usage</code>, <code>turn_usage</code> and <code>chat_usage</code> return token counts and cost for the session, the last turn and the turn’s chat. <code>callbacks</code> lists the chat callbacks that are known and attached, and <code>attach_callback(name)</code> attaches one, on the session’s own thread through <code>dispatch</code>. Anything else is refused. <a href="https://vedicreader.github.io/ramabana/pyrepl.html#agent_proxy_code"><code>agent_proxy_code</code></a> writes the source of a small <code>AgentProxy</code> class that calls the bridge, and <a href="https://vedicreader.github.io/ramabana/pyrepl.html#inject_agent_proxy"><code>inject_agent_proxy</code></a> runs that source in the agent’s overlay with <code>run_python</code>. The terminal also runs it in the kernel itself, so the person’s code sees the proxy too.</p>
+<div id="e6185a32" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:07.105262+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.112023+00:00&quot;,&quot;total&quot;:0.006765299999997865}}" data-execution_count="32">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L470" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="inject_agent_proxy" class="level3">
+<h3 class="anchored" data-anchor-id="inject_agent_proxy">inject_agent_proxy</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> inject_agent_proxy(</span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a>    host, url, token, label:<span class="bu">str</span><span class="op">=</span><span class="st">'local'</span></span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Bind the agent proxy in the agent’s Dhrishti overlay by running <a href="https://vedicreader.github.io/ramabana/pyrepl.html#agent_proxy_code"><code>agent_proxy_code</code></a> through <code>run_python</code>.</em></p>
+</section>
+</div>
+<div id="4f91a3b2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:07.112146+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.118540+00:00&quot;,&quot;total&quot;:0.006398817000004442}}" data-execution_count="33">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L463" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="agent_proxy_code" class="level3">
+<h3 class="anchored" data-anchor-id="agent_proxy_code">agent_proxy_code</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> agent_proxy_code(</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>    url, token, label:<span class="bu">str</span><span class="op">=</span><span class="st">'local'</span></span>
+<span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Source binding <code>ramabana_agent</code> (last session) and <code>ramabana_agents</code> (all, by label).</em></p>
+</section>
+</div>
+<div id="acc41f06" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:07.118685+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:07.124112+00:00&quot;,&quot;total&quot;:0.005429071999998314}}" data-execution_count="34">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pyrepl.py#L369" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="agentbridge" class="level3">
+<h3 class="anchored" data-anchor-id="agentbridge">AgentBridge</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> AgentBridge(</span>
+<span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a>    agent, dispatch:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb57-3"><a href="#cb57-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A loopback HTTP endpoint, guarded by a random token, through which kernel code reads this agent’s usage and attaches chat callbacks.</em></p>
+</section>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="The model catalog: the models a picker offers for each provider, and what each provider’s own listing adds.">
+
+<title>models – ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-f2788e636de456f6409e966386820849.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="models – ramabana">
+<meta property="og:description" content="The model catalog: the models a picker offers for each provider, and what each provider’s own listing adds.">
+<meta property="og:site_name" content="ramabana">
+<meta name="twitter:title" content="models – ramabana">
+<meta name="twitter:description" content="The model catalog: the models a picker offers for each provider, and what each provider’s own listing adds.">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./models.html">models</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./shop.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">shop</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pyrepl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pyrepl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./acp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">racp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-catalog" id="toc-the-catalog" class="nav-link active" data-scroll-target="#the-catalog">The catalog</a></li>
+  <li><a href="#live-discovery" id="toc-live-discovery" class="nav-link" data-scroll-target="#live-discovery">Live discovery</a></li>
+  <li><a href="#what-a-live-listing-may-add" id="toc-what-a-live-listing-may-add" class="nav-link" data-scroll-target="#what-a-live-listing-may-add">What a live listing may add</a></li>
+  <li><a href="#what-a-picker-offers" id="toc-what-a-picker-offers" class="nav-link" data-scroll-target="#what-a-picker-offers">What a picker offers</a></li>
+  <li><a href="#through-available_models" id="toc-through-available_models" class="nav-link" data-scroll-target="#through-available_models">Through <code>available_models</code></a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="models.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">models</h1>
+</div>
+
+<div>
+  <div class="description">
+    The model catalog: the models a picker offers for each provider, and what each provider’s own listing adds.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<section id="the-catalog" class="level2">
+<h2 class="anchored" data-anchor-id="the-catalog">The catalog</h2>
+<p><code>CATALOG</code> maps each provider to the model ids a picker offers before anything is asked over the network, in display order.</p>
+<ul>
+<li><code>claude</code> is what Claude Code’s <code>--model</code> accepts: the tier names <code>fable</code>, <code>opus</code>, <code>sonnet</code> and <code>haiku</code>, which follow the newest model of each family, then the full ids.</li>
+<li><code>anthropic</code> is the same models through the Anthropic API.</li>
+<li><code>openai</code> and <code>gemini</code> are the models offered through those APIs.</li>
+<li><code>codex</code> is what Codex’s own picker lists.</li>
+</ul>
+<p><a href="https://vedicreader.github.io/ramabana/models.html#claude_ids"><code>claude_ids</code></a> returns the full Claude ids without the tier names. <a href="https://vedicreader.github.io/ramabana/models.html#claude_aliases"><code>claude_aliases</code></a> maps each tier name to the id it means here, which is the last id of that family in <code>CATALOG</code>. Adding a newer Opus to the end of the list moves <code>opus</code> to it.</p>
+<div id="87353611" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:37:58.643408+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.360388+00:00&quot;,&quot;total&quot;:1.7169875339999976}}" data-execution_count="5">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/models.py#L27" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="claude_aliases" class="level3">
+<h3 class="anchored" data-anchor-id="claude_aliases">claude_aliases</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> claude_aliases():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Each Claude Code tier alias and the concrete id it tracks here: the family’s last, so newest, in <code>CATALOG</code>.</em></p>
+</section>
+</div>
+<div id="a7feab45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.360593+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.366740+00:00&quot;,&quot;total&quot;:0.006150563999995029}}" data-execution_count="6">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/models.py#L23" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="claude_ids" class="level3">
+<h3 class="anchored" data-anchor-id="claude_ids">claude_ids</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> claude_ids():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The concrete Claude Code ids in <code>CATALOG</code>, without the tier aliases.</em></p>
+</section>
+</div>
+<div id="9412543f" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>test_eq(claude_aliases()[<span class="st">'fable'</span>], <span class="st">'claude-fable-5-1'</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>test_eq(claude_aliases()[<span class="st">'opus'</span>], <span class="st">'claude-opus-5-5'</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'claude-haiku-5-5'</span> <span class="kw">in</span> claude_ids() <span class="kw">and</span> <span class="st">'claude-haiku-5-5'</span> <span class="kw">in</span> CATALOG[<span class="st">'anthropic'</span>]</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>test_eq(claude_aliases()[<span class="st">'haiku'</span>], <span class="st">'claude-haiku-5-5'</span>)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'claude-sonnet-5-5'</span> <span class="kw">in</span> claude_ids() <span class="kw">and</span> claude_aliases()[<span class="st">'sonnet'</span>] <span class="op">==</span> <span class="st">'claude-sonnet-5-5'</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'gpt-6.1-sol'</span> <span class="kw">in</span> CATALOG[<span class="st">'openai'</span>] <span class="kw">and</span> CATALOG[<span class="st">'openai'</span>][<span class="dv">0</span>] <span class="op">==</span> <span class="st">'gpt-6-astra'</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">set</span>(claude_aliases()), {<span class="st">'fable'</span>, <span class="st">'opus'</span>, <span class="st">'sonnet'</span>, <span class="st">'haiku'</span>})</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> p, ids <span class="kw">in</span> CATALOG.items(): test_eq(<span class="bu">len</span>(ids), <span class="bu">len</span>(<span class="bu">set</span>(ids))), p</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="live-discovery" class="level2">
+<h2 class="anchored" data-anchor-id="live-discovery">Live discovery</h2>
+<p>Each provider that can be asked for its models has one function in <code>LIVE</code>. The function returns the ids the provider lists, or <code>[]</code> when it cannot ask: no key, no file, no network, or an answer it cannot read. It never raises.</p>
+<ul>
+<li><a href="https://vedicreader.github.io/ramabana/models.html#openai_ids"><code>openai_ids</code></a> asks OpenAI’s <code>/v1/models</code> with <code>$OPENAI_API_KEY</code>.</li>
+<li><a href="https://vedicreader.github.io/ramabana/models.html#anthropic_ids"><code>anthropic_ids</code></a> asks Anthropic’s <code>/v1/models</code> with <code>$ANTHROPIC_API_KEY</code>. It serves both <code>anthropic</code> and <code>claude</code>, since Claude Code runs the same models.</li>
+<li><a href="https://vedicreader.github.io/ramabana/models.html#codex_ids"><code>codex_ids</code></a> asks no server. Codex keeps its picker list in <code>models_cache.json</code> under <code>$CODEX_HOME</code>, which defaults to <code>~/.codex</code>, and the entries marked <code>visibility: 'list'</code> are the ones it offers. The test below writes a small cache file and reads it back.</li>
+</ul>
+<div id="69a82869" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.371110+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.376430+00:00&quot;,&quot;total&quot;:0.005324127000008616}}" data-execution_count="8">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/models.py#L51" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="codex_ids" class="level3">
+<h3 class="anchored" data-anchor-id="codex_ids">codex_ids</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> codex_ids():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>What Codex’s own picker lists, from its models cache, or <code>[]</code>.</em></p>
+</section>
+</div>
+<div id="dea1866d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.376585+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.381502+00:00&quot;,&quot;total&quot;:0.004922191000005682}}" data-execution_count="9">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/models.py#L46" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="anthropic_ids" class="level3">
+<h3 class="anchored" data-anchor-id="anthropic_ids">anthropic_ids</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> anthropic_ids():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Every id the current Anthropic key can list, or <code>[]</code> when it cannot be asked.</em></p>
+</section>
+</div>
+<div id="3f41de15" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.381656+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.386593+00:00&quot;,&quot;total&quot;:0.004941407000004006}}" data-execution_count="10">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/models.py#L41" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="openai_ids" class="level3">
+<h3 class="anchored" data-anchor-id="openai_ids">openai_ids</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> openai_ids():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Every id the current OpenAI key can list, or <code>[]</code> when it cannot be asked.</em></p>
+</section>
+</div>
+<div id="57fcea1b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.387084+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.390052+00:00&quot;,&quot;total&quot;:0.0029733370000002424}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json, os, tempfile</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    cache <span class="op">=</span> {<span class="st">'models'</span>: [{<span class="st">'slug'</span>: <span class="st">'gpt-6-astra'</span>, <span class="st">'visibility'</span>: <span class="st">'list'</span>}, {<span class="st">'slug'</span>: <span class="st">'gpt-reserve'</span>, <span class="st">'visibility'</span>: <span class="st">'hide'</span>}, {<span class="st">'slug'</span>: <span class="st">'codex-auto-review'</span>, <span class="st">'visibility'</span>: <span class="st">'hide'</span>}]}</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    (Path(d)<span class="op">/</span><span class="st">'models_cache.json'</span>).write_text(json.dumps(cache))</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    _old <span class="op">=</span> os.environ.get(<span class="st">'CODEX_HOME'</span>)</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    os.environ[<span class="st">'CODEX_HOME'</span>] <span class="op">=</span> d</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>: test_eq(codex_ids(), [<span class="st">'gpt-6-astra'</span>])</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">finally</span>:</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _old <span class="kw">is</span> <span class="va">None</span>: <span class="kw">del</span> os.environ[<span class="st">'CODEX_HOME'</span>]</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>: os.environ[<span class="st">'CODEX_HOME'</span>] <span class="op">=</span> _old</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    os.environ[<span class="st">'CODEX_HOME'</span>] <span class="op">=</span> <span class="bu">str</span>(Path(d)<span class="op">/</span><span class="st">'nowhere'</span>)</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>: test_eq(codex_ids(), [])</span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">finally</span>:</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> _old <span class="kw">is</span> <span class="va">None</span>: <span class="kw">del</span> os.environ[<span class="st">'CODEX_HOME'</span>]</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>: os.environ[<span class="st">'CODEX_HOME'</span>] <span class="op">=</span> _old</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="what-a-live-listing-may-add" class="level2">
+<h2 class="anchored" data-anchor-id="what-a-live-listing-may-add">What a live listing may add</h2>
+<p>A provider’s listing holds everything it serves: dated snapshots, fine-tunes, realtime and audio models, embeddings, moderation, image and search models. A picker wants none of these. <a href="https://vedicreader.github.io/ramabana/models.html#_current"><code>_current</code></a> decides which listed ids a picker may show. It hides an id by what kind of model it is, not by which generation it belongs to, so a new generation shows up the day the provider lists it. Older chat generations (<code>gpt-4*</code>, <code>gpt-3.5*</code>, <code>claude-2-*</code> and <code>claude-3-*</code>) appear only with <code>legacy=True</code>. The cell below lists ids it keeps, ids it always hides, and ids it shows only with <code>legacy</code>.</p>
+<div id="53f0508f" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> ok <span class="kw">in</span> (<span class="st">'gpt-6-astra'</span>, <span class="st">'gpt-7'</span>, <span class="st">'o5-mini'</span>, <span class="st">'claude-fable-5-1'</span>, <span class="st">'claude-haiku-4-5-20251001'</span>, <span class="st">'gemini-3.5-flash'</span>): <span class="cf">assert</span> _current(<span class="st">'openai'</span>, ok), ok</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> hidden <span class="kw">in</span> (<span class="st">'gpt-6-astra-2026-09-01'</span>, <span class="st">'gpt-3.5-turbo-0125'</span>, <span class="st">'ft:gpt-3.5-turbo-0125:org::abc'</span>, <span class="st">'ada:ft-org-2023-04-06-20-44-19'</span>, <span class="st">'gpt-realtime'</span>, <span class="st">'gpt-6-audio'</span>, <span class="st">'gpt-image-2'</span>, <span class="st">'gpt-6-transcribe'</span>, <span class="st">'tts-1'</span>, <span class="st">'gpt-live-1'</span>, <span class="st">'gpt-3.5-turbo-instruct'</span>, <span class="st">'text-embedding-4'</span>, <span class="st">'omni-moderation-latest'</span>, <span class="st">'dall-e-3'</span>, <span class="st">'whisper-1'</span>, <span class="st">'davinci-002'</span>, <span class="st">'babbage-002'</span>, <span class="st">'sora-2'</span>, <span class="st">'computer-use-preview'</span>, <span class="st">'gpt-5-search-api'</span>, <span class="st">'gpt-4o-search-preview'</span>, <span class="st">'o3-deep-research'</span>, <span class="st">'chat-latest'</span>, <span class="st">''</span>):</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="kw">not</span> _current(<span class="st">'openai'</span>, hidden), hidden</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="kw">not</span> _current(<span class="st">'openai'</span>, hidden, legacy<span class="op">=</span><span class="va">True</span>), hidden</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> old <span class="kw">in</span> (<span class="st">'gpt-4.1'</span>, <span class="st">'gpt-4o'</span>, <span class="st">'gpt-3.5-turbo'</span>, <span class="st">'claude-3-5-haiku-latest'</span>):</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="kw">not</span> _current(<span class="st">'openai'</span>, old) <span class="kw">and</span> _current(<span class="st">'openai'</span>, old, legacy<span class="op">=</span><span class="va">True</span>), old</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="what-a-picker-offers" class="level2">
+<h2 class="anchored" data-anchor-id="what-a-picker-offers">What a picker offers</h2>
+<p><code>provider_models(p)</code> is the list a picker shows for provider <code>p</code>. It starts with the <code>CATALOG</code> ids in their order, then adds the ids from the live listing that <a href="https://vedicreader.github.io/ramabana/models.html#_current"><code>_current</code></a> admits and that are not dated snapshots, newest first by version number, with nothing repeated. The live answer is remembered for five minutes with <a href="https://vedicreader.github.io/ramabana/core.html#probed"><code>ramabana.core.probed</code></a>. If the listing fails, the result is the catalog alone. A provider that is neither in <code>CATALOG</code> nor in <code>LIVE</code> gives <code>[]</code>.</p>
+<p>The first cell below stands in a fake OpenAI listing. The second makes every listing fail. The third fakes Anthropic’s endpoint and shows that <code>claude</code> and <code>anthropic</code> share one request.</p>
+<div id="5800bb86" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.395465+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.401852+00:00&quot;,&quot;total&quot;:0.006392334000011601}}" data-execution_count="14">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/models.py#L68" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="provider_models" class="level3">
+<h3 class="anchored" data-anchor-id="provider_models">provider_models</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> provider_models(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    p, legacy:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, ttl:<span class="bu">int</span><span class="op">=</span><span class="dv">300</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Ids a picker offers for provider <code>p</code>: the curated ones in their order, then what live discovery adds.</em></p>
+</section>
+</div>
+<div id="8bfd7586" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.402560+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.412365+00:00&quot;,&quot;total&quot;:0.00980942699999332}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.core <span class="im">import</span> forget_probes</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>_orig <span class="op">=</span> <span class="bu">dict</span>(LIVE)</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>forget_probes()</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>LIVE[<span class="st">'openai'</span>] <span class="op">=</span> <span class="kw">lambda</span>: [<span class="st">'gpt-6-astra'</span>, <span class="st">'gpt-6-nova'</span>, <span class="st">'gpt-6-nova-2026-09-01'</span>, <span class="st">'gpt-6-audio'</span>, <span class="st">'gpt-4.1'</span>]</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    got <span class="op">=</span> provider_models(<span class="st">'openai'</span>)</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    test_eq(got[:<span class="bu">len</span>(CATALOG[<span class="st">'openai'</span>])], <span class="bu">list</span>(CATALOG[<span class="st">'openai'</span>]))</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    test_eq(got[<span class="bu">len</span>(CATALOG[<span class="st">'openai'</span>]):], [<span class="st">'gpt-6-nova'</span>])</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    test_eq(got.count(<span class="st">'gpt-6-astra'</span>), <span class="dv">1</span>)</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">'gpt-4.1'</span> <span class="kw">in</span> provider_models(<span class="st">'openai'</span>, legacy<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>    <span class="co"># newest first, by the numbers: alphabetical put gpt-6.1 after every gpt-5</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>    forget_probes()<span class="op">;</span> LIVE[<span class="st">'openai'</span>] <span class="op">=</span> <span class="kw">lambda</span>: [<span class="st">'gpt-5.1'</span>, <span class="st">'gpt-6.1-nova'</span>, <span class="st">'gpt-5.10'</span>]</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>    test_eq(provider_models(<span class="st">'openai'</span>)[<span class="bu">len</span>(CATALOG[<span class="st">'openai'</span>]):], [<span class="st">'gpt-6.1-nova'</span>, <span class="st">'gpt-5.10'</span>, <span class="st">'gpt-5.1'</span>])</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>: LIVE.clear()<span class="op">;</span> LIVE.update(_orig)<span class="op">;</span> forget_probes()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="322f39fd" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _boom(): <span class="cf">raise</span> <span class="pp">OSError</span>(<span class="st">'no network'</span>)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>forget_probes()</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>LIVE.update({p: _boom <span class="cf">for</span> p <span class="kw">in</span> LIVE})</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> p <span class="kw">in</span> CATALOG: test_eq(provider_models(p)[:<span class="bu">len</span>(CATALOG[p])], <span class="bu">list</span>(CATALOG[p]))</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>: LIVE.clear()<span class="op">;</span> LIVE.update(_orig)<span class="op">;</span> forget_probes()</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>test_eq(provider_models(<span class="st">'nobody'</span>), [])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="7066dcec" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>_n, _key, _lst <span class="op">=</span> [], os.environ.get(<span class="st">'ANTHROPIC_API_KEY'</span>), _listed</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _fake(<span class="op">*</span>a, <span class="op">**</span>kw): _n.append(<span class="dv">1</span>)<span class="op">;</span> <span class="cf">return</span> [<span class="st">'claude-sonnet-6'</span>, <span class="st">'claude-sonnet-6-20270101'</span>, <span class="st">'claude-sonnet-5-5'</span>]</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>forget_probes()<span class="op">;</span> os.environ[<span class="st">'ANTHROPIC_API_KEY'</span>] <span class="op">=</span> <span class="st">'k'</span><span class="op">;</span> _listed <span class="op">=</span> _fake</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    got <span class="op">=</span> provider_models(<span class="st">'claude'</span>)</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    test_eq(got[:<span class="bu">len</span>(CATALOG[<span class="st">'claude'</span>])], <span class="bu">list</span>(CATALOG[<span class="st">'claude'</span>]))</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    test_eq(got[<span class="bu">len</span>(CATALOG[<span class="st">'claude'</span>]):], [<span class="st">'claude-sonnet-6'</span>])</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">'claude-sonnet-6'</span> <span class="kw">in</span> provider_models(<span class="st">'anthropic'</span>) <span class="kw">and</span> <span class="bu">len</span>(_n) <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>    forget_probes()<span class="op">;</span> <span class="kw">del</span> os.environ[<span class="st">'ANTHROPIC_API_KEY'</span>]</span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    test_eq(provider_models(<span class="st">'claude'</span>), <span class="bu">list</span>(CATALOG[<span class="st">'claude'</span>]))</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>:</span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>    _listed <span class="op">=</span> _lst<span class="op">;</span> forget_probes()</span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _key <span class="kw">is</span> <span class="va">None</span>: os.environ.pop(<span class="st">'ANTHROPIC_API_KEY'</span>, <span class="va">None</span>)</span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>: os.environ[<span class="st">'ANTHROPIC_API_KEY'</span>] <span class="op">=</span> _key</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="through-available_models" class="level2">
+<h2 class="anchored" data-anchor-id="through-available_models">Through <a href="https://vedicreader.github.io/ramabana/core.html#available_models"><code>available_models</code></a></h2>
+<p><a href="https://vedicreader.github.io/ramabana/core.html#available_models"><code>ramabana.core.available_models</code></a> builds its hosted rows from <a href="https://vedicreader.github.io/ramabana/models.html#provider_models"><code>provider_models</code></a>, and includes a provider only when <a href="https://vedicreader.github.io/ramabana/core.html#runtime_available"><code>runtime_available</code></a> and <a href="https://vedicreader.github.io/ramabana/core.html#auth_status"><code>auth_status</code></a> say it can be used here. Each row has a <code>value</code>, <code>label</code>, <code>provider</code> and <code>source</code>. With a fake OpenAI key and listing, the OpenAI rows are the catalog followed by the one new model:</p>
+<div id="be2a12c4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.414406+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:01.323167+00:00&quot;,&quot;total&quot;:0.9087687709999983}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> ramabana.models <span class="im">as</span> _m</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.core <span class="im">import</span> available_models, CLAUDE, CLAUDE_ALIASES, CLAUDE_MODELS</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>_orig_live, _key <span class="op">=</span> <span class="bu">dict</span>(_m.LIVE), os.environ.get(<span class="st">'OPENAI_API_KEY'</span>)</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>forget_probes()</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>_m.LIVE.update({<span class="st">'openai'</span>: <span class="kw">lambda</span>: [<span class="st">'gpt-6-astra'</span>, <span class="st">'gpt-6-nova'</span>, <span class="st">'gpt-6-nova-2026-09-01'</span>, <span class="st">'gpt-6-audio'</span>], <span class="st">'anthropic'</span>: <span class="kw">lambda</span>: [], <span class="st">'codex'</span>: <span class="kw">lambda</span>: []})</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>os.environ[<span class="st">'OPENAI_API_KEY'</span>] <span class="op">=</span> <span class="st">'sk-not-a-real-key'</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>    rows <span class="op">=</span> available_models()</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>    test_eq({<span class="bu">tuple</span>(<span class="bu">sorted</span>(r)) <span class="cf">for</span> r <span class="kw">in</span> rows}, {(<span class="st">'label'</span>, <span class="st">'provider'</span>, <span class="st">'source'</span>, <span class="st">'value'</span>)})</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    openai <span class="op">=</span> [r[<span class="st">'label'</span>] <span class="cf">for</span> r <span class="kw">in</span> rows <span class="cf">if</span> r[<span class="st">'provider'</span>] <span class="op">==</span> <span class="st">'openai'</span>]</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>    test_eq(openai, [<span class="op">*</span>CATALOG[<span class="st">'openai'</span>], <span class="st">'gpt-6-nova'</span>])</span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>    test_eq([r[<span class="st">'value'</span>] <span class="cf">for</span> r <span class="kw">in</span> rows <span class="cf">if</span> r[<span class="st">'provider'</span>] <span class="op">==</span> <span class="st">'openai'</span>][<span class="dv">0</span>], <span class="st">'openai/gpt-6-astra'</span>)</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>:</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>    _m.LIVE.clear()<span class="op">;</span> _m.LIVE.update(_orig_live)<span class="op">;</span> forget_probes()</span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> _key <span class="kw">is</span> <span class="va">None</span>: <span class="kw">del</span> os.environ[<span class="st">'OPENAI_API_KEY'</span>]</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>: os.environ[<span class="st">'OPENAI_API_KEY'</span>] <span class="op">=</span> _key</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>test_eq(CLAUDE_MODELS, claude_ids())</span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> {<span class="st">'claude-fable-5-1'</span>, <span class="st">'claude-opus-5-5'</span>} <span class="op">&lt;=</span> <span class="bu">set</span>(CLAUDE_MODELS)</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>test_eq(CLAUDE_ALIASES[<span class="st">'fable'</span>], <span class="st">'claude-fable-5-1'</span>)</span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a>test_eq(CLAUDE[<span class="st">'claude/opus'</span>], <span class="st">'claude-opus-5-5'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

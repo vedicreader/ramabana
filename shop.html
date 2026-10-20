@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="A trolley the agent can fill: fossick.shop behind a small interface, and the weekly grocery run it was written for.">
+
+<title>shop – ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-f2788e636de456f6409e966386820849.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="shop – ramabana">
+<meta property="og:description" content="A trolley the agent can fill: fossick.shop behind a small interface, and the weekly grocery run it was written for.">
+<meta property="og:site_name" content="ramabana">
+<meta name="twitter:title" content="shop – ramabana">
+<meta name="twitter:description" content="A trolley the agent can fill: fossick.shop behind a small interface, and the weekly grocery run it was written for.">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./shop.html">shop</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./shop.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">shop</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pyrepl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pyrepl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./acp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">racp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#a-cart-as-an-interface" id="toc-a-cart-as-an-interface" class="nav-link active" data-scroll-target="#a-cart-as-an-interface">A cart, as an interface</a></li>
+  <li><a href="#the-real-one" id="toc-the-real-one" class="nav-link" data-scroll-target="#the-real-one">The real one</a></li>
+  <li><a href="#the-double" id="toc-the-double" class="nav-link" data-scroll-target="#the-double">The double</a></li>
+  <li><a href="#the-tools" id="toc-the-tools" class="nav-link" data-scroll-target="#the-tools">The tools</a></li>
+  <li><a href="#the-weekly-shop" id="toc-the-weekly-shop" class="nav-link" data-scroll-target="#the-weekly-shop">The weekly shop</a>
+  <ul class="collapse">
+  <li><a href="#against-the-real-shops" id="toc-against-the-real-shops" class="nav-link" data-scroll-target="#against-the-real-shops">Against the real shops</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="shop.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">shop</h1>
+</div>
+
+<div>
+  <div class="description">
+    A trolley the agent can fill: <code>fossick.shop</code> behind a small interface, and the weekly grocery run it was written for.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<section id="a-cart-as-an-interface" class="level2">
+<h2 class="anchored" data-anchor-id="a-cart-as-an-interface">A cart, as an interface</h2>
+<p>This notebook lets the agent shop: search a store, put products in the trolley and read the trolley back. It is written around one real job, a weekly grocery order split across two Australian stores, and it shows how to add a whole new kind of capability to Ramabana without touching the harness.</p>
+<p>The host is the agent’s connection to the outside world, and every host capability turns into tools for every agent built on it. Shopping does not belong there. An agent editing a repository needs no cart, and most hosts have no browser to run one. So the cart arrives as an extension instead: a Python file in the config folder whose <code>setup(reg)</code> function registers the cart’s tools with <code>reg.tool</code>. Without that file there is no cart.</p>
+<p><a href="https://vedicreader.github.io/ramabana/shop.html#cart"><code>Cart</code></a> is the interface every cart implements: <code>open</code> a store, <code>find</code> products, <code>add</code> one, and read back the <code>lines</code> and the <code>total</code>. <a href="https://vedicreader.github.io/ramabana/shop.html#fossickcart"><code>FossickCart</code></a> drives a real logged-in Chrome. <a href="https://vedicreader.github.io/ramabana/shop.html#fakecart"><code>FakeCart</code></a> is an in-memory stand-in. The tests and the worked example below use <a href="https://vedicreader.github.io/ramabana/shop.html#fakecart"><code>FakeCart</code></a>, so building the docs never fills a real trolley. A failed cart action raises <a href="https://vedicreader.github.io/ramabana/shop.html#carterror"><code>CartError</code></a>.</p>
+<div id="f657d309" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:05.924235+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:05.935402+00:00&quot;,&quot;total&quot;:0.011170794000008755}}" data-execution_count="5">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/shop.py#L28" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="cart" class="level3">
+<h3 class="anchored" data-anchor-id="cart">Cart</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> Cart(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>args, <span class="op">**</span>kwargs</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>One shopping session: find things, put them in, read the trolley back.</em></p>
+</section>
+</div>
+<div id="c1c0807b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:05.935541+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:05.938860+00:00&quot;,&quot;total&quot;:0.0033201290000022254}}" data-execution_count="6">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/shop.py#L23" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="carterror" class="level3">
+<h3 class="anchored" data-anchor-id="carterror">CartError</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> CartError(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>args, <span class="op">**</span>kwargs</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A cart action failed: no such product, no add control, nothing matched.</em></p>
+</section>
+</div>
+</section>
+<section id="the-real-one" class="level2">
+<h2 class="anchored" data-anchor-id="the-real-one">The real one</h2>
+<p><a href="https://vedicreader.github.io/ramabana/shop.html#fossickcart"><code>FossickCart</code></a> drives a logged-in Chrome tab through <code>fossick.shop</code>. It starts the browser session on first use, on the debugging port <code>port</code>, and reuses it after that.</p>
+<p><code>fossick.shop</code> does the hard part:</p>
+<ul>
+<li>it injects its helper scripts into the page</li>
+<li>it finds the page’s add-to-cart control</li>
+<li>on Shopify stores, it posts to <code>/cart/add.js</code> directly</li>
+<li>it watches the cart for a sign that the add worked</li>
+</ul>
+<p><a href="https://vedicreader.github.io/ramabana/shop.html#fossickcart"><code>FossickCart</code></a> is a thin adapter from the <a href="https://vedicreader.github.io/ramabana/shop.html#cart"><code>Cart</code></a> methods to those calls. <code>stores()</code> lists the stores fossick knows the search and trolley pages of, from its <code>SITES</code> table. Both stores in the example are in that table, so their urls are known rather than guessed. Coles blocks bots that come from datacentre addresses and Ceres is a members’ shop, so the cart drives a browser you have logged into instead of fetching pages.</p>
+<div id="abd9ab45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:05.941426+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:05.946967+00:00&quot;,&quot;total&quot;:0.0055464310000132855}}" data-execution_count="8">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/shop.py#L57" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="fossickcart" class="level3">
+<h3 class="anchored" data-anchor-id="fossickcart">FossickCart</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> FossickCart(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    port:<span class="bu">int</span><span class="op">=</span><span class="dv">9223</span>, tout:<span class="bu">int</span><span class="op">=</span><span class="dv">180</span>, headless:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Real Chrome trolley via <code>fossick.shop</code>, opened on first use and reused.</em></p>
+</section>
+</div>
+</section>
+<section id="the-double" class="level2">
+<h2 class="anchored" data-anchor-id="the-double">The double</h2>
+<p><a href="https://vedicreader.github.io/ramabana/shop.html#fakecart"><code>FakeCart</code></a> is a shop with a fixed catalogue, <code>CATALOGUE</code> unless you pass one, and a list for a trolley. It picks the store from the catalogue by matching the current url. It matches products the way fossick does. A number means that row of the last search. A title is matched exactly first, then as a substring, against the last search and then the whole store, and the shortest matching title wins. When nothing matches it raises <a href="https://vedicreader.github.io/ramabana/shop.html#carterror"><code>CartError</code></a> listing what the store stocks, rather than guess. A model can recover from “no product matching ‘caviar’” followed by a list of titles. It cannot recover from a silent wrong add.</p>
+<p>The cells below search for milk, add two of it and a loaf of sourdough, and read the total.</p>
+<div id="8363c241" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:05.956377+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:05.961685+00:00&quot;,&quot;total&quot;:0.005313268000008975}}" data-execution_count="10">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/shop.py#L102" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="fakecart" class="level3">
+<h3 class="anchored" data-anchor-id="fakecart">FakeCart</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> FakeCart(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    catalogue:NoneType<span class="op">=</span><span class="va">None</span>, url:<span class="bu">str</span><span class="op">=</span><span class="st">'https://www.coles.com.au'</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A browserless cart with a fixed catalogue, for tests and docs.</em></p>
+</section>
+</div>
+<div id="cec7a39f" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>cart <span class="op">=</span> FakeCart()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>cart.find(<span class="st">'milk'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="3a3b78e9" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>cart.add(<span class="st">'milk'</span>, qty<span class="op">=</span><span class="dv">2</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>cart.add(<span class="st">'Sourdough Loaf 680g'</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>cart.total()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A failed match names the options instead of guessing, so the model can try again instead of buying the wrong thing.</p>
+<div id="e5a4f845" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: cart.add(<span class="st">'caviar'</span>), contains<span class="op">=</span><span class="st">'no product matching'</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: cart.add(<span class="dv">99</span>), contains<span class="op">=</span><span class="st">'no product #99'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="the-tools" class="level2">
+<h2 class="anchored" data-anchor-id="the-tools">The tools</h2>
+<p><code>cart_tools(cart)</code> turns any <a href="https://vedicreader.github.io/ramabana/shop.html#cart"><code>Cart</code></a> into six tools for the model: <code>cart_stores</code>, <code>cart_open</code>, <code>cart_find</code>, <code>cart_add</code>, <code>cart_show</code> and <code>cart_remove</code>. <code>cart_add</code> reports <code>added</code> only when the trolley changed, <code>DID NOT ADD</code> when it did not, and <code>UNVERIFIED</code> when the cart could not tell.</p>
+<div id="4e5807e6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:05.969744+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:05.979831+00:00&quot;,&quot;total&quot;:0.010092631000006236}}" data-execution_count="12">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/shop.py#L167" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="cart_tools" class="level3">
+<h3 class="anchored" data-anchor-id="cart_tools">cart_tools</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> cart_tools(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    cart</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Return the six tools that let a model shop with <code>cart</code>.</em></p>
+</section>
+</div>
+<p>Registering them takes one extension file in the config folder. Nothing in the harness changes:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ~/.config/ramabana/extensions/shopping.py</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.shop <span class="im">import</span> FossickCart, cart_tools</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> setup(reg):</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> t <span class="kw">in</span> cart_tools(FossickCart()): reg.tool(t)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The cell below does the same with a <code>Registry</code> and a <a href="https://vedicreader.github.io/ramabana/shop.html#fakecart"><code>FakeCart</code></a>.</p>
+<div id="b04ad938" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:05.980152+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:05.988752+00:00&quot;,&quot;total&quot;:0.008605153999994286}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.tools <span class="im">import</span> Registry, WRITE_TOOLS</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>reg <span class="op">=</span> Registry()</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> t <span class="kw">in</span> cart_tools(FakeCart()): reg.tool(t)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>[t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> reg.tools]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>['cart_stores',
+ 'cart_open',
+ 'cart_find',
+ 'cart_add',
+ 'cart_show',
+ 'cart_remove']</code></pre>
+</div>
+</div>
+<p><code>cart_add</code> and <code>cart_remove</code> are in <code>WRITE_TOOLS</code>, the set of tools the approval gate guards, so an <a href="https://vedicreader.github.io/ramabana/agent.html#approvals"><code>Approvals</code></a> gate asks before either runs, as it would before a file write. Spending money deserves a confirmation at least as much.</p>
+<div id="150dbfcd" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>test_eq({<span class="st">'cart_add'</span>, <span class="st">'cart_remove'</span>} <span class="op">&lt;=</span> WRITE_TOOLS, <span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="the-weekly-shop" class="level2">
+<h2 class="anchored" data-anchor-id="the-weekly-shop">The weekly shop</h2>
+<p>This is the whole job end to end: a reminder set once, noticed later, and acted on.</p>
+<p>Only the model’s decisions and the trolley are fakes. The vault, the watch and the poll are real, and every tool call below runs the actual tool. <a href="https://vedicreader.github.io/ramabana/testing.html#scriptedbackend"><code>ScriptedBackend</code></a>, from the testing notebook, chooses which tool to call and streams the words, and the harness does everything else. The host is a <a href="https://vedicreader.github.io/ramabana/vault.html#vaulthost"><code>VaultHost</code></a> over a temporary vault, with <a href="https://vedicreader.github.io/ramabana/testing.html#no_model"><code>no_model</code></a> as its graph chat so no model loads.</p>
+<div id="6270c6d8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:05.989207+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:16.393994+00:00&quot;,&quot;total&quot;:10.404793843000007}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> time</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana <span class="im">import</span> Agent</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.vault <span class="im">import</span> VaultHost</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.testing <span class="im">import</span> ScriptedBackend, Step, no_model</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>tmp <span class="op">=</span> Path(tempfile.mkdtemp())</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>host <span class="op">=</span> VaultHost(roots<span class="op">=</span>[tmp], vault<span class="op">=</span>tmp<span class="op">/</span><span class="st">'vault.db'</span>, index<span class="op">=</span><span class="va">False</span>, web<span class="op">=</span><span class="va">False</span>, graph_chat<span class="op">=</span>no_model())</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>host.open_vault(wait<span class="op">=</span><span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>&lt;ramabana.vault.VaultHost at 0x7f31a5cf6270&gt;</code></pre>
+</div>
+</div>
+<p><strong>Once, weeks ago.</strong> Store the shopping list as a note and set a weekly reminder against it. <code>start</code> is when the reminder first comes due. Setting it a second in the past makes the rest of the page the morning the reminder fires, with no fake clock.</p>
+<div id="3b35419f" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>host.remember(<span class="st">'Weekly Coles order: milk, sourdough, eggs, baby spinach, olive oil. '</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>              <span class="st">'Plus a seasonal fruit box from Ceres Fair Food.'</span>,</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>              title<span class="op">=</span><span class="st">'the weekly shop'</span>, tags<span class="op">=</span>[<span class="st">'groceries'</span>])</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>due <span class="op">=</span> host.watch(<span class="st">'Put the weekly groceries in the Coles trolley, and add a Ceres fruit box.'</span>,</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>                 action<span class="op">=</span><span class="st">'remind'</span>, every<span class="op">=</span><span class="st">'1w'</span>, note<span class="op">=</span><span class="st">'weekly shop'</span>, start<span class="op">=</span>time.time() <span class="op">-</span> <span class="dv">1</span>)</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="bu">int</span>(due[<span class="st">'every'</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>No one has polled yet, so the vault shows the reminder as due.</p>
+<div id="0be33c3d" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(host.watches(due_only<span class="op">=</span><span class="va">True</span>)), <span class="dv">1</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><strong>The morning it fires.</strong> The agent gets the host’s own tools plus the cart’s. <code>gpt-mini</code> resolves to <code>openai/gpt-5.6-luna</code>, fast and cheap, which suits a run of many small steps that each can be checked. The script never calls it: the steps below are played by <a href="https://vedicreader.github.io/ramabana/testing.html#scriptedbackend"><code>ScriptedBackend</code></a>.</p>
+<div id="4aea2b3c" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>shop <span class="op">=</span> FakeCart()</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>agent <span class="op">=</span> Agent(host, model<span class="op">=</span><span class="st">'gpt-mini'</span>, extensions<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>tools <span class="op">=</span> {t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> agent.tools} <span class="op">|</span> {t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> cart_tools(shop)}</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>agent.routing.turn</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="080dba2d" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>script <span class="op">=</span> [</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    Step(<span class="st">'There is a weekly shop. Pulling the list.'</span>,</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>         tool<span class="op">=</span>(<span class="st">'memory_search'</span>, {<span class="st">'query'</span>: <span class="st">'weekly Coles order list'</span>, <span class="st">'limit'</span>: <span class="dv">2</span>})),</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>    Step(<span class="st">'Opening Coles.'</span>, tool<span class="op">=</span>(<span class="st">'cart_open'</span>, {<span class="st">'url'</span>: <span class="st">'https://www.coles.com.au'</span>})),</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>[s <span class="cf">for</span> item <span class="kw">in</span> [<span class="st">'milk'</span>, <span class="st">'sourdough'</span>, <span class="st">'eggs'</span>, <span class="st">'baby spinach'</span>, <span class="st">'olive oil'</span>]</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>      <span class="cf">for</span> s <span class="kw">in</span> (Step(<span class="ss">f'Looking for </span><span class="sc">{</span>item<span class="sc">}</span><span class="ss">.'</span>, tool<span class="op">=</span>(<span class="st">'cart_find'</span>, {<span class="st">'query'</span>: item})),</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>                Step(<span class="ss">f'Adding </span><span class="sc">{</span>item<span class="sc">}</span><span class="ss">.'</span>, tool<span class="op">=</span>(<span class="st">'cart_add'</span>, {<span class="st">'item'</span>: item})))],</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>    Step(<span class="st">'Now the fruit box.'</span>, tool<span class="op">=</span>(<span class="st">'cart_open'</span>, {<span class="st">'url'</span>: <span class="st">'https://members.ceresfairfood.org.au'</span>})),</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>    Step(<span class="st">''</span>, tool<span class="op">=</span>(<span class="st">'cart_find'</span>, {<span class="st">'query'</span>: <span class="st">'fruit box'</span>})),</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>    Step(<span class="st">''</span>, tool<span class="op">=</span>(<span class="st">'cart_add'</span>, {<span class="st">'item'</span>: <span class="st">'Seasonal Fruit Box - Medium'</span>})),</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    Step(<span class="st">'Reading the trolley back.'</span>, tool<span class="op">=</span>(<span class="st">'cart_show'</span>, {})),</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>    Step(<span class="st">'Done: five staples in the Coles trolley and a medium seasonal fruit box from Ceres.'</span>),</span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>be <span class="op">=</span> ScriptedBackend(steps<span class="op">=</span>script, token_delay<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a>be.refresh(<span class="st">''</span>, <span class="bu">list</span>(tools.values()))</span>
+<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a>agent.poll_watches(force<span class="op">=</span><span class="va">True</span>).join()</span>
+<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(be.send(<span class="st">'anything outstanding this week?'</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The harness polls, not the model: there is no <code>poll_watches</code> tool. In a session <a href="https://vedicreader.github.io/ramabana/agent.html#agent.poll_watches"><code>Agent.poll_watches</code></a> runs at the start of each turn. Here the script is sent to the backend directly, so the cell calls it by hand first. The reminder that fired became a vault note, and the first <code>memory_search</code> finds it:</p>
+<div id="88da54c7" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>[h[<span class="st">'content'</span>] <span class="cf">for</span> h <span class="kw">in</span> be.hist <span class="cf">if</span> h[<span class="st">'role'</span>] <span class="op">==</span> <span class="st">'tool'</span>][<span class="dv">0</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Check the trolley, not the transcript. <code>cart_add</code> compares the trolley before and after each add, so a reported add is one the cart confirmed.</p>
+<div id="d5d13460" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>shop.total()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The reminder has rescheduled itself for next week, so the job repeats with no new setup.</p>
+<div id="b6654c14" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>w <span class="op">=</span> host.watches()[<span class="dv">0</span>]</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>test_eq(w[<span class="st">'runs'</span>], <span class="dv">1</span>)</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>test_eq(w[<span class="st">'last_status'</span>], <span class="st">'ok'</span>)</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>test_eq(w[<span class="st">'next_run'</span>] <span class="op">&gt;</span> due[<span class="st">'next_run'</span>], <span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="against-the-real-shops" class="level3">
+<h3 class="anchored" data-anchor-id="against-the-real-shops">Against the real shops</h3>
+<p>The same run on a browser you are already logged into. The cart is <a href="https://vedicreader.github.io/ramabana/shop.html#fossickcart"><code>FossickCart</code></a>, and the agent asks before every write:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana <span class="im">import</span> Agent</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.agent <span class="im">import</span> Approvals</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.shop <span class="im">import</span> FossickCart, cart_tools</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.tools <span class="im">import</span> WRITE_TOOLS</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.vault <span class="im">import</span> VaultHost</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>host  <span class="op">=</span> VaultHost(roots<span class="op">=</span>[<span class="st">'~/notes'</span>])              <span class="co"># the shared ~/.vishalakshi/vault.db</span></span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>agent <span class="op">=</span> Agent(host, model<span class="op">=</span><span class="st">'gpt-mini'</span>, approvals<span class="op">=</span>Approvals(WRITE_TOOLS, mode<span class="op">=</span><span class="st">'ask'</span>))</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> t <span class="kw">in</span> cart_tools(FossickCart()): agent.add_tool(t)</span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>agent.ask(<span class="st">'anything outstanding this week?'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Two rules for a real trolley. Keep the approval gate on: <code>cart_add</code> is in <code>WRITE_TOOLS</code>, so you see every add before it happens. And leave the checkout alone. <code>fossick.shop</code> has <code>shop_fill</code> for the payment form, and this module does not wrap it. A trolley can be emptied again. A placed order cannot.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

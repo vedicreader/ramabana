@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="What the main agent and each sub-agent are doing now, written to a file and drawn in a tmux split beside the chat.">
+
+<title>pane – ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-f2788e636de456f6409e966386820849.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="pane – ramabana">
+<meta property="og:description" content="What the main agent and each sub-agent are doing now, written to a file and drawn in a tmux split beside the chat.">
+<meta property="og:site_name" content="ramabana">
+<meta name="twitter:title" content="pane – ramabana">
+<meta name="twitter:description" content="What the main agent and each sub-agent are doing now, written to a file and drawn in a tmux split beside the chat.">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./pane.html">pane</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./shop.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">shop</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pyrepl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pyrepl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./acp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">racp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-snapshot" id="toc-the-snapshot" class="nav-link active" data-scroll-target="#the-snapshot">The snapshot</a></li>
+  <li><a href="#drawing-it" id="toc-drawing-it" class="nav-link" data-scroll-target="#drawing-it">Drawing it</a></li>
+  <li><a href="#the-viewer" id="toc-the-viewer" class="nav-link" data-scroll-target="#the-viewer">The viewer</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="pane.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">pane</h1>
+</div>
+
+<div>
+  <div class="description">
+    What the main agent and each sub-agent are doing now, written to a file and drawn in a tmux split beside the chat.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<p>While a turn runs, the chat shows the answer as it streams and one line per tool call. It does not show, at a glance, which step the turn is on, how far the plan has got, what each sub-agent is doing, or which files have changed so far. The now pane shows all of that in a narrow column beside the chat. It is called the now pane because it shows only the present: what is running at this moment and what this turn has done.</p>
+<p>The pane runs as a separate program, <code>ramabana-pane</code>, in a tmux split. tmux is a terminal multiplexer: it divides one terminal window into panes, each running its own program. Because the pane is a separate process, the terminal session hands it information through a file. Several times a second the session writes a snapshot, a JSON file called <code>now.json</code> in the session’s run folder, and the pane reads that file and draws it. This page covers the three parts in order: taking a snapshot, laying it out as rows of text, and the viewer that draws those rows and answers keys and clicks.</p>
+<section id="the-snapshot" class="level2">
+<h2 class="anchored" data-anchor-id="the-snapshot">The snapshot</h2>
+<p><code>now_snapshot(agent)</code> returns a plain dict that <code>json.dumps</code> can write. Its keys are:</p>
+<ul>
+<li><code>root</code>, the foreground turn: how many steps it has taken, how long it has run, its state, the call it is waiting on (<code>current</code>), and its <code>status</code>, the last line the model wrote before calling a tool.</li>
+<li><code>plan</code>, the agent’s checklist, with each item’s text and status.</li>
+<li><code>subs</code>, one row per sub-agent. A sub-agent is a second agent the turn starts to do part of the work. The list holds every delegation this turn started, and every background delegation that is running or has finished since the turn began. A row carries the sub-agent’s status, its last <code>CALLS_KEPT</code> calls with their results cut short, and its answer, cut to <code>ANSWER_CHARS</code>, once it has finished. A finished sub-agent stays listed until the next turn starts.</li>
+<li><code>files</code>, the files this turn wrote: path, lines added and removed, and the diff cut to <code>DIFF_LINES</code> lines.</li>
+<li><code>notes</code>, what the model wrote before each of this turn’s calls, in full and with a timestamp.</li>
+<li><code>background</code>, the work running behind the turn: background delegations, commands started with <code>run_shell_bg</code>, and folder watches. Each row has a kind, an id, a label, a state and the seconds it has been running. A finished shell command or a watch has no clock, so its <code>elapsed</code> is <code>None</code>.</li>
+</ul>
+<p>The session writes a snapshot up to five times a second, so taking one has to be cheap when nothing has changed. The list of files is worked out again only after a call finishes. The state of a background shell command is asked of the host at most once every <code>SHELL_EVERY</code> seconds while it runs, and never again once it has ended.</p>
+<p>Each recorded call (an <a href="https://vedicreader.github.io/ramabana/agent.html#act"><code>Act</code></a>) names the run whose model made it, so a sub-agent’s step count is the number of calls with its run id. A step of the main turn is counted the way the terminal counts it: a call whose <code>parent_action_id</code> does not name another call in the activity log. A sub-agent’s calls name the <a href="https://vedicreader.github.io/ramabana/tools.html#delegate"><code>delegate</code></a> call that started it, so they never count as steps of the main turn.</p>
+<div id="4fb16e38" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:08.887424+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:08.900654+00:00&quot;,&quot;total&quot;:0.013232754999989993}}" data-execution_count="5">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pane.py#L106" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="now_snapshot" class="level3">
+<h3 class="anchored" data-anchor-id="now_snapshot">now_snapshot</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> now_snapshot(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    agent</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The foreground turn, its plan, sub-agents, writes and background work, as a JSON-able dict.</em></p>
+</section>
+</div>
+<p>The example builds an agent with <a href="https://vedicreader.github.io/ramabana/testing.html#fake_agent"><code>fake_agent</code></a> and a scripted model, <code>Root</code>. The model reads a file, then asks a sub-agent one question with <code>delegate_search</code>, and the sub-agent reads the same file before it answers. The activity log’s <code>on_change</code> hook takes a snapshot when the sub-agent’s read starts, which is the moment the pane would show both agents working. The main turn has taken two steps and the one sub-agent is running with one step:</p>
+<div id="b2d381a0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:08.901133+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:08.992066+00:00&quot;,&quot;total&quot;:0.09093642899999566}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.runtime <span class="im">import</span> current_run</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.testing <span class="im">import</span> ScriptedBackend, Step, fake_agent</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>READ <span class="op">=</span> (<span class="st">'view_file'</span>, {<span class="st">'path'</span>: <span class="st">'/proj/a.py'</span>})</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>a, _ <span class="op">=</span> fake_agent()</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>seen <span class="op">=</span> []</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>a.activity.on_change <span class="op">=</span> <span class="kw">lambda</span> act: seen.append(now_snapshot(a)) <span class="cf">if</span> <span class="kw">not</span> act.done <span class="kw">and</span> current_run().kind <span class="op">!=</span> <span class="st">'root'</span> <span class="cf">else</span> <span class="va">None</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Root(ScriptedBackend):</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> spawn(<span class="va">self</span>, sp<span class="op">=</span><span class="st">''</span>, tools<span class="op">=</span>(), <span class="op">**</span>kw):</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> ScriptedBackend(<span class="va">self</span>.spec, steps<span class="op">=</span>[Step(tool<span class="op">=</span>READ), Step(<span class="st">'a() is defined'</span>)], token_delay<span class="op">=</span><span class="dv">0</span>, tools<span class="op">=</span>tools)</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>be <span class="op">=</span> Root(steps<span class="op">=</span>[Step(tool<span class="op">=</span>READ), Step(tool<span class="op">=</span>(<span class="st">'delegate_search'</span>, {<span class="st">'questions'</span>: [<span class="st">'what does a.py define?'</span>]})), Step(<span class="st">'done'</span>)],</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>          token_delay<span class="op">=</span><span class="dv">0</span>, tools<span class="op">=</span>a.tools, sp<span class="op">=</span>a.system_prompt())</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>a._be <span class="op">=</span> a._be_or_none <span class="op">=</span> <span class="kw">lambda</span> job<span class="op">=</span><span class="st">'turn'</span>: be</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="bu">list</span>(a.stream(<span class="st">'go'</span>))</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>mid <span class="op">=</span> seen[<span class="dv">0</span>]</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>test_eq((mid[<span class="st">'busy'</span>], mid[<span class="st">'root'</span>][<span class="st">'steps'</span>], [(s[<span class="st">'state'</span>], s[<span class="st">'steps'</span>]) <span class="cf">for</span> s <span class="kw">in</span> mid[<span class="st">'subs'</span>]]), (<span class="va">True</span>, <span class="dv">2</span>, [(<span class="st">'running'</span>, <span class="dv">1</span>)]))</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>mid</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>{'at': 1792474688.9890528,
+ 'busy': True,
+ 'root': {'turn_elapsed': 0.0,
+  'steps': 2,
+  'state': 'running',
+  'status': '',
+  'current': 'Delegate: what does a.py define?'},
+ 'plan': [],
+ 'subs': [{'id': 'run_5837d1bea07d',
+   'question': 'what does a.py define?',
+   'elapsed': 0.0,
+   'state': 'running',
+   'steps': 1,
+   'status': '',
+   'current': 'View /proj/a.py',
+   'calls': [{'line': 'View /proj/a.py',
+     'ok': True,
+     'done': False,
+     'out': ''}],
+   'answer': ''}],
+ 'files': [],
+ 'background': [],
+ 'notes': []}</code></pre>
+</div>
+</div>
+<p>Once the turn ends, the sub-agent stays listed as completed. The next turn clears it:</p>
+<div id="2996d917" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>test_eq([s[<span class="st">'state'</span>] <span class="cf">for</span> s <span class="kw">in</span> now_snapshot(a)[<span class="st">'subs'</span>]], [<span class="st">'completed'</span>])</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>be.steps <span class="op">=</span> [Step(<span class="st">'ok'</span>)]</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="bu">list</span>(a.stream(<span class="st">'again'</span>))</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>test_eq(now_snapshot(a)[<span class="st">'subs'</span>], [])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The plan and the files this turn wrote are part of the snapshot too, each file with its diff. Here the example sets a two-item plan and changes <code>a.py</code> by hand:</p>
+<div id="d55ce395" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>a.plan.<span class="bu">set</span>(<span class="st">'ship'</span>, [<span class="st">'read a.py'</span>, <span class="st">'fix it'</span>])<span class="op">;</span> a.plan.update(a.plan.todos[<span class="dv">0</span>].<span class="bu">id</span>, status<span class="op">=</span><span class="st">'active'</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>a.before[<span class="st">'/proj/a.py'</span>] <span class="op">=</span> <span class="st">'def a(): pass</span><span class="ch">\n</span><span class="st">'</span><span class="op">;</span> a.host.files[<span class="st">'/proj/a.py'</span>] <span class="op">=</span> <span class="st">'def a(): return 1</span><span class="ch">\n</span><span class="st">'</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>snap <span class="op">=</span> now_snapshot(a)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>test_eq(snap[<span class="st">'plan'</span>], [{<span class="st">'text'</span>: <span class="st">'read a.py'</span>, <span class="st">'status'</span>: <span class="st">'active'</span>}, {<span class="st">'text'</span>: <span class="st">'fix it'</span>, <span class="st">'status'</span>: <span class="st">'pending'</span>}])</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>test_eq([(f[<span class="st">'path'</span>], f[<span class="st">'added'</span>], f[<span class="st">'removed'</span>]) <span class="cf">for</span> f <span class="kw">in</span> snap[<span class="st">'files'</span>]], [(<span class="st">'a.py'</span>, <span class="dv">1</span>, <span class="dv">1</span>)])</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(snap[<span class="st">'files'</span>][<span class="dv">0</span>][<span class="st">'diff'</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/pane.html#write_snapshot"><code>write_snapshot</code></a> writes the snapshot to a file and <a href="https://vedicreader.github.io/ramabana/pane.html#read_snapshot"><code>read_snapshot</code></a> reads it back. The writer goes through a temporary file and renames it into place, so the pane never reads half a file. The reader returns <code>None</code> when the file is missing or does not yet hold valid JSON, and the pane then keeps showing what it had. The example checks both cases, and that the temporary file is gone afterwards:</p>
+<div id="f1c8fb6c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:08.994252+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:08.999742+00:00&quot;,&quot;total&quot;:0.0054918440000051305}}" data-execution_count="8">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pane.py#L130" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="read_snapshot" class="level3">
+<h3 class="anchored" data-anchor-id="read_snapshot">read_snapshot</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> read_snapshot(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    path</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The snapshot at <code>path</code>, or <code>None</code> when it is missing or unreadable.</em></p>
+</section>
+</div>
+<div id="0a6fa344" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:08.999833+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.005007+00:00&quot;,&quot;total&quot;:0.005177138999997055}}" data-execution_count="9">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pane.py#L122" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="write_snapshot" class="level3">
+<h3 class="anchored" data-anchor-id="write_snapshot">write_snapshot</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> write_snapshot(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    agent, path</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Write <code>now_snapshot(agent)</code> to <code>path</code> atomically.</em></p>
+</section>
+</div>
+<div id="386e038a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.005224+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.403622+00:00&quot;,&quot;total&quot;:0.3984050530000047}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    p <span class="op">=</span> Path(d)<span class="op">/</span><span class="st">'now.json'</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    test_eq(read_snapshot(p), <span class="va">None</span>)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    write_snapshot(a, p)</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    test_eq((read_snapshot(p)[<span class="st">'busy'</span>], [f.name <span class="cf">for</span> f <span class="kw">in</span> Path(d).iterdir()]), (<span class="va">False</span>, [<span class="st">'now.json'</span>]))</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    p.write_text(<span class="st">'{"busy": tr'</span>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    test_eq(read_snapshot(p), <span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="drawing-it" class="level2">
+<h2 class="anchored" data-anchor-id="drawing-it">Drawing it</h2>
+<p><code>board(snap, width)</code> lays a snapshot out as rows for a pane <code>width</code> cells wide, one row per screen line. Each row is a <code>(key, Text)</code> pair, where <code>Text</code> is a rich styled string. Long lines are cut at the width, not wrapped. Use <a href="https://vedicreader.github.io/ramabana/pane.html#board"><code>board</code></a> when you need the rows themselves, as the viewer does to know which row a click landed on. Use <a href="https://vedicreader.github.io/ramabana/pane.html#render"><code>render</code></a> when you only want something to print: it returns the same rows as one rich renderable.</p>
+<p>From the top, the board shows:</p>
+<ul>
+<li>A header with <a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a>, its step number, its clock and its status line. The chat already shows the call the main agent is waiting on, so the header leaves it out. An idle agent gets one line.</li>
+<li>The plan as a checklist, with the active item highlighted.</li>
+<li>The sub-agents, one row each: id, status line (or its question when it has none), clock, and a mark: <code>▶</code> running, <code>✓</code> completed, <code>✗</code> stopped or failed. An open row, marked <code>▾</code> in place of <code>▸</code>, adds the question, each recent call with its result, and the answer once there is one.</li>
+<li>The files this turn wrote, each with its lines added and removed. An open row shows the diff, drawn by <code>hl.diff_rich</code> with the code coloured for the file’s language and the added and removed lines tinted.</li>
+<li>The background work: kind, label, state and clock. A row opens to a shell command’s last <code>SHELL_LINES</code> lines of output, a watch’s pattern and last review, or a background sub-agent’s detail.</li>
+<li>The notes, newest first, for reading back what the model said along the way. Each is a <code>▸</code> row with its time and first line, and opens to the whole note wrapped to the pane. The newest note starts open.</li>
+</ul>
+<p>Empty sections are left out. A row that can open carries a key: <code>('sub', id)</code>, <code>('file', path)</code>, <code>('bg', id)</code> or <code>('note', at)</code>. The caller passes the keys of the open rows in <code>open</code>, so a row stays open when the next snapshot arrives. A running clock adds the time since the snapshot was written, so a long call does not look frozen between writes. The colours are the terminal session’s default <code>github-dark</code> palette, copied into <code>PALETTE</code> here because <code>ramabana.cli</code> imports this module and this module cannot import it back.</p>
+<div id="8ab61fc1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.419046+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.422552+00:00&quot;,&quot;total&quot;:0.003509182999991367}}" data-execution_count="12">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pane.py#L236" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="render" class="level3">
+<h3 class="anchored" data-anchor-id="render">render</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> render(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    snap, width:<span class="bu">int</span><span class="op">=</span><span class="dv">40</span>, now:NoneType<span class="op">=</span><span class="va">None</span>, <span class="bu">open</span>:<span class="bu">tuple</span><span class="op">=</span>()</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The pane for <code>snap</code> as a rich renderable, <code>width</code> cells wide, with the rows keyed in <code>open</code> opened.</em></p>
+</section>
+</div>
+<div id="2bcf188e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.422649+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.427258+00:00&quot;,&quot;total&quot;:0.004611394999997742}}" data-execution_count="13">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pane.py#L220" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="board" class="level3">
+<h3 class="anchored" data-anchor-id="board">board</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> board(</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    snap, width:<span class="bu">int</span><span class="op">=</span><span class="dv">40</span>, now:NoneType<span class="op">=</span><span class="va">None</span>, <span class="bu">open</span>:<span class="bu">tuple</span><span class="op">=</span>(), err:<span class="bu">str</span><span class="op">=</span><span class="st">''</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The pane for <code>snap</code> as <code>(key, row)</code> pairs, one per screen line; a row with a <code>key</code> opens and closes.</em></p>
+</section>
+</div>
+<p>A snapshot of a busy turn, written five seconds before <code>now</code>, with every row closed. The turn’s clock reads 47s, its 42 seconds plus the five since the write:</p>
+<div id="c3229788" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>call <span class="op">=</span> <span class="kw">lambda</span> line, ok<span class="op">=</span><span class="va">True</span>, done<span class="op">=</span><span class="va">True</span>, out<span class="op">=</span><span class="st">''</span>: {<span class="st">'line'</span>: line, <span class="st">'ok'</span>: ok, <span class="st">'done'</span>: done, <span class="st">'out'</span>: out}</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>now <span class="op">=</span> time.time()</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>busy <span class="op">=</span> {<span class="st">'at'</span>: now <span class="op">-</span> <span class="dv">5</span>, <span class="st">'busy'</span>: <span class="va">True</span>,</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>        <span class="st">'root'</span>: {<span class="st">'turn_elapsed'</span>: <span class="dv">42</span>, <span class="st">'steps'</span>: <span class="dv">7</span>, <span class="st">'state'</span>: <span class="st">'running'</span>, <span class="st">'status'</span>: <span class="st">'Checking the pane tests'</span>, <span class="st">'current'</span>: <span class="st">'Run shell: pytest'</span>},</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">'plan'</span>: [{<span class="st">'text'</span>: <span class="st">'Read the viewer'</span>, <span class="st">'status'</span>: <span class="st">'done'</span>}, {<span class="st">'text'</span>: <span class="st">'Rewrite render'</span>, <span class="st">'status'</span>: <span class="st">'active'</span>},</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>                 {<span class="st">'text'</span>: <span class="st">'Wire the CLI'</span>, <span class="st">'status'</span>: <span class="st">'pending'</span>}, {<span class="st">'text'</span>: <span class="st">'Poll the file'</span>, <span class="st">'status'</span>: <span class="st">'cancelled'</span>}],</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">'subs'</span>: [{<span class="st">'id'</span>: <span class="st">'run_aaa'</span>, <span class="st">'question'</span>: <span class="st">'which files import fastllm?'</span>, <span class="st">'elapsed'</span>: <span class="dv">12</span>, <span class="st">'state'</span>: <span class="st">'running'</span>, <span class="st">'steps'</span>: <span class="dv">2</span>,</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>                  <span class="st">'status'</span>: <span class="st">'Searching for imports'</span>, <span class="st">'current'</span>: <span class="st">'Search code: fastllm'</span>,</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>                  <span class="st">'calls'</span>: [call(<span class="st">'Search code: import fastllm'</span>, out<span class="op">=</span><span class="st">'agent.py:12: import fastllm'</span>), call(<span class="st">'Search code: fastllm'</span>, <span class="va">None</span>, <span class="va">False</span>)],</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>                  <span class="st">'answer'</span>: <span class="st">''</span>},</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>                 {<span class="st">'id'</span>: <span class="st">'run_bbb'</span>, <span class="st">'question'</span>: <span class="st">'is the pane tested?'</span>, <span class="st">'elapsed'</span>: <span class="dv">8</span>, <span class="st">'state'</span>: <span class="st">'completed'</span>, <span class="st">'steps'</span>: <span class="dv">1</span>, <span class="st">'status'</span>: <span class="st">''</span>,</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>                  <span class="st">'current'</span>: <span class="st">''</span>, <span class="st">'calls'</span>: [call(<span class="st">'Read tests/test_pane.py'</span>)], <span class="st">'answer'</span>: <span class="st">'Yes, in tests/test_pane.py.'</span>}],</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>        <span class="st">'files'</span>: [{<span class="st">'path'</span>: <span class="st">'ramabana/pane.py'</span>, <span class="st">'added'</span>: <span class="dv">1</span>, <span class="st">'removed'</span>: <span class="dv">1</span>, <span class="st">'diff'</span>: <span class="st">'@@ -1 +1 @@</span><span class="ch">\n</span><span class="st">-from rich.live import Live</span><span class="ch">\n</span><span class="st">+from teleprint.keys import Parser'</span>}],</span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>        <span class="st">'background'</span>: [{<span class="st">'kind'</span>: <span class="st">'shell'</span>, <span class="st">'id'</span>: <span class="st">'cmd_1234abcd'</span>, <span class="st">'label'</span>: <span class="st">'pytest -x tests'</span>, <span class="st">'state'</span>: <span class="st">'running'</span>, <span class="st">'elapsed'</span>: <span class="dv">30</span>}]}</span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> show(snap, <span class="bu">open</span><span class="op">=</span>()):</span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>    con <span class="op">=</span> Console(record<span class="op">=</span><span class="va">True</span>, width<span class="op">=</span><span class="dv">40</span>, color_system<span class="op">=</span><span class="va">None</span>)</span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a>    con.<span class="bu">print</span>(render(snap, <span class="dv">40</span>, now<span class="op">=</span>now, <span class="bu">open</span><span class="op">=</span><span class="bu">open</span>))</span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> con.export_text()</span>
+<span id="cb11-19"><a href="#cb11-19" aria-hidden="true" tabindex="-1"></a>out <span class="op">=</span> show(busy)</span>
+<span id="cb11-20"><a href="#cb11-20" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'47s'</span> <span class="kw">in</span> out <span class="kw">and</span> <span class="st">'Run shell'</span> <span class="kw">not</span> <span class="kw">in</span> out <span class="kw">and</span> <span class="st">'▸ run_aaa'</span> <span class="kw">in</span> out <span class="kw">and</span> <span class="st">'import fastllm'</span> <span class="kw">not</span> <span class="kw">in</span> out</span>
+<span id="cb11-21"><a href="#cb11-21" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">all</span>(<span class="bu">len</span>(l) <span class="op">&lt;=</span> <span class="dv">40</span> <span class="cf">for</span> l <span class="kw">in</span> out.splitlines())</span>
+<span id="cb11-22"><a href="#cb11-22" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(out)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Passing the keys of the running sub-agent and the file in <code>open</code> shows the sub-agent’s calls and the diff:</p>
+<div id="0b978a66" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>out <span class="op">=</span> show(busy, {(<span class="st">'sub'</span>, <span class="st">'run_aaa'</span>), (<span class="st">'file'</span>, <span class="st">'ramabana/pane.py'</span>)})</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'▾ run_aaa'</span> <span class="kw">in</span> out <span class="kw">and</span> <span class="st">'✓ Search code: import fastllm'</span> <span class="kw">in</span> out <span class="kw">and</span> <span class="st">'+from teleprint.keys import Parser'</span> <span class="kw">in</span> out</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(out)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>In an open file the diff is drawn by <code>hl.diff_rich</code> in the pane’s palette. The code in each hunk is coloured by the file’s language, and added and removed lines get a tinted background. The cell checks that an added line carries more than two styles, so the code is highlighted and not drawn in one colour:</p>
+<div id="34b9b2f0" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>py <span class="op">=</span> {<span class="op">**</span>busy, <span class="st">'files'</span>: [{<span class="st">'path'</span>: <span class="st">'a.py'</span>, <span class="st">'added'</span>: <span class="dv">1</span>, <span class="st">'removed'</span>: <span class="dv">1</span>, <span class="st">'diff'</span>: diff_text(<span class="st">'x = 1</span><span class="ch">\n</span><span class="st">'</span>, <span class="st">'def f(): return 2</span><span class="ch">\n</span><span class="st">'</span>, <span class="st">'a.py'</span>)}]}</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>rows <span class="op">=</span> [t <span class="cf">for</span> _, t <span class="kw">in</span> board(py, <span class="dv">40</span>, now<span class="op">=</span>now, <span class="bu">open</span><span class="op">=</span>{(<span class="st">'file'</span>, <span class="st">'a.py'</span>)})]</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>added <span class="op">=</span> <span class="bu">next</span>(t <span class="cf">for</span> t <span class="kw">in</span> rows <span class="cf">if</span> <span class="st">'def f'</span> <span class="kw">in</span> t.plain)</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>test_eq(added.plain, <span class="st">'  +def f(): return 2'</span>)</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>({<span class="bu">str</span>(s.style) <span class="cf">for</span> s <span class="kw">in</span> added.spans}) <span class="op">&gt;</span> <span class="dv">2</span>, <span class="st">'the code is highlighted, not one colour'</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>added</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="the-viewer" class="level2">
+<h2 class="anchored" data-anchor-id="the-viewer">The viewer</h2>
+<p><code>Viewer(path, tty)</code> is the program that runs in the pane. It reads the snapshot at <code>path</code> and draws the board on <code>tty</code>. A <code>tty</code> is any object with <code>read(timeout)</code>, <code>write</code>, <code>size</code> and <code>restore</code>, as teleprint’s <code>RealTty</code> has. <a href="https://vedicreader.github.io/ramabana/pane.html#panetty"><code>PaneTty</code></a> is <code>RealTty</code> with a <code>read</code> that returns <code>None</code> at the end of input, so the viewer can tell that its terminal has gone.</p>
+<p>The viewer switches the terminal to the alternate screen, the separate screen full-screen programs use so that the shell’s scrollback comes back unchanged when they exit, and asks the terminal to report mouse clicks. Each <a href="https://vedicreader.github.io/ramabana/monitor.html#tick"><code>tick</code></a> waits up to <code>every</code> seconds for input and acts on it. The controls are:</p>
+<ul>
+<li>A click opens or closes the row under it, and the mouse wheel scrolls.</li>
+<li><code>j</code> and <code>k</code>, or the arrow keys, move the cursor over the rows that open. Past the first or last such row they scroll, so a board taller than the pane can be read to its end.</li>
+<li>Page up and page down scroll by a page, and <code>g</code> and <code>G</code> jump to the top and the bottom.</li>
+<li>Enter or space opens or closes the row under the cursor.</li>
+<li><code>p</code> on a background shell command opens a tmux pane below this one that follows the command’s log with <code>less +F</code>. <code>q</code> closes it.</li>
+<li><code>q</code> or ctrl+c quits.</li>
+</ul>
+<p>The last line of the pane is always <code>HINT</code>, so the main keys stay on screen however far the board scrolls.</p>
+<p>The viewer reads the snapshot again only when its file has changed. It lays out the board on every tick but writes only the lines that differ from what is on screen, so a clock that moves once a second rewrites one line a second and a board that is not changing writes nothing. When the terminal changes size, the viewer clears it and draws everything again.</p>
+<p>The viewer must keep running whatever a single frame does. If drawing fails, it keeps the last good snapshot and shows the error as a row until a good snapshot arrives. However it exits, it gives the terminal back its normal screen and modes. When the user quits, it leaves a file named by <a href="https://vedicreader.github.io/ramabana/pane.html#quit_mark"><code>quit_mark</code></a> beside the snapshot, <code>now.closed</code>. The terminal session checks for it, so it can tell a pane the user closed, which it leaves closed, from one that crashed. A hangup (tmux closing the pane), SIGTERM and the end of input count as quitting too.</p>
+<div id="181c567d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.438623+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.442237+00:00&quot;,&quot;total&quot;:0.0036160819999935256}}" data-execution_count="15">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pane.py#L266" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="viewer" class="level3">
+<h3 class="anchored" data-anchor-id="viewer">Viewer</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> Viewer(</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    path, tty</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The board for the snapshot at <code>path</code>, drawn on <code>tty</code>: the last good snapshot, the open rows, the cursor and the scroll.</em></p>
+</section>
+</div>
+<div id="8ebe9919" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.442327+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.445806+00:00&quot;,&quot;total&quot;:0.0034815509999930327}}" data-execution_count="16">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pane.py#L256" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="panetty" class="level3">
+<h3 class="anchored" data-anchor-id="panetty">PaneTty</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> PaneTty():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>RealTty</code> whose <code>read</code> returns None at the end of input, where <code>RealTty.read</code> would spin.</em></p>
+</section>
+</div>
+<div id="86275d2d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.445890+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.448859+00:00&quot;,&quot;total&quot;:0.002972905000007131}}" data-execution_count="17">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/pane.py#L252" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="quit_mark" class="level3">
+<h3 class="anchored" data-anchor-id="quit_mark">quit_mark</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> quit_mark(</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    path</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The file a viewer the user quit leaves beside the snapshot at <code>path</code>, so the CLI keeps it closed.</em></p>
+</section>
+</div>
+<p>The example drives a <a href="https://vedicreader.github.io/ramabana/pane.html#viewer"><code>Viewer</code></a> with a test terminal, <code>Tty</code>, that replays scripted input and keeps everything written to it. A click on the running sub-agent opens it and puts the cursor there. A tick with nothing new writes nothing. Then <code>j</code> moves the cursor down, space opens <code>run_bbb</code>, and <code>q</code> quits:</p>
+<div id="40d60a25" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Tty:</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"A terminal for tests: scripted input chunks, a size, and every write kept."</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, <span class="op">*</span><span class="bu">input</span>, size<span class="op">=</span>(<span class="dv">40</span>, <span class="dv">30</span>)): <span class="va">self</span>.<span class="bu">input</span>, <span class="va">self</span>.size, <span class="va">self</span>.writes <span class="op">=</span> <span class="bu">list</span>(<span class="bu">input</span>), size, []</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> read(<span class="va">self</span>, timeout<span class="op">=</span><span class="dv">0</span>): <span class="cf">return</span> <span class="va">self</span>.<span class="bu">input</span>.pop(<span class="dv">0</span>).encode() <span class="cf">if</span> <span class="va">self</span>.<span class="bu">input</span> <span class="cf">else</span> <span class="st">b''</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> write(<span class="va">self</span>, s): <span class="va">self</span>.writes.append(s)</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> restore(<span class="va">self</span>): <span class="cf">pass</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>    (p <span class="op">:=</span> Path(d)<span class="op">/</span><span class="st">'now.json'</span>).write_text(json.dumps(busy))</span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>    v <span class="op">=</span> Viewer(p, Tty())<span class="op">;</span> v.tick(now<span class="op">=</span>now)</span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    y <span class="op">=</span> <span class="bu">next</span>(i <span class="cf">for</span> i, (k, _) <span class="kw">in</span> <span class="bu">enumerate</span>(v.rows) <span class="cf">if</span> k <span class="op">==</span> (<span class="st">'sub'</span>, <span class="st">'run_aaa'</span>))</span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>    v.tty.<span class="bu">input</span>.append(<span class="ss">f'</span><span class="ch">\x1b</span><span class="ss">[&lt;0;3;</span><span class="sc">{</span>y <span class="op">+</span> <span class="dv">1</span><span class="sc">}</span><span class="ss">M'</span>)<span class="op">;</span> v.tick(now<span class="op">=</span>now)</span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>    test_eq((v.<span class="bu">open</span>, v.cursor), ({(<span class="st">'sub'</span>, <span class="st">'run_aaa'</span>)}, (<span class="st">'sub'</span>, <span class="st">'run_aaa'</span>)))</span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>    n <span class="op">=</span> <span class="bu">len</span>(v.tty.writes)<span class="op">;</span> v.tick(now<span class="op">=</span>now)</span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>    test_eq(<span class="bu">len</span>(v.tty.writes), n)</span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>    v.tty.<span class="bu">input</span> <span class="op">+=</span> [<span class="st">'j'</span>, <span class="st">' '</span>, <span class="st">'q'</span>]</span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">3</span>): v.tick(now<span class="op">=</span>now)</span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a>    test_eq((v.cursor, v.<span class="bu">open</span>, v.done), ((<span class="st">'sub'</span>, <span class="st">'run_bbb'</span>), {(<span class="st">'sub'</span>, <span class="st">'run_aaa'</span>), (<span class="st">'sub'</span>, <span class="st">'run_bbb'</span>)}, <span class="va">True</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a> is the viewer’s command line: <code>ramabana-pane PATH</code> runs the viewer on the terminal it was started in. The terminal session starts it in a tmux split when you type <code>/pane</code>, and prints the command when there is no tmux, so you can run it in another terminal yourself. <code>--every</code> sets how long each tick waits for input.</p>
+<div id="d475a0ef" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.450508+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.453704+00:00&quot;,&quot;total&quot;:0.0031769050000036714}}" data-execution_count="19">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/cli.py#L2411" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="main" class="level3">
+<h3 class="anchored" data-anchor-id="main">main</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> main(</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    path:<span class="bu">str</span>, <span class="co"># the snapshot file the CLI writes</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    every:<span class="bu">float</span><span class="op">=</span><span class="fl">0.2</span>, <span class="co"># seconds to wait for input between frames</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Show the <code>now</code> snapshot at <code>path</code> as a board until q or ctrl+c.</em></p>
+</section>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

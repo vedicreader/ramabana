@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="A coding-agent harness for terminals, editors, notebooks, and MCP clients.">
+
+<title>ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-f2788e636de456f6409e966386820849.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="ramabana">
+<meta property="og:description" content="A coding-agent harness for terminals, editors, notebooks, and MCP clients.">
+<meta property="og:image" content="https://vedicreader.github.io/ramabana/media/rama-arrow.png">
+<meta property="og:site_name" content="ramabana">
+<meta property="og:image:alt" content="rama's arrow">
+<meta property="og:image:height" content="1254">
+<meta property="og:image:width" content="1254">
+<meta name="twitter:title" content="ramabana">
+<meta name="twitter:description" content="A coding-agent harness for terminals, editors, notebooks, and MCP clients.">
+<meta name="twitter:image" content="https://vedicreader.github.io/ramabana/media/rama-arrow.png">
+<meta name="twitter:image:alt" content="rama's arrow">
+<meta name="twitter:image-height" content="1254">
+<meta name="twitter:image-width" content="1254">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./index.html">ramabana</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./shop.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">shop</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pyrepl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pyrepl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./acp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">racp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#how-the-pieces-fit" id="toc-how-the-pieces-fit" class="nav-link active" data-scroll-target="#how-the-pieces-fit">How the pieces fit</a></li>
+  <li><a href="#install" id="toc-install" class="nav-link" data-scroll-target="#install">Install</a></li>
+  <li><a href="#point-it-at-a-model" id="toc-point-it-at-a-model" class="nav-link" data-scroll-target="#point-it-at-a-model">Point it at a model</a></li>
+  <li><a href="#settings-for-this-machine" id="toc-settings-for-this-machine" class="nav-link" data-scroll-target="#settings-for-this-machine">Settings for this machine</a>
+  <ul class="collapse">
+  <li><a href="#set-up-a-provider" id="toc-set-up-a-provider" class="nav-link" data-scroll-target="#set-up-a-provider">Set up a provider</a></li>
+  </ul></li>
+  <li><a href="#your-first-session" id="toc-your-first-session" class="nav-link" data-scroll-target="#your-first-session">Your first session</a></li>
+  <li><a href="#the-terminal-option-by-option" id="toc-the-terminal-option-by-option" class="nav-link" data-scroll-target="#the-terminal-option-by-option">The terminal, option by option</a></li>
+  <li><a href="#inside-a-session" id="toc-inside-a-session" class="nav-link" data-scroll-target="#inside-a-session">Inside a session</a></li>
+  <li><a href="#approvals" id="toc-approvals" class="nav-link" data-scroll-target="#approvals">Approvals</a></li>
+  <li><a href="#the-folders-it-can-touch" id="toc-the-folders-it-can-touch" class="nav-link" data-scroll-target="#the-folders-it-can-touch">The folders it can touch</a></li>
+  <li><a href="#budgets-cost-and-history" id="toc-budgets-cost-and-history" class="nav-link" data-scroll-target="#budgets-cost-and-history">Budgets, cost and history</a></li>
+  <li><a href="#python-mode" id="toc-python-mode" class="nav-link" data-scroll-target="#python-mode">Python mode</a></li>
+  <li><a href="#memory-api-specifications-and-a-beat" id="toc-memory-api-specifications-and-a-beat" class="nav-link" data-scroll-target="#memory-api-specifications-and-a-beat">Memory, API specifications and a beat</a></li>
+  <li><a href="#skills-and-extensions" id="toc-skills-and-extensions" class="nav-link" data-scroll-target="#skills-and-extensions">Skills and extensions</a></li>
+  <li><a href="#serve-the-tools-to-another-assistant" id="toc-serve-the-tools-to-another-assistant" class="nav-link" data-scroll-target="#serve-the-tools-to-another-assistant">Serve the tools to another assistant</a></li>
+  <li><a href="#run-it-inside-an-editor" id="toc-run-it-inside-an-editor" class="nav-link" data-scroll-target="#run-it-inside-an-editor">Run it inside an editor</a></li>
+  <li><a href="#drive-it-from-python" id="toc-drive-it-from-python" class="nav-link" data-scroll-target="#drive-it-from-python">Drive it from Python</a></li>
+  <li><a href="#read-the-implementation" id="toc-read-the-implementation" class="nav-link" data-scroll-target="#read-the-implementation">Read the implementation</a></li>
+  <li><a href="#develop-ramabana" id="toc-develop-ramabana" class="nav-link" data-scroll-target="#develop-ramabana">Develop Ramabana</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="index.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">ramabana</h1>
+</div>
+
+<div>
+  <div class="description">
+    A coding-agent harness for terminals, editors, notebooks, and MCP clients.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<p align="center">
+<img src="media/rama-arrow.png" alt="rama's arrow" width="96">
+</p>
+<p>Ramabana runs a language model as a coding assistant. You describe a task in plain words. The model searches the code, reads and edits files, runs commands and Python, and tells you what it did. Ramabana runs that loop, decides which tools the model may call, keeps every write inside the folders you opened, and stops to ask you before anything changes.</p>
+<p>The same agent runs in four places: a terminal session, an editor that speaks the Agent Client Protocol, an MCP server that lends its tools to another assistant, and your own Python program. Each of them builds the same <a href="https://vedicreader.github.io/ramabana/agent.html#agent"><code>Agent</code></a> over the same tools, so a behaviour you see in one appears in the others.</p>
+<p>Start with one folder. Ramabana writes only inside the folders that <code>--root</code> names, and its reads stay inside them too unless you pass <code>--read-outside</code>.</p>
+<p align="center">
+<img src="media/ramabana-cli-demo.gif" alt="ramabana CLI on Gemma 4 LiteRT" width="820">
+</p>
+<section id="how-the-pieces-fit" class="level2">
+<h2 class="anchored" data-anchor-id="how-the-pieces-fit">How the pieces fit</h2>
+<p>A few words recur on every page of these docs.</p>
+<p>A turn is one prompt from you and everything the agent does to answer it. During a turn Ramabana calls the model, runs the tools the model asked for, sends back their results, and calls the model again. Each round of one model call and its tool calls is a step. The turn ends when the model answers without asking for a tool, or when it runs out of one of its budgets.</p>
+<p>A tool is a Python function the model may call. Its name, arguments and docstring are what the model sees. Tools come in groups: code search, files, notebooks, the web, memory, shell commands, git, Python, and a few more. The toolset itself lives in <a href="https://github.com/vedicreader/shalya">shalya</a>, and Ramabana imports it.</p>
+<p>A host is the object that gives the tools their reach into the world: which folders they may read and write, whether the network is on, where memory is kept, and which approval gate guards a write. A host lists the groups it supports by inheriting one class per group, such as <code>CodeHost</code> or <code>WebHost</code>, and the agent offers only the tools of those groups. The terminal runs on shalya’s <code>LocalHost</code>. The tests run on an in-memory host from <code>ramabana.testing</code>.</p>
+<p>The approval gate sits between the model and any tool with an effect, such as editing a file, running a command or making a git commit. In the default mode it asks you about each one. The <a href="#approvals">Approvals</a> section lists the other modes.</p>
+<p>The briefing is the system prompt Ramabana writes for each session. It names the open folders, sets out how to work, lists the skills it found, and adds the project’s own instructions from files such as <code>AGENTS.md</code> and <code>CLAUDE.md</code> in each open folder.</p>
+<p>A skill is a markdown file of guidance the agent reads only when the work calls for it. The briefing lists each skill in one line and the <code>read_skill</code> tool returns one in full.</p>
+<p>A sub-agent is a second agent that the running one starts for a piece of the work, through the <a href="https://vedicreader.github.io/ramabana/tools.html#delegate"><code>delegate</code></a> tools. It has its own steps and transcript, works under the same approval gate, and reports back to the turn that started it.</p>
+<p>A job is a kind of model call other than the turn itself, such as a completion, a summary or a sub-agent. Ramabana routes each job to a model suited to it, as <a href="#point-it-at-a-model">Point it at a model</a> explains.</p>
+</section>
+<section id="install" class="level2">
+<h2 class="anchored" data-anchor-id="install">Install</h2>
+<p>Ramabana needs Python 3.12 or newer. The core package holds the agent, its hosts, and the file, code, shell and git tools, which is enough to build an agent into your own program. Each extra adds one way of using it:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install ramabana           <span class="co"># the core, to build an agent or an app on</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">'ramabana[cli]'</span>    <span class="co"># the terminal session, with search and python</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">'ramabana[all]'</span>    <span class="co"># every extra</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>extra</th>
+<th>adds</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>[search]</code></td>
+<td>semantic code search, the vault’s memory and watches, the web tools</td>
+</tr>
+<tr class="even">
+<td><code>[python]</code></td>
+<td>the Python prompt and <code>--attach</code>, on dhrishti</td>
+</tr>
+<tr class="odd">
+<td><code>[serve]</code></td>
+<td><code>ramabana-mcp</code> and <code>ramabana-acp</code></td>
+</tr>
+<tr class="even">
+<td><code>[dhrona]</code></td>
+<td><code>--warm</code>, which starts a chat with example rounds from dhrona</td>
+</tr>
+<tr class="odd">
+<td><code>[cli]</code></td>
+<td>the terminal session, plus <code>[search]</code> and <code>[python]</code></td>
+</tr>
+</tbody>
+</table>
+<p>A program that embeds Ramabana installs only the extras it needs, such as <code>ramabana[search,serve]</code>. When an extra is missing, the tools that need it are left out of what the model is offered, and any command that needs it names the extra to install.</p>
+<p>The core install already brings in the packages shalya depends on: dhrishti, jupyter-client, fossick, litesearch and vishalakshi, which in turn brings in mcp. The extras add the terminal, the two servers, the Python prompt and the search pieces on top.</p>
+<p>To use the terminal on its own, run <code>uv tool install 'ramabana[cli]'</code> and then <code>ramabana</code>. The first interactive run starts inside a tmux server that belongs to Ramabana. tmux is the terminal multiplexer that splits one window into panes. Running inside it gives you the now pane, a live view of what the agent is doing in a split beside the session, and lets <code>shift+enter</code> queue a message, with no tmux setup on your part. When tmux is missing, it offers the install command once. <code>ramabana --doctor</code> checks tmux, extended keys, the config and <code>ramabana-pane</code>. <code>--tmux off</code> or <code>RAMABANA_TMUX=off</code> keeps the session in the terminal you started it in. Detaching or closing the window ends the session, and <code>--resume latest</code> reopens it.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>command</th>
+<th>what it is</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>ramabana</code></td>
+<td>the terminal session, drawn with teleprint. Needs <code>[cli]</code></td>
+</tr>
+<tr class="even">
+<td><code>ramabana-mcp</code></td>
+<td>the MCP server. Needs <code>[serve]</code></td>
+</tr>
+<tr class="odd">
+<td><code>ramabana-acp</code></td>
+<td>the Agent Client Protocol server an editor launches. Needs <code>[serve]</code></td>
+</tr>
+<tr class="even">
+<td><code>ramabana --python</code></td>
+<td>the Python prompt, with the kernel inspected through dhrishti. Needs <code>[python]</code></td>
+</tr>
+<tr class="odd">
+<td><code>ramabana-tick</code></td>
+<td>one beat of the schedules, run on a timer by pobblebonk</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="point-it-at-a-model" class="level2">
+<h2 class="anchored" data-anchor-id="point-it-at-a-model">Point it at a model</h2>
+<p><code>--model</code> names the model that this session’s turns run on, called the turn model. Without it the turn model is <code>$RAMABANA_MODEL</code>, then <code>$LEELA_MODEL</code>, then <code>claude-opus-5-5</code> through Claude Code. A turn runs on this machine only when you name a local model.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> <span class="at">--root</span> . <span class="at">--model</span> sonnet</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">RAMABANA_MODEL</span><span class="op">=</span>sonnet    <span class="co"># the same choice in every session</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>names</th>
+<th>runs on</th>
+<th>credential</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>opus</code>, <code>sonnet</code>, <code>fable</code>, <code>haiku</code>, <code>claude-opus-5-5</code>, <code>claude-sonnet-5-5</code>, <code>claude-fable-5-1</code></td>
+<td>Claude Code</td>
+<td>a <code>claude /login</code> session</td>
+</tr>
+<tr class="even">
+<td><code>gpt</code>, <code>gpt-mini</code>, <code>gpt-sol</code>, <code>gpt-5.6</code>, <code>gpt-4.1</code>, <code>gpt-4.1-mini</code></td>
+<td>the OpenAI API</td>
+<td><code>OPENAI_API_KEY</code></td>
+</tr>
+<tr class="odd">
+<td><code>gpt-6-luna</code>, <code>gpt-5.5</code>, <code>gpt-5.3-codex-spark</code></td>
+<td>Codex</td>
+<td>a Codex login</td>
+</tr>
+<tr class="even">
+<td><code>anthropic/&lt;id&gt;</code></td>
+<td>the Anthropic API</td>
+<td><code>ANTHROPIC_API_KEY</code></td>
+</tr>
+<tr class="odd">
+<td><code>copilot/&lt;id&gt;</code></td>
+<td>GitHub Copilot</td>
+<td>a Copilot sign-in</td>
+</tr>
+<tr class="even">
+<td><code>azure/&lt;deployment&gt;</code></td>
+<td>Azure OpenAI, v1 API</td>
+<td><code>AZURE_OPENAI_ENDPOINT</code> and <code>AZURE_OPENAI_API_KEY</code></td>
+</tr>
+<tr class="odd">
+<td><code>openrouter/&lt;vendor&gt;/&lt;model&gt;</code></td>
+<td>OpenRouter</td>
+<td><code>OPENROUTER_API_KEY</code></td>
+</tr>
+<tr class="even">
+<td><code>gemma-e2b</code>, <code>gemma-e4b</code>, <code>gemma-12b</code></td>
+<td>LiteRT, on the device</td>
+<td>none</td>
+</tr>
+<tr class="odd">
+<td><code>qwen-4b</code>, <code>mini-coder-4b</code>, <code>ornith-9b</code></td>
+<td>MLX, on Apple silicon</td>
+<td>none</td>
+</tr>
+<tr class="even">
+<td><code>llama-qwen-0.6b</code>, <code>llama-qwen-1.7b</code>, <code>llama-qwen-4b</code></td>
+<td>llama.cpp, on the device</td>
+<td>none</td>
+</tr>
+<tr class="odd">
+<td><code>ollama/&lt;id&gt;</code></td>
+<td>the ollama daemon</td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p><code>/models</code> lists what this machine can reach and marks the one running. <code>/model NAME</code> changes model without ending the session. <code>/model</code> alone prints the routing summary.</p>
+<p>Not every model call needs the turn model. Ramabana sorts the smaller calls into jobs and sends each job to a cheaper or faster model. Completions and classification run on <code>claude-haiku-5-5</code>. Inline edits, summaries and other one-shot work run on <code>gpt-6-luna</code> through your Codex login. Delegated sub-agents run on <code>claude-sonnet-5-5</code>. When the turn model is local, every job without a model of its own stays on it. When a job’s model cannot run, the job moves to another cloud route. Without a Codex login, the default Luna jobs fall back to the turn model. A cloud model whose one-shot answer fails or comes back empty is set aside for five minutes, and its jobs move the same way. With no cloud route left, a job runs on <code>gemma-e4b</code> on the device, and the turn never moves. The session reports each fallback once. With nothing left at all, the error names the job, the model and the key or CLI it needs.</p>
+<p><code>$RAMABANA_MODEL_&lt;JOB&gt;</code> overrides one job. <code>&lt;JOB&gt;</code> is <code>ONESHOT</code>, <code>INLINE</code>, <code>COMPLETION</code>, <code>CLASSIFY</code>, <code>SUMMARY</code> or <code>SUBAGENT</code>. The turn model uses <code>$RAMABANA_MODEL</code> and has no <code>_TURN</code> variable. <code>/model JOB NAME</code> sets one job inside a session:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">RAMABANA_MODEL_SUBAGENT</span><span class="op">=</span>gpt-5.6-luna</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="settings-for-this-machine" class="level2">
+<h2 class="anchored" data-anchor-id="settings-for-this-machine">Settings for this machine</h2>
+<p><code>~/.config/ramabana/config.toml</code> holds the settings you would otherwise repeat in every shell: the model for each job, the window guard’s numbers, compaction, learning, and the defaults of the terminal’s flags. Every Ramabana on the machine reads it, including one inside Leela, an editor or an MCP client. A flag beats an env var, an env var beats the file, and the file beats the built-in default.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> config init    <span class="co"># write the file, every key commented out beside its default</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> config show    <span class="co"># each value in effect, and whether it came from an env var, the file or the default</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[jobs]</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="dt">turn</span> <span class="op">=</span> <span class="st">"gpt-5.4"</span>          <span class="co"># what $RAMABANA_MODEL and --model beat</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="dt">subagent</span> <span class="op">=</span> <span class="st">"gpt-5.6-luna"</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="kw">[window]</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="dt">margin</span> <span class="op">=</span> <span class="fl">1.2</span>              <span class="co"># charge estimated token counts 20% more</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="kw">[model."</span><span class="dt">openai/gpt-5.4"</span><span class="kw">]</span>  <span class="co"># correct a number fastllm's table has wrong</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="dt">max_input_tokens</span> <span class="op">=</span> <span class="dv">272000</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="kw">[model."</span><span class="dt">claude-opus-5-5"</span><span class="kw">]</span> <span class="co"># a Claude Code turn silent this long is ended and tried once more</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="dt">timeout</span> <span class="op">=</span> <span class="dv">300</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>An entry Ramabana cannot use is reported and takes its default; nothing fails to start over it.</p>
+<section id="set-up-a-provider" class="level3">
+<h3 class="anchored" data-anchor-id="set-up-a-provider">Set up a provider</h3>
+<p>Ramabana chooses no provider for you. When the turn’s model cannot run here, because Claude Code is missing or a key is not set, the terminal prints the providers it can use, which are set up, and the model each job runs on, then offers <code>ramabana setup</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> setup                         <span class="co"># pick a provider, answer its questions, name the jobs it serves</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> setup <span class="at">--provider</span> azure <span class="at">--model-id</span> gpt-5.4 <span class="at">--endpoint</span> https://NAME.openai.azure.com <span class="at">--jobs</span> turn,summary</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>It writes a <code>[model."NAME"]</code> table and <code>[jobs]</code> lines into config.toml. It never writes a key; export the env var it names. <code>ramabana config show</code> prints what is in effect.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>provider</th>
+<th>needs</th>
+<th>name a model as</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>OpenAI API</td>
+<td><code>OPENAI_API_KEY</code></td>
+<td><code>gpt-5.4</code></td>
+</tr>
+<tr class="even">
+<td>Azure OpenAI</td>
+<td><code>AZURE_OPENAI_ENDPOINT</code>, <code>AZURE_OPENAI_API_KEY</code></td>
+<td><code>azure/&lt;deployment&gt;</code>, or a <code>[model."NAME"]</code> table</td>
+</tr>
+<tr class="odd">
+<td>AWS Bedrock</td>
+<td><code>AWS_BEARER_TOKEN_BEDROCK</code>, a Bedrock API key</td>
+<td>a <code>[model."NAME"]</code> table on the Mantle endpoint</td>
+</tr>
+<tr class="even">
+<td>Anthropic API</td>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td><code>anthropic/&lt;model&gt;</code></td>
+</tr>
+<tr class="odd">
+<td>Gemini API</td>
+<td><code>GEMINI_API_KEY</code></td>
+<td><code>gemini/&lt;model&gt;</code></td>
+</tr>
+<tr class="even">
+<td>OpenRouter</td>
+<td><code>OPENROUTER_API_KEY</code></td>
+<td><code>openrouter/&lt;vendor&gt;/&lt;model&gt;</code></td>
+</tr>
+<tr class="odd">
+<td>Claude Code, Codex, Copilot</td>
+<td>a sign-in</td>
+<td><code>claude-opus-5-5</code>, <code>gpt-6-luna</code>, <code>copilot/&lt;model&gt;</code></td>
+</tr>
+<tr class="even">
+<td>any OpenAI-compatible server</td>
+<td>its URL and an env var with its key</td>
+<td>a <code>[model."NAME"]</code> table</td>
+</tr>
+<tr class="odd">
+<td>this machine</td>
+<td>a local runtime</td>
+<td><code>gemma-e4b</code>, <code>qwen-4b</code>, <code>ollama/&lt;model&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<p>Azure OpenAI, by hand:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[azure]</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="dt">endpoint</span> <span class="op">=</span> <span class="st">"https://NAME.openai.azure.com"</span>   <span class="co"># or $AZURE_OPENAI_ENDPOINT; the key stays in $AZURE_OPENAI_API_KEY</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="kw">[model."</span><span class="dt">az-image"</span><span class="kw">]</span>                            <span class="co"># an Azure deployment of gpt-image-1, for generate_image</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="dt">model_id</span> <span class="op">=</span> <span class="st">"gpt-image-1"</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="dt">base_url</span> <span class="op">=</span> <span class="st">"https://NAME.openai.azure.com/openai/v1"</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="kw">[jobs]</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="dt">turn</span> <span class="op">=</span> <span class="st">"azure/gpt-5.4"</span>                        <span class="co"># a deployment, named by its deployment name</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="dt">completion</span> <span class="op">=</span> <span class="st">"azure/gpt-5.4-mini"</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="dt">classify</span> <span class="op">=</span> <span class="st">"azure/gpt-5.4-mini"</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="dt">image</span> <span class="op">=</span> <span class="st">"az-image"</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="dt">video</span> <span class="op">=</span> <span class="st">"gemini/veo-3.0-generate-001"</span>        <span class="co"># generate_video; or an Azure sora-2 [model."NAME"]</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="kw">[model."</span><span class="dt">azure/prod-chat"</span><span class="kw">]</span>                     <span class="co"># a deployment named for no known model needs its window</span></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a><span class="dt">max_input_tokens</span> <span class="op">=</span> <span class="dv">200000</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Requests go to <code>https://NAME.openai.azure.com/openai/v1/responses</code> with the deployment name as the model; no <code>api-version</code> is needed. A deployment named for a model, such as <code>gpt-5.4</code>, gets that model’s window and briefing. Any other name runs with a 128k window until <code>max_input_tokens</code> corrects it, and its cost reads as $0, because prices are looked up by model name.</p>
+<p>AWS Bedrock, by hand, through its OpenAI-compatible Mantle endpoint:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[model."</span><span class="dt">bedrock-gpt"</span><span class="kw">]</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="dt">model_id</span> <span class="op">=</span> <span class="st">"openai.gpt-5.4"</span>                   <span class="co"># Bedrock's model id</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="dt">base_url</span> <span class="op">=</span> <span class="st">"https://bedrock-mantle.us-east-1.api.aws/v1"</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="dt">api_key_env</span> <span class="op">=</span> <span class="st">"AWS_BEARER_TOKEN_BEDROCK"</span>      <span class="co"># a Bedrock API key; short-lived keys need renewing</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="dt">api_name</span> <span class="op">=</span> <span class="st">"openai"</span>                           <span class="co"># Responses; openai_chat for the models that offer only chat completions</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="kw">[jobs]</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="dt">turn</span> <span class="op">=</span> <span class="st">"bedrock-gpt"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Claude on Bedrock, and anything else that needs Bedrock’s native Converse API, AWS profiles or SigV4 signing, is not supported yet: fastllm, which makes the requests, implements none of them. The Mantle endpoint has no images endpoint, so <code>generate_image</code> needs another <code>[jobs] image</code>.</p>
+<p>A <code>[model."NAME"]</code> table with <code>model_id</code> defines a hosted model of any OpenAI-compatible kind under a name of your own: <code>model_id</code>, <code>base_url</code>, <code>api_key_env</code> (the env var, never the key), <code>api_name</code> (<code>openai</code> for Responses, <code>openai_chat</code> for chat completions; <code>openai</code> is the default on an Azure host), <code>vendor_name</code>, <code>runtime</code> and <code>ctx</code>. Saved model aliases live in <code>~/.config/ramabana/models.json</code> (Leela keeps its own in <code>~/.config/leela/models.json</code>). Every Ramabana process loads them, and config.toml’s definitions, on first use; a name defined in both places is config.toml’s. A scheduled job, such as Dhrona’s nightly batch, sees only the environment it was started with, so export the key there too.</p>
+<p>A message too large for the window still goes out. A huge paste, a screenshot too many or a giant tool result is cut to its head and its end, the whole kept in a file under the session’s run folder, and the note in its place tells the model where the file is and to read it in pieces.</p>
+</section>
+</section>
+<section id="your-first-session" class="level2">
+<h2 class="anchored" data-anchor-id="your-first-session">Your first session</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> <span class="at">--root</span> .</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>This opens the current folder, asks before every write, and runs on the default model. Type a task and press enter. <code>/help</code> prints the key card and <code>/guide</code> the longer tour. <code>ctrl+c</code> stops a running turn and <code>ctrl+d</code> quits.</p>
+<p>Pass a prompt instead and Ramabana runs one turn, prints the answer on stdout, and exits:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> <span class="at">--root</span> . <span class="st">'Find where request timeouts are configured.'</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> <span class="at">--root</span> . <span class="st">'Summarise the open TODOs'</span> <span class="op">&gt;</span> todos.md</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The one-turn form prints each problem on stderr and exits 1 when the turn model was not up, so a script or a git hook can use it.</p>
+</section>
+<section id="the-terminal-option-by-option" class="level2">
+<h2 class="anchored" data-anchor-id="the-terminal-option-by-option">The terminal, option by option</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>option</th>
+<th>default</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--root A,B</code></td>
+<td><code>.</code></td>
+<td>the folders it may read and write, comma separated</td>
+</tr>
+<tr class="even">
+<td><code>--model NAME</code></td>
+<td>routing default</td>
+<td>the model this session’s turns run on</td>
+</tr>
+<tr class="odd">
+<td><code>--approve MODE</code></td>
+<td><code>ask</code></td>
+<td><code>ask</code>, <code>edits</code>, <code>auto</code>, <code>off</code> or <code>none</code>. <code>edits</code> lets file and notebook edits through and asks for the rest</td>
+</tr>
+<tr class="even">
+<td><code>--no-web</code></td>
+<td>web on</td>
+<td>takes the network away from the web tools</td>
+</tr>
+<tr class="odd">
+<td><code>--read-outside</code></td>
+<td>off</td>
+<td>reads may name any path. Writes stay inside <code>--root</code></td>
+</tr>
+<tr class="even">
+<td><code>--no-subagent-writes</code></td>
+<td>writes on</td>
+<td>restrict delegated sub-agents to read-only tools</td>
+</tr>
+<tr class="odd">
+<td><code>--vault</code></td>
+<td>off</td>
+<td>keeps what the agent reads in a vishalakshi vault</td>
+</tr>
+<tr class="even">
+<td><code>--pii MODE</code></td>
+<td><code>off</code></td>
+<td><code>redact</code> or <code>refuse</code> for what the vault hands back</td>
+</tr>
+<tr class="odd">
+<td><code>--pii-ner</code></td>
+<td>off</td>
+<td><code>--pii</code> gates titled names too, not only patterns</td>
+</tr>
+<tr class="even">
+<td><code>--spec</code></td>
+<td>off</td>
+<td>adds <code>api_load</code>, <code>api_ops</code> and <code>api_call</code></td>
+</tr>
+<tr class="odd">
+<td><code>--theme NAME</code></td>
+<td><code>auto</code></td>
+<td>the terminal palette</td>
+</tr>
+<tr class="even">
+<td><code>--max-tool-calls N</code></td>
+<td><code>auto</code></td>
+<td>20 to 400 tool calls per turn</td>
+</tr>
+<tr class="odd">
+<td><code>--max-steps N</code></td>
+<td><code>auto</code></td>
+<td>8 to 80 steps per turn, each a model call and its tools</td>
+</tr>
+<tr class="even">
+<td><code>--cfg DIR</code></td>
+<td><code>~/.config/ramabana</code></td>
+<td>skills, extensions, history and plans</td>
+</tr>
+<tr class="odd">
+<td><code>--resume ID</code></td>
+<td>none</td>
+<td>reopen a saved session by id, by prefix, or <code>latest</code></td>
+</tr>
+<tr class="even">
+<td><code>--python</code></td>
+<td>off</td>
+<td>start in Python mode, on a kernel of your own</td>
+</tr>
+<tr class="odd">
+<td><code>--attach NAME</code></td>
+<td>none</td>
+<td>join a live Python session</td>
+</tr>
+<tr class="even">
+<td><code>--agent-proxy</code></td>
+<td>off</td>
+<td>expose this session’s agent inside its Python prompt</td>
+</tr>
+<tr class="odd">
+<td><code>--kernels</code></td>
+<td>off</td>
+<td>list live Python sessions and exit</td>
+</tr>
+<tr class="even">
+<td><code>--json</code></td>
+<td>off</td>
+<td>with a prompt: reply, usage, changes, activity, problems and session as JSON</td>
+</tr>
+<tr class="odd">
+<td><code>--no-bell</code></td>
+<td>bell on</td>
+<td>no terminal bell when a turn ends or an approval waits</td>
+</tr>
+<tr class="even">
+<td><code>--tmux MODE</code></td>
+<td><code>auto</code></td>
+<td><code>on</code> or <code>off</code>: read the sibling panes and open the side pane. <code>off</code>, like <code>RAMABANA_TMUX=off</code>, also keeps the session out of ramabana’s own tmux</td>
+</tr>
+<tr class="odd">
+<td><code>--pane MODE</code></td>
+<td><code>auto</code></td>
+<td><code>on</code> or <code>off</code>: the now pane at startup. <code>auto</code> opens it only inside tmux</td>
+</tr>
+<tr class="even">
+<td><code>--doctor</code></td>
+<td>off</td>
+<td>check tmux and the now pane, offer to install tmux, and exit</td>
+</tr>
+<tr class="odd">
+<td><code>--optin A,B</code></td>
+<td>none</td>
+<td>extra tool groups: <code>exhash</code> (the hash-addressed <code>edit_file</code>), <code>research</code>, <code>author</code>, <code>legacy</code></td>
+</tr>
+<tr class="even">
+<td><code>--warm</code> / <code>--no-warm</code></td>
+<td>off</td>
+<td>seed the chat with a few of dhrona’s example rounds (<code>uv add "ramabana[dhrona]"</code>), or start empty. Off by default: a model copies an example’s one call per message and its paths. <code>--warm</code> gives the <code>small</code> profile one round</td>
+</tr>
+<tr class="odd">
+<td><code>--profile P</code></td>
+<td><code>auto</code></td>
+<td><code>small</code> offers fourteen tools and a one-screen briefing. <code>full</code> offers everything. <code>auto</code> picks <code>small</code> for a local model or a window of 32k or less. <code>/model</code> shows the active one. <code>small</code> leaves out extension tools not marked with <a href="https://vedicreader.github.io/ramabana/tools.html#small_tool"><code>ramabana.tools.small_tool</code></a></td>
+</tr>
+</tbody>
+</table>
+<p><code>--theme</code> takes <code>auto</code>, <code>github-dark</code>, <code>dark</code>, <code>light</code>, <code>gruvbox</code>, <code>gruvbox-light</code>, <code>nord</code>, <code>tokyonight</code>, <code>catppuccin</code>, <code>latte</code>, <code>everforest</code>, <code>dracula</code>, <code>kanagawa</code>, <code>solarized</code> or <code>solarized-light</code>. <code>auto</code> is <code>github-dark</code>. Set your terminal to the scheme of the same name and the two agree. <code>/theme NAME</code> switches mid-session and repaints what is already on screen.</p>
+</section>
+<section id="inside-a-session" class="level2">
+<h2 class="anchored" data-anchor-id="inside-a-session">Inside a session</h2>
+<p>Type <code>/</code> and press tab to complete a command. The list holds this session’s commands, extensions included.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>command</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>/help</code>, <code>/guide</code></td>
+<td>the key card, then the longer tour</td>
+</tr>
+<tr class="even">
+<td><code>/model [JOB] [NAME]</code>, <code>/models [all]</code></td>
+<td>the routing summary, a switch, or what this machine can reach</td>
+</tr>
+<tr class="odd">
+<td><code>/sessions</code>, <code>/resume [ID\|latest]</code></td>
+<td>the saved sessions, and reopening one</td>
+</tr>
+<tr class="even">
+<td><code>/plan</code>, <code>/todo ID done\|active\|pending\|cancelled</code></td>
+<td>the checklist the agent works through</td>
+</tr>
+<tr class="odd">
+<td><code>/cost</code>, <code>/compact [NOTE]</code></td>
+<td>what the session has spent, and shortening the history</td>
+</tr>
+<tr class="even">
+<td><code>/tool-budget [auto\|20..400]</code>, <code>/steps [auto\|8..80]</code></td>
+<td>the per-turn budgets, and what the last turn used</td>
+</tr>
+<tr class="odd">
+<td><code>/approve [off\|ask\|edits\|auto]</code>, <code>/subagents [on\|off\|steps N\|timeout S\|nest N]</code></td>
+<td>who may write, whether delegates may, and their limits</td>
+</tr>
+<tr class="even">
+<td><code>/commit [FOLDER] [MESSAGE]</code>, <code>/pr [FOLDER] [TITLE]</code></td>
+<td>a commit or pull request drafted from the diff of the repository holding FOLDER (default the project), behind approval</td>
+</tr>
+<tr class="odd">
+<td><code>/rewind [TURN] [files\|chat\|both]</code>, <code>/branches</code>, <code>/branch NAME</code></td>
+<td>undo a turn’s files or chat, and the conversation branches. Undo restores edits, undoes git writes, and removes created files still unchanged</td>
+</tr>
+<tr class="even">
+<td><code>/watch [RUN\|monitors]</code>, <code>/unwatch</code>, <code>/tell RUN TEXT</code></td>
+<td>a tmux pane on a run’s transcript, and a message to a running sub-agent</td>
+</tr>
+<tr class="odd">
+<td><code>/pane</code>, <code>/pane off</code></td>
+<td>the now pane in a tmux split, and closing it</td>
+</tr>
+<tr class="even">
+<td><code>/NAME ARGS</code>, <code>#note TEXT</code></td>
+<td>run a skill, or <code>&lt;cfg&gt;/commands/NAME.md</code> as a turn with <code>$ARGUMENTS</code>, <code>$1..$n</code> and <code>@path</code> filled in. A repo’s <code>.agents/commands/</code> counts once <code>project_extensions</code> is opted in. <code>#note</code> saves a line to the next session’s memory</td>
+</tr>
+<tr class="odd">
+<td><code>/root [add PATH]</code>, <code>/theme [NAME]</code>, <code>/mouse</code></td>
+<td>the open folders, the palette, and clicking blocks</td>
+</tr>
+<tr class="even">
+<td><code>/attach PATH</code>, <code>/detach [N]</code>, <code>/paste</code>, <code>/copy [turn]</code></td>
+<td>files and images in, text out</td>
+</tr>
+<tr class="odd">
+<td><code>/skills</code>, <code>/skill NAME</code>, <code>/tools</code>, <code>/extensions</code>, <code>/reload</code></td>
+<td>what this session loaded, and loading it again</td>
+</tr>
+<tr class="even">
+<td><code>/python</code>, <code>/agent</code>, <code>/vars</code>, <code>/promote NAME</code></td>
+<td>the Python prompt and its namespace</td>
+</tr>
+<tr class="odd">
+<td><code>/kernels</code>, <code>/join NAME</code>, <code>/agent_proxy</code></td>
+<td>live Python sessions</td>
+</tr>
+<tr class="even">
+<td><code>/stop [ID]</code>, <code>/runs [all]</code></td>
+<td>the runs in flight</td>
+</tr>
+<tr class="odd">
+<td><code>/quit</code>, <code>/exit</code></td>
+<td>leave</td>
+</tr>
+</tbody>
+</table>
+<p>The keys:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>key</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>enter</code></td>
+<td>send. Mid-turn it steers: the running turn gets the line after its current tool call. A line with an <code>@path</code>, or sent with an attachment, waits for the next turn. <code>tab</code> completes a <code>/command</code> or an <code>@path</code></td>
+</tr>
+<tr class="even">
+<td><code>shift+enter</code></td>
+<td>mid-turn, queue the line as the next turn. It needs tmux extended keys, which ramabana’s own tmux has. Inside your tmux, ramabana turns them on for that server when they are off</td>
+</tr>
+<tr class="odd">
+<td><code>shift+tab</code></td>
+<td>cycle approvals through <code>ask</code>, <code>edits</code> and <code>auto</code>. The mode shows at the left of the row under the bar</td>
+</tr>
+<tr class="even">
+<td><code>ctrl+t</code></td>
+<td>show or hide the plan</td>
+</tr>
+<tr class="odd">
+<td><code>ctrl+p</code>, <code>ctrl+n</code></td>
+<td>walk the prompts you have sent</td>
+</tr>
+<tr class="even">
+<td><code>up</code>, <code>down</code>, <code>ctrl+r</code></td>
+<td>browse the transcript. <code>pgup</code>, <code>pgdn</code>, <code>/?</code> to search, <code>y</code> to copy a block, <code>esc</code> to leave</td>
+</tr>
+<tr class="odd">
+<td><code>ctrl+o</code></td>
+<td>fold or open all the working of a turn</td>
+</tr>
+<tr class="even">
+<td><code>alt+1</code> to <code>alt+9</code></td>
+<td>open one entry of it</td>
+</tr>
+<tr class="odd">
+<td><code>ctrl+g</code></td>
+<td>make approvals one step stricter</td>
+</tr>
+<tr class="even">
+<td><code>ctrl+v</code></td>
+<td>attach an image from the clipboard</td>
+</tr>
+<tr class="odd">
+<td><code>ctrl+c</code></td>
+<td>stop the turn and drop queued lines and any steering the turn has not taken yet. A second press terminates it, a third quits</td>
+</tr>
+<tr class="even">
+<td><code>ctrl+d</code></td>
+<td>quit</td>
+</tr>
+</tbody>
+</table>
+<p>A turn reads top to bottom: <code>┆</code> narration, <code>│</code> a tool call, then the answer. To send a file or an image with the prompt, drop its path on the terminal, write <code>@path</code> in the prompt, or use <code>/attach PATH</code>. <code>tab</code> after <code>@</code> completes files and folders in the open folders, and from <code>~/</code>, <code>/</code> or <code>../</code> when reading outside them is on. A folder attaches its listing. Quote a path with spaces: <code>@"my notes/plan.md"</code>.</p>
+</section>
+<section id="approvals" class="level2">
+<h2 class="anchored" data-anchor-id="approvals">Approvals</h2>
+<p>An approval gate guards the write tools. <code>--approve</code> sets its mode.</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>mode</th>
+<th>what happens</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>ask</code></td>
+<td>every write waits for you. The default</td>
+</tr>
+<tr class="even">
+<td><code>edits</code></td>
+<td>file and notebook edits run; other writes wait</td>
+</tr>
+<tr class="odd">
+<td><code>auto</code></td>
+<td>writes run unattended for the rest of the process</td>
+</tr>
+<tr class="even">
+<td><code>off</code></td>
+<td>the gate refuses every write</td>
+</tr>
+<tr class="odd">
+<td><code>none</code></td>
+<td>no gate at all</td>
+</tr>
+</tbody>
+</table>
+<p>At an approval prompt:</p>
+<ul>
+<li><code>y</code> approves.</li>
+<li><code>n</code> refuses.</li>
+<li><code>a</code> approves everything for the rest of the session.</li>
+<li><code>ctrl+y</code> approves with a note.</li>
+<li>A typed reason and enter refuses with that reason.</li>
+</ul>
+<p><code>shift+tab</code> cycles <code>ask</code>, <code>edits</code>, <code>auto</code> and back to <code>ask</code>. From <code>off</code> it comes back in at <code>ask</code>. <code>ctrl+g</code> moves one step stricter, from <code>auto</code> to <code>edits</code> to <code>ask</code> to <code>off</code>, and never the other way. <code>/approve MODE</code> moves in either direction and answers any prompt already waiting.</p>
+<p>The gate covers every tool with an effect:</p>
+<ul>
+<li>files: <code>replace_text</code>, <code>create_file</code>, <code>edit_cell</code>, <code>add_cell</code>, and <code>edit_file</code> when <code>--optin exhash</code> offers it</li>
+<li>code: <code>run_python</code>, <code>run_shell</code>, <code>run_shell_bg</code></li>
+<li>git: <code>git_commit</code>, <code>git_checkout</code>, <code>git_stash</code>, <code>git_remote</code></li>
+<li>the rest: <code>memory_forget</code>, <code>create_skill</code>, <code>cancel_watch</code>, <code>add_root</code>, <code>cart_add</code>, <code>cart_remove</code></li>
+</ul>
+<p>Git goes through those tools. <code>run_shell</code> refuses <code>git commit|push|pull|fetch|stash|switch|checkout</code> and names the tool to use. Ramabana snapshots every git write so <code>/rewind</code> can undo it. When the same gated call comes three times running, Ramabana asks you rather than run or refuse it again, whatever the mode.</p>
+</section>
+<section id="the-folders-it-can-touch" class="level2">
+<h2 class="anchored" data-anchor-id="the-folders-it-can-touch">The folders it can touch</h2>
+<p><code>--root</code> is the file policy. Name every folder, comma separated:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> <span class="at">--root</span> .,~/notes,/srv/app</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Writes reach those folders and nowhere else. Reads start out in the same folders. <code>--read-outside</code> widens reads to any path on the machine and leaves writes where they were. <code>/root</code> prints the open folders, and <code>/root add PATH</code> opens another mid-session for reading and writing.</p>
+<p>A sub-agent is a second agent that the running one starts, through the <a href="https://vedicreader.github.io/ramabana/tools.html#delegate"><code>delegate</code></a> tools, to do one part of the work. Sub-agents may write, run commands and run Python by default. Every write remains behind this session’s approvals. <code>--no-subagent-writes</code> or <code>/subagents off</code> restricts them to read-only tools. A read-only session refuses <code>delegate_async(writes=True)</code>.</p>
+<p>A sub-agent takes at most 60 steps and runs for at most 1800 seconds by default. <code>/subagents steps N</code> and <code>/subagents timeout S</code> change those limits. <code>timeout 0</code> removes the time limit. A delegation’s <code>max_steps</code> stays within the session cap and has a floor of 60 steps unless the session cap is lower. Two levels of sub-agents may delegate again by default. <code>/subagents nest 0</code> disables nesting. A nested sub-agent gets only <code>delegate_search</code>. The sub-agents under one turn share one tool-call budget the size of the turn’s own. At most four run at once.</p>
+<p>Every run keeps a transcript under <code>&lt;cfg&gt;/runs/&lt;session&gt;/</code>. Inside tmux:</p>
+<ul>
+<li><code>/watch RUN</code> opens a pane that tails the transcript.</li>
+<li><code>/watch monitors</code> tails the folder reviews.</li>
+<li><code>/tell RUN TEXT</code> sends a running sub-agent a message. It gets the message with its next tool result.</li>
+<li><code>read_terminal</code> reads the sibling panes.</li>
+<li><code>run_shell_bg</code> logs to a file rather than opening a pane. The side pane’s Background rows show its output, and <code>p</code> on one follows it in a tmux pane.</li>
+</ul>
+<p><code>/pane</code> opens the now pane in a split on the right. It shows the turn, the call it is on, and each sub-agent run with its own calls. The split needs tmux 3.1 or later, and <code>--pane on</code> opens it at startup. Without tmux, or with <code>--tmux off</code>, <code>/pane</code> prints the <code>ramabana-pane</code> command to run in another terminal instead.</p>
+</section>
+<section id="budgets-cost-and-history" class="level2">
+<h2 class="anchored" data-anchor-id="budgets-cost-and-history">Budgets, cost and history</h2>
+<p>A turn runs until the model stops calling tools. <code>--max-tool-calls</code> caps the tool calls. <code>--max-steps</code> caps the steps, each one model call and the tools it runs. Both take <code>auto</code> or a number: 20 to 400 calls, 8 to 80 steps. <code>/tool-budget</code> and <code>/steps</code> change them mid-session and print what the last turn ran under.</p>
+<p><code>/cost</code> prints:</p>
+<ul>
+<li>the tokens in and out</li>
+<li>the cached share</li>
+<li>the reasoning tokens</li>
+<li>the spend, when the backend reports one</li>
+</ul>
+<p><code>/compact</code> summarises the history so far and carries on with the shorter context. <code>/compact NOTE</code> tells the compactor what to keep.</p>
+<p>Ramabana saves every session with a completed turn under <code>--cfg</code>, which defaults to <code>~/.config/ramabana</code>. <code>/sessions</code> lists them with their turn counts and models. <code>/resume ID</code> reopens one from a full id or a unique prefix. From the shell:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> <span class="at">--root</span> . <span class="at">--resume</span> latest</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>A resumed session brings back its history and its plan. It prints on stderr any other folder that session had open, and <code>/root add PATH</code> opens it again.</p>
+</section>
+<section id="python-mode" class="level2">
+<h2 class="anchored" data-anchor-id="python-mode">Python mode</h2>
+<p><code>--python</code> starts a Jupyter kernel that belongs to you, with the agent in the layer above it:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana</span> <span class="at">--root</span> . <span class="at">--python</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Enter runs code that compiles, tab completes identifiers, and <code>ctrl+c</code> interrupts the cell. <code>/agent</code> hands the line back to the model and <code>/python</code> takes it again. The agent reads your namespace and writes only to its own overlay. <code>/vars</code> shows what is in the namespace, and <code>/promote NAME</code> moves one of the agent’s values into it.</p>
+<p>Other terminals can share a live session. <code>ramabana --kernels</code> lists the ones running, <code>--attach NAME</code> joins one from another terminal, and <code>/join NAME</code> joins one from inside a session. <code>--agent-proxy</code> binds this session’s agent where the Python prompt can reach it, behind a proxy that restricts usage and callbacks.</p>
+</section>
+<section id="memory-api-specifications-and-a-beat" class="level2">
+<h2 class="anchored" data-anchor-id="memory-api-specifications-and-a-beat">Memory, API specifications and a beat</h2>
+<p><code>--vault</code> keeps what the agent reads in a <a href="https://github.com/vedicreader/vishalakshi">vishalakshi</a> vault, for the next session to retrieve. <code>--pii redact</code> masks personal data on the way back out of the vault. <code>--pii refuse</code> refuses the retrieval instead. <code>--pii-ner</code> extends either mode to titled names, not only patterns. Either mode needs <code>--vault</code>. Without it the command exits 2 rather than ignore the flag. A <code>--python</code>, <code>--attach</code> or <code>--agent-proxy</code> session has no vault-backed host, so it refuses <code>--vault</code>.</p>
+<p><code>--spec</code> adds <code>api_load</code>, <code>api_ops</code> and <code>api_call</code>. Point <code>api_load</code> at an OpenAPI, Azure or Google Discovery document and the agent can call the operations it describes.</p>
+<p>Some work should happen on a timer even when no session is open. A schedule is a callback that pobblebonk fires at set times. A package registers one under the <code>ramabana.ticks</code> entry point, as dhrona does, and Python code registers one with <code>ramabana.monitor.on_tick(name)</code>. A beat is one pass that runs every schedule that has come due. <code>ramabana-tick</code> runs one beat and leaves what the schedules found as notes, which the next session reads. <code>--install</code> hands the command to cron, launchd or <code>schtasks</code>, so beats keep firing while no session is open:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana-tick</span> <span class="at">--install</span> <span class="at">--every</span> 300    <span class="co"># a beat every five minutes</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana-tick</span>                          <span class="co"># one beat now</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana-tick</span> <span class="at">--uninstall</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="skills-and-extensions" class="level2">
+<h2 class="anchored" data-anchor-id="skills-and-extensions">Skills and extensions</h2>
+<p>A skill is markdown the agent reads when the work calls for it. Ramabana looks for skills in these folders, in order:</p>
+<ul>
+<li><code>&lt;cfg&gt;/learned/skills</code></li>
+<li><code>&lt;cfg&gt;/skills</code></li>
+<li><code>~/.agents/skills</code></li>
+<li><code>.leela/skills</code> and <code>.agents/skills</code> under each open folder</li>
+</ul>
+<p>When two skills share a name, the later folder wins. In each folder, a skill is a subfolder holding a <code>SKILL.md</code>. Five skills ship inside the package as Python modules: <code>coding_patterns</code>, <code>debugging</code>, <code>theory</code>, <code>write_prose</code> and <code>write_docs</code>. Any folder above overrides them. <code>/skills</code> lists what this session found, and <code>/skill NAME</code> prints one.</p>
+<p><code>&lt;cfg&gt;/learned</code> holds what dhrona, a separate package that learns from past sessions, kept from earlier ones. Its skills override the packaged ones and lose to every folder you write. Its <code>AGENTS.md</code> goes in the briefing after Ramabana’s own rules and before the project instructions, and the project instructions outrank it. A learned skill is listed like any other and read when a task needs it; one that replaces an inlined skill is clipped in the briefing to the same cap as <code>AGENTS.md</code>. Nothing Dhrona proposes reaches a session until you accept it: each proposal waits on a <code>pending/</code> branch of the folder’s own git repository. <code>/learned</code> in a session, or <code>ramabana-learned</code> from a shell, lists them, and <code>diff ID</code>, <code>accept ID</code> and <code>reject ID</code> act on one. An accept that would take <code>AGENTS.md</code> past the 2,000 characters Dhrona allows is refused. <code>/learned compact ID</code> then asks Dhrona to merge and shorten the paragraphs it wrote with that proposal folded in, keeping yours as they are, and the shorter file waits for review like any proposal. Accepting a proposal moves the others onto it, and one that no longer applies is marked stale; <a href="./learned.html"><code>ramabana.learned</code></a> offers the same to a host. <code>--no-learned</code> starts a session without the folder. <code>/learned off</code>, or <code>ramabana-learned off</code>, turns learning off for every session on this machine, as <code>learning = false</code> in config.toml: nothing learned is briefed, no lessons are kept or read, and the nightly batch does nothing until <code>/learned on</code>.</p>
+<p>An extension adds behaviour without changing Ramabana. It is a Python file in <code>&lt;cfg&gt;/extensions</code> with a <code>setup(reg)</code> function, and through <code>reg</code> it can:</p>
+<ul>
+<li>add a tool</li>
+<li>add a slash command</li>
+<li>register a skill</li>
+<li>hook the turn</li>
+<li>replace the approval policy</li>
+</ul>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> setup(reg):</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">@reg.tool</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> deploy_status() <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>        <span class="co">"What is deployed right now."</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="bu">open</span>(<span class="st">'/var/run/deploy'</span>).read()</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    reg.command(<span class="st">'deploys'</span>, <span class="kw">lambda</span> agent, arg: deploy_status(), <span class="bu">help</span><span class="op">=</span><span class="st">'what is deployed'</span>)</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    reg.on(<span class="st">'after_tool'</span>, <span class="kw">lambda</span> agent, name, out: <span class="bu">print</span>(name, <span class="bu">file</span><span class="op">=</span><span class="bu">open</span>(<span class="st">'/tmp/tools.log'</span>, <span class="st">'a'</span>)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The hook events are <code>before_turn(agent, prompt)</code>, <code>after_turn(agent, text)</code>, <code>before_tool(agent, name, args)</code>, <code>after_tool(agent, name, out)</code>, <code>compact(agent, text)</code> and <code>approval</code>. <code>reg.approval(fn)</code> replaces the approval policy, and the last registration wins. <code>/extensions</code> prints one line per extension: loaded, or why not. <code>/reload</code> loads skills, extensions and tools again after an edit.</p>
+</section>
+<section id="serve-the-tools-to-another-assistant" class="level2">
+<h2 class="anchored" data-anchor-id="serve-the-tools-to-another-assistant">Serve the tools to another assistant</h2>
+<p><code>ramabana-mcp</code> serves one host’s tools over MCP:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ramabana-mcp</span> <span class="at">--root</span> .</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>By default the server mounts only the read tools, because the client cannot reach this process’s approval gate. <code>--write</code> mounts the write tools too. <code>--model NAME</code> adds one further tool, <code>ask</code>, which runs a whole Ramabana turn and returns only its answer. <code>--model</code> also builds the agent. The mounted tools are then the same objects a turn gets, and they record into the same activity log. The server offers skills as resources rather than tools: an index, plus one per skill. A client lists them and fetches the one it needs.</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>option</th>
+<th>default</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--root A,B</code></td>
+<td><code>.</code></td>
+<td>the folders to serve</td>
+</tr>
+<tr class="even">
+<td><code>--model NAME</code></td>
+<td>none</td>
+<td>adds the <code>ask</code> tool, running on this model</td>
+</tr>
+<tr class="odd">
+<td><code>--write</code></td>
+<td>off</td>
+<td>mount the write tools too</td>
+</tr>
+<tr class="even">
+<td><code>--no-web</code></td>
+<td>web on</td>
+<td>takes the network away from the web tools</td>
+</tr>
+<tr class="odd">
+<td><code>--read-outside</code></td>
+<td>off</td>
+<td>reads may name any path. Writes stay inside</td>
+</tr>
+<tr class="even">
+<td><code>--vault</code>, <code>--pii MODE</code>, <code>--pii-ner</code></td>
+<td>off</td>
+<td>as in the terminal</td>
+</tr>
+<tr class="odd">
+<td><code>--transport NAME</code></td>
+<td><code>stdio</code></td>
+<td><code>stdio</code>, <code>sse</code> or <code>streamable-http</code></td>
+</tr>
+<tr class="even">
+<td><code>--cfg DIR</code></td>
+<td>none</td>
+<td>skills and extensions, with <code>--model</code></td>
+</tr>
+</tbody>
+</table>
+<p>A model-less server still finds skills in the served folders and in <code>~/.agents/skills</code>. The server loads <code>--cfg</code> and its extensions only when <code>--model</code> builds the agent.</p>
+<p>A client that launches its own servers takes the command:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">"mcpServers"</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">"ramabana"</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">"command"</span><span class="fu">:</span> <span class="st">"ramabana-mcp"</span><span class="fu">,</span> <span class="dt">"args"</span><span class="fu">:</span> <span class="ot">[</span><span class="st">"--root"</span><span class="ot">,</span> <span class="st">"/srv/app"</span><span class="ot">]</span><span class="fu">}}}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="run-it-inside-an-editor" class="level2">
+<h2 class="anchored" data-anchor-id="run-it-inside-an-editor">Run it inside an editor</h2>
+<p><code>ramabana-acp</code> speaks the <a href="https://agentclientprotocol.com/">Agent Client Protocol</a>. An editor launches it and drives it against the editor’s own files and terminal.</p>
+<p>Zed takes agents from <code>agent_servers</code> in <code>settings.json</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">"agent_servers"</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">"Ramabana"</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">"command"</span><span class="fu">:</span> <span class="st">"ramabana-acp"</span><span class="fu">,</span> <span class="dt">"args"</span><span class="fu">:</span> <span class="ot">[</span><span class="st">"--root"</span><span class="ot">,</span> <span class="st">"."</span><span class="ot">]</span><span class="fu">}}}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The editor names the folder. <code>--root</code> here is the fallback for a client that names none. Approvals arrive as the editor’s own permission prompt. <code>--model</code>, <code>--no-web</code>, <code>--vault</code>, <code>--pii</code>, <code>--pii-ner</code> and <code>--cfg</code> work as they do in the terminal.</p>
+</section>
+<section id="drive-it-from-python" class="level2">
+<h2 class="anchored" data-anchor-id="drive-it-from-python">Drive it from Python</h2>
+<p><a href="https://vedicreader.github.io/ramabana/agent.html#mk_agent"><code>ramabana.agent.mk_agent</code></a> builds what the terminal runs: a host over the folders you name, and an <a href="https://vedicreader.github.io/ramabana/agent.html#agent"><code>Agent</code></a> whose approval gate works the way <code>approve</code> says. <code>agent.ask(prompt)</code> runs one turn and returns the answer.</p>
+<p>The example below goes through the same <a href="https://vedicreader.github.io/ramabana/agent.html#agent.ask"><code>Agent.ask</code></a> path with <a href="https://vedicreader.github.io/ramabana/testing.html#fake_agent"><code>fake_agent</code></a> from <code>ramabana.testing</code>. Instead of a real model it uses a backend that returns the replies you give it, and instead of your disk it uses a small in-memory project, so it needs no credentials or downloads and writes nothing.</p>
+<p>A long-running program, such as a web app that runs agent jobs, uses the same calls with these options:</p>
+<ul>
+<li>Read roots: <code>mk_agent(read_roots=[...])</code> opens folders that the read tools search and no write touches. The system prompt names them.</li>
+<li>Many asks: an ask is one approval request waiting for an answer. <a href="https://vedicreader.github.io/ramabana/agent.html#approvals"><code>Approvals</code></a> holds every waiting ask. <code>answer(id, ok)</code> resolves any of them, and <code>waiting</code> lists them oldest first. Each ask appears through <code>on_activity</code> as an <code>awaiting</code> row with its <code>ask_id</code> before its call runs.</li>
+<li>A policy: <code>Approvals(policy=fn)</code> is consulted before rules and modes. <code>fn(name, args)</code> returns <code>'allow'</code>, <code>'deny'</code>, <code>'ask'</code> or <code>None</code>.</li>
+<li>Waiting and timeouts: <code>no_listener='wait'</code> holds an ask until a page listens, and that page is shown the asks already waiting. <code>on_timeout='allow'</code> lets an unanswered ask through, except one that the policy or the loop guard put to a person.</li>
+<li>A typed result: <code>agent.ask(prompt, schema=Model)</code> returns a <a href="https://vedicreader.github.io/ramabana/agent.html#turnresult"><code>TurnResult</code></a> whose <code>result</code> is a validated <code>Model</code>.</li>
+<li>Sessions: <code>Agent(session_id=...)</code> names the session. A turn in a session another live process holds raises <a href="https://vedicreader.github.io/ramabana/agent.html#sessionbusy"><code>SessionBusy</code></a>.</li>
+<li>Budgets: <code>max_cost</code>, <code>max_tokens</code>, <code>session_max_cost</code> and <code>session_max_tokens</code> stop a turn that passes them. The turn is recorded with state <code>budget</code>.</li>
+<li>An event file: <code>agent.events_to(path)</code> writes one JSON line per call, ask, plan change, turn start and end, and steering delivered. A file past <code>max_bytes</code> rolls over to <code>&lt;name&gt;.1</code>.</li>
+<li>A queue: <code>agent.queue(prompt)</code> holds a prompt, and <code>agent.run_queued()</code> runs what is held, in order. Steering a turn never read joins the next turn.</li>
+<li>A full resume: <code>resume_session(id, full=True)</code> restores the conversation as its last turn left it, every tool result whole. A stop that leaves a backend running hands its conversation to the next one.</li>
+<li>Defaults for a host: <code>mk_agent(python='off')</code> withholds Python, or a Dhrishti URL runs it in that kernel. <code>mk_agent(global_skills=False)</code> leaves <code>~/.agents/skills</code> out. <code>rules_path=</code> names the job’s own rules file. <code>Agent(extra_sp=...)</code> adds to the briefing.</li>
+<li>A worktree: <code>host.add_worktree(repo, branch)</code> makes a git worktree for the job and opens it as a root.</li>
+<li>A control socket: <code>ramabana.control.Control(agent).start()</code> listens on a socket in the session’s run folder, and <code>control_call(path, method, ...)</code> prompts, steers, cancels and answers it from another process.</li>
+</ul>
+<p><code>examples/embed_host.py</code> runs one such job end to end.</p>
+<div id="code" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.testing <span class="im">import</span> fake_agent</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>agent, backend <span class="op">=</span> fake_agent(replies<span class="op">=</span>[<span class="st">'The threshold is defined in `pkg/sizes.py`.'</span>])</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>answer <span class="op">=</span> agent.ask(<span class="st">'Where is the threshold defined?'</span>)</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>answer</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<pre><code>'The threshold is defined in `pkg/sizes.py`.'</code></pre>
+</div>
+</div>
+<div id="ask" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> answer <span class="op">==</span> <span class="st">'The threshold is defined in `pkg/sizes.py`.'</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent.history[<span class="op">-</span><span class="dv">1</span>][<span class="st">'prompt'</span>] <span class="op">==</span> <span class="st">'Where is the threshold defined?'</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>agent.turn_lines(), <span class="bu">repr</span>(agent.turn_use)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<pre><code>(['🔍 Search Where is the threshold defined?'],
+ '15 tok · in 10 · out 5 · model')</code></pre>
+</div>
+</div>
+</section>
+<section id="read-the-implementation" class="level2">
+<h2 class="anchored" data-anchor-id="read-the-implementation">Read the implementation</h2>
+<p>Start with the page for the contract you need:</p>
+<ul>
+<li><a href="./core.html">core</a>: errors, routing, model budgets, and shared values</li>
+<li><a href="./models.html">models</a>: the model catalog, curated and discovered</li>
+<li><a href="./runtime.html">runtime</a>: backends, usage, runs, and compaction</li>
+<li><a href="./tools.html">tools</a>: hosts, tool construction, and delegation</li>
+<li><a href="./agent.html">agent</a>: turns, approvals, activity, plans, history, and branching</li>
+<li><a href="./testing.html">testing</a>: in-memory hosts and deterministic backends</li>
+<li><a href="./cli.html">terminal</a>, <a href="./mcp.html">MCP</a>, <a href="./pyrepl.html">PyREPL</a>, and <a href="./acp.html">ACP</a>: frontend adapters, the <a href="./pane.html">now pane</a> beside the terminal, and the <a href="./setup.html">first-run setup</a> that starts it in tmux</li>
+<li><a href="./vault.html">vault</a>, <a href="./spec.html">API specifications</a>, and <a href="./monitor.html">folder monitoring</a>: optional capabilities</li>
+<li><a href="./control.html">control</a>: a local socket a detached job runner listens on</li>
+<li><a href="./learned.html">learned</a>: the review queue for what Dhrona proposes for the learned folder</li>
+<li><a href="./shop.html">shop</a>: product search tools</li>
+<li><a href="./coding_patterns.html">coding patterns</a>, <a href="./debugging.html">debugging</a>, <a href="./theory.html">theory</a>, <a href="./write_prose.html">prose</a>, and <a href="./write_docs.html">documentation</a>: bundled agent skills</li>
+</ul>
+<p>The toolset itself is <a href="https://github.com/vedicreader/shalya">shalya</a>, the git plumbing is <a href="https://github.com/vedicreader/gheasy">gheasy</a>, and the scheduler is <a href="https://github.com/vedicreader/pobblebonk">pobblebonk</a>.</p>
+</section>
+<section id="develop-ramabana" class="level2">
+<h2 class="anchored" data-anchor-id="develop-ramabana">Develop Ramabana</h2>
+<p>The notebooks are the source. nbdev generates every module under <code>ramabana/</code>, and this page too.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> sync <span class="at">--all-extras</span> <span class="at">--group</span> dev</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run nbdev-prepare    <span class="co"># export, test the notebooks, clean them, rebuild the README</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run pytest           <span class="co"># the plain-python suite</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Edit <code>nbs/*.ipynb</code>, never the exported <code>.py</code>.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

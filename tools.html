@@ -1,0 +1,1666 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Hosts, tool lists and sub-agents: what Ramabana adds on top of the shalya toolset.">
+
+<title>tools – ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-f2788e636de456f6409e966386820849.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="tools – ramabana">
+<meta property="og:description" content="Hosts, tool lists and sub-agents: what Ramabana adds on top of the shalya toolset.">
+<meta property="og:site_name" content="ramabana">
+<meta name="twitter:title" content="tools – ramabana">
+<meta name="twitter:description" content="Hosts, tool lists and sub-agents: what Ramabana adds on top of the shalya toolset.">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./tools.html">tools</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./shop.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">shop</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pyrepl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pyrepl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./acp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">racp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#a-host-with-nothing-behind-it" id="toc-a-host-with-nothing-behind-it" class="nav-link active" data-scroll-target="#a-host-with-nothing-behind-it">A host with nothing behind it</a></li>
+  <li><a href="#drawing" id="toc-drawing" class="nav-link" data-scroll-target="#drawing">Drawing</a></li>
+  <li><a href="#assembling-the-tool-list" id="toc-assembling-the-tool-list" class="nav-link" data-scroll-target="#assembling-the-tool-list">Assembling the tool list</a></li>
+  <li><a href="#sub-agents" id="toc-sub-agents" class="nav-link" data-scroll-target="#sub-agents">Sub-agents</a></li>
+  <li><a href="#attachments" id="toc-attachments" class="nav-link" data-scroll-target="#attachments">Attachments</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="tools.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">tools</h1>
+</div>
+
+<div>
+  <div class="description">
+    Hosts, tool lists and sub-agents: what Ramabana adds on top of the shalya toolset.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<p>A model can only write text. To read a file or run a command it calls a tool: a Python function whose name, docstring and typed parameters the backend turns into a schema the model sees. Ramabana’s tools come from <a href="https://github.com/vedicreader/shalya">shalya</a>.</p>
+<p>The tools act through a host. A host is the object that decides which folders are open (its roots), whether files may be written, and which other services exist, such as a shell, a Python kernel, git or the web. Each such service is a capability group. A host declares a group by inheriting the class that names it, such as <code>CodeHost</code> or <code>WebHost</code>, and <code>Host.provides</code> lists the groups it declares. Every host has the <code>file</code> group. The tools that need one capability group form a tool group: the <code>shell</code> group, for example, is <code>run_shell</code>, <code>run_shell_bg</code>, <code>shell_output</code> and <code>shell_stop</code>.</p>
+<p>Shalya holds the host classes, the functions that build each tool group, the conventions tool results follow (<code>err</code> writes a failure that <code>failed</code> recognises), and the skills registry. This module re-exports all of them, so code that imports them from <code>ramabana.tools</code> keeps working, and Leela’s <code>sys.modules[__name__] = ramabana.tools</code> alias keeps resolving. New code imports them from <code>shalya</code>.</p>
+<p>What this module adds needs parts of the agent that a toolset should not know about. A sub-agent needs a <a href="https://vedicreader.github.io/ramabana/runtime.html#backend"><code>Backend</code></a> to talk to and a <a href="https://vedicreader.github.io/ramabana/runtime.html#run"><code>Run</code></a> to record it, and <a href="https://vedicreader.github.io/ramabana/tools.html#draws_itself"><code>draws_itself</code></a> needs a <a href="https://vedicreader.github.io/ramabana/core.html#modelspec"><code>ModelSpec</code></a>. The sections below cover a host that refuses everything, the image tools, <a href="https://vedicreader.github.io/ramabana/tools.html#tools_for"><code>tools_for</code></a>, which builds the tool list a turn gets, delegation to sub-agents, and attachments.</p>
+<div id="199d10c0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:37:59.224502+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.476008+00:00&quot;,&quot;total&quot;:1.251513390999989}}" data-execution_count="6">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/core.py#L214" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="getattr" class="level3">
+<h3 class="anchored" data-anchor-id="getattr"><strong>getattr</strong></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> <span class="fu">__getattr__</span>(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    name</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Resolve the deprecated Shalya compatibility surface without mirroring it here.</em></p>
+</section>
+</div>
+<p>The re-exported names are shalya’s own objects, not copies. A copy could drift into a second implementation, so the cell below checks that every name in <code>_all_</code> resolves and is the very object shalya holds. Shalya’s own notebooks test what the objects do.</p>
+<div id="79aa400f" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(_all_), <span class="bu">sorted</span>(_all_)[:<span class="dv">8</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="fe5ac121" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.477015+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.481593+00:00&quot;,&quot;total&quot;:0.004581487999999467}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> shalya.core, shalya.host, shalya.skills, shalya.tools</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>here <span class="op">=</span> sys.modules[<span class="va">__name__</span>] <span class="cf">if</span> <span class="va">False</span> <span class="cf">else</span> <span class="bu">__import__</span>(<span class="st">'ramabana.tools'</span>, fromlist<span class="op">=</span>[<span class="st">'x'</span>])</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>missing, different <span class="op">=</span> [], []</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> n <span class="kw">in</span> _all_:</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">not</span> <span class="bu">hasattr</span>(here, n): missing.append(n)<span class="op">;</span> <span class="cf">continue</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    src <span class="op">=</span> <span class="bu">next</span>((m <span class="cf">for</span> m <span class="kw">in</span> (shalya.core, shalya.host, shalya.skills, shalya.tools) <span class="cf">if</span> <span class="bu">hasattr</span>(m, n.lstrip(<span class="st">'_'</span>)) <span class="kw">or</span> <span class="bu">hasattr</span>(m, n)), <span class="va">None</span>)</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> src <span class="kw">is</span> <span class="va">None</span>: <span class="cf">continue</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    theirs <span class="op">=</span> <span class="bu">getattr</span>(src, n, <span class="va">None</span>) <span class="kw">or</span> <span class="bu">getattr</span>(src, n.lstrip(<span class="st">'_'</span>), <span class="va">None</span>)</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">getattr</span>(here, n) <span class="kw">is</span> <span class="kw">not</span> theirs: different.append(n)</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>test_eq(missing, [])</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>test_eq(different, [])</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>test_eq((_cmds, _edits, _apply_edits, _diff),</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>        (shalya.core.cmds, shalya.core.edits, shalya.core.apply_edits, shalya.core.diff_text))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>WRITE_TOOLS</code> names every tool with an effect: tools that change files, the repository, the kernel, the shell, the vault or a browser page. It is the one name here that differs from shalya’s. The cart tools of the <a href="./shop.html">shop</a>, <code>cart_add</code> and <code>cart_remove</code>, spend money, but they come from an extension rather than a host group, so shalya cannot know them and Ramabana adds them by name.</p>
+<div id="b171affe" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(WRITE_TOOLS <span class="op">-</span> shalya.core.WRITE_TOOLS)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="bb4f3c8f" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>test_eq(WRITE_TOOLS <span class="op">-</span> shalya.core.WRITE_TOOLS, {<span class="st">'cart_add'</span>, <span class="st">'cart_remove'</span>})</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> shalya.core.WRITE_TOOLS <span class="op">&lt;</span> WRITE_TOOLS, <span class="st">'nothing shalya marks may be dropped here'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The examples below run against a real <code>LocalHost</code>, the host the terminal uses, over a small project in a temporary folder. <code>index=False</code> skips building the semantic code index. <code>provides</code> lists the capability groups the host declares.</p>
+<div id="1c9a0b1a" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>root <span class="op">=</span> Path(tempfile.mkdtemp()).resolve()<span class="op">/</span><span class="st">'proj'</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>(root<span class="op">/</span><span class="st">'pkg'</span>).mkdir(parents<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>(root<span class="op">/</span><span class="st">'pkg'</span><span class="op">/</span><span class="st">'sizes.py'</span>).write_text(<span class="st">'def threshold(n):</span><span class="ch">\n</span><span class="st">    "Half of n."</span><span class="ch">\n</span><span class="st">    return n // 2</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>local <span class="op">=</span> LocalHost([root], index<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(local.provides)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="fdca7883" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">sorted</span>(local.provides), [<span class="st">'code'</span>, <span class="st">'file'</span>, <span class="st">'git'</span>, <span class="st">'notebook'</span>, <span class="st">'session'</span>, <span class="st">'shell'</span>, <span class="st">'web'</span>])</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>test_eq(local.can(<span class="st">'file'</span>), <span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="a-host-with-nothing-behind-it" class="level2">
+<h2 class="anchored" data-anchor-id="a-host-with-nothing-behind-it">A host with nothing behind it</h2>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#nullhost"><code>NullHost</code></a> is a host with no folders and no services. Checking a path raises <code>HostError</code>, reading returns nothing, and writing or deleting raises. It declares no capability group beyond <code>file</code>, and because its <code>writes</code> is False, <a href="https://vedicreader.github.io/ramabana/tools.html#tools_for"><code>tools_for</code></a> gives it <code>view_file</code> and nothing else. Use it in a test, or wherever code needs a host object that must not touch the disk. The examples under it, and two further down, show each refusal.</p>
+<p>The same cell adds <code>delete</code> and <code>exists</code> to <code>LocalHost</code>.</p>
+<div id="d2af1379" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.485877+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.512943+00:00&quot;,&quot;total&quot;:0.02707139800000391}}" data-execution_count="9">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L91" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="localhost.exists" class="level3">
+<h3 class="anchored" data-anchor-id="localhost.exists">LocalHost.exists</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> exists(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    path</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Whether <code>path</code> is a file inside the roots (an undecodable file counts).</em></p>
+</section>
+</div>
+<div id="6476e95c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.513111+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.518418+00:00&quot;,&quot;total&quot;:0.005311074000005078}}" data-execution_count="10">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L86" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="localhost.delete" class="level3">
+<h3 class="anchored" data-anchor-id="localhost.delete">LocalHost.delete</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> delete(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    path</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Remove one file inside the roots; one already gone is not an error.</em></p>
+</section>
+</div>
+<div id="9edc1ae1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.518591+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.523620+00:00&quot;,&quot;total&quot;:0.005032706999998027}}" data-execution_count="11">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L70" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="nullhost" class="level3">
+<h3 class="anchored" data-anchor-id="nullhost">NullHost</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> NullHost(</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    roots:<span class="bu">tuple</span><span class="op">=</span>()</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A host with no folders and no services, which refuses every file operation.</em></p>
+</section>
+</div>
+<div id="cfe2cf63" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>test_eq([t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> tools_for(NullHost())], [<span class="st">'view_file'</span>])</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>test_eq(NullHost().writes, <span class="va">False</span>)</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: NullHost().write(<span class="st">'/a'</span>, <span class="st">'x'</span>), contains<span class="op">=</span><span class="st">'cannot write'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="drawing" class="level2">
+<h2 class="anchored" data-anchor-id="drawing">Drawing</h2>
+<p>Shalya’s <code>generate_image</code> tool makes pictures. Some models can draw themselves when they are given the image tool. For any other model the prompt goes to a separate image model. Which case applies is a fact about the turn’s model, so shalya asks for it as a callable, and this module supplies the callable.</p>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#draws_itself"><code>draws_itself</code></a> looks up a model’s capabilities with <a href="https://vedicreader.github.io/ramabana/core.html#spec_caps"><code>spec_caps</code></a> and returns True when <code>image</code> is among the tools the model supports (<code>Caps.tools</code>). The <code>supported_output_modalities</code> field cannot answer this: it says no for every chat model, because it describes what a model returns without being asked.</p>
+<div id="644d9df5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.526624+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.532246+00:00&quot;,&quot;total&quot;:0.00562638000000959}}" data-execution_count="13">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L108" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="image_tools" class="level3">
+<h3 class="anchored" data-anchor-id="image_tools">image_tools</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> image_tools(</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    host, mx:<span class="bu">int</span><span class="op">=</span><span class="dv">6000</span>, session:<span class="bu">str</span><span class="op">=</span><span class="st">''</span>, get_spec:NoneType<span class="op">=</span><span class="va">None</span>, on_media:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Shalya’s image tools for <code>host</code>, checking the turn’s model on every call.</em></p>
+</section>
+</div>
+<div id="2ffe1a34" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.532376+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.537611+00:00&quot;,&quot;total&quot;:0.005238769000001753}}" data-execution_count="14">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L97" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="draws_itself" class="level3">
+<h3 class="anchored" data-anchor-id="draws_itself">draws_itself</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> draws_itself(</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    spec</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Whether the model behind <code>spec</code> can draw pictures itself when given the image tool.</em></p>
+</section>
+</div>
+<p>The example fakes the capability table with <code>mock_caps</code>, so it runs without a model. The first spec lists <code>image</code> among its tools and the second does not. No spec at all gives False.</p>
+<div id="ee19be8a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.537989+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.540179+00:00&quot;,&quot;total&quot;:0.0021945999999957166}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> types <span class="im">import</span> SimpleNamespace</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>draws <span class="op">=</span> ModelSpec(<span class="st">'drawer'</span>, <span class="st">'remote'</span>, <span class="st">'openai/gpt-5.6-luna'</span>)</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>plain <span class="op">=</span> ModelSpec(<span class="st">'plain'</span>, <span class="st">'remote'</span>, <span class="st">'openai/gpt-5.6'</span>)</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>caps <span class="op">=</span> {<span class="st">'openai/gpt-5.6-luna'</span>: SimpleNamespace(tools<span class="op">=</span>(<span class="st">'image'</span>, <span class="st">'search'</span>)), <span class="st">'openai/gpt-5.6'</span>: SimpleNamespace(tools<span class="op">=</span>(<span class="st">'search'</span>,))}</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> mock_caps(caps): got <span class="op">=</span> draws_itself(draws), draws_itself(plain), draws_itself(<span class="va">None</span>)</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>got</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>(True, False, False)</code></pre>
+</div>
+</div>
+<div id="2efec755" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> mock_caps(caps):</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    test_eq(draws_itself(draws), <span class="va">True</span>)</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    test_eq(draws_itself(plain), <span class="va">False</span>)</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>test_eq(draws_itself(<span class="va">None</span>), <span class="va">False</span>)</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> mock_caps({}): test_eq(draws_itself(draws), <span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#image_tools"><code>image_tools</code></a> builds shalya’s image group for a host, with <a href="https://vedicreader.github.io/ramabana/tools.html#draws_itself"><code>draws_itself</code></a> asked about the turn’s model each time the tool is called. Pass <code>get_spec</code>, a callable returning the current <a href="https://vedicreader.github.io/ramabana/core.html#modelspec"><code>ModelSpec</code></a>, so that a model switch mid-session is seen. Without an image API key the tool returns a message saying so and makes no request, which is why this example runs anywhere.</p>
+<div id="d006afd7" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>gen <span class="op">=</span> image_tools(local, get_spec<span class="op">=</span><span class="kw">lambda</span>: draws)[<span class="dv">0</span>]</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>gen.<span class="va">__name__</span>, image_available()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="4fd8dea9" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>test_eq(gen.<span class="va">__name__</span>, <span class="st">'generate_image'</span>)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="kw">not</span> image_available(): <span class="cf">assert</span> <span class="st">'OPENAI_API_KEY'</span> <span class="kw">in</span> gen(<span class="st">'a kettle'</span>)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> failed(gen(<span class="st">'a kettle'</span>, size<span class="op">=</span><span class="st">'3x3'</span>))</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(image_tools(local, get_spec<span class="op">=</span><span class="kw">lambda</span>: <span class="va">None</span>)), <span class="dv">1</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="assembling-the-tool-list" class="level2">
+<h2 class="anchored" data-anchor-id="assembling-the-tool-list">Assembling the tool list</h2>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#tools_for"><code>tools_for</code></a> decides which tools a host gets. It asks <code>Host.provides</code> for the capability groups and adds the tool group for each. A <code>get_skills</code> callable adds <code>read_skill</code>, and <code>extra</code> adds extension tools. <code>drop</code> removes groups by name, such as <code>'shell'</code> or <code>'image'</code>. <code>optin</code> adds groups that are off by default: <code>exhash</code> (the hash-addressed <code>edit_file</code>), <code>research</code>, <code>author</code>, <code>legacy</code> (tool names from older releases) and <code>browser</code>.</p>
+<p>Shalya has a <a href="https://vedicreader.github.io/ramabana/tools.html#tools_for"><code>tools_for</code></a> of its own. Use this one in Ramabana code, because it also builds the image group from the turn’s model through <code>get_spec</code> and <code>on_media</code>, which a host cannot know. The image group comes only when an image key is set and the host can write, since <code>generate_image</code> saves files. On a <code>LocalHost</code> without litesearch installed, <code>search_code</code> is left out.</p>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#small_tool"><code>small_tool</code></a> marks an extension tool to keep in the <code>small</code> profile, the short catalog a local model or a small context window gets. <a href="https://vedicreader.github.io/ramabana/tools.html#toolcatalog"><code>ToolCatalog</code></a> wraps a tool list once and answers questions about it: each tool’s group, which tools write, which have effects, and a read-only copy. <a href="https://vedicreader.github.io/ramabana/tools.html#toolentry"><code>ToolEntry</code></a> is one row of it.</p>
+<div id="18b5b5ea" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.548738+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.554157+00:00&quot;,&quot;total&quot;:0.005423352999997633}}" data-execution_count="17">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L148" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="toolcatalog" class="level3">
+<h3 class="anchored" data-anchor-id="toolcatalog">ToolCatalog</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> ToolCatalog(</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    tools:<span class="bu">tuple</span><span class="op">=</span>()</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>An immutable list of tools that answers each one’s group, whether it writes, and whether it has effects.</em></p>
+</section>
+</div>
+<div id="4340eca0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.554284+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.558925+00:00&quot;,&quot;total&quot;:0.004645586000009416}}" data-execution_count="18">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L132" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="toolentry" class="level3">
+<h3 class="anchored" data-anchor-id="toolentry">ToolEntry</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> ToolEntry(</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    tool:<span class="bu">object</span>, group:<span class="bu">str</span><span class="op">=</span><span class="st">''</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>One callable and the Shalya metadata every consumer needs.</em></p>
+</section>
+</div>
+<div id="8a7ddee1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.559052+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.563742+00:00&quot;,&quot;total&quot;:0.004694467999996732}}" data-execution_count="19">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L126" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="small_tool" class="level3">
+<h3 class="anchored" data-anchor-id="small_tool">small_tool</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> small_tool(</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    f</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Mark an extension tool for the small profile, whose catalog omits unmarked tools.</em></p>
+</section>
+</div>
+<div id="f79db171" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.563866+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.569798+00:00&quot;,&quot;total&quot;:0.005936717000011527}}" data-execution_count="20">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L116" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="tools_for" class="level3">
+<h3 class="anchored" data-anchor-id="tools_for">tools_for</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> tools_for(</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    host, get_skills:NoneType<span class="op">=</span><span class="va">None</span>, extra:<span class="bu">tuple</span><span class="op">=</span>(), mx:<span class="bu">int</span><span class="op">=</span><span class="dv">6000</span>, drop:<span class="bu">tuple</span><span class="op">=</span>(), get_spec:NoneType<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    on_media:NoneType<span class="op">=</span><span class="va">None</span>, optin:<span class="bu">tuple</span><span class="op">=</span>()</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The tools for <code>host</code>: a group per capability it declares, plus skills, images and extensions, less <code>drop</code> and plus <code>optin</code>.</em></p>
+</section>
+</div>
+<p>The list for the real host above. It has the file, code, notebook, shell, git and web groups. The memory and API tools are absent because <code>LocalHost</code> does not declare those groups here, and <code>generate_image</code> appears only when an image key is set.</p>
+<div id="4ec1afd8" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> tools_for(local))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="87c0e679" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>ts <span class="op">=</span> tools_for(local)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>names <span class="op">=</span> {t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> ts}</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> {<span class="st">'search_code'</span>, <span class="st">'view_file'</span>, <span class="st">'run_python'</span>, <span class="st">'run_shell'</span>} <span class="op">&lt;=</span> names, <span class="bu">sorted</span>(names)</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="kw">not</span> (names <span class="op">&amp;</span> {<span class="st">'memory_tree'</span>, <span class="st">'api_load'</span>, <span class="st">'ask_memory'</span>})</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="st">'generate_image'</span> <span class="kw">in</span> names, image_available())</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>test_eq(names <span class="op">-</span> {t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> tools_for(local, drop<span class="op">=</span>[<span class="st">'shell'</span>])},</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>        {<span class="st">'run_shell'</span>, <span class="st">'run_shell_bg'</span>, <span class="st">'shell_output'</span>, <span class="st">'shell_stop'</span>})</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'read_skill'</span> <span class="kw">in</span> {t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> tools_for(local, get_skills<span class="op">=</span><span class="kw">lambda</span>: [])}</span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'read_skill'</span> <span class="kw">not</span> <span class="kw">in</span> names</span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>_installed, installed <span class="op">=</span> installed, <span class="kw">lambda</span> m: m <span class="op">!=</span> <span class="st">'litesearch'</span></span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>: <span class="cf">assert</span> <span class="st">'search_code'</span> <span class="kw">not</span> <span class="kw">in</span> {t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> tools_for(local)}</span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>: installed <span class="op">=</span> _installed</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Opt-in groups come only on request. <code>edit_file</code> appears with <code>optin=('exhash',)</code>, the old tool names with <code>optin='legacy'</code>, and an unknown name raises.</p>
+<div id="311bcc8b" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'edit_file'</span> <span class="kw">not</span> <span class="kw">in</span> names</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'edit_file'</span> <span class="kw">in</span> {t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> tools_for(local, optin<span class="op">=</span>(<span class="st">'exhash'</span>,))}</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'list_files'</span> <span class="kw">in</span> {t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> tools_for(local, optin<span class="op">=</span><span class="st">'legacy'</span>)}</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: tools_for(local, optin<span class="op">=</span>(<span class="st">'nosuch'</span>,)), contains<span class="op">=</span><span class="st">'unknown optin'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="142787b6" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>h <span class="op">=</span> NullHost([<span class="st">'/proj'</span>])</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(h.provides), [t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> tools_for(h)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="5162403d" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">sorted</span>(h.provides), [<span class="st">'file'</span>])</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>test_eq(h.roots, [<span class="st">'/proj'</span>])</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: h.check(<span class="st">'a.py'</span>), contains<span class="op">=</span><span class="st">'no folders are open'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Every method of <a href="https://vedicreader.github.io/ramabana/tools.html#nullhost"><code>NullHost</code></a> refuses. Checking a path raises because no folders are open, reading gives nothing, and opening another folder raises. It is the reference for how a host says “I cannot”.</p>
+<div id="c4940bd0" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>h.walk(), h.read(<span class="st">'a.py'</span>), h.text_at(<span class="st">'a.py'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="e86d4a2c" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>test_eq(h.walk(), [])</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>test_eq(h.read(<span class="st">'a.py'</span>), <span class="va">None</span>)</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>test_eq(h.text_at(<span class="st">'a.py'</span>), <span class="va">None</span>)</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: h.write(<span class="st">'a.py'</span>, <span class="st">'x'</span>), contains<span class="op">=</span><span class="st">'cannot write'</span>)</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: h.check(<span class="st">'a.py'</span>), contains<span class="op">=</span><span class="st">'no folders are open'</span>)</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: NullHost().add_root(<span class="st">'/tmp'</span>), contains<span class="op">=</span><span class="st">'cannot open another folder'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="sub-agents" class="level2">
+<h2 class="anchored" data-anchor-id="sub-agents">Sub-agents</h2>
+<p>A sub-agent is a separate conversation with a model, started to answer one question for the agent that asked. Handing a question over this way is delegation. Its purpose is to save context, not time. A broad question can take twenty tool calls to answer, and if the main agent made them itself every result would stay in its conversation. Delegated, the same work costs the main conversation one question and one answer, because the sub-agent’s conversation is thrown away when it finishes.</p>
+<p>A sub-agent gets read-only tools unless the session allows it to write. <code>NO_SUB</code> lists the tools it never gets by default: the four delegation tools and the folder watches, which would outlive its task. A session that allows nesting passes its own <code>block</code>, and then the sub-agent may delegate in turn. <code>SUB_MAX_STEPS</code>, <code>SUB_TIMEOUT</code> and <code>SUB_SLOTS</code> are the default step limit, the default time limit, and how many sub-agents may work at once.</p>
+<p>A briefing is the standing instructions a model gets before the conversation starts, its system prompt. <a href="https://vedicreader.github.io/ramabana/tools.html#sub_briefing"><code>sub_briefing</code></a> builds a sub-agent’s from parts: <code>SUB_SP_HEAD</code>, which every sub-agent gets, then <code>SUB_READ_SP</code> or <code>SUB_WRITE_SP</code>, then an optional note on how much of the answer the caller will read, then notes for the model’s family.</p>
+<div id="1e9cce97" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.575309+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.580811+00:00&quot;,&quot;total&quot;:0.005505896000002508}}" data-execution_count="22">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L204" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="sub_briefing" class="level3">
+<h3 class="anchored" data-anchor-id="sub_briefing">sub_briefing</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> sub_briefing(</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    writes:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, answer_max:<span class="bu">int</span><span class="op">=</span><span class="dv">0</span>, <span class="co"># characters the caller reads of the answer; 0 says nothing about it</span></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    notes:<span class="bu">str</span><span class="op">=</span><span class="st">''</span>, <span class="co"># the sub-agent model's family notes, after the rest</span></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The sub-agent standing instructions: the shared half, the read-only or the write half, the answer budget and the family notes.</em></p>
+</section>
+</div>
+<div id="1f71607e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.580940+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.585384+00:00&quot;,&quot;total&quot;:0.004448209000003089}}" data-execution_count="23">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L196" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="inbox_note" class="level3">
+<h3 class="anchored" data-anchor-id="inbox_note">inbox_note</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> inbox_note(</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>    key</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The one tag the model may take as the user: it carries <code>key</code>, which no file or page knows.</em></p>
+</section>
+</div>
+<p><code>SUB_SP</code> is the read-only briefing with nothing added, and it is the default. A sub-agent allowed to write gets <code>SUB_SP_HEAD</code> followed by <code>SUB_WRITE_SP</code>.</p>
+<div id="59919e01" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>SUB_MAX_STEPS, <span class="bu">len</span>(SUB_SP.split()), <span class="bu">len</span>(SUB_WRITE_SP.split())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="82820813" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'State plainly when you find nothing'</span> <span class="kw">in</span> SUB_SP</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'cannot edit'</span> <span class="kw">in</span> SUB_SP</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> SUB_MAX_STEPS <span class="op">&gt;</span> <span class="dv">0</span></span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">sorted</span>(NO_SUB), [<span class="st">'cancel_watch'</span>, <span class="st">'delegate_async'</span>, <span class="st">'delegate_cancel'</span>, <span class="st">'delegate_result'</span>, <span class="st">'delegate_search'</span>, <span class="st">'watch'</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>read_only</code>, from shalya, filters a tool list down to what an agent may have when it must not change anything. Write tools are dropped, or swapped for a safe version where the tool has one. <code>block</code> drops tools by name, and Ramabana passes <code>NO_SUB</code>. <code>effects=False</code> also drops the acting tools, those that do something without writing a file, such as <code>inspect_python</code>, <code>shell_stop</code> and <code>generate_image</code>. Shalya marks them with <code>acts</code> and lists them in <code>ACTING_TOOLS</code>. Use <code>effects=False</code> for a surface that may look and propose but never act.</p>
+<p>A safe version can fix an argument. In the second cell below, <code>read_url</code> still fetches the page, but its <code>remember</code> parameter is gone and it no longer stores the page in the vault.</p>
+<div id="531974fb" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>[t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> read_only(ts, block<span class="op">=</span>NO_SUB)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="639f4dc7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.586014+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.586712+00:00&quot;,&quot;total&quot;:0.0007025259999977607}}" data-execution_count="24">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> inspect</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="be948b63" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">set</span>(t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> read_only(ts, block<span class="op">=</span>NO_SUB)) <span class="op">&amp;</span> WRITE_TOOLS, <span class="bu">set</span>())</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>shut <span class="op">=</span> <span class="bu">set</span>(t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> read_only(ts, effects<span class="op">=</span><span class="va">False</span>, block<span class="op">=</span>NO_SUB))</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>test_eq(shut <span class="op">&amp;</span> (WRITE_TOOLS <span class="op">|</span> NO_SUB <span class="op">|</span> ACTING_TOOLS), <span class="bu">set</span>())</span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="st">'search_code'</span> <span class="kw">in</span> shut, <span class="va">True</span>)</span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>kept <span class="op">=</span> []</span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Page: text <span class="op">=</span> <span class="st">'page'</span></span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Keeps(MemHost, WebHost):</span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> web_search(<span class="va">self</span>, query, n<span class="op">=</span><span class="dv">20</span>): <span class="cf">return</span> []</span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> research(<span class="va">self</span>, query): <span class="cf">return</span> <span class="st">''</span></span>
+<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> read_url(<span class="va">self</span>, url, remember<span class="op">=</span><span class="va">True</span>): kept.append(remember)<span class="op">;</span> <span class="cf">return</span> Page()</span>
+<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a>fetch <span class="op">=</span> <span class="bu">next</span>(t <span class="cf">for</span> t <span class="kw">in</span> read_only(tools_for(Keeps({<span class="st">'/proj/a.py'</span>: <span class="st">'x = 1</span><span class="ch">\n</span><span class="st">'</span>}))) <span class="cf">if</span> t.<span class="va">__name__</span> <span class="op">==</span> <span class="st">'read_url'</span>)</span>
+<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a>fetch(url<span class="op">=</span><span class="st">'https://example.com'</span>)</span>
+<span id="cb36-14"><a href="#cb36-14" aria-hidden="true" tabindex="-1"></a>test_eq(kept, [<span class="va">False</span>])</span>
+<span id="cb36-15"><a href="#cb36-15" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="st">'remember'</span> <span class="kw">in</span> inspect.signature(fetch).parameters, <span class="va">False</span>)</span>
+<span id="cb36-16"><a href="#cb36-16" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(<span class="bu">set</span>(t.<span class="va">__name__</span> <span class="cf">for</span> t <span class="kw">in</span> ts) <span class="op">&amp;</span> ACTING_TOOLS)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>max_calls</code> puts a hard budget on the list. Past it, every tool returns a message telling the model to stop and answer. Local engines run their own tool loop, so Ramabana cannot stop them between steps, and a budget inside the tools is the one limit that works on every backend. Below, the second search is refused.</p>
+<div id="d16a8ddc" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>budgeted <span class="op">=</span> read_only(ts, max_calls<span class="op">=</span><span class="dv">1</span>, block<span class="op">=</span>NO_SUB)</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>search <span class="op">=</span> <span class="bu">next</span>(t <span class="cf">for</span> t <span class="kw">in</span> budgeted <span class="cf">if</span> t.<span class="va">__name__</span> <span class="op">==</span> <span class="st">'search_code'</span>)</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>search(<span class="st">'return'</span>), search(<span class="st">'return'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#delegate"><code>delegate</code></a> asks one question of a sub-agent. It spawns a new conversation on the same engine as <code>backend</code>, hands it the tools that <code>read_only</code> lets through (all of them with <code>writes=True</code>), sends the question, and closes the conversation in a <code>finally</code> block whether or not it succeeded. It returns the answer text. An empty or repetitive answer is replaced by a notice that the delegation failed, and a sub-agent that raised gives an error result. <code>timeout</code> cancels the run after that many seconds, and <code>slots</code>, a shared <a href="https://vedicreader.github.io/ramabana/tools.html#slots"><code>Slots</code></a>, makes it wait for a free place among the sub-agents working at once. A sub-agent waiting on sub-agents of its own lends its place back, so a full tree of delegations cannot deadlock.</p>
+<p>Use <a href="https://vedicreader.github.io/ramabana/tools.html#delegate"><code>delegate</code></a> for one question. <a href="https://vedicreader.github.io/ramabana/tools.html#delegate_many"><code>delegate_many</code></a>, below, asks several, and <a href="https://vedicreader.github.io/ramabana/tools.html#subagent_tools"><code>subagent_tools</code></a> wraps both as tools a model can call.</p>
+<div id="71c05880" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.606298+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.614133+00:00&quot;,&quot;total&quot;:0.00783941100000618}}" data-execution_count="27">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L348" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="delegate" class="level3">
+<h3 class="anchored" data-anchor-id="delegate">delegate</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> delegate(</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>    backend, question, tools:<span class="bu">tuple</span><span class="op">=</span>(), sp:NoneType<span class="op">=</span><span class="va">None</span>, max_steps:<span class="bu">int</span><span class="op">=</span><span class="dv">60</span>, skills:<span class="bu">tuple</span><span class="op">=</span>(),</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>    writes:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># hand over WRITE_TOOLS as well</span></span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>    approve:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># the gate those writes answer to</span></span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>    run:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># a pre-registered child run</span></span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>    images:<span class="bu">tuple</span><span class="op">=</span>(), <span class="co"># picture bytes sent with the question</span></span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>    block:<span class="bu">frozenset</span><span class="op">=</span><span class="bu">frozenset</span>({<span class="st">'cancel_watch'</span>, <span class="st">'delegate_async'</span>, <span class="st">'watch'</span>, <span class="st">'delegate_result'</span>, <span class="st">'delegate_search'</span>, <span class="st">'delegate_cancel'</span>}), <span class="co"># tool names withheld from the sub-agent</span></span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>    timeout:<span class="bu">int</span><span class="op">=</span><span class="dv">0</span>, <span class="co"># seconds before the run is cancelled; 0 never</span></span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>    slots:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># a shared `Slots`, held while the sub-agent works</span></span>
+<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Ask <code>question</code> of a sub-agent in a separate conversation on <code>backend</code>’s engine, and return its answer text.</em></p>
+</section>
+</div>
+<div id="38cb60cd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.614273+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.620920+00:00&quot;,&quot;total&quot;:0.006651546000000508}}" data-execution_count="28">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L315" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="slots" class="level3">
+<h3 class="anchored" data-anchor-id="slots">Slots</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> Slots(</span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>    n:<span class="bu">int</span><span class="op">=</span><span class="dv">4</span></span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A bound on sub-agents working at once; one waiting on its own sub-agents lends its slot back.</em></p>
+</section>
+</div>
+<div id="20d03641" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.621055+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.624983+00:00&quot;,&quot;total&quot;:0.003932571000007101}}" data-execution_count="29">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L307" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="status_tool" class="level3">
+<h3 class="anchored" data-anchor-id="status_tool">status_tool</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> status_tool(</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>    run</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A display-only <code>status</code> tool for <code>run</code>, or the callable returning it, whose model’s text between calls never reaches us.</em></p>
+</section>
+</div>
+<div id="5abe1b87" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.625112+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.629931+00:00&quot;,&quot;total&quot;:0.004823387000001844}}" data-execution_count="30">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L288" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="write_targets" class="level3">
+<h3 class="anchored" data-anchor-id="write_targets">write_targets</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> write_targets(</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>    name, args</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Paths a call writes where it names them: saved pictures for <code>PATH_WRITES</code>, none for a git write, else <code>path</code>.</em></p>
+</section>
+</div>
+<div id="652d80c9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.630056+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.633891+00:00&quot;,&quot;total&quot;:0.0038375670000050377}}" data-execution_count="31">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L280" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="path_write" class="level3">
+<h3 class="anchored" data-anchor-id="path_write">path_write</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> path_write(</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>    name, args</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Whether this call writes where it names: an acting tool from <code>PATH_WRITES</code> given a <code>path</code>.</em></p>
+</section>
+</div>
+<div id="3a44ac5d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.633980+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.637043+00:00&quot;,&quot;total&quot;:0.0030661599999888267}}" data-execution_count="32">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L248" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="keep_media" class="level3">
+<h3 class="anchored" data-anchor-id="keep_media">keep_media</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> keep_media(</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>    new, old</span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>new</code>, carrying <code>old</code>’s pictures when a wrapper or hook rewrote a tool result as text.</em></p>
+</section>
+</div>
+<div id="41103f1b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.637131+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.641669+00:00&quot;,&quot;total&quot;:0.004542861999993875}}" data-execution_count="33">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L235" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="bad_json" class="level3">
+<h3 class="anchored" data-anchor-id="bad_json">bad_json</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> bad_json(</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>    e, span:<span class="bu">int</span><span class="op">=</span><span class="dv">120</span></span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The fragment a JSON error is about.</em></p>
+</section>
+</div>
+<div id="1c7e2318" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.641796+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.646682+00:00&quot;,&quot;total&quot;:0.004890571999993654}}" data-execution_count="34">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L226" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="sub_sp" class="level3">
+<h3 class="anchored" data-anchor-id="sub_sp">sub_sp</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> sub_sp(</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>    sp:<span class="bu">str</span><span class="op">=</span><span class="st">"You are a research sub-agent in a Python IDE. Answer the delegated question only.</span><span class="ch">\n</span><span class="st">- Use tools as needed. Report findings with file paths and line numbers.</span><span class="ch">\n</span><span class="st">- Before each tool call, write one line of at most eight words, in the -ing form, saying what you are doing.</span><span class="ch">\n</span><span class="st">- State plainly when you find nothing. Do not guess.</span><span class="ch">\n</span><span class="st">- A claim that something ran, exists or failed names the tool call or artifact behind it. Anything else is a hypothesis; say so.</span><span class="ch">\n</span><span class="st">- End with one line: `state: completed`, `state: blocked` or `state: failed`, and why.</span><span class="ch">\n</span><span class="st">- A tool result saying the tool-call budget is spent, and the request to answer that follows it, come from this harness: answer then with what you found.</span><span class="ch">\n</span><span class="st">- You cannot edit. Describe any required change and stop.</span><span class="ch">\n</span><span class="st">- Use `inspect_python` for live variables. Its default scope is sandboxed; use `scope='overlay'` for the real interpreter."</span>,</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>    skills:<span class="bu">tuple</span><span class="op">=</span>()</span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A sub-agent’s briefing: standing instructions, then the bodies of skills its task named.</em></p>
+</section>
+</div>
+<p>The tools a sub-agent gets are wrapped. A message sent to a running sub-agent, with <code>/tell</code> in the terminal, arrives appended to its next tool result inside a <code>&lt;user-message&gt;</code> tag that carries the run’s key. <a href="https://vedicreader.github.io/ramabana/tools.html#inbox_note"><code>inbox_note</code></a> tells the sub-agent that only a tag with that key is the user speaking, since a file or a web page could contain the same tag. A sub-agent that gets the same result from the same call <code>REPEAT_CALLS</code> times in a row is told to change course. The cell below shows a queued message arriving with a result.</p>
+<div id="a299d63d" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> Run(<span class="st">'run_t'</span>)<span class="op">;</span> r.tell(<span class="st">'and the tests'</span>)</span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>test_eq(_inboxed(<span class="kw">lambda</span>: <span class="st">'contents'</span>, <span class="kw">lambda</span>: <span class="va">None</span>)(), <span class="st">'contents'</span>)</span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>test_eq(_inboxed(<span class="kw">lambda</span>: <span class="st">'contents'</span>, <span class="kw">lambda</span>: r)(), <span class="ss">f'contents</span><span class="ch">\n\n</span><span class="ss">&lt;user-message key="</span><span class="sc">{</span>r<span class="sc">.</span>key<span class="sc">}</span><span class="ss">"&gt;</span><span class="ch">\n</span><span class="ss">and the tests</span><span class="ch">\n</span><span class="ss">&lt;/user-message&gt;'</span>)</span>
+<span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a>test_eq(r.drain_inbox(), [])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Each wrapped call also marks the run as active, so the now pane, the side panel that lists live runs (see <a href="./pane.html">pane</a>), can show what a sub-agent is doing. Some backends, LiteRT for one, never pass on the text a model writes between calls. Their sub-agents get a <code>status</code> tool from <a href="https://vedicreader.github.io/ramabana/tools.html#status_tool"><code>status_tool</code></a> to report one line instead, and <code>STATUS_NOTE</code> in the briefing tells them to use it.</p>
+<div id="ca9a5c45" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _Quiet(FakeBackend):</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>    narrates <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> spawn(<span class="va">self</span>, sp<span class="op">=</span><span class="st">''</span>, tools<span class="op">=</span>(), <span class="op">**</span>kw):</span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.sub <span class="op">=</span> FakeBackend(<span class="va">self</span>.spec, sp<span class="op">=</span>sp, tools<span class="op">=</span>tools, shared<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb47-5"><a href="#cb47-5" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.sub._send <span class="op">=</span> <span class="kw">lambda</span> msg, <span class="op">**</span>kw: <span class="bu">next</span>(t <span class="cf">for</span> t <span class="kw">in</span> <span class="va">self</span>.sub.tools <span class="cf">if</span> t.<span class="va">__name__</span> <span class="op">==</span> <span class="st">'status'</span>)(text<span class="op">=</span><span class="st">'Reading the tests'</span>)</span>
+<span id="cb47-6"><a href="#cb47-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">self</span>.sub</span>
+<span id="cb47-7"><a href="#cb47-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb47-8"><a href="#cb47-8" aria-hidden="true" tabindex="-1"></a>qb, qr <span class="op">=</span> _Quiet(), Run(<span class="st">'run_quiet'</span>, <span class="st">'child'</span>, <span class="st">'q'</span>)</span>
+<span id="cb47-9"><a href="#cb47-9" aria-hidden="true" tabindex="-1"></a>delegate(qb, <span class="st">'q'</span>, tools<span class="op">=</span>ts, run<span class="op">=</span>qr)</span>
+<span id="cb47-10"><a href="#cb47-10" aria-hidden="true" tabindex="-1"></a>test_eq(qr.status, <span class="st">'Reading the tests'</span>)</span>
+<span id="cb47-11"><a href="#cb47-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> STATUS_NOTE <span class="kw">in</span> qb.sub.sp</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="5312337f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.651846+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.659910+00:00&quot;,&quot;total&quot;:0.008067058000008842}}" data-execution_count="36">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L406" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="delegate_many" class="level3">
+<h3 class="anchored" data-anchor-id="delegate_many">delegate_many</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> delegate_many(</span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>    backend, questions, tools:<span class="bu">tuple</span><span class="op">=</span>(), sp:NoneType<span class="op">=</span><span class="va">None</span>, max_steps:<span class="bu">int</span><span class="op">=</span><span class="dv">60</span>, n_workers:<span class="bu">int</span><span class="op">=</span><span class="dv">4</span>, skills:<span class="bu">tuple</span><span class="op">=</span>(),</span>
+<span id="cb48-3"><a href="#cb48-3" aria-hidden="true" tabindex="-1"></a>    writes:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, approve:NoneType<span class="op">=</span><span class="va">None</span>, parent:NoneType<span class="op">=</span><span class="va">None</span>, images:<span class="bu">tuple</span><span class="op">=</span>(),</span>
+<span id="cb48-4"><a href="#cb48-4" aria-hidden="true" tabindex="-1"></a>    block:<span class="bu">frozenset</span><span class="op">=</span><span class="bu">frozenset</span>({<span class="st">'cancel_watch'</span>, <span class="st">'delegate_async'</span>, <span class="st">'watch'</span>, <span class="st">'delegate_result'</span>, <span class="st">'delegate_search'</span>, <span class="st">'delegate_cancel'</span>}),</span>
+<span id="cb48-5"><a href="#cb48-5" aria-hidden="true" tabindex="-1"></a>    timeout:<span class="bu">int</span><span class="op">=</span><span class="dv">0</span>, slots:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb48-6"><a href="#cb48-6" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Ask several questions of one sub-agent each, and return the answers in question order.</em></p>
+</section>
+</div>
+<p>Here a fake backend answers a delegated question. The caller gets back only the answer text.</p>
+<div id="2aef407c" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>be <span class="op">=</span> FakeBackend(replies<span class="op">=</span>[<span class="st">'the caller never sees this'</span>])</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>delegate(be, <span class="st">'which files import fastllm?'</span>, tools<span class="op">=</span>ts)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The spawned conversation was separate. It held only the question and the answer, and <a href="https://vedicreader.github.io/ramabana/tools.html#delegate"><code>delegate</code></a> closed it before returning.</p>
+<div id="7051b0db" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(be.spawned), <span class="dv">1</span>)</span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>be.spawned[<span class="dv">0</span>].hist</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#delegate_many"><code>delegate_many</code></a> asks several questions at once, one sub-agent each, and returns the answers in the order the questions were asked. It registers every child run with the parent before any starts, so cancelling the parent reaches all of them; the last example on this page shows that. It runs the questions one at a time when sub-agents may write, and when the model is local, because an engine such as LiteRT holds one conversation at a time and parallel runs would race for it.</p>
+<div id="b1321006" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>delegate_many(be, [<span class="st">'what imports fastllm?'</span>, <span class="st">'where is compaction triggered?'</span>], tools<span class="op">=</span>ts)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The delegation tools take callables that return a backend, not a backend. Each call asks for the current session’s backend, so after a <code>/model</code> switch the next sub-agent runs on the new model.</p>
+<p><code>delegate_async</code> starts a sub-agent in the background and returns at once, so the turn can carry on while it works. <a href="https://vedicreader.github.io/ramabana/tools.html#background"><code>Background</code></a> keeps track of those runs. <code>start</code> registers a run before its thread begins, so a status call always finds the id it returned. At most <code>mx</code> runs reach a model at once (<code>ASYNC_MAX</code>, 4 by default) and the rest wait as <a href="https://vedicreader.github.io/ramabana/learned.html#pending"><code>pending</code></a>. <code>status</code>, <code>result</code> and <code>cancel</code> answer for one run, and <code>status</code> with no id answers for all. The last <code>keep</code> answers are held. <code>close</code>, called when the session ends, cancels every run and refuses new work.</p>
+<p>The examples hold two runs behind a register with one place, cancel a run still waiting, close a register, catch a run that raised, and show an answer dropped once newer ones push it out.</p>
+<div id="9bc26d5f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.667338+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.672890+00:00&quot;,&quot;total&quot;:0.005556440000006546}}" data-execution_count="38">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L444" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="background" class="level3">
+<h3 class="anchored" data-anchor-id="background">Background</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> Background(</span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>    mx:<span class="bu">int</span><span class="op">=</span><span class="dv">4</span>, <span class="co"># how many reach a model at once</span></span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>    keep:<span class="bu">int</span><span class="op">=</span><span class="dv">50</span>, <span class="co"># answers held before the oldest is dropped</span></span>
+<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a>    on_done:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># called with `(run, answer)` when a run finishes</span></span>
+<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Delegations running behind the turn that asked for them, and the answers they leave.</em></p>
+</section>
+</div>
+<div id="ce60af7b" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>bg <span class="op">=</span> Background(mx<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>gate, seen <span class="op">=</span> threading.Event(), []</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> slow(run):</span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>    run.start()</span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>    seen.append(run.<span class="bu">id</span>)</span>
+<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a>    gate.wait(<span class="dv">5</span>)</span>
+<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ss">f'answered </span><span class="sc">{</span>run<span class="sc">.</span>question<span class="sc">}</span><span class="ss">'</span></span>
+<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a>a <span class="op">=</span> bg.start(slow, Run(<span class="st">'run_a'</span>, <span class="st">'child'</span>, <span class="st">'first'</span>))</span>
+<span id="cb53-11"><a href="#cb53-11" aria-hidden="true" tabindex="-1"></a>b <span class="op">=</span> bg.start(slow, Run(<span class="st">'run_b'</span>, <span class="st">'child'</span>, <span class="st">'second'</span>))</span>
+<span id="cb53-12"><a href="#cb53-12" aria-hidden="true" tabindex="-1"></a>time.sleep(<span class="fl">.2</span>)</span>
+<span id="cb53-13"><a href="#cb53-13" aria-hidden="true" tabindex="-1"></a>[(r[<span class="st">'id'</span>], r[<span class="st">'state'</span>]) <span class="cf">for</span> r <span class="kw">in</span> bg.status()]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="3af9ebc4" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>test_eq({r[<span class="st">'id'</span>] <span class="cf">for</span> r <span class="kw">in</span> bg.status()}, {<span class="st">'run_a'</span>, <span class="st">'run_b'</span>})</span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>test_eq(bg.status(<span class="st">'run_a'</span>)[<span class="dv">0</span>][<span class="st">'state'</span>], <span class="st">'running'</span>)</span>
+<span id="cb54-3"><a href="#cb54-3" aria-hidden="true" tabindex="-1"></a>test_eq(bg.status(<span class="st">'run_b'</span>)[<span class="dv">0</span>][<span class="st">'state'</span>], <span class="st">'pending'</span>)</span>
+<span id="cb54-4"><a href="#cb54-4" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(seen), <span class="dv">1</span>)</span>
+<span id="cb54-5"><a href="#cb54-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-6"><a href="#cb54-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'is running'</span> <span class="kw">in</span> bg.result(<span class="st">'run_a'</span>)</span>
+<span id="cb54-7"><a href="#cb54-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> bg.result(<span class="st">'nope'</span>).startswith(<span class="st">'no delegation named'</span>)</span>
+<span id="cb54-8"><a href="#cb54-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> bg.status(<span class="st">'nope'</span>).startswith(<span class="st">'no delegation named'</span>)</span>
+<span id="cb54-9"><a href="#cb54-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-10"><a href="#cb54-10" aria-hidden="true" tabindex="-1"></a>gate.<span class="bu">set</span>()</span>
+<span id="cb54-11"><a href="#cb54-11" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">200</span>):</span>
+<span id="cb54-12"><a href="#cb54-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> bg.result(<span class="st">'run_b'</span>).startswith(<span class="st">'answered'</span>): <span class="cf">break</span></span>
+<span id="cb54-13"><a href="#cb54-13" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.02</span>)</span>
+<span id="cb54-14"><a href="#cb54-14" aria-hidden="true" tabindex="-1"></a>test_eq(bg.result(<span class="st">'run_a'</span>), <span class="st">'answered first'</span>)</span>
+<span id="cb54-15"><a href="#cb54-15" aria-hidden="true" tabindex="-1"></a>test_eq(bg.result(<span class="st">'run_b'</span>), <span class="st">'answered second'</span>)</span>
+<span id="cb54-16"><a href="#cb54-16" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(seen), <span class="dv">2</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="797831ac" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a>held <span class="op">=</span> Background(mx<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a>block, ran <span class="op">=</span> threading.Event(), []</span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a>held.start(<span class="kw">lambda</span> r: (r.start(), block.wait(<span class="dv">5</span>), ran.append(r.<span class="bu">id</span>))[<span class="dv">2</span>], Run(<span class="st">'run_1'</span>, <span class="st">'child'</span>, <span class="st">'holds the slot'</span>))</span>
+<span id="cb55-4"><a href="#cb55-4" aria-hidden="true" tabindex="-1"></a>held.start(<span class="kw">lambda</span> r: ran.append(r.<span class="bu">id</span>), Run(<span class="st">'run_2'</span>, <span class="st">'child'</span>, <span class="st">'never runs'</span>))</span>
+<span id="cb55-5"><a href="#cb55-5" aria-hidden="true" tabindex="-1"></a>time.sleep(<span class="fl">.2</span>)</span>
+<span id="cb55-6"><a href="#cb55-6" aria-hidden="true" tabindex="-1"></a>test_eq(held.cancel(<span class="st">'run_2'</span>), <span class="st">'run_2 is stopping'</span>)</span>
+<span id="cb55-7"><a href="#cb55-7" aria-hidden="true" tabindex="-1"></a>block.<span class="bu">set</span>()</span>
+<span id="cb55-8"><a href="#cb55-8" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">200</span>):</span>
+<span id="cb55-9"><a href="#cb55-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="st">'stopped'</span> <span class="kw">in</span> held.result(<span class="st">'run_2'</span>): <span class="cf">break</span></span>
+<span id="cb55-10"><a href="#cb55-10" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.02</span>)</span>
+<span id="cb55-11"><a href="#cb55-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'stopped (cancelled)'</span> <span class="kw">in</span> held.result(<span class="st">'run_2'</span>), held.result(<span class="st">'run_2'</span>)</span>
+<span id="cb55-12"><a href="#cb55-12" aria-hidden="true" tabindex="-1"></a>test_eq(ran, [<span class="st">'run_1'</span>])</span>
+<span id="cb55-13"><a href="#cb55-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> held.cancel(<span class="st">'run_2'</span>).startswith(<span class="st">'run_2 had already finished'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="4f9f32cf" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>shut <span class="op">=</span> Background()</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>shut.start(<span class="kw">lambda</span> r: <span class="st">'done'</span>, Run(<span class="st">'run_x'</span>, <span class="st">'child'</span>, <span class="st">'q'</span>))</span>
+<span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a>test_eq(shut.close(), <span class="dv">1</span>)</span>
+<span id="cb56-4"><a href="#cb56-4" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: shut.start(<span class="kw">lambda</span> r: <span class="st">'nope'</span>, Run(<span class="st">'run_y'</span>, <span class="st">'child'</span>, <span class="st">'q'</span>)),</span>
+<span id="cb56-5"><a href="#cb56-5" aria-hidden="true" tabindex="-1"></a>          contains<span class="op">=</span><span class="st">'while the session is closing'</span>)</span>
+<span id="cb56-6"><a href="#cb56-6" aria-hidden="true" tabindex="-1"></a>test_eq(shut.status(<span class="st">'run_y'</span>), <span class="st">"no delegation named 'run_y' was started here"</span>)</span>
+<span id="cb56-7"><a href="#cb56-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb56-8"><a href="#cb56-8" aria-hidden="true" tabindex="-1"></a>boom <span class="op">=</span> Background()</span>
+<span id="cb56-9"><a href="#cb56-9" aria-hidden="true" tabindex="-1"></a>boom.start(<span class="kw">lambda</span> r: <span class="dv">1</span><span class="op">/</span><span class="dv">0</span>, Run(<span class="st">'run_z'</span>, <span class="st">'child'</span>, <span class="st">'q'</span>))</span>
+<span id="cb56-10"><a href="#cb56-10" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">200</span>):</span>
+<span id="cb56-11"><a href="#cb56-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> ERR <span class="kw">in</span> boom.result(<span class="st">'run_z'</span>): <span class="cf">break</span></span>
+<span id="cb56-12"><a href="#cb56-12" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.02</span>)</span>
+<span id="cb56-13"><a href="#cb56-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'ZeroDivisionError'</span> <span class="kw">in</span> boom.result(<span class="st">'run_z'</span>), boom.result(<span class="st">'run_z'</span>)</span>
+<span id="cb56-14"><a href="#cb56-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb56-15"><a href="#cb56-15" aria-hidden="true" tabindex="-1"></a>small <span class="op">=</span> Background(keep<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb56-16"><a href="#cb56-16" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> n <span class="kw">in</span> (<span class="st">'run_p'</span>, <span class="st">'run_q'</span>): small.start(<span class="kw">lambda</span> r: <span class="ss">f'ans </span><span class="sc">{</span>r<span class="sc">.</span><span class="bu">id</span><span class="sc">}</span><span class="ss">'</span>, Run(n, <span class="st">'child'</span>, <span class="st">'q'</span>))</span>
+<span id="cb56-17"><a href="#cb56-17" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">200</span>):</span>
+<span id="cb56-18"><a href="#cb56-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> small.result(<span class="st">'run_q'</span>) <span class="op">==</span> <span class="st">'ans run_q'</span>: <span class="cf">break</span></span>
+<span id="cb56-19"><a href="#cb56-19" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.02</span>)</span>
+<span id="cb56-20"><a href="#cb56-20" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'no longer held'</span> <span class="kw">in</span> small.result(<span class="st">'run_p'</span>), small.result(<span class="st">'run_p'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="e24d6e63" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.700673+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.723684+00:00&quot;,&quot;total&quot;:0.023015989000001014}}" data-execution_count="40">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L557" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="subagent_tools" class="level3">
+<h3 class="anchored" data-anchor-id="subagent_tools">subagent_tools</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> subagent_tools(</span>
+<span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a>    get_backend, get_tools, get_skills:NoneType<span class="op">=</span><span class="va">None</span>, get_cloud_backend:NoneType<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb57-3"><a href="#cb57-3" aria-hidden="true" tabindex="-1"></a>    get_writes:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># the session's sub-agent write toggle, read per call</span></span>
+<span id="cb57-4"><a href="#cb57-4" aria-hidden="true" tabindex="-1"></a>    get_approve:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># the gate those writes answer to</span></span>
+<span id="cb57-5"><a href="#cb57-5" aria-hidden="true" tabindex="-1"></a>    background:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># async delegation register; made if None</span></span>
+<span id="cb57-6"><a href="#cb57-6" aria-hidden="true" tabindex="-1"></a>    get_log_dir:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable -&gt; the folder run transcripts go in, or None</span></span>
+<span id="cb57-7"><a href="#cb57-7" aria-hidden="true" tabindex="-1"></a>    get_pictures:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable paths -&gt; `(bytes, err)`; see `read_pictures`</span></span>
+<span id="cb57-8"><a href="#cb57-8" aria-hidden="true" tabindex="-1"></a>    get_steps:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable -&gt; the step budget, which also caps a call's `max_steps`</span></span>
+<span id="cb57-9"><a href="#cb57-9" aria-hidden="true" tabindex="-1"></a>    get_timeout:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable -&gt; seconds each delegation may run; 0 never stops it</span></span>
+<span id="cb57-10"><a href="#cb57-10" aria-hidden="true" tabindex="-1"></a>    get_max:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable -&gt; chars one result may spend, notes included; `MAX_TOOL_CHARS` when None</span></span>
+<span id="cb57-11"><a href="#cb57-11" aria-hidden="true" tabindex="-1"></a>    get_notes:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable spec -&gt; the briefing notes for that model's family, or ''</span></span>
+<span id="cb57-12"><a href="#cb57-12" aria-hidden="true" tabindex="-1"></a>    slots:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># a shared `Slots` bounding sub-agents at once</span></span>
+<span id="cb57-13"><a href="#cb57-13" aria-hidden="true" tabindex="-1"></a>    block:<span class="bu">frozenset</span><span class="op">=</span><span class="bu">frozenset</span>({<span class="st">'cancel_watch'</span>, <span class="st">'delegate_async'</span>, <span class="st">'watch'</span>, <span class="st">'delegate_result'</span>, <span class="st">'delegate_search'</span>, <span class="st">'delegate_cancel'</span>}), <span class="co"># names withheld from the sub-agent, when `get_tools` does not decide</span></span>
+<span id="cb57-14"><a href="#cb57-14" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The four delegation tools, with every argument a callable read on each call so they follow the session’s current settings.</em></p>
+</section>
+</div>
+<div id="7e9b2b2d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.723811+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.730924+00:00&quot;,&quot;total&quot;:0.007118504000004577}}" data-execution_count="41">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L542" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="read_pictures" class="level3">
+<h3 class="anchored" data-anchor-id="read_pictures">read_pictures</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> read_pictures(</span>
+<span id="cb58-2"><a href="#cb58-2" aria-hidden="true" tabindex="-1"></a>    host, paths</span>
+<span id="cb58-3"><a href="#cb58-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>(bytes, '')</code> for pictures inside the host’s roots, or <code>([], err)</code> for the first one refused.</em></p>
+</section>
+</div>
+<div id="27f2c56f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.731073+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.737509+00:00&quot;,&quot;total&quot;:0.006468405999996207}}" data-execution_count="42">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L535" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="picture_mime" class="level3">
+<h3 class="anchored" data-anchor-id="picture_mime">picture_mime</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> picture_mime(</span>
+<span id="cb59-2"><a href="#cb59-2" aria-hidden="true" tabindex="-1"></a>    head</span>
+<span id="cb59-3"><a href="#cb59-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The MIME of a PNG, JPEG, GIF or WebP from its first bytes, else None.</em></p>
+</section>
+</div>
+<div id="1bada235" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.737686+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.744039+00:00&quot;,&quot;total&quot;:0.0063575490000005175}}" data-execution_count="43">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L519" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="named_skills" class="level3">
+<h3 class="anchored" data-anchor-id="named_skills">named_skills</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> named_skills(</span>
+<span id="cb60-2"><a href="#cb60-2" aria-hidden="true" tabindex="-1"></a>    get_skills, names</span>
+<span id="cb60-3"><a href="#cb60-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The skills a delegated task named, and a note about any name that matched nothing.</em></p>
+</section>
+</div>
+<p>A skill is a markdown document of instructions that an agent reads when the work calls for it, and a delegated task can name the skills its sub-agent needs. <a href="https://vedicreader.github.io/ramabana/tools.html#named_skills"><code>named_skills</code></a> finds them by name. When a name matches nothing it returns a note listing the skills that do exist, rather than raising, so the model can correct the name. <a href="https://vedicreader.github.io/ramabana/tools.html#sub_sp"><code>sub_sp</code></a> appends the full text of the found skills to the sub-agent’s briefing.</p>
+<div id="b6c9298a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.746311+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.754783+00:00&quot;,&quot;total&quot;:0.008474605000003521}}" data-execution_count="45">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L710" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="parse_plan_items" class="level3">
+<h3 class="anchored" data-anchor-id="parse_plan_items">parse_plan_items</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> parse_plan_items(</span>
+<span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a>    items</span>
+<span id="cb61-3"><a href="#cb61-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The item texts from newline text, a JSON list, or a Python list.</em></p>
+</section>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#parse_plan_items"><code>parse_plan_items</code></a> turns a list a model sent into a list of strings. Models send a list as JSON text, as one item per line (with or without <code>-</code> or <code>*</code> bullets), or as a real list, and it accepts all three. The agent’s <code>set_plan</code> tool reads its todo items through it.</p>
+<p>The next cell goes back to skills: it asks <a href="https://vedicreader.github.io/ramabana/tools.html#named_skills"><code>named_skills</code></a> for one skill that exists and one that does not, then checks what <a href="https://vedicreader.github.io/ramabana/tools.html#sub_sp"><code>sub_sp</code></a> adds to the briefing.</p>
+<div id="04d704db" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a>skills <span class="op">=</span> [Skill(<span class="st">'house-style'</span>, <span class="st">'md'</span>, <span class="st">'How code is written here.'</span>, _text<span class="op">=</span><span class="st">'Dense lines.'</span>),</span>
+<span id="cb62-2"><a href="#cb62-2" aria-hidden="true" tabindex="-1"></a>          Skill(<span class="st">'deploy'</span>, <span class="st">'md'</span>, <span class="st">'How this ships.'</span>, _text<span class="op">=</span><span class="st">'Push the tag.'</span>)]</span>
+<span id="cb62-3"><a href="#cb62-3" aria-hidden="true" tabindex="-1"></a>named_skills(<span class="kw">lambda</span>: skills, <span class="st">'house-style'</span>), named_skills(<span class="kw">lambda</span>: skills, <span class="st">'nope'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="158e35b6" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a>got, note <span class="op">=</span> named_skills(<span class="kw">lambda</span>: skills, <span class="st">'house-style'</span>)</span>
+<span id="cb63-2"><a href="#cb63-2" aria-hidden="true" tabindex="-1"></a>test_eq([s.name <span class="cf">for</span> s <span class="kw">in</span> got], [<span class="st">'house-style'</span>])</span>
+<span id="cb63-3"><a href="#cb63-3" aria-hidden="true" tabindex="-1"></a>test_eq(note, <span class="st">''</span>)</span>
+<span id="cb63-4"><a href="#cb63-4" aria-hidden="true" tabindex="-1"></a>test_eq([s.name <span class="cf">for</span> s <span class="kw">in</span> named_skills(<span class="kw">lambda</span>: skills, <span class="st">'house-style,deploy'</span>)[<span class="dv">0</span>]],</span>
+<span id="cb63-5"><a href="#cb63-5" aria-hidden="true" tabindex="-1"></a>        [<span class="st">'house-style'</span>, <span class="st">'deploy'</span>])</span>
+<span id="cb63-6"><a href="#cb63-6" aria-hidden="true" tabindex="-1"></a>test_eq(named_skills(<span class="kw">lambda</span>: skills, <span class="st">''</span>), ([], <span class="st">''</span>))</span>
+<span id="cb63-7"><a href="#cb63-7" aria-hidden="true" tabindex="-1"></a>missed, note <span class="op">=</span> named_skills(<span class="kw">lambda</span>: skills, <span class="st">'nope'</span>)</span>
+<span id="cb63-8"><a href="#cb63-8" aria-hidden="true" tabindex="-1"></a>test_eq(missed, [])</span>
+<span id="cb63-9"><a href="#cb63-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'no skill named nope'</span> <span class="kw">in</span> note <span class="kw">and</span> <span class="st">'house-style, deploy'</span> <span class="kw">in</span> note</span>
+<span id="cb63-10"><a href="#cb63-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-11"><a href="#cb63-11" aria-hidden="true" tabindex="-1"></a>briefed <span class="op">=</span> sub_sp(skills<span class="op">=</span>got)</span>
+<span id="cb63-12"><a href="#cb63-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'Dense lines.'</span> <span class="kw">in</span> briefed <span class="kw">and</span> briefed.startswith(SUB_SP)</span>
+<span id="cb63-13"><a href="#cb63-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'Push the tag.'</span> <span class="kw">not</span> <span class="kw">in</span> briefed</span>
+<span id="cb63-14"><a href="#cb63-14" aria-hidden="true" tabindex="-1"></a>test_eq(sub_sp(), SUB_SP)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A pyskill is a skill shipped as a Python module whose docstring is the skill text. Listing skills needs each one’s description, and shalya imports the module to read it. Some of those imports are slow: <code>vishalakshi.skill</code> and <code>kosha.skill</code> pull in litesearch and model2vec, about 0.7 seconds before the first prompt. <a href="https://vedicreader.github.io/ramabana/tools.html#mod_doc"><code>mod_doc</code></a> reads a module’s docstring from its source file without importing anything, and this cell swaps shalya’s pyskill loader for one that uses it. The module is imported only when the skill’s full text is read.</p>
+<div id="06a039f7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.758000+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.764266+00:00&quot;,&quot;total&quot;:0.0062709480000080475}}" data-execution_count="47">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L727" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="mod_doc" class="level3">
+<h3 class="anchored" data-anchor-id="mod_doc">mod_doc</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mod_doc(</span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>    modpath</span>
+<span id="cb64-3"><a href="#cb64-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A module’s docstring read from its source, loading nothing; None when that cannot be done.</em></p>
+</section>
+</div>
+<div id="21703648" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a>test_eq(mod_doc(<span class="st">'ramabana.theory'</span>), sys.modules[<span class="st">'ramabana.theory'</span>].__doc__ <span class="cf">if</span> <span class="st">'ramabana.theory'</span> <span class="kw">in</span> sys.modules <span class="cf">else</span> <span class="bu">__import__</span>(<span class="st">'ramabana.theory'</span>).theory.__doc__)</span>
+<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> mod_doc(<span class="st">'no_such.module'</span>) <span class="kw">is</span> <span class="va">None</span> <span class="kw">and</span> <span class="st">'no_such'</span> <span class="kw">not</span> <span class="kw">in</span> sys.modules</span>
+<span id="cb65-3"><a href="#cb65-3" aria-hidden="true" tabindex="-1"></a>test_eq(_mod_skill(<span class="st">'theory'</span>, <span class="st">'ramabana.theory'</span>).<span class="bu">dict</span>(), _shalya_mod_skill(<span class="st">'theory'</span>, <span class="st">'ramabana.theory'</span>).<span class="bu">dict</span>())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#subagent_tools"><code>subagent_tools</code></a> builds the four tools a model uses to delegate. <code>delegate_search</code> asks one or more questions and waits for the answers. <code>delegate_async</code> starts one question in the background and returns a run id. <code>delegate_result</code> collects a background answer, or with no id lists every background run, and <code>delegate_cancel</code> stops one. Every argument is a callable read on each call, so the backend, the step budget, the time limit and the write setting follow the session as they change. An answer longer than one tool result may be is cut, and the whole text is saved to a file whose path the cut answer names.</p>
+<div id="b95461f4" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>subs <span class="op">=</span> {t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> subagent_tools(<span class="kw">lambda</span>: be, <span class="kw">lambda</span>: ts)}</span>
+<span id="cb66-2"><a href="#cb66-2" aria-hidden="true" tabindex="-1"></a>delegate_search <span class="op">=</span> subs[<span class="st">'delegate_search'</span>]</span>
+<span id="cb66-3"><a href="#cb66-3" aria-hidden="true" tabindex="-1"></a><span class="bu">list</span>(subs)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>With no model to delegate to, the tools return a message saying so instead of raising into the turn. With a model, several questions come back with one heading each.</p>
+<div id="1dbb592c" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb67"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a>nomodel <span class="op">=</span> {t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> subagent_tools(<span class="kw">lambda</span>: <span class="va">None</span>, <span class="kw">lambda</span>: ts)}</span>
+<span id="cb67-2"><a href="#cb67-2" aria-hidden="true" tabindex="-1"></a>test_eq(nomodel[<span class="st">'delegate_search'</span>]([<span class="st">'anything'</span>]), <span class="st">'no model is available to delegate to'</span>)</span>
+<span id="cb67-3"><a href="#cb67-3" aria-hidden="true" tabindex="-1"></a>test_eq(nomodel[<span class="st">'delegate_async'</span>](<span class="st">'anything'</span>), <span class="st">'no model is available to delegate to'</span>)</span>
+<span id="cb67-4"><a href="#cb67-4" aria-hidden="true" tabindex="-1"></a>delegate_search([<span class="st">'what imports fastllm?'</span>, <span class="st">'which tests cover it?'</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="224ceecc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.765330+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.766063+00:00&quot;,&quot;total&quot;:0.0007375309999986257}}" data-execution_count="48">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastcore.funccall <span class="im">import</span> get_schema</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="3b647250" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb69"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1"><a href="#cb69-1" aria-hidden="true" tabindex="-1"></a>dt <span class="op">=</span> {t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> subagent_tools(<span class="kw">lambda</span>: be, <span class="kw">lambda</span>: [], <span class="va">None</span>, background<span class="op">=</span>Background())}</span>
+<span id="cb69-2"><a href="#cb69-2" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">sorted</span>(dt), [<span class="st">'delegate_async'</span>, <span class="st">'delegate_cancel'</span>, <span class="st">'delegate_result'</span>, <span class="st">'delegate_search'</span>])</span>
+<span id="cb69-3"><a href="#cb69-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'sub answer'</span> <span class="kw">in</span> dt[<span class="st">'delegate_search'</span>]([<span class="st">'one question'</span>])</span>
+<span id="cb69-4"><a href="#cb69-4" aria-hidden="true" tabindex="-1"></a>out <span class="op">=</span> dt[<span class="st">'delegate_search'</span>]([<span class="st">'q1'</span>, <span class="st">'q2'</span>])<span class="op">;</span> test_eq(out.count(<span class="st">'### '</span>), <span class="dv">2</span>)</span>
+<span id="cb69-5"><a href="#cb69-5" aria-hidden="true" tabindex="-1"></a>test_eq(dt[<span class="st">'delegate_search'</span>]([]), <span class="st">'no questions given'</span>)</span>
+<span id="cb69-6"><a href="#cb69-6" aria-hidden="true" tabindex="-1"></a>test_eq(dt[<span class="st">'delegate_search'</span>]([<span class="st">''</span>, <span class="st">'  '</span>]), <span class="st">'no questions given'</span>)</span>
+<span id="cb69-7"><a href="#cb69-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'sub answer'</span> <span class="kw">in</span> dt[<span class="st">'delegate_search'</span>](<span class="st">'a bare string still works'</span>)</span>
+<span id="cb69-8"><a href="#cb69-8" aria-hidden="true" tabindex="-1"></a>test_eq(dt[<span class="st">'delegate_search'</span>](<span class="st">'["q1", "q2"]'</span>).count(<span class="st">'### '</span>), <span class="dv">2</span>)</span>
+<span id="cb69-9"><a href="#cb69-9" aria-hidden="true" tabindex="-1"></a>test_eq(dt[<span class="st">'delegate_search'</span>](<span class="st">'one question</span><span class="ch">\n</span><span class="st">that runs onto a second line'</span>).count(<span class="st">'### '</span>), <span class="dv">0</span>)</span>
+<span id="cb69-10"><a href="#cb69-10" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(be.spawned), <span class="bu">len</span>(be.spawned))</span>
+<span id="cb69-11"><a href="#cb69-11" aria-hidden="true" tabindex="-1"></a>test_eq(dt[<span class="st">'delegate_result'</span>](), <span class="st">'nothing has been delegated in the background'</span>)</span>
+<span id="cb69-12"><a href="#cb69-12" aria-hidden="true" tabindex="-1"></a>rid <span class="op">=</span> dt[<span class="st">'delegate_async'</span>](<span class="st">'later'</span>).split()[<span class="dv">1</span>]</span>
+<span id="cb69-13"><a href="#cb69-13" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">300</span>):</span>
+<span id="cb69-14"><a href="#cb69-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> rid <span class="kw">in</span> dt[<span class="st">'delegate_result'</span>]() <span class="kw">and</span> <span class="st">'completed'</span> <span class="kw">in</span> dt[<span class="st">'delegate_result'</span>](): <span class="cf">break</span></span>
+<span id="cb69-15"><a href="#cb69-15" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.02</span>)</span>
+<span id="cb69-16"><a href="#cb69-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rid <span class="kw">in</span> dt[<span class="st">'delegate_result'</span>]()</span>
+<span id="cb69-17"><a href="#cb69-17" aria-hidden="true" tabindex="-1"></a>test_eq(get_schema(dt[<span class="st">'delegate_search'</span>])[<span class="st">'input_schema'</span>][<span class="st">'properties'</span>][<span class="st">'questions'</span>], {<span class="st">'description'</span>: <span class="st">''</span>, <span class="st">'type'</span>: <span class="st">'array'</span>, <span class="st">'items'</span>: {<span class="st">'type'</span>: <span class="st">'string'</span>}})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>delegate_async</code>, <code>delegate_result</code> and <code>delegate_cancel</code> share one <a href="https://vedicreader.github.io/ramabana/tools.html#background"><code>Background</code></a>. The run id comes back at once and the answer later. <code>delegate_result</code> with no id lists every background delegation and its state.</p>
+<div id="ca8bc440" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb70"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>bg_be <span class="op">=</span> FakeBackend()</span>
+<span id="cb70-2"><a href="#cb70-2" aria-hidden="true" tabindex="-1"></a>bgs <span class="op">=</span> {t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> subagent_tools(<span class="kw">lambda</span>: bg_be, <span class="kw">lambda</span>: ts)}</span>
+<span id="cb70-3"><a href="#cb70-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb70-4"><a href="#cb70-4" aria-hidden="true" tabindex="-1"></a>started <span class="op">=</span> bgs[<span class="st">'delegate_async'</span>](<span class="st">'survey the tree'</span>)</span>
+<span id="cb70-5"><a href="#cb70-5" aria-hidden="true" tabindex="-1"></a>rid <span class="op">=</span> started.split()[<span class="dv">1</span>]</span>
+<span id="cb70-6"><a href="#cb70-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> started.startswith(<span class="st">'started run_'</span>) <span class="kw">and</span> <span class="st">'read-only'</span> <span class="kw">in</span> started, started</span>
+<span id="cb70-7"><a href="#cb70-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb70-8"><a href="#cb70-8" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">300</span>):</span>
+<span id="cb70-9"><a href="#cb70-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="st">'completed'</span> <span class="kw">in</span> bgs[<span class="st">'delegate_result'</span>]().splitlines()[<span class="dv">0</span>]: <span class="cf">break</span></span>
+<span id="cb70-10"><a href="#cb70-10" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.02</span>)</span>
+<span id="cb70-11"><a href="#cb70-11" aria-hidden="true" tabindex="-1"></a>test_eq(bgs[<span class="st">'delegate_result'</span>](rid), <span class="st">'sub answer'</span>)</span>
+<span id="cb70-12"><a href="#cb70-12" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(bg_be.spawned), <span class="dv">1</span>)</span>
+<span id="cb70-13"><a href="#cb70-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rid <span class="kw">in</span> bgs[<span class="st">'delegate_result'</span>]()</span>
+<span id="cb70-14"><a href="#cb70-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> bgs[<span class="st">'delegate_result'</span>](<span class="st">'run_nope'</span>).startswith(<span class="st">'no delegation named'</span>)</span>
+<span id="cb70-15"><a href="#cb70-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> bgs[<span class="st">'delegate_cancel'</span>](rid).startswith(<span class="ss">f'</span><span class="sc">{</span>rid<span class="sc">}</span><span class="ss"> had already finished'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A sub-agent sees pictures only when they come with its first message. <code>images</code> names them by path inside the open folders, and <a href="https://vedicreader.github.io/ramabana/tools.html#read_pictures"><code>read_pictures</code></a> reads them, refusing any path outside the folders or any file that is not a picture. The question then ends with a note naming the pictures in order, so the sub-agent knows which is which. A model that cannot take images gets an error rather than a question without its pictures, and so does a session with no way to read them. A <code>cloud_model</code> that names no reachable model gets an error saying to leave it empty and use the sub-agent model.</p>
+<div id="e1a7c0d3" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb71"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1" aria-hidden="true" tabindex="-1"></a>pic_root <span class="op">=</span> Path(tempfile.mkdtemp()).resolve()<span class="op">;</span> pic_host <span class="op">=</span> LocalHost([pic_root], index<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb71-2"><a href="#cb71-2" aria-hidden="true" tabindex="-1"></a>png <span class="op">=</span> <span class="st">b'</span><span class="ch">\x89</span><span class="st">PNG</span><span class="ch">\r\n\x1a\n</span><span class="st">'</span> <span class="op">+</span> <span class="bu">bytes</span>(<span class="dv">32</span>)</span>
+<span id="cb71-3"><a href="#cb71-3" aria-hidden="true" tabindex="-1"></a>(pic_root<span class="op">/</span><span class="st">'refs'</span>).mkdir()<span class="op">;</span> (pic_root<span class="op">/</span><span class="st">'refs'</span><span class="op">/</span><span class="st">'rama.png'</span>).write_bytes(png)<span class="op">;</span> (pic_root<span class="op">/</span><span class="st">'notes.txt'</span>).write_text(<span class="st">'hi'</span>)</span>
+<span id="cb71-4"><a href="#cb71-4" aria-hidden="true" tabindex="-1"></a>test_eq(read_pictures(pic_host, [<span class="st">'refs/rama.png'</span>]), ([png], <span class="st">''</span>))</span>
+<span id="cb71-5"><a href="#cb71-5" aria-hidden="true" tabindex="-1"></a>test_eq(read_pictures(pic_host, []), ([], <span class="st">''</span>))</span>
+<span id="cb71-6"><a href="#cb71-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'not a picture'</span> <span class="kw">in</span> read_pictures(pic_host, [<span class="st">'notes.txt'</span>])[<span class="dv">1</span>]</span>
+<span id="cb71-7"><a href="#cb71-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> failed(read_pictures(pic_host, [<span class="st">'refs/missing.png'</span>])[<span class="dv">1</span>]) <span class="kw">and</span> failed(read_pictures(pic_host, [<span class="st">'../x.png'</span>])[<span class="dv">1</span>])</span>
+<span id="cb71-8"><a href="#cb71-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb71-9"><a href="#cb71-9" aria-hidden="true" tabindex="-1"></a>pic_be <span class="op">=</span> FakeBackend()</span>
+<span id="cb71-10"><a href="#cb71-10" aria-hidden="true" tabindex="-1"></a>pt <span class="op">=</span> {t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> subagent_tools(<span class="kw">lambda</span>: pic_be, <span class="kw">lambda</span>: [], <span class="va">None</span>, <span class="kw">lambda</span> m: <span class="va">None</span>, background<span class="op">=</span>Background(),</span>
+<span id="cb71-11"><a href="#cb71-11" aria-hidden="true" tabindex="-1"></a>                                            get_pictures<span class="op">=</span><span class="kw">lambda</span> ps: read_pictures(pic_host, ps))}</span>
+<span id="cb71-12"><a href="#cb71-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'sub answer'</span> <span class="kw">in</span> pt[<span class="st">'delegate_search'</span>]([<span class="st">'match this face'</span>], images<span class="op">=</span>[<span class="st">'refs/rama.png'</span>])</span>
+<span id="cb71-13"><a href="#cb71-13" aria-hidden="true" tabindex="-1"></a>sent <span class="op">=</span> pic_be.spawned[<span class="op">-</span><span class="dv">1</span>].sent[<span class="dv">0</span>]</span>
+<span id="cb71-14"><a href="#cb71-14" aria-hidden="true" tabindex="-1"></a>test_eq(sent[<span class="dv">0</span>], png)<span class="op">;</span> <span class="cf">assert</span> <span class="st">'match this face'</span> <span class="kw">in</span> sent[<span class="op">-</span><span class="dv">1</span>] <span class="kw">and</span> <span class="st">'refs/rama.png'</span> <span class="kw">in</span> sent[<span class="op">-</span><span class="dv">1</span>], sent[<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb71-15"><a href="#cb71-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'not a picture'</span> <span class="kw">in</span> pt[<span class="st">'delegate_search'</span>]([<span class="st">'q'</span>], images<span class="op">=</span>[<span class="st">'notes.txt'</span>])<span class="op">;</span> test_eq(<span class="bu">len</span>(pic_be.spawned), <span class="dv">1</span>)</span>
+<span id="cb71-16"><a href="#cb71-16" aria-hidden="true" tabindex="-1"></a>test_eq(pic_be.spawned[<span class="op">-</span><span class="dv">1</span>].sent[<span class="dv">0</span>], sent)</span>
+<span id="cb71-17"><a href="#cb71-17" aria-hidden="true" tabindex="-1"></a>pt[<span class="st">'delegate_search'</span>]([<span class="st">'plain'</span>])<span class="op">;</span> test_eq(pic_be.spawned[<span class="op">-</span><span class="dv">1</span>].sent[<span class="dv">0</span>], <span class="st">'plain'</span>)</span>
+<span id="cb71-18"><a href="#cb71-18" aria-hidden="true" tabindex="-1"></a>rid <span class="op">=</span> pt[<span class="st">'delegate_async'</span>](<span class="st">'draw from it'</span>, images<span class="op">=</span>[<span class="st">'refs/rama.png'</span>]).split()[<span class="dv">1</span>]</span>
+<span id="cb71-19"><a href="#cb71-19" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">300</span>):</span>
+<span id="cb71-20"><a href="#cb71-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> pt[<span class="st">'delegate_result'</span>](rid) <span class="op">==</span> <span class="st">'sub answer'</span>: <span class="cf">break</span></span>
+<span id="cb71-21"><a href="#cb71-21" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.02</span>)</span>
+<span id="cb71-22"><a href="#cb71-22" aria-hidden="true" tabindex="-1"></a>test_eq(pic_be.spawned[<span class="op">-</span><span class="dv">1</span>].sent[<span class="dv">0</span>][<span class="dv">0</span>], png)</span>
+<span id="cb71-23"><a href="#cb71-23" aria-hidden="true" tabindex="-1"></a>blind <span class="op">=</span> {t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> subagent_tools(<span class="kw">lambda</span>: pic_be, <span class="kw">lambda</span>: [])}</span>
+<span id="cb71-24"><a href="#cb71-24" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> failed(blind[<span class="st">'delegate_search'</span>]([<span class="st">'q'</span>], images<span class="op">=</span>[<span class="st">'refs/rama.png'</span>]))</span>
+<span id="cb71-25"><a href="#cb71-25" aria-hidden="true" tabindex="-1"></a>missing <span class="op">=</span> pt[<span class="st">'delegate_search'</span>]([<span class="st">'q'</span>], cloud_model<span class="op">=</span><span class="st">'gpt-6-typo'</span>)</span>
+<span id="cb71-26"><a href="#cb71-26" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'gpt-6-typo'</span> <span class="kw">in</span> missing <span class="kw">and</span> <span class="st">'leave `cloud_model` empty'</span> <span class="kw">in</span> missing, missing</span>
+<span id="cb71-27"><a href="#cb71-27" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'images'</span> <span class="kw">in</span> get_schema(pt[<span class="st">'delegate_search'</span>])[<span class="st">'input_schema'</span>][<span class="st">'properties'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#picture_mime"><code>picture_mime</code></a> recognises a PNG, JPEG, WebP or GIF by its first bytes, whatever the file is called, which is why <code>fake.png</code> holding text is refused below. The limits are the terminal’s: at most <code>MAX_ATTACH</code> pictures, each at most <code>MAX_MEDIA</code> bytes. Every question’s sub-agent receives every picture, so pictures times questions may not exceed <code>MAX_ATTACH</code>.</p>
+<p>A read-only sub-agent’s <code>generate_image</code> refuses a <code>path</code>, because saving there would be a write, and saves under <code>media/</code> instead. <code>PATH_WRITES</code>, <a href="https://vedicreader.github.io/ramabana/tools.html#path_write"><code>path_write</code></a> and <a href="https://vedicreader.github.io/ramabana/tools.html#write_targets"><code>write_targets</code></a> tell the approval gate about this case: a call to a tool in <code>PATH_WRITES</code> counts as a write when it names a <code>path</code>, and <a href="https://vedicreader.github.io/ramabana/tools.html#write_targets"><code>write_targets</code></a> lists the files any call will write.</p>
+<div id="e1a7c0d5" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb72"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1"><a href="#cb72-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> name, body <span class="kw">in</span> ((<span class="st">'Makefile'</span>, <span class="st">'all:</span><span class="ch">\n</span><span class="st">'</span>), (<span class="st">'.env'</span>, <span class="st">'K=1</span><span class="ch">\n</span><span class="st">'</span>), (<span class="st">'fake.png'</span>, <span class="st">'text'</span>), (<span class="st">'logo.svg'</span>, <span class="st">'&lt;svg xmlns="x"/&gt;'</span>)):</span>
+<span id="cb72-2"><a href="#cb72-2" aria-hidden="true" tabindex="-1"></a>    (pic_root<span class="op">/</span>name).write_text(body)<span class="op">;</span> <span class="cf">assert</span> <span class="st">'not a picture'</span> <span class="kw">in</span> read_pictures(pic_host, [name])[<span class="dv">1</span>], name</span>
+<span id="cb72-3"><a href="#cb72-3" aria-hidden="true" tabindex="-1"></a>test_eq(read_pictures(pic_host, [<span class="st">'refs/rama.png'</span>])[<span class="dv">0</span>], [png])</span>
+<span id="cb72-4"><a href="#cb72-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'at most'</span> <span class="kw">in</span> read_pictures(pic_host, [<span class="st">'refs/rama.png'</span>] <span class="op">*</span> (MAX_ATTACH <span class="op">+</span> <span class="dv">1</span>))[<span class="dv">1</span>]</span>
+<span id="cb72-5"><a href="#cb72-5" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> <span class="bu">open</span>(pic_root<span class="op">/</span><span class="st">'big.png'</span>, <span class="st">'wb'</span>) <span class="im">as</span> f: f.write(png)<span class="op">;</span> f.truncate(MAX_MEDIA <span class="op">+</span> <span class="dv">1</span>)</span>
+<span id="cb72-6"><a href="#cb72-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'over'</span> <span class="kw">in</span> read_pictures(pic_host, [<span class="st">'big.png'</span>])[<span class="dv">1</span>]</span>
+<span id="cb72-7"><a href="#cb72-7" aria-hidden="true" tabindex="-1"></a>too_many <span class="op">=</span> pt[<span class="st">'delegate_search'</span>]([<span class="st">'q</span><span class="sc">%d</span><span class="st">'</span> <span class="op">%</span> i <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(MAX_ATTACH <span class="op">+</span> <span class="dv">1</span>)], images<span class="op">=</span>[<span class="st">'refs/rama.png'</span>])</span>
+<span id="cb72-8"><a href="#cb72-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'at most'</span> <span class="kw">in</span> too_many, too_many</span>
+<span id="cb72-9"><a href="#cb72-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> generate_image(prompt: <span class="bu">str</span>, path: <span class="bu">str</span> <span class="op">=</span> <span class="st">''</span>) <span class="op">-&gt;</span> <span class="bu">str</span>: <span class="cf">return</span> <span class="ss">f'drew </span><span class="sc">{</span>path <span class="kw">or</span> <span class="st">"media"</span><span class="sc">}</span><span class="ss">'</span></span>
+<span id="cb72-10"><a href="#cb72-10" aria-hidden="true" tabindex="-1"></a>drawn <span class="op">=</span> FakeBackend()</span>
+<span id="cb72-11"><a href="#cb72-11" aria-hidden="true" tabindex="-1"></a>delegate(drawn, <span class="st">'draw'</span>, tools<span class="op">=</span>[generate_image])</span>
+<span id="cb72-12"><a href="#cb72-12" aria-hidden="true" tabindex="-1"></a>sub_draw <span class="op">=</span> {t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> drawn.spawned[<span class="op">-</span><span class="dv">1</span>].tools}[<span class="st">'generate_image'</span>]</span>
+<span id="cb72-13"><a href="#cb72-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> failed(sub_draw(<span class="st">'x'</span>, path<span class="op">=</span><span class="st">'main.py'</span>)) <span class="kw">and</span> <span class="st">'read-only'</span> <span class="kw">in</span> sub_draw(<span class="st">'x'</span>, path<span class="op">=</span><span class="st">'main.py'</span>)</span>
+<span id="cb72-14"><a href="#cb72-14" aria-hidden="true" tabindex="-1"></a>test_eq(sub_draw(<span class="st">'x'</span>), <span class="st">'drew media'</span>)</span>
+<span id="cb72-15"><a href="#cb72-15" aria-hidden="true" tabindex="-1"></a>delegate(drawn, <span class="st">'draw'</span>, tools<span class="op">=</span>[generate_image], writes<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb72-16"><a href="#cb72-16" aria-hidden="true" tabindex="-1"></a>test_eq({t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> drawn.spawned[<span class="op">-</span><span class="dv">1</span>].tools}[<span class="st">'generate_image'</span>](<span class="st">'x'</span>, path<span class="op">=</span><span class="st">'a.png'</span>), <span class="st">'drew a.png'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/tools.html#delegate_many"><code>delegate_many</code></a> registers every child run before any work starts. Cancelling the parent stops the child that is running, and the children still queued never spawn. The fake backend below blocks on its first question until it is cancelled.</p>
+<div id="b08d4a48" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb73"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _Sub:</span>
+<span id="cb73-2"><a href="#cb73-2" aria-hidden="true" tabindex="-1"></a>    max_steps <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb73-3"><a href="#cb73-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, owner): <span class="va">self</span>.owner, <span class="va">self</span>.release <span class="op">=</span> owner, threading.Event()</span>
+<span id="cb73-4"><a href="#cb73-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> send(<span class="va">self</span>, question, run<span class="op">=</span><span class="va">None</span>):</span>
+<span id="cb73-5"><a href="#cb73-5" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.owner.started.append(question)<span class="op">;</span> <span class="va">self</span>.release.wait()<span class="op">;</span> <span class="cf">return</span> <span class="st">'late'</span></span>
+<span id="cb73-6"><a href="#cb73-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> cancel(<span class="va">self</span>): <span class="va">self</span>.owner.cancelled <span class="op">+=</span> <span class="dv">1</span><span class="op">;</span> <span class="va">self</span>.release.<span class="bu">set</span>()<span class="op">;</span> <span class="cf">return</span> <span class="va">True</span></span>
+<span id="cb73-7"><a href="#cb73-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> close(<span class="va">self</span>): <span class="cf">pass</span></span>
+<span id="cb73-8"><a href="#cb73-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb73-9"><a href="#cb73-9" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _ParentBackend:</span>
+<span id="cb73-10"><a href="#cb73-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>):</span>
+<span id="cb73-11"><a href="#cb73-11" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.spec <span class="op">=</span> AttrDict(name<span class="op">=</span><span class="st">'fake-child'</span>, local<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb73-12"><a href="#cb73-12" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.started, <span class="va">self</span>.spawned, <span class="va">self</span>.cancelled <span class="op">=</span> [], <span class="dv">0</span>, <span class="dv">0</span></span>
+<span id="cb73-13"><a href="#cb73-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> spawn(<span class="va">self</span>, <span class="op">**</span>kw): <span class="va">self</span>.spawned <span class="op">+=</span> <span class="dv">1</span><span class="op">;</span> <span class="cf">return</span> _Sub(<span class="va">self</span>)</span>
+<span id="cb73-14"><a href="#cb73-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb73-15"><a href="#cb73-15" aria-hidden="true" tabindex="-1"></a>backend, parent, box <span class="op">=</span> _ParentBackend(), Run(<span class="st">'run_parent'</span>, grace<span class="op">=</span><span class="fl">.03</span>), []</span>
+<span id="cb73-16"><a href="#cb73-16" aria-hidden="true" tabindex="-1"></a>parent.start()</span>
+<span id="cb73-17"><a href="#cb73-17" aria-hidden="true" tabindex="-1"></a>t <span class="op">=</span> threading.Thread(target<span class="op">=</span><span class="kw">lambda</span>: box.extend(delegate_many(backend, [<span class="st">'a'</span>, <span class="st">'b'</span>, <span class="st">'c'</span>], n_workers<span class="op">=</span><span class="dv">1</span>, parent<span class="op">=</span>parent)), daemon<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb73-18"><a href="#cb73-18" aria-hidden="true" tabindex="-1"></a>t.start()</span>
+<span id="cb73-19"><a href="#cb73-19" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> <span class="kw">not</span> backend.started: time.sleep(<span class="fl">.001</span>)</span>
+<span id="cb73-20"><a href="#cb73-20" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(parent.children), <span class="dv">3</span>)</span>
+<span id="cb73-21"><a href="#cb73-21" aria-hidden="true" tabindex="-1"></a>parent.cancel()<span class="op">;</span> t.join(<span class="fl">.2</span>)</span>
+<span id="cb73-22"><a href="#cb73-22" aria-hidden="true" tabindex="-1"></a>test_eq((backend.spawned, backend.cancelled), (<span class="dv">1</span>, <span class="dv">1</span>))</span>
+<span id="cb73-23"><a href="#cb73-23" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(box), <span class="dv">3</span>)</span>
+<span id="cb73-24"><a href="#cb73-24" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">all</span>((<span class="bu">isinstance</span>(x, <span class="bu">dict</span>) <span class="kw">and</span> x[<span class="st">'state'</span>] <span class="kw">in</span> (<span class="st">'cancelled'</span>, <span class="st">'detached'</span>))</span>
+<span id="cb73-25"><a href="#cb73-25" aria-hidden="true" tabindex="-1"></a>           <span class="kw">or</span> (<span class="bu">isinstance</span>(x, <span class="bu">str</span>) <span class="kw">and</span> <span class="st">'cancelled'</span> <span class="kw">in</span> x) <span class="cf">for</span> x <span class="kw">in</span> box)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="attachments" class="level2">
+<h2 class="anchored" data-anchor-id="attachments">Attachments</h2>
+<p>A prompt can carry files: pictures and sound. These helpers live here rather than in the terminal module, so that a host that only sends files does not load the terminal UI. <a href="https://vedicreader.github.io/ramabana/tools.html#media_paths"><code>media_paths</code></a> reads a paste or a dropped file in the shapes terminals deliver it, quoted, backslash-escaped or as a <code>file://</code> URL, and returns the media files it names, or an empty list for any other text. <a href="https://vedicreader.github.io/ramabana/tools.html#attach_refs"><code>attach_refs</code></a> finds <code>@path</code> references in a prompt. <a href="https://vedicreader.github.io/ramabana/tools.html#clipboard_png"><code>clipboard_png</code></a> reads a picture from the clipboard with <code>pngpaste</code>, <code>wl-paste</code> or <code>xclip</code>, whichever is installed. <a href="https://vedicreader.github.io/ramabana/tools.html#attachment"><code>Attachment</code></a> holds one file’s bytes, read once. <a href="https://vedicreader.github.io/ramabana/tools.html#media_parts"><code>media_parts</code></a> and <a href="https://vedicreader.github.io/ramabana/tools.html#media_note"><code>media_note</code></a> turn a list of attachments into what the message sends: the bytes the model accepts, and a note listing every file. Audio goes to the model only when it accepts audio; otherwise the note gives the file’s path.</p>
+<div id="d8f35367" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.785879+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.792008+00:00&quot;,&quot;total&quot;:0.0061343439999888005}}" data-execution_count="50">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L857" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="media_note" class="level3">
+<h3 class="anchored" data-anchor-id="media_note">media_note</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb74"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb74-1"><a href="#cb74-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> media_note(</span>
+<span id="cb74-2"><a href="#cb74-2" aria-hidden="true" tabindex="-1"></a>    atts, spec:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb74-3"><a href="#cb74-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>What the message says about the files attached to it.</em></p>
+</section>
+</div>
+<div id="b5fdff5c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.792161+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.797307+00:00&quot;,&quot;total&quot;:0.005150384999993207}}" data-execution_count="51">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L852" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="media_parts" class="level3">
+<h3 class="anchored" data-anchor-id="media_parts">media_parts</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb75"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> media_parts(</span>
+<span id="cb75-2"><a href="#cb75-2" aria-hidden="true" tabindex="-1"></a>    atts, spec:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb75-3"><a href="#cb75-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The attachments that go out as model content parts.</em></p>
+</section>
+</div>
+<div id="b0cfda3f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.797453+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.802683+00:00&quot;,&quot;total&quot;:0.005234391000001892}}" data-execution_count="52">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L846" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="sendable" class="level3">
+<h3 class="anchored" data-anchor-id="sendable">sendable</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb76"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb76-1"><a href="#cb76-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> sendable(</span>
+<span id="cb76-2"><a href="#cb76-2" aria-hidden="true" tabindex="-1"></a>    atts, spec:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb76-3"><a href="#cb76-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The attachment kinds <code>spec</code>’s model accepts: images always, and audio when it takes audio input or no spec is given.</em></p>
+</section>
+</div>
+<div id="3f1fbbf2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.802831+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.808291+00:00&quot;,&quot;total&quot;:0.005464509000006501}}" data-execution_count="53">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L832" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="attachment" class="level3">
+<h3 class="anchored" data-anchor-id="attachment">Attachment</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb77"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> Attachment(</span>
+<span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a>    path</span>
+<span id="cb77-3"><a href="#cb77-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>One media file for the next prompt, its bytes read once when attached.</em></p>
+</section>
+</div>
+<div id="67830d23" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.808444+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.813925+00:00&quot;,&quot;total&quot;:0.005485288000002697}}" data-execution_count="54">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L823" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="clipboard_png" class="level3">
+<h3 class="anchored" data-anchor-id="clipboard_png">clipboard_png</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb78"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb78-1"><a href="#cb78-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> clipboard_png():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The clipboard picture as PNG bytes, or None.</em></p>
+</section>
+</div>
+<div id="a53c5160" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.814075+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.819856+00:00&quot;,&quot;total&quot;:0.005785536000004754}}" data-execution_count="55">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L807" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="attach_refs" class="level3">
+<h3 class="anchored" data-anchor-id="attach_refs">attach_refs</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb79"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> attach_refs(</span>
+<span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a>    text</span>
+<span id="cb79-3"><a href="#cb79-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Media named <code>@path</code> or <code>@"path"</code> in a prompt, trailing punctuation stripped from a bare one.</em></p>
+</section>
+</div>
+<div id="56f0d033" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.820000+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.825056+00:00&quot;,&quot;total&quot;:0.005060548000002996}}" data-execution_count="56">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L803" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="ref_tokens" class="level3">
+<h3 class="anchored" data-anchor-id="ref_tokens">ref_tokens</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb80"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> ref_tokens(</span>
+<span id="cb80-2"><a href="#cb80-2" aria-hidden="true" tabindex="-1"></a>    text</span>
+<span id="cb80-3"><a href="#cb80-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Each <code>@path</code> in <code>text</code> as <code>(path, quoted)</code>; a bare one keeps whatever punctuation follows it.</em></p>
+</section>
+</div>
+<div id="b3ac1201" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.825195+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.830846+00:00&quot;,&quot;total&quot;:0.005655314000009071}}" data-execution_count="57">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L788" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="media_paths" class="level3">
+<h3 class="anchored" data-anchor-id="media_paths">media_paths</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb81"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> media_paths(</span>
+<span id="cb81-2"><a href="#cb81-2" aria-hidden="true" tabindex="-1"></a>    text</span>
+<span id="cb81-3"><a href="#cb81-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Every media file a paste names, or <code>[]</code> when it is anything else.</em></p>
+</section>
+</div>
+<div id="64cf8bf3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.830991+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.836243+00:00&quot;,&quot;total&quot;:0.005256822000006878}}" data-execution_count="58">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L782" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="is_media" class="level3">
+<h3 class="anchored" data-anchor-id="is_media">is_media</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb82"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb82-1"><a href="#cb82-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> is_media(</span>
+<span id="cb82-2"><a href="#cb82-2" aria-hidden="true" tabindex="-1"></a>    p</span>
+<span id="cb82-3"><a href="#cb82-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Whether <code>p</code> names a media file that exists.</em></p>
+</section>
+</div>
+<div id="08f10791" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:00.836392+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:00.842223+00:00&quot;,&quot;total&quot;:0.005834957999994117}}" data-execution_count="59">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/tools.py#L772" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="media_path" class="level3">
+<h3 class="anchored" data-anchor-id="media_path">media_path</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb83"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> media_path(</span>
+<span id="cb83-2"><a href="#cb83-2" aria-hidden="true" tabindex="-1"></a>    s</span>
+<span id="cb83-3"><a href="#cb83-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A <code>Path</code> from one path as a terminal delivered it, quoted, escaped or as a <code>file://</code> URL, or None.</em></p>
+</section>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

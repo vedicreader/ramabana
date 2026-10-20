@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="The first run: ramabana starts inside its own tmux server, offers to install tmux when it is missing, and ramabana --doctor says what it found.">
+
+<title>setup – ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-f2788e636de456f6409e966386820849.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="setup – ramabana">
+<meta property="og:description" content="The first run: ramabana starts inside its own tmux server, offers to install tmux when it is missing, and ramabana --doctor says what it found.">
+<meta property="og:site_name" content="ramabana">
+<meta name="twitter:title" content="setup – ramabana">
+<meta name="twitter:description" content="The first run: ramabana starts inside its own tmux server, offers to install tmux when it is missing, and ramabana --doctor says what it found.">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./setup.html">setup</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./shop.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">shop</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pyrepl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pyrepl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./acp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">racp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#extras-and-scripts" id="toc-extras-and-scripts" class="nav-link active" data-scroll-target="#extras-and-scripts">Extras and scripts</a></li>
+  <li><a href="#the-config" id="toc-the-config" class="nav-link" data-scroll-target="#the-config">The config</a></li>
+  <li><a href="#the-relaunch" id="toc-the-relaunch" class="nav-link" data-scroll-target="#the-relaunch">The relaunch</a></li>
+  <li><a href="#config.toml" id="toc-config.toml" class="nav-link" data-scroll-target="#config.toml">config.toml</a></li>
+  <li><a href="#installing-tmux" id="toc-installing-tmux" class="nav-link" data-scroll-target="#installing-tmux">Installing tmux</a></li>
+  <li><a href="#your-own-tmux" id="toc-your-own-tmux" class="nav-link" data-scroll-target="#your-own-tmux">Your own tmux</a></li>
+  <li><a href="#whether-the-code-index-needs-to-run" id="toc-whether-the-code-index-needs-to-run" class="nav-link" data-scroll-target="#whether-the-code-index-needs-to-run">Whether the code index needs to run</a></li>
+  <li><a href="#doctor" id="toc-doctor" class="nav-link" data-scroll-target="#doctor"><code>--doctor</code></a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="setup.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">setup</h1>
+</div>
+
+<div>
+  <div class="description">
+    The first run: ramabana starts inside its own tmux server, offers to install tmux when it is missing, and <code>ramabana --doctor</code> says what it found.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<p>This module holds what has to happen before a session starts. The terminal session runs best inside tmux, a terminal multiplexer that divides one window into panes. tmux gives Ramabana a split for the now pane, the live view of the turn described in <a href="./pane.html">pane</a>, and with its extended keys setting on it delivers <code>shift+enter</code> to the program as a key of its own, which the session uses to queue a message for the next turn. So the first run starts Ramabana inside a tmux server of its own, offers to install tmux when it is missing, and <code>ramabana --doctor</code> reports what it found. The module also decides whether the code index needs rebuilding.</p>
+<section id="extras-and-scripts" class="level2">
+<h2 class="anchored" data-anchor-id="extras-and-scripts">Extras and scripts</h2>
+<p>Every console script that the package installs starts in this module, so it imports only fastcore and the standard library, and never <code>ramabana.core</code>. That keeps a script quick to start and lets it check for its dependencies before it imports them.</p>
+<p><code>installed(mod)</code> says whether a module would import, without importing it. <code>need(extra)</code> checks the modules an extra provides, as listed in <code>EXTRAS</code>, and returns the install command for the ones missing, or <code>''</code> when all are there. <code>SCRIPTS</code> names, for each console script other than <code>ramabana</code>, the module whose <a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a> it runs and the extra it needs. Looking up one of those names on this module returns that <a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a>, or, when its extra is missing, a stand-in that prints the install command and exits with status 2. <code>ramabana.core</code> re-exports <a href="https://vedicreader.github.io/ramabana/setup.html#installed"><code>installed</code></a>, <a href="https://vedicreader.github.io/ramabana/setup.html#need"><code>need</code></a>, <code>EXTRAS</code> and <code>SCRIPTS</code>.</p>
+<div id="de3a7508" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.756851+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.763244+00:00&quot;,&quot;total&quot;:0.006398141000005353}}" data-execution_count="5">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/core.py#L214" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="getattr" class="level3">
+<h3 class="anchored" data-anchor-id="getattr"><strong>getattr</strong></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> <span class="fu">__getattr__</span>(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    name</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The <a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a> a console script in <code>SCRIPTS</code> calls itself, so <code>call_parse</code> reads the command line; or one naming the missing extra.</em></p>
+</section>
+</div>
+<div id="ea5ba791" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.763377+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.796722+00:00&quot;,&quot;total&quot;:0.03335349399999643}}" data-execution_count="6">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L45" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="need" class="level3">
+<h3 class="anchored" data-anchor-id="need">need</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> need(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    extra, <span class="op">*</span>mods</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>''</code> when <code>mods</code>, by default all of <code>extra</code>’s, are installed; else what to install.</em></p>
+</section>
+</div>
+<div id="ce53f722" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.796917+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.802498+00:00&quot;,&quot;total&quot;:0.005585418000009668}}" data-execution_count="7">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L40" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="installed" class="level3">
+<h3 class="anchored" data-anchor-id="installed">installed</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> installed(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    mod</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Whether <code>mod</code> would import, without importing it.</em></p>
+</section>
+</div>
+<div id="f698381b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.802682+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.807981+00:00&quot;,&quot;total&quot;:0.005302670999995485}}" data-execution_count="8">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L29" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="env_prefixes" class="level3">
+<h3 class="anchored" data-anchor-id="env_prefixes">env_prefixes</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> env_prefixes():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The env prefixes <code>core</code> reads: its own once loaded, where an app may have changed them, else <code>ENV_DEFAULT</code>.</em></p>
+</section>
+</div>
+<div id="1cddc462" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> installed(<span class="st">'fastcore'</span>) <span class="kw">and</span> <span class="kw">not</span> installed(<span class="st">'no_such_module'</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>test_eq(need(<span class="st">'search'</span>, <span class="st">'fastcore'</span>), <span class="st">''</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>test_eq(need(<span class="st">'search'</span>, <span class="st">'no_such_module'</span>), <span class="st">"no_such_module not installed: pip install 'ramabana[search]'"</span>)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>test_eq(env_prefixes(), (sys.modules[<span class="st">'ramabana.core'</span>].ENV_PREFIX, sys.modules[<span class="st">'ramabana.core'</span>].ENV_FALLBACK) <span class="cf">if</span> <span class="st">'ramabana.core'</span> <span class="kw">in</span> sys.modules <span class="cf">else</span> ENV_DEFAULT)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="the-config" class="level2">
+<h2 class="anchored" data-anchor-id="the-config">The config</h2>
+<p>Each session gets a tmux server of its own, started as <code>tmux -L ramabana-&lt;id&gt;</code> with the config file <code>&lt;cfg&gt;/tmux.conf</code>. A new server reads the current config and inherits the current environment, so a second session never picks up the first one’s API keys or virtual environment. That server never reads <code>~/.tmux.conf</code>, and your own tmux setup is left as it was.</p>
+<p>Extended keys are a tmux setting that passes key combinations such as <code>shift+enter</code> through to the program in the pane, instead of folding them into plain <code>enter</code>. <code>tmux_conf(version)</code> returns the config for a given tmux version, adding only the lines that version understands: <code>extended-keys</code> arrived in tmux 3.2 and <code>extended-keys-format csi-u</code> in 3.5, and an older tmux prints an error for each line it does not know. <a href="https://vedicreader.github.io/ramabana/setup.html#tmux_version"><code>tmux_version</code></a> reads the version from the output of <code>tmux -V</code>. The config claims true colour (<code>RGB</code>) only when <code>$COLORTERM</code> says the terminal draws it. The cell below prints the config for tmux 3.5.</p>
+<div id="f79c18b0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.811002+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.819876+00:00&quot;,&quot;total&quot;:0.008879460999992261}}" data-execution_count="10">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L85" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="tmux_conf" class="level3">
+<h3 class="anchored" data-anchor-id="tmux_conf">tmux_conf</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> tmux_conf(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    version</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>TMUX_CONF</code> with the lines tmux <code>version</code> understands.</em></p>
+</section>
+</div>
+<div id="ef7aa912" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.820281+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.831419+00:00&quot;,&quot;total&quot;:0.011143234999991591}}" data-execution_count="11">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L81" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="tmux_version" class="level3">
+<h3 class="anchored" data-anchor-id="tmux_version">tmux_version</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> tmux_version(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    s</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The <code>(major, minor)</code> in <code>tmux -V</code> output such as <code>tmux 3.5a</code>, or None.</em></p>
+</section>
+</div>
+<div id="a9758666" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>test_eq([tmux_version(s) <span class="cf">for</span> s <span class="kw">in</span> (<span class="st">'tmux 3.5a'</span>, <span class="st">'tmux next-3.6'</span>, <span class="st">'tmux master'</span>)], [(<span class="dv">3</span>, <span class="dv">5</span>), (<span class="dv">3</span>, <span class="dv">6</span>), <span class="va">None</span>])</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'extended-keys-format csi-u'</span> <span class="kw">in</span> tmux_conf((<span class="dv">3</span>, <span class="dv">5</span>)) <span class="kw">and</span> <span class="st">'csi-u'</span> <span class="kw">not</span> <span class="kw">in</span> tmux_conf((<span class="dv">3</span>, <span class="dv">4</span>))</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'extended-keys on'</span> <span class="kw">in</span> tmux_conf((<span class="dv">3</span>, <span class="dv">2</span>)) <span class="kw">and</span> <span class="st">'extended-keys'</span> <span class="kw">not</span> <span class="kw">in</span> tmux_conf((<span class="dv">3</span>, <span class="dv">1</span>))</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(tmux_conf((<span class="dv">3</span>, <span class="dv">5</span>)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="the-relaunch" class="level2">
+<h2 class="anchored" data-anchor-id="the-relaunch">The relaunch</h2>
+<p><a href="https://vedicreader.github.io/ramabana/setup.html#setup"><code>Setup</code></a> collects everything about the tmux that Ramabana runs in: the config, the relaunch into it, the install offer and <code>--doctor</code>.</p>
+<p><a href="https://vedicreader.github.io/ramabana/setup.html#setup.launch"><code>Setup.launch</code></a> runs before an interactive session starts. Outside tmux it replaces the current process with <code>tmux new-session</code> on a new server, running the same command line in the same folder. Quitting Ramabana then ends that tmux session and returns you to your shell. <code>launch</code> does nothing for a one-shot prompt, for <code>--json</code>, when stdin or stdout is not a terminal, and when <code>--tmux off</code> or <code>$RAMABANA_TMUX=off</code> says to stay out of tmux. It also needs tmux 3.0 or later. The relaunched process has <code>$RAMABANA_WRAPPED</code> set, so it never relaunches a second time. Inside tmux, <code>--pane auto</code> then opens the now pane.</p>
+<p>The server is set to <code>destroy-unattached</code>, which ends the session when you detach or close the window, so Ramabana never keeps running where nobody can see it. The history is saved, and <code>--resume latest</code> reopens it. The command runs under <code>sh</code> with a short wrapper, <code>HOLD</code>, that waits for enter after a non-zero exit, so an error stays on screen instead of vanishing with the tmux session.</p>
+<p>Inside a tmux server of your own, <code>launch</code> turns <code>extended-keys</code> on for that server when it is off. The change lasts until the server exits, and only programs that ask for extended keys receive them.</p>
+<p>Every effect on the outside world goes through an argument of <a href="https://vedicreader.github.io/ramabana/setup.html#setup"><code>Setup</code></a>: <code>which</code>, <code>system</code>, <code>run</code>, <code>execvpe</code>, <code>ask</code> and <code>isatty</code>, plus <code>environ</code>, <code>argv</code> and <code>cwd</code>. The examples pass fakes for all of them, so they run without tmux and change nothing.</p>
+<div id="52ac403a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.844691+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.851775+00:00&quot;,&quot;total&quot;:0.007089938999996548}}" data-execution_count="13">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L93" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="setup" class="level3">
+<h3 class="anchored" data-anchor-id="setup">Setup</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> Setup(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    cfg:<span class="bu">str</span><span class="op">=</span><span class="st">'~/.config/ramabana'</span>, <span class="co"># holds `tmux.conf` and `setup.json`</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    environ:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># default `os.environ`</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    argv:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># the command line to rerun; default `sys.argv`</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    cwd:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># where the session starts; default the current folder</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    which:function<span class="op">=</span>which, system:function<span class="op">=</span>system, run:function<span class="op">=</span>run, execvpe:function<span class="op">=</span>execvpe, ask:function<span class="op">=</span>_no_stdin,</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    isatty:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># whether stdin and stdout are terminals</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The tmux ramabana runs in: its config, the relaunch into it, the install offer, and <code>--doctor</code>.</em></p>
+</section>
+</div>
+<p>The example builds a fake machine, <code>Box</code>, that has tmux 3.5 on <code>PATH</code> and records each command run, each question asked and the <code>execvpe</code> it would make. <code>launch</code> reruns the command line on a new tmux server, starting in <code>/work</code>, with <code>$RAMABANA_WRAPPED</code> set and the original options at the end:</p>
+<div id="8c1b407e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.852883+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.859685+00:00&quot;,&quot;total&quot;:0.006808235000008267}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> types <span class="im">import</span> SimpleNamespace</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Box:</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">"Programs on PATH, the commands run, the prompts shown and the exec made."</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, have<span class="op">=</span>(<span class="st">'tmux'</span>,), version<span class="op">=</span><span class="st">'tmux 3.5a'</span>, system<span class="op">=</span><span class="st">'Darwin'</span>, answer<span class="op">=</span><span class="st">''</span>, ext<span class="op">=</span><span class="st">'on'</span>):</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.have, <span class="va">self</span>.version, <span class="va">self</span>.system, <span class="va">self</span>.answer, <span class="va">self</span>.ext <span class="op">=</span> <span class="bu">set</span>(have), version, system, answer, ext</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.calls, <span class="va">self</span>.asked, <span class="va">self</span>.execd <span class="op">=</span> [], [], <span class="va">None</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> which(<span class="va">self</span>, name): <span class="cf">return</span> <span class="ss">f'/bin/</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss">'</span> <span class="cf">if</span> name <span class="kw">in</span> <span class="va">self</span>.have <span class="cf">else</span> <span class="va">None</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> run(<span class="va">self</span>, cmd, <span class="op">**</span>kw):</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.calls.append(<span class="bu">list</span>(cmd))</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="st">'install'</span> <span class="kw">in</span> cmd: <span class="va">self</span>.have.add(<span class="st">'tmux'</span>)</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> SimpleNamespace(returncode<span class="op">=</span><span class="dv">0</span>, stdout<span class="op">=</span>{<span class="st">'-V'</span>: <span class="va">self</span>.version, <span class="st">'show'</span>: <span class="va">self</span>.ext}.get(cmd[<span class="dv">1</span>], <span class="st">''</span>))</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> ask(<span class="va">self</span>, q): <span class="cf">return</span> <span class="va">self</span>.asked.append(q) <span class="kw">or</span> <span class="va">self</span>.answer</span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> execvpe(<span class="va">self</span>, <span class="op">*</span>a): <span class="va">self</span>.execd <span class="op">=</span> a</span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mk(box, <span class="op">**</span>kw):</span>
+<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> Setup(tempfile.mkdtemp(), environ<span class="op">=</span>kw.pop(<span class="st">'environ'</span>, {<span class="st">'PATH'</span>: <span class="st">'/bin'</span>}), argv<span class="op">=</span>[<span class="st">'-c'</span>, <span class="st">'--pane'</span>, <span class="st">'on'</span>], cwd<span class="op">=</span><span class="st">'/work'</span>,</span>
+<span id="cb10-19"><a href="#cb10-19" aria-hidden="true" tabindex="-1"></a>                 which<span class="op">=</span>box.which, system<span class="op">=</span><span class="kw">lambda</span>: box.system, run<span class="op">=</span>box.run, execvpe<span class="op">=</span>box.execvpe, ask<span class="op">=</span>box.ask, isatty<span class="op">=</span><span class="kw">lambda</span>: <span class="va">True</span>)</span>
+<span id="cb10-20"><a href="#cb10-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-21"><a href="#cb10-21" aria-hidden="true" tabindex="-1"></a>box <span class="op">=</span> Box()</span>
+<span id="cb10-22"><a href="#cb10-22" aria-hidden="true" tabindex="-1"></a>mk(box).launch()</span>
+<span id="cb10-23"><a href="#cb10-23" aria-hidden="true" tabindex="-1"></a>exe, argv, env <span class="op">=</span> box.execd</span>
+<span id="cb10-24"><a href="#cb10-24" aria-hidden="true" tabindex="-1"></a>test_eq((exe, env[<span class="st">'RAMABANA_WRAPPED'</span>], argv[argv.index(<span class="st">'-c'</span>):][:<span class="dv">2</span>], argv[<span class="op">-</span><span class="dv">2</span>:]), (<span class="st">'/bin/tmux'</span>, <span class="st">'1'</span>, [<span class="st">'-c'</span>, <span class="st">'/work'</span>], [<span class="st">'--pane'</span>, <span class="st">'on'</span>]))</span>
+<span id="cb10-25"><a href="#cb10-25" aria-hidden="true" tabindex="-1"></a>argv[:<span class="dv">12</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>['tmux',
+ '-L',
+ 'ramabana-3cf00004',
+ '-f',
+ '/tmp/tmpol68wm_k/tmux.conf',
+ 'new-session',
+ '-s',
+ 'ramabana',
+ '-c',
+ '/work',
+ 'sh',
+ '-c']</code></pre>
+</div>
+</div>
+<p>A one-shot prompt, <code>--json</code> and <code>--tmux off</code> stay in the current terminal:</p>
+<div id="dab28294" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> kw <span class="kw">in</span> (<span class="bu">dict</span>(prompt<span class="op">=</span><span class="st">'hi'</span>), <span class="bu">dict</span>(as_json<span class="op">=</span><span class="va">True</span>), <span class="bu">dict</span>(tmux<span class="op">=</span><span class="st">'off'</span>)):</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    box <span class="op">=</span> Box()</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    mk(box).launch(<span class="op">**</span>kw)</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    test_eq(box.execd, <span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The <code>ramabana</code> script, <a href="https://vedicreader.github.io/ramabana/setup.html#run_cli"><code>run_cli</code></a>, makes the tmux decision before it imports the CLI. Importing the CLI takes about 0.4 seconds, so deciding first means the process outside tmux hands over to tmux quickly. <code>launch_args(argv)</code> reads just enough of the command line to know the session is interactive, without the full option parser, and returns the <code>cfg</code> and <code>tmux</code> values <code>launch</code> needs, or <code>None</code> to leave the decision to the CLI’s <a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a>. A prompt, <code>--json</code>, <code>--doctor</code>, an option <a href="https://vedicreader.github.io/ramabana/setup.html#refusal"><code>refusal</code></a> rejects, or any option it is unsure of returns <code>None</code>.</p>
+<p><a href="https://vedicreader.github.io/ramabana/setup.html#refusal"><code>refusal</code></a> holds the checks <a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a> makes before it starts anything, such as <code>--pii</code> without <code>--vault</code>, and returns the reason or <code>''</code>. Running it here means a bad option is refused in your terminal, not on tmux’s hold screen. <a href="https://vedicreader.github.io/ramabana/setup.html#bare_resume"><code>bare_resume</code></a> gives a bare <code>--resume</code> the value <code>PICK_SESSION</code>, which lists this folder’s sessions to choose from. When <a href="https://vedicreader.github.io/ramabana/setup.html#run_cli"><code>run_cli</code></a> has already called <code>launch</code>, it sets <code>LAUNCHED</code> so that <a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a> does not call it again.</p>
+<div id="6aab918c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.874337+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.881458+00:00&quot;,&quot;total&quot;:0.007125877000007108}}" data-execution_count="16">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L200" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="run_cli" class="level3">
+<h3 class="anchored" data-anchor-id="run_cli">run_cli</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> run_cli():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The <code>ramabana</code> script: rerun inside tmux before anything heavy loads, then parse the command line for <code>cli.main</code>.</em></p>
+</section>
+</div>
+<div id="a2eb799e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.881633+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.887007+00:00&quot;,&quot;total&quot;:0.0053781729999968775}}" data-execution_count="17">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L191" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="bare_resume" class="level3">
+<h3 class="anchored" data-anchor-id="bare_resume">bare_resume</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> bare_resume(</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    argv</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>argv</code> with a bare <code>--resume</code>, one followed by nothing or by another option, given the value <code>PICK_SESSION</code>.</em></p>
+</section>
+</div>
+<div id="d80973b4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.887142+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.893820+00:00&quot;,&quot;total&quot;:0.006682922000010194}}" data-execution_count="18">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L176" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="launch_args" class="level3">
+<h3 class="anchored" data-anchor-id="launch_args">launch_args</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> launch_args(</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    argv</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><a href="https://vedicreader.github.io/ramabana/setup.html#setup"><code>Setup</code></a>’s <code>cfg</code> and <code>launch</code>’s <code>tmux</code> for an interactive command line <a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a> accepts, read without its parser; None leaves it to <a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a>.</em></p>
+</section>
+</div>
+<div id="29995351" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.893955+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.900245+00:00&quot;,&quot;total&quot;:0.006292974999993817}}" data-execution_count="19">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L157" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="refusal" class="level3">
+<h3 class="anchored" data-anchor-id="refusal">refusal</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> refusal(</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    tmux:<span class="bu">str</span><span class="op">=</span><span class="st">'auto'</span>, pane:<span class="bu">str</span><span class="op">=</span><span class="st">'auto'</span>, profile:<span class="bu">str</span><span class="op">=</span><span class="st">'auto'</span>, pii:<span class="bu">str</span><span class="op">=</span><span class="st">'off'</span>, vault:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, python:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    attach:<span class="bu">str</span><span class="op">=</span><span class="st">''</span>, agent_proxy:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, warm:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, no_warm:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Why <a href="https://vedicreader.github.io/ramabana/cli.html#main"><code>main</code></a> refuses these options before starting anything, or ’’.</em></p>
+</section>
+</div>
+</section>
+<section id="config.toml" class="level2">
+<h2 class="anchored" data-anchor-id="config.toml">config.toml</h2>
+<p><code>~/.config/ramabana/config.toml</code> holds this machine’s settings: one file, edited by hand, that every Ramabana on the machine reads. A session started with another <code>--cfg</code>, and an app that embeds Ramabana with a config folder of its own, read the same file and never write into their own folder for it. <code>$RAMABANA_CONFIG</code> names another file; the tests use it.</p>
+<p>A value can come from four places, and the first that has one wins:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Source</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>a command-line flag</td>
+<td><code>--model gpt-5.4</code></td>
+</tr>
+<tr class="even">
+<td>an env var</td>
+<td><code>$RAMABANA_MODEL</code>, or <code>$LEELA_MODEL</code> inside Leela</td>
+</tr>
+<tr class="odd">
+<td>config.toml</td>
+<td><code>[jobs]</code> <code>turn = "gpt-5.4"</code></td>
+</tr>
+<tr class="even">
+<td>the built-in default</td>
+<td><code>claude-opus-5-5</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>KEYS</code> lists every key: its type, the env var and the flag that beat it, what it sets, and the values it may take. The tables are <code>[jobs]</code>, the model each job runs on; <code>[window]</code>, the numbers the window guard works with; <code>[compaction]</code>; <code>[runtime]</code>, what a model is started with; and <code>[cli]</code>, the defaults of the terminal session’s flags that take a value. <code>[jobs] image</code> is the OpenAI-compatible model <code>generate_image</code> draws with. <code>[azure]</code> holds Azure OpenAI’s <code>endpoint</code>, which <code>$AZURE_OPENAI_ENDPOINT</code> beats, read as named with no prefix (<code>Key.plain</code>), and the <code>api_key_env</code> that names the env var holding its key. A key an earlier release read, such as <code>azure.deployments</code>, is reported with what to do instead (<code>RETIRED_KEYS</code>). A <code>[model."NAME"]</code> table corrects the numbers fastllm’s table gives one model: <code>max_input_tokens</code>, <code>max_output_tokens</code> and <code>supports_images</code>. Given <code>model_id</code>, the same table defines a model of that name, with <code>runtime</code>, <code>base_url</code>, <code>api_key_env</code>, <code>api_name</code>, <code>vendor_name</code> and <code>ctx</code>; <a href="core.html">core</a> registers it.</p>
+<p><a href="https://vedicreader.github.io/ramabana/setup.html#load_config"><code>load_config</code></a> reads the file again only when it changes. An entry it cannot use takes its default and gives one warning, which <a href="https://vedicreader.github.io/ramabana/agent.html#agent.problems"><code>Agent.problems</code></a> and <code>ramabana config show</code> repeat: a key nobody knows, with the nearest one it might mean; a value of the wrong type or outside its choices; a file that is not TOML. Nothing raises.</p>
+<div id="20e77f49" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.933877+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.943113+00:00&quot;,&quot;total&quot;:0.00924142200000233}}" data-execution_count="21">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L373" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="set_table" class="level3">
+<h3 class="anchored" data-anchor-id="set_table">set_table</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> set_table(</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    table, values, path:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Set <code>values</code> in config.toml’s <code>[table]</code>, adding the table when it is missing, comments kept; a file that is not TOML is refused, never rewritten.</em></p>
+</section>
+</div>
+<div id="4663b177" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.943258+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.950721+00:00&quot;,&quot;total&quot;:0.007467171999991251}}" data-execution_count="22">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L350" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="set_setting" class="level3">
+<h3 class="anchored" data-anchor-id="set_setting">set_setting</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> set_setting(</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    key, value, path:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Set top-level <code>key</code> in config.toml by rewriting its one line, comments kept. A missing file starts from <a href="https://vedicreader.github.io/ramabana/setup.html#config_template"><code>config_template</code></a>; one that is not TOML is refused, never rewritten.</em></p>
+</section>
+</div>
+<div id="6151cd3d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.950857+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.955947+00:00&quot;,&quot;total&quot;:0.005094443999993814}}" data-execution_count="23">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L339" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="env_names" class="level3">
+<h3 class="anchored" data-anchor-id="env_names">env_names</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> env_names(</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    key</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The env vars that beat <code>key</code>, most specific first: its name as given for a <code>plain</code> key, else under each prefix.</em></p>
+</section>
+</div>
+<div id="44bed330" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.956084+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.964188+00:00&quot;,&quot;total&quot;:0.008109196999996016}}" data-execution_count="24">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L330" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="model_setting" class="level3">
+<h3 class="anchored" data-anchor-id="model_setting">model_setting</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> model_setting(</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>names</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The <code>[model."NAME"]</code> corrections for the first of <code>names</code> that has any, else <code>{}</code>.</em></p>
+</section>
+</div>
+<div id="c0d525b9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.964326+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.970318+00:00&quot;,&quot;total&quot;:0.005996894000006137}}" data-execution_count="25">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L326" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="setting" class="level3">
+<h3 class="anchored" data-anchor-id="setting">setting</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> setting(</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    key, dflt:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Config.toml’s value for <code>key</code>, else <code>dflt</code>. An env var or a flag that beats it is read by the code that owns the key.</em></p>
+</section>
+</div>
+<div id="d8053e82" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.970464+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.976998+00:00&quot;,&quot;total&quot;:0.006538413000001242}}" data-execution_count="26">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L312" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="load_config" class="level3">
+<h3 class="anchored" data-anchor-id="load_config">load_config</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> load_config(</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    path:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>(values, problems)</code> from config.toml, read again only when it changes. A key that is missing or wrong takes its default; nothing raises.</em></p>
+</section>
+</div>
+<div id="ac162299" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.977143+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:09.982156+00:00&quot;,&quot;total&quot;:0.005016759999989517}}" data-execution_count="27">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L225" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="config_path" class="level3">
+<h3 class="anchored" data-anchor-id="config_path">config_path</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> config_path():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>This machine’s config file: <code>$RAMABANA_CONFIG</code>, else <code>CONFIG</code>. An app that embeds ramabana reads the same file.</em></p>
+</section>
+</div>
+<div id="fce05549" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:09.982909+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.263013+00:00&quot;,&quot;total&quot;:0.28011056000001133}}" data-execution_count="28">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile, warnings</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    p <span class="op">=</span> Path(d)<span class="op">/</span><span class="st">'config.toml'</span></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    p.write_text(<span class="st">'learning = false</span><span class="ch">\n</span><span class="st">[jobs]</span><span class="ch">\n</span><span class="st">summary = "gpt-5.4"</span><span class="ch">\n</span><span class="st">turns = "x"</span><span class="ch">\n</span><span class="st">[window]</span><span class="ch">\n</span><span class="st">margin = 0.5</span><span class="ch">\n</span><span class="st">[model."codex/gpt-6.1-sol"]</span><span class="ch">\n</span><span class="st">max_input_tokens = 500000</span><span class="ch">\n</span><span class="st">window = 3</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> warnings.catch_warnings(record<span class="op">=</span><span class="va">True</span>) <span class="im">as</span> w:</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>        warnings.simplefilter(<span class="st">'always'</span>)</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>        vals, bad <span class="op">=</span> load_config(p)</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>    test_eq(vals, {<span class="st">'learning'</span>: <span class="va">False</span>, <span class="st">'jobs.summary'</span>: <span class="st">'gpt-5.4'</span>, <span class="st">'model'</span>: {<span class="st">'codex/gpt-6.1-sol'</span>: {<span class="st">'max_input_tokens'</span>: <span class="dv">500000</span>}}})</span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>    test_eq(<span class="bu">len</span>(bad), <span class="dv">3</span>)<span class="op">;</span> test_eq(<span class="bu">len</span>(w), <span class="dv">3</span>)</span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">'did you mean jobs.turn?'</span> <span class="kw">in</span> bad[<span class="dv">0</span>] <span class="kw">and</span> <span class="st">'margin = 0.5 is ignored: it must be a number, 1 or more'</span> <span class="kw">in</span> bad[<span class="dv">1</span>]</span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>    p.write_text(<span class="st">'[azure]</span><span class="ch">\n</span><span class="st">endpoint = "https://r.openai.azure.com"</span><span class="ch">\n</span><span class="st">deployments = ["gpt-5.4"]</span><span class="ch">\n</span><span class="st">[model."az"]</span><span class="ch">\n</span><span class="st">model_id = "gpt-5.4"</span><span class="ch">\n</span><span class="st">base_url = "https://r.openai.azure.com"</span><span class="ch">\n</span><span class="st">ctx = 9</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> warnings.catch_warnings(record<span class="op">=</span><span class="va">True</span>):</span>
+<span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a>        warnings.simplefilter(<span class="st">'always'</span>)</span>
+<span id="cb24-14"><a href="#cb24-14" aria-hidden="true" tabindex="-1"></a>        vals, bad <span class="op">=</span> load_config(p)</span>
+<span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a>    test_eq(vals, {<span class="st">'azure.endpoint'</span>: <span class="st">'https://r.openai.azure.com'</span>, <span class="st">'model'</span>: {<span class="st">'az'</span>: {<span class="st">'model_id'</span>: <span class="st">'gpt-5.4'</span>, <span class="st">'base_url'</span>: <span class="st">'https://r.openai.azure.com'</span>, <span class="st">'ctx'</span>: <span class="dv">9</span>}}})</span>
+<span id="cb24-16"><a href="#cb24-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">'no longer choose models'</span> <span class="kw">in</span> bad[<span class="dv">0</span>], bad</span>
+<span id="cb24-17"><a href="#cb24-17" aria-hidden="true" tabindex="-1"></a>    p.write_text(<span class="st">'learning = ['</span>)</span>
+<span id="cb24-18"><a href="#cb24-18" aria-hidden="true" tabindex="-1"></a>    vals, bad <span class="op">=</span> load_config(p)</span>
+<span id="cb24-19"><a href="#cb24-19" aria-hidden="true" tabindex="-1"></a>    test_eq(vals, {})<span class="op">;</span> <span class="cf">assert</span> <span class="st">'not valid TOML'</span> <span class="kw">in</span> bad[<span class="dv">0</span>]</span>
+<span id="cb24-20"><a href="#cb24-20" aria-hidden="true" tabindex="-1"></a>bad</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>UserWarning: /tmp/tmpxqop1clh/config.toml: it is not valid TOML (Invalid value (at end of document)), so every setting takes its default
+  vals, bad = load_config(p)</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="28">
+<pre><code>['/tmp/tmpxqop1clh/config.toml: it is not valid TOML (Invalid value (at end of document)), so every setting takes its default']</code></pre>
+</div>
+</div>
+<div id="a29a0aaa" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.278032+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.288751+00:00&quot;,&quot;total&quot;:0.010725187000005576}}" data-execution_count="30">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L482" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="config_cli" class="level3">
+<h3 class="anchored" data-anchor-id="config_cli">config_cli</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> config_cli(</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    argv:<span class="bu">tuple</span><span class="op">=</span>()</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>ramabana config</code>: <code>show</code> what is in effect, <code>init</code> a commented config.toml, or print its <code>path</code>.</em></p>
+</section>
+</div>
+<div id="847bcd1f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.288889+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.297948+00:00&quot;,&quot;total&quot;:0.009063945000008289}}" data-execution_count="31">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L458" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="config_show" class="level3">
+<h3 class="anchored" data-anchor-id="config_show">config_show</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> config_show(</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>    path:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Each setting in effect and where it came from: an env var, config.toml or the built-in default. A flag is per command line, so it is named, not read.</em></p>
+</section>
+</div>
+<div id="c37425c1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.298105+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.308742+00:00&quot;,&quot;total&quot;:0.010642443000008939}}" data-execution_count="32">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L447" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="config_template" class="level3">
+<h3 class="anchored" data-anchor-id="config_template">config_template</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> config_template():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A config.toml naming every key with its default, all commented out.</em></p>
+</section>
+</div>
+<div id="97fc1c0e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.308888+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.318887+00:00&quot;,&quot;total&quot;:0.010003963999992038}}" data-execution_count="33">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L404" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="config_defaults" class="level3">
+<h3 class="anchored" data-anchor-id="config_defaults">config_defaults</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> config_defaults():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Every key’s built-in default, read from the module that owns it.</em></p>
+</section>
+</div>
+<p><code>ramabana setup</code> adds a provider when nothing runs, or another when you want one. It prints <a href="https://vedicreader.github.io/ramabana/core.html#setup_guide"><code>setup_guide</code></a> from <a href="core.html">core</a>, the providers and each job’s model, and asks which provider to add. Azure OpenAI, AWS Bedrock’s Mantle endpoint and any OpenAI-compatible server get a <code>[model."NAME"]</code> table (<code>SETUP_FIELDS</code> says what each asks); a provider whose models already have names, such as OpenAI or Claude Code, needs only the name. Last it asks which jobs the model serves and writes them into <code>[jobs]</code>. Flags answer the same questions without a terminal, and without a terminal or flags it prints the guide and exits 2. It writes with <a href="https://vedicreader.github.io/ramabana/setup.html#set_table"><code>set_table</code></a>, which edits or adds one table and keeps every comment, and never writes a key.</p>
+<div id="de732115" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.333122+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.349155+00:00&quot;,&quot;total&quot;:0.01603841899999736}}" data-execution_count="35">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L516" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="setup_cli" class="level3">
+<h3 class="anchored" data-anchor-id="setup_cli">setup_cli</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> setup_cli(</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>    argv:<span class="bu">tuple</span><span class="op">=</span>(), ask:function<span class="op">=</span>_no_stdin, isatty:NoneType<span class="op">=</span><span class="va">None</span>, out:builtin_function_or_method<span class="op">=</span><span class="bu">print</span></span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>ramabana setup</code>: add a provider’s model to config.toml and name the jobs it serves. Asks only on a terminal; never writes a key.</em></p>
+</section>
+</div>
+<div id="ccdb2225" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.349562+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.361144+00:00&quot;,&quot;total&quot;:0.011586489999999117}}" data-execution_count="36">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tomllib</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>    p <span class="op">=</span> Path(d)<span class="op">/</span><span class="st">'config.toml'</span><span class="op">;</span> p.write_text(<span class="st">'learning = false   # kept</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>    set_table(<span class="st">'jobs'</span>, {<span class="st">'turn'</span>: <span class="st">'az'</span>}, p)<span class="op">;</span> set_table(<span class="st">'az'</span>, {<span class="st">'model_id'</span>: <span class="st">'gpt-5.4'</span>}, p)</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>    test_eq(tomllib.loads(p.read_text()), {<span class="st">'learning'</span>: <span class="va">False</span>, <span class="st">'jobs'</span>: {<span class="st">'turn'</span>: <span class="st">'az'</span>}, <span class="st">'model'</span>: {<span class="st">'az'</span>: {<span class="st">'model_id'</span>: <span class="st">'gpt-5.4'</span>}}})</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">'# kept'</span> <span class="kw">in</span> p.read_text()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/setup.html#set_setting"><code>set_setting</code></a> writes one top-level key, which only <code>learning</code> needs. It rewrites that key’s line, or the commented-out line the template left, so every comment stays. A missing file starts from the template. A file that is not valid TOML is refused with a message saying so, and never rewritten.</p>
+<div id="b03830fd" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>    p <span class="op">=</span> Path(d)<span class="op">/</span><span class="st">'config.toml'</span></span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    test_eq(set_setting(<span class="st">'learning'</span>, <span class="va">False</span>, p), <span class="va">False</span>)</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>    text <span class="op">=</span> p.read_text()</span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> text.startswith(CONFIG_HEAD) <span class="kw">and</span> <span class="st">'</span><span class="ch">\n</span><span class="st">learning = false</span><span class="ch">\n</span><span class="st">'</span> <span class="kw">in</span> text <span class="kw">and</span> <span class="st">'# turn = '</span> <span class="kw">in</span> text</span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>    test_eq(load_config(p), ({<span class="st">'learning'</span>: <span class="va">False</span>}, []))</span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    set_setting(<span class="st">'learning'</span>, <span class="va">True</span>, p)<span class="op">;</span> test_eq(p.read_text().count(<span class="st">'learning = '</span>), <span class="dv">1</span>)</span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    p.write_text(<span class="st">'# mine</span><span class="ch">\n</span><span class="st">learning = ['</span>)</span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>: set_setting(<span class="st">'learning'</span>, <span class="va">False</span>, p)<span class="op">;</span> <span class="cf">raise</span> <span class="pp">AssertionError</span>(<span class="st">'rewrote a file it cannot read'</span>)</span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e: <span class="cf">assert</span> <span class="st">'not valid TOML'</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a>    test_eq(p.read_text(), <span class="st">'# mine</span><span class="ch">\n</span><span class="st">learning = ['</span>)</span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(config_template()[:<span class="dv">900</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>ramabana config</code> reaches these before the session’s own options are parsed. <code>ramabana config init</code> writes the template, every key commented out beside its default, and refuses to replace a file that exists unless given <code>--force</code>, which keeps the old one as <code>config.toml.bak</code> and carries its <code>learning</code> across. <code>ramabana config show</code> prints each key’s value in effect and where it came from, with fastllm’s own number beside a corrected window. <code>ramabana config path</code> prints where the file is.</p>
+<div id="2797511d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.362398+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.458837+00:00&quot;,&quot;total&quot;:0.09644502099999386}}" data-execution_count="37">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    os.environ[<span class="st">'RAMABANA_CONFIG'</span>] <span class="op">=</span> <span class="bu">str</span>(p <span class="op">:=</span> Path(d)<span class="op">/</span><span class="st">'config.toml'</span>)</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>        test_eq(config_cli([<span class="st">'init'</span>]), <span class="dv">0</span>)<span class="op">;</span> test_eq(config_cli([<span class="st">'init'</span>]), <span class="dv">1</span>)</span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>        set_setting(<span class="st">'learning'</span>, <span class="va">False</span>)</span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>        test_eq(config_cli([<span class="st">'init'</span>, <span class="st">'--force'</span>]), <span class="dv">0</span>)</span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> (p.parent<span class="op">/</span><span class="st">'config.toml.bak'</span>).exists() <span class="kw">and</span> setting(<span class="st">'learning'</span>) <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a>        p.write_text(p.read_text().replace(<span class="st">'# summary = '</span>, <span class="st">'summary = "gpt-5.4" #'</span>, <span class="dv">1</span>))</span>
+<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a>        os.environ[<span class="st">'RAMABANA_MODEL'</span>] <span class="op">=</span> <span class="st">'gpt-5.4-mini'</span></span>
+<span id="cb34-11"><a href="#cb34-11" aria-hidden="true" tabindex="-1"></a>        out <span class="op">=</span> config_show()</span>
+<span id="cb34-12"><a href="#cb34-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">'jobs.summary = "gpt-5.4"   # config.toml'</span> <span class="kw">in</span> out <span class="kw">and</span> <span class="st">'jobs.turn = "gpt-5.4-mini"   # $RAMABANA_MODEL'</span> <span class="kw">in</span> out</span>
+<span id="cb34-13"><a href="#cb34-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">'jobs.classify = "claude-haiku-5-5"   # built-in'</span> <span class="kw">in</span> out</span>
+<span id="cb34-14"><a href="#cb34-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">finally</span>: os.environ.pop(<span class="st">'RAMABANA_CONFIG'</span>)<span class="op">;</span> os.environ.pop(<span class="st">'RAMABANA_MODEL'</span>, <span class="va">None</span>)</span>
+<span id="cb34-15"><a href="#cb34-15" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(out)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>wrote /tmp/tmpm2bpoc3h/config.toml
+wrote /tmp/tmpm2bpoc3h/config.toml
+# /tmp/tmpm2bpoc3h/config.toml
+learning = false   # config.toml; --no-learned beats it
+jobs.turn = "gpt-5.4-mini"   # $RAMABANA_MODEL; --model beats it
+jobs.oneshot = "gpt-6-luna"   # built-in
+jobs.inline = ""   # built-in
+jobs.completion = "claude-haiku-5-5"   # built-in
+jobs.classify = "claude-haiku-5-5"   # built-in
+jobs.summary = "gpt-5.4"   # config.toml
+jobs.subagent = "claude-sonnet-5-5"   # built-in
+jobs.image = "openai/gpt-image-1"   # built-in
+jobs.video = "gemini/veo-3.0-generate-001"   # built-in
+window.margin = 1.15   # built-in
+window.image_tokens = 1600   # built-in
+window.reserve = 16384   # built-in
+window.keep_recent = 20000   # built-in
+window.local_ctx = 0   # built-in
+compaction.auto = true   # built-in
+compaction.strategy = "summary"   # built-in
+runtime.effort = "high"   # built-in
+runtime.tool_channel = ""   # built-in
+runtime.litert_backend = ""   # built-in
+azure.endpoint = ""   # built-in
+azure.api_key_env = "AZURE_OPENAI_API_KEY"   # built-in
+cli.approve = "ask"   # built-in; --approve beats it
+cli.theme = "auto"   # built-in; --theme beats it
+cli.tmux = "auto"   # built-in; --tmux beats it
+cli.pane = "auto"   # built-in; --pane beats it
+cli.profile = "auto"   # built-in; --profile beats it
+cli.max_tool_calls = "auto"   # built-in; --max-tool-calls beats it
+cli.max_steps = "auto"   # built-in; --max-steps beats it</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/tmpm2bpoc3h/config.toml exists; `ramabana config init --force` replaces it and keeps it as config.toml.bak</code></pre>
+</div>
+</div>
+<div id="2a19c36c" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>test_eq(launch_args([<span class="st">'--root'</span>, <span class="st">'a,b'</span>, <span class="st">'--profile=full'</span>, <span class="st">'--no-web'</span>, <span class="st">'--cfg'</span>, <span class="st">'/c'</span>]), <span class="bu">dict</span>(cfg<span class="op">=</span><span class="st">'/c'</span>, tmux<span class="op">=</span><span class="st">'auto'</span>))</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> argv <span class="kw">in</span> ([<span class="st">'hi'</span>], [<span class="st">'--vault'</span>, <span class="st">'hi'</span>], [<span class="st">'-'</span>], [<span class="st">'--json'</span>], [<span class="st">'--doctor'</span>], [<span class="st">'--tmux'</span>, <span class="st">'off'</span>], [<span class="st">'--pane'</span>, <span class="st">'sideways'</span>]): test_eq(launch_args(argv), <span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="installing-tmux" class="level2">
+<h2 class="anchored" data-anchor-id="installing-tmux">Installing tmux</h2>
+<p>When tmux is missing, <code>offer_install</code> asks once whether to run the command that installs it, and shows the command: <code>brew install tmux</code> on macOS, <code>sudo apt-get install -y tmux</code> or <code>sudo dnf install -y tmux</code> on Linux. <code>installer</code> picks the command from what is on <code>PATH</code>. The command runs attached to the terminal, so <code>sudo</code> can ask for a password.</p>
+<p>The answer is stored in <code>&lt;cfg&gt;/setup.json</code>. A no is never asked again, and neither is a yes whose install worked. Ctrl+c at the prompt, or an install that failed or was interrupted, stores nothing, so the next run asks again. <code>ramabana --doctor</code> asks even after an earlier no. Without tmux, the session starts in the current terminal and prints one line on how to get the now pane.</p>
+<p>The first example says yes on a Mac with Homebrew, and the session relaunches in the tmux it installed. The second says no on Linux, and a second <code>launch</code> does not ask again:</p>
+<div id="bcbf6feb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.469262+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.479576+00:00&quot;,&quot;total&quot;:0.010319010999992884}}" data-execution_count="39">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L583" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="setup.offer_install" class="level3">
+<h3 class="anchored" data-anchor-id="setup.offer_install">Setup.offer_install</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> offer_install(</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>    force:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span></span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Ask once, or again when <code>force</code>, to install tmux: True when tmux is there now.</em></p>
+</section>
+</div>
+<div id="38a00e7f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.479714+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.488166+00:00&quot;,&quot;total&quot;:0.008455982000000972}}" data-execution_count="40">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L559" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="setup.installer" class="level3">
+<h3 class="anchored" data-anchor-id="setup.installer">Setup.installer</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> installer():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The command that installs tmux here, or None.</em></p>
+</section>
+</div>
+<div id="6a89f95b" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>box <span class="op">=</span> Box(have<span class="op">=</span>{<span class="st">'brew'</span>}, answer<span class="op">=</span><span class="st">'y'</span>)</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>mk(box).launch()</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>test_eq((box.calls[<span class="dv">0</span>], box.execd <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>), ([<span class="st">'brew'</span>, <span class="st">'install'</span>, <span class="st">'tmux'</span>], <span class="va">True</span>))</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>box.asked</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="c0ffc969" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>box <span class="op">=</span> Box(have<span class="op">=</span>{<span class="st">'apt-get'</span>, <span class="st">'sudo'</span>}, system<span class="op">=</span><span class="st">'Linux'</span>, answer<span class="op">=</span><span class="st">'n'</span>)</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>s <span class="op">=</span> mk(box)</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>s.launch()</span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>s.launch()</span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>test_eq((<span class="bu">len</span>(box.asked), box.execd, s._seen()), (<span class="dv">1</span>, <span class="va">None</span>, {<span class="st">'install_tmux'</span>: <span class="st">'no'</span>}))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="your-own-tmux" class="level2">
+<h2 class="anchored" data-anchor-id="your-own-tmux">Your own tmux</h2>
+<p>When you start Ramabana inside a tmux server you already run, <code>ext_keys</code> reads that server’s <code>extended-keys</code> setting and turns it on only when it is <code>off</code>, printing a line to say so. Your <code>~/.tmux.conf</code> is never changed. The example runs <code>launch</code> inside tmux with the setting off, on, and <a href="https://vedicreader.github.io/ramabana/agent.html#always"><code>always</code></a>, and only the first turns it on:</p>
+<div id="ac4af37e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.493713+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.505405+00:00&quot;,&quot;total&quot;:0.01169744700000308}}" data-execution_count="42">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L602" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="setup.ext_keys" class="level3">
+<h3 class="anchored" data-anchor-id="setup.ext_keys">Setup.ext_keys</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> ext_keys():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Turn on <code>extended-keys</code> in the tmux server we run inside when it is off: True if turned on.</em></p>
+</section>
+</div>
+<div id="2d31d0e9" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> ext, sets <span class="kw">in</span> ((<span class="st">'off'</span>, <span class="va">True</span>), (<span class="st">'on'</span>, <span class="va">False</span>), (<span class="st">'always'</span>, <span class="va">False</span>)):</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>    box <span class="op">=</span> Box(ext<span class="op">=</span>ext)</span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>    mk(box, environ<span class="op">=</span>{<span class="st">'TMUX'</span>: <span class="st">'/tmp/tmux-501/default,1,0'</span>}).launch()</span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>    test_eq(([<span class="st">'/bin/tmux'</span>, <span class="st">'set'</span>, <span class="st">'-s'</span>, <span class="st">'extended-keys'</span>, <span class="st">'on'</span>] <span class="kw">in</span> box.calls, box.execd), (sets, <span class="va">None</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="whether-the-code-index-needs-to-run" class="level2">
+<h2 class="anchored" data-anchor-id="whether-the-code-index-needs-to-run">Whether the code index needs to run</h2>
+<p>The <code>search_code</code> tool searches a code index that kosha builds over the installed packages and the open folders. Rebuilding it, called a sync, takes time, so the session skips it when nothing it reads has changed.</p>
+<p><code>index_gate(cfg, roots)</code> decides this without importing kosha. It takes a fingerprint, <a href="https://vedicreader.github.io/ramabana/setup.html#index_state"><code>index_state</code></a>, of what a sync would read: the installed distributions that <code>importlib.metadata</code> finds, with their modification times (<a href="https://vedicreader.github.io/ramabana/setup.html#pkg_state"><code>pkg_state</code></a>), and for each folder its git HEAD and a digest of <code>git status</code> with the modification times of the paths it names (<a href="https://vedicreader.github.io/ramabana/setup.html#root_state"><code>root_state</code></a>). Outside git, a folder’s fingerprint is the newest modification time among its entries. It returns the fingerprint and a reason to run kosha, or <code>''</code> to skip it. The reason is <code>''</code> when the fingerprint matches the one the last good sync saved in <code>&lt;cfg&gt;/kosha-state.json</code> and each folder’s <code>.kosha/code.db</code> and kosha’s package database, <a href="https://vedicreader.github.io/ramabana/setup.html#kosha_env_db"><code>kosha_env_db()</code></a>, exist. Otherwise <a href="https://vedicreader.github.io/ramabana/setup.html#index_changes"><code>index_changes</code></a> says what changed, such as <code>packages changed: +foo 1.2</code>.</p>
+<p>After a good sync the session calls <a href="https://vedicreader.github.io/ramabana/setup.html#save_index"><code>save_index</code></a> to store the new fingerprint. Either way <a href="https://vedicreader.github.io/ramabana/setup.html#log_index"><code>log_index</code></a> appends one line to <code>&lt;cfg&gt;/kosha.log</code>, and <code>--doctor</code> shows the last line through <a href="https://vedicreader.github.io/ramabana/setup.html#last_index"><code>last_index</code></a>. The example walks a fresh folder through a first sync, a missing index, an unchanged state and a new package:</p>
+<div id="8ac2b608" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.528135+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.538005+00:00&quot;,&quot;total&quot;:0.00987410200001193}}" data-execution_count="44">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L697" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="last_index" class="level3">
+<h3 class="anchored" data-anchor-id="last_index">last_index</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> last_index(</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>    cfg</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The last line of <code>&lt;cfg&gt;/kosha.log</code>, or ’’.</em></p>
+</section>
+</div>
+<div id="e631a10d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.538154+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.550622+00:00&quot;,&quot;total&quot;:0.01247386200000733}}" data-execution_count="45">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L689" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="log_index" class="level3">
+<h3 class="anchored" data-anchor-id="log_index">log_index</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> log_index(</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>    cfg, decision, why, secs</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Append <code>when · run|skip · why · secs</code> to <code>&lt;cfg&gt;/kosha.log</code>, trimmed to its last <code>LOG_KEEP</code> lines past <code>LOG_MAX</code> bytes.</em></p>
+</section>
+</div>
+<div id="25fcbbca" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.550779+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.560990+00:00&quot;,&quot;total&quot;:0.010215678000008666}}" data-execution_count="46">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L682" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="save_index" class="level3">
+<h3 class="anchored" data-anchor-id="save_index">save_index</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> save_index(</span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>    cfg, state</span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Keep <code>state</code> as the last good sync’s, beside the roots other sessions indexed.</em></p>
+</section>
+</div>
+<div id="dc779c17" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.561137+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.571121+00:00&quot;,&quot;total&quot;:0.009988175000003707}}" data-execution_count="47">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L667" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="index_gate" class="level3">
+<h3 class="anchored" data-anchor-id="index_gate">index_gate</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> index_gate(</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>    cfg, roots, dirs:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>(state, why)</code>: the fingerprint now, and why kosha must run (a missing code or env db included), or ’’ to skip it.</em></p>
+</section>
+</div>
+<div id="9d363978" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.571259+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.584054+00:00&quot;,&quot;total&quot;:0.012799649999990947}}" data-execution_count="48">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L652" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="index_changes" class="level3">
+<h3 class="anchored" data-anchor-id="index_changes">index_changes</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> index_changes(</span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>    old, new, most:<span class="bu">int</span><span class="op">=</span><span class="dv">3</span></span>
+<span id="cb48-3"><a href="#cb48-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Why <code>new</code> differs from <code>old</code>, e.g.&nbsp;<code>packages changed: +foo 1.2</code> or <code>leela HEAD a1b2→c3d4</code>; ’’ when it does not.</em></p>
+</section>
+</div>
+<div id="3036bb5f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.584195+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.591139+00:00&quot;,&quot;total&quot;:0.006947635000003061}}" data-execution_count="49">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L646" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="index_state" class="level3">
+<h3 class="anchored" data-anchor-id="index_state">index_state</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> index_state(</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>    roots, dirs:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The fingerprint of what a sync of <code>roots</code> reads.</em></p>
+</section>
+</div>
+<div id="e8bdeaf3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.591278+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.598848+00:00&quot;,&quot;total&quot;:0.007574891999993838}}" data-execution_count="50">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L635" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="root_state" class="level3">
+<h3 class="anchored" data-anchor-id="root_state">root_state</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> root_state(</span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>    root</span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A root’s git HEAD and working-tree digest, staged changes included; outside git, the newest mtime of its entries.</em></p>
+</section>
+</div>
+<div id="e756caa8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.598989+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.607959+00:00&quot;,&quot;total&quot;:0.008974258000009172}}" data-execution_count="51">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L617" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="pkg_state" class="level3">
+<h3 class="anchored" data-anchor-id="pkg_state">pkg_state</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> pkg_state(</span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>    dirs:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>{dist name-version: mtime}</code> for what <code>importlib.metadata</code> finds on <code>dirs</code>, default <code>sys.path</code>, as kosha lists packages.</em></p>
+</section>
+</div>
+<div id="affb7c33" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.608100+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.613899+00:00&quot;,&quot;total&quot;:0.005804055000012909}}" data-execution_count="52">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L612" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="kosha_env_db" class="level3">
+<h3 class="anchored" data-anchor-id="kosha_env_db">kosha_env_db</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> kosha_env_db():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Where <code>Kosha()</code> keeps its package index: <code>&lt;xdg data&gt;/kosha/env.db</code>, as kosha computes it.</em></p>
+</section>
+</div>
+<div id="b4e1a003" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.614652+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.642445+00:00&quot;,&quot;total&quot;:0.027798140999991006}}" data-execution_count="53">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>    d <span class="op">=</span> Path(d)<span class="op">;</span> (site <span class="op">:=</span> d<span class="op">/</span><span class="st">'site'</span>).mkdir()<span class="op">;</span> (site<span class="op">/</span><span class="st">'fastcore-1.8.0.dist-info'</span>).mkdir()<span class="op">;</span> (root <span class="op">:=</span> d<span class="op">/</span><span class="st">'proj'</span>).mkdir()</span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>    state, why <span class="op">=</span> index_gate(d<span class="op">/</span><span class="st">'cfg'</span>, [root], [site])</span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>    test_eq((<span class="bu">list</span>(state[<span class="st">'packages'</span>]), why), ([<span class="st">'fastcore-1.8.0'</span>], <span class="st">'first sync'</span>))</span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>    save_index(d<span class="op">/</span><span class="st">'cfg'</span>, state)</span>
+<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a>    test_eq(index_gate(d<span class="op">/</span><span class="st">'cfg'</span>, [root], [site])[<span class="dv">1</span>], <span class="st">'index missing'</span>)</span>
+<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a>    (root<span class="op">/</span><span class="st">'.kosha'</span>).mkdir()<span class="op">;</span> (root<span class="op">/</span><span class="st">'.kosha'</span><span class="op">/</span><span class="st">'code.db'</span>).write_text(<span class="st">''</span>)</span>
+<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> kosha_env_db().exists(): test_eq(index_gate(d<span class="op">/</span><span class="st">'cfg'</span>, [root], [site])[<span class="dv">1</span>], <span class="st">''</span>)</span>
+<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a>    (site<span class="op">/</span><span class="st">'foo-1.2.dist-info'</span>).mkdir()</span>
+<span id="cb53-11"><a href="#cb53-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> index_gate(d<span class="op">/</span><span class="st">'cfg'</span>, [root], [site])[<span class="dv">1</span>].endswith(<span class="st">'packages changed: +foo 1.2'</span>)</span>
+<span id="cb53-12"><a href="#cb53-12" aria-hidden="true" tabindex="-1"></a>    log_index(d<span class="op">/</span><span class="st">'cfg'</span>, <span class="st">'skip'</span>, <span class="st">'unchanged'</span>, <span class="fl">.01</span>)</span>
+<span id="cb53-13"><a href="#cb53-13" aria-hidden="true" tabindex="-1"></a>    test_eq(last_index(d<span class="op">/</span><span class="st">'cfg'</span>).split(<span class="st">' · '</span>)[<span class="dv">1</span>:], [<span class="st">'skip'</span>, <span class="st">'unchanged'</span>, <span class="st">'0.01s'</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Updating packages:   0%|          | 0/31 [00:00&lt;?, ?pkg/s]</code></pre>
+</div>
+</div>
+</section>
+<section id="doctor" class="level2">
+<h2 class="anchored" data-anchor-id="doctor"><code>--doctor</code></h2>
+<p><code>ramabana --doctor</code> prints one line for each thing the now pane and the keys depend on: the tmux version, whether it can split a pane (tmux 3.1 or later), extended keys, the config file, <code>ramabana-pane</code>, the missing extras, and the code index’s last decision. When tmux is missing it then offers to install it, even after an earlier no. The example runs it on a fake machine with tmux 3.0, which is too old for the split:</p>
+<div id="7f0d6b12" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-20T05:38:10.647286+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-20T05:38:10.656150+00:00&quot;,&quot;total&quot;:0.008868410000005156}}" data-execution_count="55">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/setup.py#L704" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="setup.doctor" class="level3">
+<h3 class="anchored" data-anchor-id="setup.doctor">Setup.doctor</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> doctor():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Print one line per check, offer to install tmux when it is missing, and return 0.</em></p>
+</section>
+</div>
+<div id="8684e3e6" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>mk(Box(have<span class="op">=</span>{<span class="st">'tmux'</span>, <span class="st">'ramabana-pane'</span>}, version<span class="op">=</span><span class="st">'tmux 3.0a'</span>)).doctor()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
