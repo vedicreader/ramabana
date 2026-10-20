@@ -94,7 +94,7 @@ def a_finished_turn(u, n_calls=2, answer='done.\n'):
     "Run a turn the way `run_turn` does, including the bookkeeping that scopes the turn."
     u.say('a question', 'user', pad=True)
     u._reply, u._seg, u._seg_blk, u._rendered = '', '', None, ''
-    u._turn_from = next(reversed(u.comp.blocks), 0)
+    u._turn_from = max(u.comp.blocks, default=0)
     u.agent.activity.mark()
     a_turn(u, [(f'step {i}.\n\nmore.\n', 'search_code', 'hit\n' * 8) for i in range(n_calls)], answer)
     u._seg_blk = None
@@ -141,8 +141,8 @@ def test_a_model_that_stalls_mid_prose_does_not_leave_its_last_words_unseen():
             assert 'SECOND CHUNK' in drawn(), 'the stalled tail is still invisible'
 
             n = [0]
-            real = comp.set_body
-            comp.set_body = lambda *a, **k: (n.__setitem__(0, n[0] + 1), real(*a, **k))[1]
+            real = comp.put
+            comp.put = lambda *a, **k: (n.__setitem__(0, n[0] + 1), real(*a, **k))[1]
             await asyncio.sleep(0.4)              # nothing new arrives
             assert n[0] == 0, f'the timer re-rendered {n[0]} times with nothing to draw'
         finally:
@@ -155,10 +155,9 @@ def _banner_copies(comp, tty, calls):
     from rich.text import Text
     wrote, real = [], tty.write
     tty.write = lambda s: (wrote.append(s), real(s))[1]
-    comp.print_block(Text('BANNER'), tag='note', collapse_at=None, source='BANNER')
+    comp.put('banner', Text('BANNER'), source='BANNER')
     for n in range(calls):
-        blk = comp.print_block(Text('\n'.join(f'{n} line {i}' for i in range(30))),
-                               tag='tool', collapse_at=None, source='x')
+        blk = comp.put(n, Text('\n'.join(f'{n} line {i}' for i in range(30))), source='x')
         comp._frame()
         blk.collapsed, blk.collapse_at = True, 1      # the fold `_act` applies when a result lands
         comp._dirty(blk); comp._frame()
@@ -217,3 +216,67 @@ def test_a_turn_that_ends_during_a_poll_still_shows_its_answer(monkeypatch):
     u = asyncio.run(go())
     assert u._reply.strip() == 'THE WHOLE ANSWER', repr(u._reply)
     assert any(b.tag == 'reply' and u.transcript.block_text(b).strip() == 'THE WHOLE ANSWER' for b in u.comp.blocks.values())
+
+
+# -- teleprint 0.1.4: keyed blocks, `put`, and a mouse that `start` turns on ---------------------------
+
+def test_the_mouse_stays_the_terminals_until_asked_for(ui):
+    "0.1.4's `start` turns on mouse reports; selection belongs to the terminal until `/mouse on` or the view."
+    assert ui.comp._modes == [2004]
+    ui.enter_transcript()
+    assert {1000, 1006} <= set(ui.comp._modes)
+    ui.leave_transcript()
+    assert ui.comp._modes == [2004]
+    ui.set_mouse('on')
+    assert {1000, 1006} <= set(ui.comp._modes)
+
+
+def test_notes_said_while_a_reply_streams_land_above_it_in_order(ui):
+    ui.note('banner')   # a session always opens with one; a reply first in the document has nothing to go after
+    seg = ui.stream(None, 'partial ')
+    ui.note('first'); ui.note('second')
+    ui.stream(seg, 'answer')
+    ui.flush_stream()
+    assert [(b.tag, b.source) for b in ui.comp.blocks.values()] == [('note', 'banner'), ('note', 'first'), ('note', 'second'), ('reply', 'partial answer')]
+
+
+def test_a_click_toggles_by_key_and_a_one_liner_is_not_held(ui):
+    "0.1.4 makes every gutter clickable and passes the key; holding a one-liner would freeze its fold."
+    acts = ui.agent.activity
+    act = acts.start('view_file', {'path': 'a.py'})
+    blk = ui.acts[act.id]
+    y = next(y for y, e in enumerate(ui.comp._screen) if e and e[0] == blk.key)
+    ui.comp.click(0, y)
+    assert blk.key not in ui._held
+    acts.finish(act, '\n'.join(f'line {i}' for i in range(30)))
+    assert blk.collapsed, 'a finished read folds to its summary'
+    y = next(y for y, e in enumerate(ui.comp._screen) if e and e[0] == blk.key)
+    ui.comp.click(0, y)
+    assert not blk.collapsed and blk.key in ui._held
+
+
+def test_a_delegate_the_reader_shut_stays_shut_as_its_calls_arrive(ui):
+    acts = ui.agent.activity
+    parent = acts.start('delegate_search', {'question': 'who reads it?'})
+    for q in 'ab': acts.finish(acts.start('search_code', {'query': q}, parent_action_id=parent.id), 'hits')
+    group = ui.acts[parent.id]
+    assert not group.collapsed, 'a running delegate shows its calls'
+    ui.toggle(group.key)
+    acts.finish(acts.start('search_code', {'query': 'c'}, parent_action_id=parent.id), 'hits')
+    assert group.collapsed and group.height == 4
+
+
+def test_a_capped_diff_shows_whole_in_the_transcript_view_and_capped_after(ui):
+    """0.1.4's view reuses the main screen's row cache; a capped `OpenDiff` must render whole there. It is
+    taller than `FOLD`, so it also shows `put`'s once-only fold does not shut a result `_folded` keeps open."""
+    from ramabana.cli import DIFF_OPEN
+    diff = '--- a/x.py\n+++ b/x.py\n@@ -1,40 +1,40 @@\n' + '\n'.join(f'+line {i}' for i in range(40))
+    acts = ui.agent.activity
+    acts.finish(act := acts.start('edit_file', {'path': 'x.py'}), diff)
+    blk = ui.acts[act.id]
+    capped = len(ui.comp._block_rows(blk))
+    assert not blk.collapsed and capped <= DIFF_OPEN + 2
+    ui.enter_transcript()
+    assert sum(1 for k, _ in ui.transcript.lines if k == blk.key) > capped
+    ui.leave_transcript()
+    assert len(ui.comp._block_rows(blk)) == capped

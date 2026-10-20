@@ -56,37 +56,60 @@ def _drain(fd):
     return out.decode()
 
 
-def test_a_real_tty_asks_for_extended_keys_and_gives_them_back(monkeypatch):
+def test_a_real_tty_asks_for_extended_keys_and_gives_them_back(term):
     from teleprint.transcript import TranscriptView
-    master, slave = os.openpty()
-    stdin, stdout = os.fdopen(os.dup(slave), 'r'), os.fdopen(os.dup(slave), 'w')
-    monkeypatch.setattr(sys, 'stdin', stdin)
-    monkeypatch.setattr(sys, 'stdout', stdout)
+    term = term()
     async def go():
         tty = _Pty()
-        os.write(master, b'\x1b[1;1R')          # the CPR reply `start` waits for; after cbreak, so it is not echoed
         comp = await Compositor(tty).start()
-        on = _drain(master)
+        on = term.text()
         view = TranscriptView(comp, lambda: ([], None))
         view.enter(); view.leave()
-        alt = _drain(master)
-        comp.release()
-        freed = _drain(master)
-        os.write(master, b'\x1b[1;1R')
-        await comp.reanchor()
-        back = _drain(master)
+        alt = term.text()[len(on):]
+        n = len(term.text())
+        async with comp.borrow(): freed = term.text()[n:]
+        n += len(freed)
+        back = term.text()[n:]
         comp.stop()
-        off = _drain(master)
-        tty.restore()                         # TCSADRAIN: only once what it wrote has been read
+        off = term.text()[n + len(back):]
+        tty.restore()
         return on, alt, freed, back, off
-    try: on, alt, freed, back, off = asyncio.run(go())
-    finally:
-        for f in (stdin, stdout): f.close()
-        os.close(master); os.close(slave)
+    on, alt, freed, back, off = asyncio.run(go())
     assert KEYS_ON in on and KEYS_OFF in off
     # kitty flags are per screen: pushed on the alt screen after entering it, popped before leaving it
     assert alt.index('\x1b[?1049h') < alt.index('\x1b[>1u') < alt.index('\x1b[<u') < alt.index('\x1b[?1049l')
     assert KEYS_OFF in freed and KEYS_ON in back, 'a borrower gets the terminal as the shell left it'
+    assert '\x1b[?2004;1006;1000l' in freed and '\x1b[?1000;1006;2004h' in back, 'mouse reports and paste brackets are lent back too'
+
+
+def test_ctrl_z_from_the_transcript_view_lends_the_main_screen_and_takes_it_back(term, monkeypatch):
+    """Teleprint 0.1.4 replaced `release` and `reanchor` with `borrow`, which also puts the terminal in raw mode
+    and saves the mode it found. A second ctrl+z while the first was out would save raw mode as the app's."""
+    import signal, termios
+    from teleprint.transcript import TranscriptView
+    term, stops, held = term(), [], {}
+    def kill(pid, sig):
+        stops.append(sig)
+        with pytest.raises(StopIteration): held['comp'].suspend().send(None)   # ctrl+z again before `fg`
+    monkeypatch.setattr(os, 'kill', kill)
+    async def go():
+        tty = _Pty()
+        comp = held['comp'] = await Compositor(tty).start()
+        mode = termios.tcgetattr(tty.fd)
+        view = TranscriptView(comp, lambda: ([], None))
+        view.enter()
+        n = len(term.text())
+        await comp.suspend()
+        lent, after = term.text()[n:], termios.tcgetattr(tty.fd)
+        view.leave(); comp.stop(); tty.restore()
+        return mode, after, lent
+    mode, after, lent = asyncio.run(go())
+    assert stops == [signal.SIGTSTP], stops
+    assert after == mode, 'the app gets its own terminal mode back, not raw mode'
+    # off the alt screen first, so the shell sees the main screen; modes and keys handed back; all taken again after
+    i = [lent.index(s) for s in ('\x1b[<u', '\x1b[?1049l', '\x1b[?2004;1006;1000l', '\x1b[?1000;1006;2004h', '\x1b[6n')]
+    assert i == sorted(i), (i, lent)
+    assert lent.index('\x1b[?1000;1006;2004h') < lent.rindex('\x1b[?1049h') < lent.rindex('\x1b[>1u')
 
 
 class _Term:

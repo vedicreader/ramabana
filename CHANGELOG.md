@@ -2,6 +2,17 @@
 
 <!-- do not remove -->
 
+## 0.2.62
+
+- Requires teleprint 0.1.4 and pyghostty 0.1.3 (cli). Teleprint 0.1.4 names each block with a key and replaces `print_block`, `set_body`, `refresh_block` and `remove_block` with `put`, `extend` and `drop`, and `release` and `reanchor` with `async with borrow()`. Blocks are keyed by a counter in `Ui`, so a later block has a larger key. `blk.id` is now `blk.key`, and `Ui.toggle` takes a key, as teleprint's click and transcript view pass one.
+- ctrl+z lends the terminal through `borrow`. Extended keys, mouse reports and bracketed paste are turned off while the shell has it and on again after `fg`. A second ctrl+z before the first resumes is ignored, so the terminal mode saved for the session cannot be raw mode.
+- `borrow` stops and restarts Ramabana's own reader, which quits the session when the terminal hangs up. Teleprint's reader is not used.
+- Teleprint 0.1.4's `start` turns on mouse reports. The mouse stays off until `/mouse on` or the transcript view, as before. Mouse reports now go through `set_modes`, so quitting from the transcript view also leaves the alternate screen.
+- A tool call's fold is decided before it repaints, so the call never draws taller than it ends up. `put` folds a block once it passes `collapse_at`. That fold does not apply to calls or to blocks ctrl+o opened.
+- Clicking a one-line call no longer fixes its fold. A diff shown in part renders whole in the transcript view and in part again after it.
+- The transcript view rebuilds from teleprint's `on_change`. `NOTIFY_EVERY` is gone.
+- `tests/test_azure.py` reads the Bedrock context window from fastllm's model table.
+
 ## 0.2.61
 
 - Requires rishi 0.1.54 and uraiyadal 0.0.16. A hosted model's tool call cut off at the output limit, or with arguments that are not JSON, goes back to the model once, at a raised cap when cut off. A second failure fails the turn or the delegation with `ToolCallError` and the reason, for example "delegation failed after the sub-agent was asked: openai/gpt-5.6 failed (ToolCallError: openai/gpt-5.6's tool call was cut off at its 16384-token output limit; …)". It failed with a bare `JSONDecodeError`. A reply cut off while the model was still thinking is handled the same way.

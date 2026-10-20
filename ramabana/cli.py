@@ -7,11 +7,11 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 # %% auto #0
 __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', 'KEYS_OFF', 'EXT_NAMES', 'EXT_CTRL',
            'KEYS_PATCHED', 'MODES_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEMES', 'CODE_THEMES', 'KAKU', 'GRUVBOX',
-           'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'NOTIFY_EVERY', 'FOLD_RUNNING',
-           'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS',
-           'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV',
-           'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
-           'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
+           'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP',
+           'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON',
+           'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV', 'KITTY_TERM',
+           'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK',
+           'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
            'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
            'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'ALIVE_EVERY',
            'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg',
@@ -25,7 +25,7 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
-import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
+import asyncio, concurrent.futures, contextlib, functools, inspect, itertools, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
 import json as _json
 from base64 import b64encode
 from dataclasses import dataclass
@@ -68,7 +68,7 @@ def _patch_teleprint_frame():
     @functools.wraps(inner)
     def _frame(self):
         inner(self)
-        if self.on_frame and not self.paused: self.on_frame()
+        if self.on_frame and not (self.paused or self._borrowing): self.on_frame()
     Compositor._frame, Compositor.on_frame = _frame, None
     return True
 
@@ -132,8 +132,7 @@ def _patch_teleprint_modes():
     "Hold extended keys while the compositor holds a real terminal; True if patched."
     if hasattr(Compositor, 'ext_keys'): return False
     C, T = Compositor, TranscriptView
-    start, stop, release, reanchor, fatal, signals, dispatch = (C.start, C.stop, C.release, C.reanchor,
-                                                                C._fatal, C._register_signals, C._dispatch)
+    start, stop, borrow, fatal, signals, dispatch = C.start, C.stop, C.borrow, C._fatal, C._register_signals, C._dispatch
     enter, leave = T.enter, T.leave
     def keys(self, on):
         if self.ext_keys: self.tty.write(KEYS_ON if on else KEYS_OFF)
@@ -148,34 +147,40 @@ def _patch_teleprint_modes():
             asyncio.get_running_loop().add_signal_handler(signal.SIGTSTP, lambda: self.spawn(self.suspend()))
             self._signals.append(signal.SIGTSTP)
     async def suspend(self):
-        "Stop as ctrl+z would, giving the terminal back first and taking it again on `fg`."
-        loop, fd, alt = asyncio.get_running_loop(), self.tty.fd, self.paused
-        mode = termios.tcgetattr(fd)
-        if alt: self.tty.write(KITTY_OFF + '\x1b[?1049l')
-        self.release()
-        self.tty.restore()
-        held = loop.remove_signal_handler(signal.SIGTSTP)
-        os.kill(os.getpid(), signal.SIGTSTP)
-        if held: loop.add_signal_handler(signal.SIGTSTP, lambda: self.spawn(self.suspend()))
-        termios.tcsetattr(fd, termios.TCSANOW, mode)
-        await self.reanchor()
-        if alt: self.tty.write('\x1b[?1049h' + KITTY_ON)
+        "Stop as ctrl+z would, lending the terminal back to the shell and taking it again on `fg`."
+        if self.suspended: return   # a second ctrl+z before the first resumed would save raw mode as the app's
+        loop, alt, self.suspended = asyncio.get_running_loop(), self.paused, True
+        try:
+            if alt: self.tty.write(KITTY_OFF); self.set_modes(1049, on=False)
+            async with self.borrow():
+                self.tty.restore()
+                held = loop.remove_signal_handler(signal.SIGTSTP)
+                os.kill(os.getpid(), signal.SIGTSTP)
+                if held: loop.add_signal_handler(signal.SIGTSTP, lambda: self.spawn(self.suspend()))
+            if alt: self.set_modes(1049); self.tty.write(KITTY_ON)
+        finally: self.suspended = False
         self._on_winch()
     def _dispatch(self, ev):
         if self.ext_keys and isinstance(ev, Key) and ev.name == 'ctrl+z': return self.spawn(self.suspend())
         return dispatch(self, ev)
     def _stop(self): self.keys(False); stop(self)
-    def _release(self): release(self); self.keys(False)
-    async def _reanchor(self): await reanchor(self); self.keys(True)
+    @contextlib.asynccontextmanager
+    async def _borrow(self, on_resize=None):
+        self.keys(False)
+        try:
+            async with borrow(self, on_resize) as tty: yield tty
+        finally: self.keys(True)
     def _fatal(self, sig): self.keys(False); fatal(self, sig)
     def _enter(self):
+        for b in self.comp.blocks.values(): self.comp._dirty(b)   # a capped `OpenDiff` renders whole in the view
         enter(self)
         if self.comp.ext_keys: self.comp.tty.write(KITTY_ON)
     def _leave(self):
         if self.comp.ext_keys: self.comp.tty.write(KITTY_OFF)
+        for b in self.comp.blocks.values(): self.comp._dirty(b)
         leave(self)
-    C.ext_keys, C.keys, C.suspend = False, keys, suspend
-    C.start, C.stop, C.release, C.reanchor, C._fatal = _start, _stop, _release, _reanchor, _fatal
+    C.ext_keys, C.suspended, C.keys, C.suspend = False, False, keys, suspend
+    C.start, C.stop, C.borrow, C._fatal = _start, _stop, _borrow, _fatal
     C._register_signals, C._dispatch, T.enter, T.leave = _register_signals, _dispatch, _enter, _leave
     return True
 
@@ -331,7 +336,7 @@ def _theme_parts(palette):
     return markdown, gutters
 
 MARKDOWN_THEME, GUTTERS = _theme_parts(GRUVBOX)
-FOLD, FOLD_TOOL, NOTIFY_EVERY = 12, 1, 0.08
+FOLD, FOLD_TOOL = 12, 1
 
 FOLD_RUNNING = True
 ACT_EVERY = 0.05
@@ -655,7 +660,7 @@ async def run_turn(ui, prompt):
     ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
     ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
     ui._plan_blk = None
-    ui._turn_at, ui._turn_from = time.monotonic(), next(reversed(ui.comp.blocks), 0)
+    ui._turn_at, ui._turn_from = time.monotonic(), max(ui.comp.blocks, default=0)
     atts, ui.attachments = list(ui.attachments), []
     ui.drawn = 0
     spec = ui.agent.model
@@ -736,7 +741,7 @@ class OpenDiff:
     def __init__(self, ui, blk, text): store_attr(); self.rows = text.split('\n', allow_blank=True)
 
     @property
-    def capped(self): return len(self.rows) > DIFF_OPEN and not (self.ui.transcript.active or self.blk.id in self.ui._held)
+    def capped(self): return len(self.rows) > DIFF_OPEN and not (self.ui.transcript.active or self.blk.key in self.ui._held)
 
     def __rich_console__(self, console, options):
         if not self.capped: yield self.text; return
@@ -797,11 +802,11 @@ class Ui:
         self._painted_at = 0.0
         self._acted_at = 0.0
         self._held = set()
+        self._keys = itertools.count(1)   #: block keys, so a later block has a larger key
         self._turn_at = 0.0
         self._turn_from = 0
         self._rendered = ''
         self._plan_blk = None
-        self._touched = 0.0
         self.history, self.history_at, self.draft = [], 0, ''
         self.menu = None
         self.menu_prompt = ''
@@ -819,6 +824,7 @@ class Ui:
         agent.compactor.on_compact = self._on_compact
         if agent.approvals is not None: agent.approvals.listen(self.on_ask, self.on_answer)
         comp.on_frame, comp.toggle = self.place_pics, self.toggle
+        comp.set_modes(1000, 1006, on=self.mouse)   # `start` takes the mouse; it is off until `/mouse on`
 
     def _post(self, fn, *a):
         "Run `fn` on the loop thread, or now without a loop."
@@ -900,7 +906,7 @@ class Ui:
 
     def turn_blocks(self):
         "The blocks of the turn on screen: everything printed since its prompt went up."
-        return [b for b in self.comp.blocks.values() if b.id >= self._turn_from and not b.committed]
+        return [b for b in self.comp.blocks.values() if b.key >= self._turn_from and not b.committed]
 
     def drillable(self):
         "The turn's foldable entries, newest first: what alt+1..9 reaches."
@@ -912,28 +918,30 @@ class Ui:
         self.flush_stream()
         blocks = self.drillable()
         if not 1 <= n <= len(blocks): return False
-        self.toggle(blocks[n - 1])
+        self.toggle(blocks[n - 1].key)
         self.touch(now=True)
         return True
 
-    def toggle(self, blk):
-        "Fold or open `blk` for good; a result shown in part opens whole first."
-        capped = self._capped(blk)
-        self._held.add(blk.id)
-        if capped: self.comp.refresh_block(blk)
-        else: Compositor.toggle(self.comp, blk)
+    def toggle(self, key, collapsed=None):
+        "Fold or open block `key` for good; a result shown in part opens whole first."
+        blk = self.comp.blocks[key]
+        if blk.height <= 1: return
+        capped = self._capped(blk) and not collapsed
+        self._held.add(key)
+        if capped: self._put(blk, *blk.body, source=blk.source)
+        else: Compositor.toggle(self.comp, key, collapsed)
 
     def working(self):
         "The working footer while a turn runs: the last few calls and a totals line."
         if self.starting or (self.turn is None and not self.agent.busy): return []
         acts = self.agent.activity.since()
-        nums = {b.id: i + 1 for i, b in enumerate(self.drillable())}
+        nums = {b.key: i + 1 for i, b in enumerate(self.drillable())}
         rows = []
         for a in acts[-ACT_TAIL:]:
             style = GRUVBOX['yellow'] if not a.done else GRUVBOX['gray'] if a.ok else GRUVBOX['red']
             parent = self.acts.get(a.parent_action_id) if a.parent_action_id else None
             blk = parent if parent is not None else self.acts.get(a.id)
-            n = nums.get(blk.id) if blk is not None else None
+            n = nums.get(blk.key) if blk is not None else None
             t = Text(f'{n} ' if n else '  ', style=GRUVBOX['blue'] if n else GRUVBOX['gray'])
             t.append(('  ' if parent is not None else '') + a.line(), style=style)
             rows.append(t)
@@ -1013,13 +1021,8 @@ class Ui:
         if self.transcript.active: self.transcript.draw()
 
     def touch(self, now=False):
-        "Let a following transcript view track new blocks, like `less +F`."
+        "Draw the open segment now when `now`; the transcript view follows every block through `on_change`."
         if now: self.flush_stream()
-        if not self.transcript.active: return
-        t = time.monotonic()
-        if not now and t - self._touched < NOTIFY_EVERY: return
-        self._touched = t
-        self.transcript.notify()
 
 
     def say(self, body, kind='reply', fold=FOLD, source=None, pad=False):
@@ -1028,14 +1031,18 @@ class Ui:
             if isinstance(body, str): source = body
             elif isinstance(body, Text): source = body.plain
         body = Text(body) if isinstance(body, str) else body
-        blk = self.comp.print_block(body, gutter=GUTTERS.get(kind, GUTTERS['reply']),
-                                    tag=kind, collapse_at=fold, source=source, pad=pad)
-        if kind != 'reply' and (reply := self._seg_blk) is not None:
-            self.comp._epoch.remove(reply.id)
-            self.comp._epoch.append(reply.id)
-            self.comp.blocks.pop(reply.id)
-            self.comp.blocks[reply.id] = reply
-            self.comp._frame()
+        after = first = None
+        if kind != 'reply' and (reply := self._seg_blk) is not None and not reply.committed:   # goes above the reply still streaming
+            keys = list(self.comp.blocks)
+            if (i := keys.index(reply.key)): after = keys[i - 1]
+            else: first = reply
+        blk = self.comp.put(next(self._keys), body, gutter=GUTTERS.get(kind, GUTTERS['reply']),
+                            collapse_at=fold, source=source, pad=pad, after=after)
+        blk.tag = kind
+        if first:   # nothing to go after: the reply moves below instead
+            self.comp.drop(first.key)
+            self._seg_blk = self._put(first, *first.body, source=first.source)
+            self._seg_blk.tag = 'reply'
         self.touch(now=True)
         return blk
 
@@ -1051,9 +1058,9 @@ class Ui:
         work = [b for b in blocks if b.tag == 'tool' and b.height > 1]
         if not work: return False
         shut = not all(b.collapsed or self._capped(b) for b in work)
-        for b in work:
-            b.collapsed = shut
-            self._held.add(b.id)
+        for b in work:   # one frame for all: a frame per block would ink rows of blocks still to change
+            b.collapsed, b.auto_fold = shut, False
+            self._held.add(b.key)
             self.comp._dirty(b)
         self.comp._frame()
         self.touch(now=True)
@@ -1069,7 +1076,7 @@ class Ui:
 
     def _folded(self, act, blk):
         "Whether a call folds to its summary row."
-        if blk.id in self._held: return blk.collapsed
+        if blk.key in self._held: return blk.collapsed
         if blk.height <= FOLD_TOOL: return False
         if not act.done: return FOLD_RUNNING and act.id not in self.kids
         return act.ok and (act.id in self.kids or not opens(act))
@@ -1092,8 +1099,21 @@ class Ui:
     def _retract(self):
         "Remove the typed entry before its turn starts."
         held, self._echoed = self._echoed, []
-        for blk, *_ in held: self.comp.remove_block(blk)
+        self.comp.drop(*(blk.key for blk, *_ in held))
         return held
+
+    def _put(self, blk, *body, source=None, **kw):
+        "Replace `blk`'s content in place, keeping its gutter, fold threshold, padding and dim unless `kw` sets them."
+        kw = dict(gutter=blk.gutter, collapse_at=blk.collapse_at, dim=blk.dim, pad=blk.pad) | kw
+        return self.comp.put(blk.key, *body, source=source, **kw)
+
+    def _refold(self, act, blk, *body, source=None):
+        "Replace a call's content and fold it as `_folded` decides, in one frame at its final height."
+        was = blk.collapsed
+        blk.set(body, gutter=blk.gutter, collapse_at=blk.collapse_at, source=source, pad=blk.pad)
+        self.comp._content_lines(blk)   # `_folded` reads the new height
+        blk.collapsed, blk.auto_fold = was if blk.key in self._held else self._folded(act, blk), False
+        self._put(blk, *body, source=source)
 
     def _replay(self, held):
         "Print retracted entries again where their turn starts."
@@ -1166,8 +1186,7 @@ class Ui:
                 if not final: waiting.append((text, blk))
             else:
                 source = (blk.source or '') + ' ✓'
-                self.comp.set_body(blk, Text(source), source=source)
-                self.comp.refresh_block(blk)
+                self._put(blk, Text(source), source=source)
         self._steered = list(reversed(waiting))
 
     def steer_queued(self):
@@ -1233,9 +1252,7 @@ class Ui:
             line = Text(act.line(), style=self._act_style(act))
             src = act.line() if not act.detail else f'{act.line()}\n{act.detail}'
             body = [line] if not act.detail else [line, self._detail(act, blk)]
-            self.comp.set_body(blk, *body, source=src)
-            blk.collapsed = self._folded(act, blk)
-            self.comp.refresh_block(blk)
+            self._refold(act, blk, *body, source=src)
             if act.done: self.by_id.pop(act.id, None)
         self.touch()
         now = time.monotonic()
@@ -1263,9 +1280,7 @@ class Ui:
         body += [Text('   ' + k.line(), style=self._act_style(k)) for k in shown]
         if act.detail: body.append(diff_rich(act.detail))
         src = '\n'.join([act.line()] + ['   ' + k.line() for k in kids] + ([act.detail] if act.detail else []))
-        self.comp.set_body(blk, *body, source=src)
-        blk.collapsed = self._folded(act, blk)
-        self.comp.refresh_block(blk)
+        self._refold(act, blk, *body, source=src)
 
 
     def on_ask(self, ask):
@@ -1394,8 +1409,7 @@ class Ui:
         if (blk := self._plan_blk) is None:
             self._plan_blk = self.say(plan_text(md), 'plan', fold=None, source=md)
             return
-        self.comp.set_body(blk, plan_text(md), source=md)
-        self.comp.refresh_block(blk)
+        self._put(blk, plan_text(md), source=md)
         self.touch(now=True)
         self.paint()
 
@@ -1598,8 +1612,7 @@ class Ui:
     def flush_stream(self):
         "Render the open segment now, ignoring `STREAM_EVERY`."
         if self._seg_blk is None or not self._seg or self._seg == self._rendered: return
-        self.comp.set_body(self._seg_blk, self.reply(self._seg), source=self._seg)
-        self.comp.refresh_block(self._seg_blk)
+        self._put(self._seg_blk, self.reply(self._seg), source=self._seg)
         self._rendered, self._painted_at = self._seg, time.monotonic()
         self.touch()
 
@@ -1681,7 +1694,7 @@ def show_pic(self:Ui, path):
     pic = picture(path, self.comp.cols - 2, self.comp.rows - IMG_CHROME)
     if pic is not None and self.drawn < MAX_IMG_DRAW and (esc := pic.send()):
         self.comp.tty.write(esc)
-        self.pics[self.say(pic.gap(), 'media', fold=None, source=str(path)).id] = pic
+        self.pics[self.say(pic.gap(), 'media', fold=None, source=str(path)).key] = pic
         self.drawn += 1
         self.place_pics()                           # `say`'s frame predates this picture
     return self.say(Text(media_line(path)), 'note')
@@ -1837,14 +1850,14 @@ _core_on_key = Ui.on_key
 def enter_transcript(self:Ui):
     "Open the browsing view, borrowing the mouse while it is up."
     self.flush_stream()   # flush first: the view renders block bodies
-    self.comp.tty.write(MOUSE_ON)
+    self.comp.set_modes(1000, 1006)
     self.transcript.enter()
 
 @patch
 def leave_transcript(self:Ui):
     "Close the browsing view and return the mouse unless `/mouse` is on."
     self.transcript.leave()
-    if not self.mouse: self.comp.tty.write(MOUSE_OFF)
+    if not self.mouse: self.comp.set_modes(1000, 1006, on=False)
 
 @patch
 def set_mouse(self:Ui, want=''):
@@ -1852,7 +1865,7 @@ def set_mouse(self:Ui, want=''):
     want = (want or '').strip().lower()
     if want not in ('', 'on', 'off', 'toggle', 'yes', 'no'): return 'usage: /mouse [on|off]'
     self.mouse = not self.mouse if want in ('', 'toggle') else want in ('on', 'yes')
-    if not self.transcript.active: self.comp.tty.write(MOUSE_ON if self.mouse else MOUSE_OFF)
+    if not self.transcript.active: self.comp.set_modes(1000, 1006, on=self.mouse)
     return ('mouse on: click a block to fold it, wheel up to browse; shift-drag still selects'
             if self.mouse else 'mouse off: selection belongs to the terminal again')
 
@@ -2145,10 +2158,9 @@ def _close_seg(self:Ui):
     if blk is None: return
     text = self._seg.strip()
     self._seg_blk, self._seg, self._reply, self._rendered = None, '', '', ''
-    if not text: return self.comp.remove_block(blk)
-    blk.tag, blk.gutter, blk.collapse_at = 'step', GUTTERS['step'], None
-    self.comp.set_body(blk, self.reply(text), source=text)
-    self.comp.refresh_block(blk)
+    if not text: return self.comp.drop(blk.key)
+    blk.tag = 'step'
+    self._put(blk, self.reply(text), source=text, gutter=GUTTERS['step'], collapse_at=None)
 
 @patch
 def _act(self:Ui, act):
@@ -2165,9 +2177,7 @@ def _act(self:Ui, act):
         line = Text(act.line(), style=self._act_style(act))
         src = act.line() if not act.detail else f'{act.line()}\n{act.detail}'
         body = [line] if not act.detail else [line, self._detail(act, blk)]
-        self.comp.set_body(blk, *body, source=src)
-        blk.collapsed = self._folded(act, blk)
-        self.comp.refresh_block(blk)
+        self._refold(act, blk, *body, source=src)
         if act.done: self.by_id.pop(act.id, None)
     self.touch()
     now = time.monotonic()
@@ -2350,11 +2360,18 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
     "The tty loop: one terminal, one event loop, one keyboard owner."
     tty = AppTty()
     os.set_blocking(sys.stdout.fileno(), True)   # a process that shared this terminal may have left it non-blocking
-    tty.write('\x1b[?2004h')
-    done = asyncio.Event()
+    done, loop = asyncio.Event(), asyncio.get_running_loop()
     ui = None
     try:
-        comp = await Compositor(tty).start()
+        comp = Compositor(tty)
+        def reader(on):
+            if on == comp._reading: return
+            if on: loop.add_reader(tty.fd, lambda: (comp.on_bytes(tty.read(timeout=0)), tty.gone and done.set()))   # a closed terminal quits
+            else: loop.remove_reader(tty.fd)
+            comp._reading = on
+        comp._reader_on, comp._reader_off = lambda: reader(True), lambda: reader(False)   # `borrow` lends and takes back this one
+        await comp.start()
+        comp._reader_off()   # keys wait in the terminal until the session is set up
         comp._fatal = lambda sig: done.set()   # TERM or HUP quits through the teardown, which stops the background shells
         ui = Ui(comp, agent, loop=asyncio.get_running_loop())
         ui.bell = bell
@@ -2385,16 +2402,13 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
             if agent_proxy: await ui.enable_agent_proxy()
         ui.start_pane(pane)
         ui.paint()
-        loop = asyncio.get_running_loop()
-        loop.add_reader(tty.fd, lambda: (comp.on_bytes(tty.read(timeout=0)), tty.gone and done.set()))   # a closed terminal quits
+        comp._reader_on()
         try:
             while not done.is_set():
                 try: await asyncio.wait_for(done.wait(), 0.2)
                 except asyncio.TimeoutError: comp.flush_input()
                 if tty.dropped: tty.dropped = False; comp._invalidate(); ui.paint()   # repaint the rows a dropped frame never drew
-        finally:
-            loop.remove_reader(tty.fd)
-            comp.stop()
+        finally: comp.stop()
     finally:
         if ui is not None: ui.close_pane()
         with contextlib.suppress(OSError): os.set_blocking(sys.stdout.fileno(), True)   # the shell gets the terminal back blocking

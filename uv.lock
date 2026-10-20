@@ -3544,16 +3544,16 @@ wheels = [
 
 [[package]]
 name = "pyghostty"
-version = "0.1.0"
+version = "0.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cffi" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/9e/64b07389d5a99d3c735f02629c561729f7df5a6ec4c7a8d1a9b6df6feef4/pyghostty-0.1.0-py3-none-macosx_13_0_arm64.whl", hash = "sha256:5b9dd0487667be3500e51ffbf5ca87f53e020a9ef36f0dc0cf4ddd277e8822b2", size = 591183, upload-time = "2026-07-24T07:20:25.047Z" },
-    { url = "https://files.pythonhosted.org/packages/66/82/b8531f50f44e8fa85cd96acd011067f55c932f4225891d34bb3e5def9b4f/pyghostty-0.1.0-py3-none-macosx_13_0_x86_64.whl", hash = "sha256:2722590d17f4cb5376e1d04d251a824b173223bb45466e94632c61b4e1cef577", size = 655962, upload-time = "2026-07-24T07:20:27.006Z" },
-    { url = "https://files.pythonhosted.org/packages/1f/e1/c2815400bb74a9846b44f2aa86e83088f42312b7e48c18a576b4d703fd7a/pyghostty-0.1.0-py3-none-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:8a1c628bff9a449707ea71ae6fd47e859ce5d80a5312bef357c383b7e7a7e71c", size = 2010126, upload-time = "2026-07-24T07:20:29.153Z" },
-    { url = "https://files.pythonhosted.org/packages/50/c9/d56ce52b8e109c2dfa7882fe0b7b9ebd527c554b7d5e33f9e2648dfa89f3/pyghostty-0.1.0-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9461e0e42d9be8fd0a0afcd0e7c9487d5e900b1e57e64df16adc0ebdbb527194", size = 2176016, upload-time = "2026-07-24T07:20:31.06Z" },
+    { url = "https://files.pythonhosted.org/packages/19/87/8bd6ca92e5b74865d1221ac3b1d5daa180689bb5b317a4b515796a5d54cb/pyghostty-0.1.3-py3-none-macosx_13_0_arm64.whl", hash = "sha256:74db4760d46acd5553981d7dcfa809ad334f8a1e37c9583bdb594835ab7e8006", size = 745612, upload-time = "2026-09-30T22:09:57.126Z" },
+    { url = "https://files.pythonhosted.org/packages/af/7c/05818eb6b9451db73c52b95e3b2f298f53d3c414351eaa550415380b48ae/pyghostty-0.1.3-py3-none-macosx_13_0_x86_64.whl", hash = "sha256:7511e4c43c6b823c4146e6de57a6c6c6f214ea9f3243b79fc1d111853f7cfdb1", size = 771183, upload-time = "2026-09-30T22:09:58.808Z" },
+    { url = "https://files.pythonhosted.org/packages/30/24/aadec50f4c926f4a577d5784f9002c0f8a8e4d192a3388838d07262a51d3/pyghostty-0.1.3-py3-none-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1bdee612b32083ce3c34a96e0195a1f1f16aeb3090971c9159da7df494bd3822", size = 2805055, upload-time = "2026-09-30T22:10:00.885Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/37/35c55c04226fdd7b49099666bf064ab014f03b8a7e45f73c13d67b1363fa/pyghostty-0.1.3-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e215282798435d0db2042f4c61ecc9231bf66ea7ec68dbb16a43fe84e9685269", size = 2962667, upload-time = "2026-09-30T22:10:03.161Z" },
 ]
 
 [[package]]
@@ -3992,9 +3992,9 @@ requires-dist = [
     { name = "nbdev", marker = "extra == 'dev'", specifier = ">=3.3.25" },
     { name = "notebook", marker = "extra == 'dev'", specifier = ">=7.6.2" },
     { name = "pobblebonk", specifier = ">=0.0.5" },
-    { name = "pyghostty", marker = "extra == 'all'", specifier = ">=0.1.0" },
-    { name = "pyghostty", marker = "extra == 'cli'", specifier = ">=0.1.0" },
-    { name = "pyghostty", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "pyghostty", marker = "extra == 'all'", specifier = ">=0.1.3" },
+    { name = "pyghostty", marker = "extra == 'cli'", specifier = ">=0.1.3" },
+    { name = "pyghostty", marker = "extra == 'dev'", specifier = ">=0.1.3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1.1" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.8.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
@@ -4013,9 +4013,9 @@ requires-dist = [
     { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.19" },
     { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.19" },
     { name = "shalya", extras = ["tmux"], marker = "extra == 'dev'", specifier = ">=0.1.19" },
-    { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.3,<0.1.4" },
-    { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.3,<0.1.4" },
-    { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.3,<0.1.4" },
+    { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.4,<0.1.5" },
+    { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.4,<0.1.5" },
+    { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.4,<0.1.5" },
     { name = "uraiyadal", specifier = ">=0.0.16" },
     { name = "vishalakshi", marker = "extra == 'all'", specifier = ">=0.1.17" },
     { name = "vishalakshi", marker = "extra == 'cli'", specifier = ">=0.1.17" },
@@ -4570,14 +4570,14 @@ wheels = [
 
 [[package]]
 name = "teleprint"
-version = "0.1.3"
+version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a1/01/9cac9a7dfd6d35522aee26d8dfee66afcbd89823c6c7e6430f5e94aa4af5/teleprint-0.1.3.tar.gz", hash = "sha256:9798823e307e2a0f9d9b17e5650871eaea892e97dd70a0c7e7e886cf36fda93a", size = 49827, upload-time = "2026-08-30T05:15:53.398Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/53/dfbff2359b20ba24c48a11d3d2faaf72e95b411ec0778fa2045e46a6dcc5/teleprint-0.1.4.tar.gz", hash = "sha256:50e501ef69df88350357912505c5dffb4b9d7480c3f8eda64a51b35acafe017f", size = 47113, upload-time = "2026-10-02T01:03:16.771Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/8f/09dcc2d1edc9346d4fa0bd00751ea344a8ad5f540842844a2859f189af33/teleprint-0.1.3-py3-none-any.whl", hash = "sha256:1f048d079378b49cf298f6516fec27446eff59ae0d32d6d04da5530a94b18a12", size = 33603, upload-time = "2026-08-30T05:15:51.968Z" },
+    { url = "https://files.pythonhosted.org/packages/19/b5/5d74fb3ff4ff00bc28b909eb1aafa3734b486df9eac39eecad94976a7806/teleprint-0.1.4-py3-none-any.whl", hash = "sha256:322f5e564424d61a4b9b1c70de48f37df2ac0985ded93602cfa27c93f0286f71", size = 32512, upload-time = "2026-10-02T01:03:15.257Z" },
 ]
 
 [[package]]

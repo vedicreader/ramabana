@@ -180,7 +180,7 @@ def test_a_picture_is_drawn_on_its_own_blocks_row_not_at_the_cursor(tmp_path, mo
     assert at, 'nothing was placed at all'
     blk = ui.comp.blocks[next(iter(ui.pics))]
     assert {(r, c) for r, c, _ in at} == {('2', '3')}     # under the note, past the two-cell gutter
-    assert blk.height == 11 and ui.pics[blk.id].rows == 11
+    assert blk.height == 11 and ui.pics[blk.key].rows == 11
     assert ''.join(writes).rstrip().endswith(f'\x1b[{ui.comp._cursor[0] + 1};{ui.comp._cursor[1] + 1}H')
     tty.close()
 
