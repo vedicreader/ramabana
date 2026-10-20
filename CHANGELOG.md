@@ -2,6 +2,21 @@
 
 <!-- do not remove -->
 
+## 0.2.57
+
+- `delegate_search` takes `model` and `effort`: one value for every question, or a list with one per question. A list of another length is refused before any sub-agent runs. `delegate_async` takes both too. `cloud_model` is still accepted as `model` and is no longer in the schema.
+- A named model that is unknown or not set up fails its question with the setup message (`unknown model`, `needs KEY`, a missing runtime, and `ramabana setup`). No other model answers in its place. The other questions still run.
+- Read-only questions on different cloud models run at once, across providers. Questions on the session's local engine run one after another in one worker. Writes run one at a time.
+- Effort levels are `low`, `medium`, `high`, `xhigh` and `max`. A sub-agent's level comes from the delegation, then `/subagents effort`, then `$RAMABANA_SUBAGENT_EFFORT`, then `[subagents] effort`, then the model's default. A local model runs without one and its answer says so. A level the provider refuses is retried once without it, with a note.
+- A turn's `reasoning_effort` reaches a Claude Code chat as its `effort`, per call. Nothing is left on the chat, so a turn without one runs at the session's level. `xhigh` and `max` are accepted.
+- The tool channel is chosen in this order: `$RAMABANA_TOOL_CHANNEL`, a refusal this session, `/model tools` or `/subagents tools`, `[model."NAME"] tool_channel`, `runtime.tool_channel` or `subagents.tool_channel`, then the runtime's default. Claude Code's default stays `tags`; `native` sends its tools through rishi's in-process MCP server. `text` is accepted for `tags`. An MCP refusal moves the model to `tags` with one note.
+- `/subagents model NAME|default`, `effort LEVEL|default` and `tools native|text|auto`, each with `--save` to write config.toml. Bare `/subagents` shows all of them. `/model tools native|text|auto [--save]` sets the turn's channel and keeps the conversation. Tab completes their arguments.
+- `Agent.subagent_settings(model, effort, tools, save)` returns `{ok, model, effort, tools, note, unavailable, error}`. `/subagents` and `subagents_command` return the same dict, so a web route can send it unchanged.
+- `/models` and `ramabana config models` show each model's tool channel and whether it takes an effort level.
+- `ramabana config set KEY VALUE` writes one key, including `model."NAME".key`. config.toml takes `[subagents] effort`, `[subagents] tool_channel`, and `tool_channel` and `effort` in a `[model."NAME"]` table. `set_table` writes `[runtime]` and `[subagents]` under their own headers; they were written as model tables.
+- Every parameter of Ramabana's own tools has a description: the delegation tools, `submit_result`, `set_plan`, `update_todo`, `remember`, `status`, the cart tools and the MCP `ask`.
+- Requires rishi 0.1.51 and shalya 0.1.18.
+
 ## 0.2.56
 
 - Recorded chats replay again. Since 0.2.53 a Claude chat is built with `on_stall`, a bound method whose repr holds a memory address, and `timeout_hint`, which names this machine's config path, and both went into the recording's key, so no key matched twice. `recorded()` now builds a `Recorder`, a `CachedChat` that leaves out of the key every option that is not plain data and the `UNKEYED` options (`timeout_hint`, `api_key`), and hands them to the live chat only. A test checks that two runs in two home folders give one key.

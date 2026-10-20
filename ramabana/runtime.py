@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from fastcore.basics import first, patch
 from urai import resp_text, tool_rows, strip_hist_media, strip_media, is_media
 from .setup import config_path, setting
-from .core import accepts, agent_err, claude_wire, env, force_tags, local_ctx, local_window, tool_channel
+from .core import EFFORT_RUNTIMES, EFFORTS, accepts, agent_err, claude_wire, env, force_tags, local_ctx, local_window, model_setting, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # bytes of tail kept per call
@@ -686,6 +686,7 @@ class Backend:
         self.chat,self.use,self.note=None,Usage(model=spec.model_id),'not started'
         self.problems,self.last_native,self._tried,self.run=[], '', False, None
         self._resume_hist=None
+        self.fell_back=[]   # what this backend gave up to answer, a refused tool wire or effort, for the caller to be told
         self._used,self._rewrote,self._est=0,None,0
         self.spill,self.how=_unsaved,''   # where cut content is kept whole, and how the model reads it back
         self.lock=threading.Lock()
@@ -764,7 +765,8 @@ class Backend:
             self._tag_reminded=False
             self._sync_callbacks()
             try:
-                for again in (True,False):
+                tried=set()
+                while True:
                     try:
                         out=self._send(msg,**kw)
                         if run is not None and run.cancelled:return ''
@@ -775,7 +777,8 @@ class Backend:
                         return out or self._empty()
                     except Exception as e:
                         if run is not None and run.cancelled:return ''
-                        if not (again and self._recover(e)):self.turn_error=agent_err(e); return self._failed('failed',e)
+                        if (why:=self._recover(e)) in tried or not why:self.turn_error=agent_err(e); return self._failed('failed',e)
+                        tried.add(why)
             finally:self.run=None
     def stream(self,msg,run=None,**kw):
         self.turn_error=''
@@ -785,7 +788,8 @@ class Backend:
             self._tag_reminded=False
             self._sync_callbacks()
             try:
-                for again in (True,False):
+                tried=set()
+                while True:
                     n,buf=0,[]
                     try:
                         for c in self._stream(msg,**kw):
@@ -806,11 +810,12 @@ class Backend:
                     except Exception as e:
                         if run is not None and run.cancelled:return
                         # retry only before any chunk was shown
-                        if not (again and not n and self._recover(e)):
+                        if n or not (why:=self._recover(e)) or why in tried:
                             self.turn_error=agent_err(e); yield f'\n\n{self._failed("failed",e)}'; return
+                        tried.add(why)
             finally:self.run=None
     def _recover(self,e):
-        "Fix what made `e` happen and return True to retry once. False by default."
+        "Fix what made `e` happen and return its cause, retried once per cause in a turn. False by default."
         return False
     def _check_reply(self,text):
         "Look at a finished reply for a failure the transport could not raise. Nothing by default."
@@ -972,6 +977,7 @@ ROUTINE_CBS = frozenset({'ToolReminderCallback','_ToolReminderCallback','Sliding
 class RishiBackend(Backend):
     "The `Backend` that runs every model, local or hosted, through rishi's `Chat`."
     kind='rishi'
+    effort,_no_effort='',False   # the effort level the chat was built with; set once a refusal took it away
     def __init__(self,*a,max_steps=MAX_STEPS,**kw):
         self.max_steps,self._prefill,self._seen_use=max_steps,None,None; super().__init__(*a,**kw)
     @property
@@ -983,15 +989,20 @@ class RishiBackend(Backend):
     def narrates(self): return self.spec.runtime not in QUIET_RUNTIMES
     @property
     def tool_channel(self):
-        "The channel this backend's tool schemas travel on, from the chat once it exists."
-        return tool_channel(self.spec,self.chat)
+        "The channel this backend's tool schemas travel on: `tool_mode` given to it is the session's choice."
+        return tool_channel(self.spec,session=self.kw.get('tool_mode',''))
     def _runtime_kw(self):
+        "The chat's options. `tool_mode` and `effort` go only where they differ from the runtime's default, so a recording's key holds."
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
-        if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
-        if self.spec.runtime in ('llama','ollama'): kw.setdefault('n_ctx',self.spec.ctx)
-        if self.spec.runtime=='claude':
-            kw.setdefault('effort',env('EFFORT') or setting('runtime.effort') or CLAUDE_EFFORT)
+        rt,ch,eff=self.spec.runtime,self.tool_channel,kw.pop('effort',None)
+        kw.pop('tool_mode',None)
+        if (rt in ('remote','copilot') and ch=='tags') or (rt=='claude' and ch=='native'): kw['tool_mode']=ch
+        if rt in ('llama','ollama'): kw.setdefault('n_ctx',self.spec.ctx)
+        own=model_setting(self.spec.name,self.spec.model_id).get('effort')
+        if rt=='claude': eff=eff or env('EFFORT') or own or setting('runtime.effort') or CLAUDE_EFFORT
+        if rt in EFFORT_RUNTIMES and (eff:=eff or own) and not self._no_effort: kw['effort']=eff
+        if rt=='claude':
             kw.setdefault('on_stall',self.notice)
             kw.setdefault('timeout_hint',f'timeout under [model."{self._cfg_name()}"] in {config_path()}')
         if self.spec.runtime=='litert':
@@ -1018,9 +1029,10 @@ class RishiBackend(Backend):
         from rishi import Chat
         self._measure()
         mid=claude_wire(self.spec.model_id) if self.spec.runtime=='claude' else self.spec.model_id
+        kw=self._runtime_kw(); self.effort=kw.get('effort') or ''
         return self._lean(self._fitted((_MK_CHAT or Chat)(mid,runtime=self.spec.runtime,sp=self.sp,
                     tools=self.tools,approve=self.approve,tool_max_len=self.tool_max_len,
-                    max_steps=self.max_steps,ctx_limit=self.spec.ctx,**self._runtime_kw())))
+                    max_steps=self.max_steps,ctx_limit=self.spec.ctx,**kw)))
     def _lean(self,chat):
         "Leave compaction to `Compactor`: drop rishi's per-message reminder and its summary-less window, keep usage."
         if (drop:=getattr(chat,'remove_cb',None)) is None: return chat
@@ -1040,27 +1052,45 @@ class RishiBackend(Backend):
         return type(self)(self.spec,sp=sp,tools=tools,tool_max_len=self.tool_max_len,
                           max_steps=self.max_steps,shared=True,**shared,**kw)
     def _turn_kw(self, kw):
-        "Apply hosted turn controls to the chat; `Chat.__call__` takes only generation controls."
+        "This turn's generation controls: its `reasoning_effort` becomes the chat's `effort` for this call only, on a runtime that takes one."
         kw = dict(kw or {})
-        effort = kw.pop('reasoning_effort', None)
-        if effort is not None and hasattr(self.chat, 'reasoning_effort'):
-            self.chat.reasoning_effort = effort
+        e = str(kw.pop('reasoning_effort', None) or kw.pop('effort', None) or '').strip().lower()
+        if e in ('', 'auto', 'default') or self._no_effort or self.spec.runtime not in EFFORT_RUNTIMES: return kw
+        if self.spec.runtime != 'claude' or e in EFFORTS: kw['effort'] = e
         return kw
     def _send(self,msg,**kw):
-        return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
+        try: return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
+        finally: self._dropped()
+    def _dropped(self):
+        "Tell the caller, once, that the provider refused the effort and the chat answered without one."
+        if (why:=getattr(self.chat,'dropped_effort',None)) and not self._no_effort:
+            self._no_effort=True; self.fell_back.append(self.problem(f'{self.spec.name} refused effort {self.effort or "its level"}; it ran at its default'))
     MCP_REFUSED=('mcp','strict_mcp_config','allowed_tools','disallowed','not permitted','policy')
+    EFFORT_REFUSED=('invalid','unsupported','not supported','not allowed','refus')
+    def _effort_refused(self,e):
+        "Whether `e` refused the effort level this chat was built with."
+        if not self.effort or self._no_effort: return False
+        try:
+            from rishi.remote import effort_refused
+            if effort_refused(e): return True
+        except ImportError: pass
+        s=f'{e}'.lower()
+        return 'effort' in s and any(w in s for w in self.EFFORT_REFUSED)
     def _recover(self,e):
-        "Learn that this model's wire tool channel is closed, and retry on tags."
-        if not self.tools or tool_channel(self.spec,self.chat)=='tags':return False
-        if not any(s in f'{e}'.lower() for s in self.MCP_REFUSED):return False
-        force_tags(self.spec.model_id,agent_err(e))
-        self.problem(f'{self.spec.name}: the wire refused the tool schemas, so they now travel in '
-                     f'the system prompt instead ({agent_err(e)})')
+        "Learn that this model's wire tool channel is closed, and retry on tags; or that it refused the effort, and retry without one. Returns the cause."
+        if self.tools and self.tool_channel!='tags' and any(s in f'{e}'.lower() for s in self.MCP_REFUSED):
+            force_tags(self.spec.model_id,agent_err(e)); why='mcp'
+            self.fell_back.append(self.problem(f'{self.spec.name}: the wire refused the tool schemas, so they now travel in '
+                         f'the system prompt instead ({agent_err(e)})'))
+        elif self._effort_refused(e):
+            self._no_effort,why=True,'effort'
+            self.fell_back.append(self.problem(f'{self.spec.name} refused effort {self.effort}; it ran at its default'))
+        else: return False
         hist=self.hist
         self.close(); self.retry()
         if self.chat is None:return False
         if hist:self.restore_hist(hist)
-        return True
+        return why
     def _check_reply(self,text):
         "Report a tag call that came back as prose."
         if self._needs_tag_retry(text):
@@ -1072,10 +1102,12 @@ class RishiBackend(Backend):
     def _needs_tag_retry(self,text):
         "A reply on the tags channel that shows a call it never made."
         from urai import tag_call_shape
-        if tool_channel(self.spec,self.chat)!='tags': return False
+        if self.tool_channel!='tags': return False
         return tag_call_shape(text,[getattr(t,'__name__','') for t in self.tools])
     def _stream(self,msg,**kw):
-        kw=self._turn_kw(kw)
+        try: yield from self._streamed(msg,**self._turn_kw(kw))
+        finally: self._dropped()
+    def _streamed(self,msg,**kw):
         if not self.prefilled_think:yield from self.chat(msg,stream=True,**kw); return
         from urai import StreamFormatter
         f=ThinkFilter()

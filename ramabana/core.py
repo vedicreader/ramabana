@@ -11,24 +11,25 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'AZURE_KEY_ENV', 'AZURE_HOSTS', 'API_KEYS', 'MODEL_ALIASES', 'DEFINES', 'DFLT_TURN', 'DFLT_SMALL',
            'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
            'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SETUP_HINT', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
-           'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'TOOL_CHANNELS', 'KEY_ENVS', 'CODEX_LOGIN',
-           'DOWN_TTL', 'PROVIDERS', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO', 'GEMINI_BASE', 'BranchChanged',
-           'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'claude_wire', 'probe_path', 'probed',
-           'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available', 'azure_base', 'azure_endpoint',
-           'azure_key_env', 'azure_ready', 'azure_host', 'is_azure', 'auth_status', 'register_model',
-           'unregister_model', 'use_aliases', 'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model',
-           'config_models', 'sync_models', 'model_problems', 'remote_models', 'copilot_catalog', 'available_models',
-           'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve',
-           'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for', 'force_tags',
-           'forget_forced_tags', 'tool_channel', 'missing_key', 'needs', 'is_local', 'Routing', 'provider_ready',
-           'job_source', 'needs_setup', 'setup_guide', 'image_route', 'video_route']
+           'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'TOOL_CHANNELS', 'EFFORT_RUNTIMES', 'KEY_ENVS',
+           'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO', 'GEMINI_BASE',
+           'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'claude_wire',
+           'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available',
+           'azure_base', 'azure_endpoint', 'azure_key_env', 'azure_ready', 'azure_host', 'is_azure', 'auth_status',
+           'register_model', 'unregister_model', 'use_aliases', 'alias_path', 'saved_models', 'load_models',
+           'save_model', 'delete_model', 'config_models', 'sync_models', 'model_problems', 'remote_models',
+           'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model',
+           'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for',
+           'profile_for', 'force_tags', 'forget_forced_tags', 'norm_channel', 'norm_effort', 'claude_native',
+           'tool_channel', 'effort_support', 'native_support', 'models_table', 'missing_key', 'needs', 'is_local',
+           'Routing', 'provider_ready', 'job_source', 'needs_setup', 'setup_guide', 'image_route', 'video_route']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time, warnings
 from urllib.parse import urlsplit, urlunsplit
-from fastcore.all import Path, atomic_save
+from fastcore.all import Path, atomic_save, first
 from shalya.host import HostError
-from .setup import ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES, config_path, model_setting, setting
+from .setup import CHANNELS, EFFORTS, ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES, config_path, model_setting, setting
 import urai, rishi.core   # registers rishi's backends with urai
 from .models import CATALOG, claude_ids, claude_aliases, provider_models
 from dataclasses import dataclass, field, replace
@@ -698,15 +699,66 @@ def forget_forced_tags():
     "Forget which models were forced onto tags, so the wire is tried again."
     _forced_tags.clear()
 
-def tool_channel(spec, chat=None):
-    "The channel ('native' or 'tags') a model's tool schemas travel on."
-    if (v := (env('TOOL_CHANNEL') or setting('runtime.tool_channel') or '').strip().lower()) in TOOL_CHANNELS: return v
-    if (ch := getattr(chat, 'tool_channel', None)) in TOOL_CHANNELS: return ch
+EFFORT_RUNTIMES = ('claude', 'remote', 'copilot')   #: the runtimes whose models take an effort level
+
+def norm_channel(v):
+    "`native` or `tags` for a channel as a person names it, `text` being `tags`; '' for auto, default or nothing."
+    v = str(v or '').strip().lower()
+    if v in ('', 'auto', 'default'): return ''
+    if v not in CHANNELS: raise ValueError(f'tools travel native, text or auto, not {v!r}')
+    return CHANNELS[v]
+
+def norm_effort(v):
+    "A level from `EFFORTS`; '' for auto, default or nothing."
+    v = str(v or '').strip().lower()
+    if v in ('', 'auto', 'default'): return ''
+    if v not in EFFORTS: raise ValueError(f'effort is one of {", ".join(EFFORTS)} or default, not {v!r}')
+    return v
+
+def _channel(v):
+    try: return norm_channel(v)
+    except ValueError: return ''
+
+def claude_native():
+    "Whether this rishi carries tools to Claude Code natively, through its in-process MCP server."
+    try: from rishi.claude import ClaudeMcpRefused
+    except ImportError: return False
+    return True
+
+def tool_channel(spec, chat=None, scope='turn', session=''):
+    "The channel ('native' or 'tags') `spec`'s tool schemas travel on: `$TOOL_CHANNEL`, a refusal, the `session`'s choice, `[model.\"NAME\"] tool_channel`, the `scope`'s config, then the runtime's default. `chat` is not asked."
     mid = str(getattr(spec, 'model_id', spec) or '')
     rt = getattr(spec, 'runtime', '') or (mid.split('/', 1)[0] if '/' in mid else '')
-    if rt in AGENTS: return 'tags'
-    if mid in _forced_tags: return 'tags'
-    return 'native'
+    cfg = (env('SUBAGENT_TOOL_CHANNEL') or setting('subagents.tool_channel') if scope == 'subagent' else '') or setting('runtime.tool_channel')
+    if (v := _channel(env('TOOL_CHANNEL'))): pass
+    elif mid in _forced_tags: return 'tags'
+    else: v = first(_channel(x) for x in (session, model_setting(getattr(spec, 'name', mid), mid).get('tool_channel'), cfg) if _channel(x)) or ('tags' if rt in AGENTS else 'native')
+    return 'tags' if v == 'native' and rt in AGENTS and not claude_native() else v
+
+def effort_support(spec):
+    "'' when `spec`'s model takes an effort level, else why not."
+    rt = getattr(spec, 'runtime', '')
+    return '' if rt in EFFORT_RUNTIMES else f'{getattr(spec, "name", spec)} ({rt or "no runtime"}) takes no effort level'
+
+def native_support(spec):
+    "What `/models` says of `spec`'s tool calls: native, text only, or text since the wire was refused, and why."
+    mid = str(getattr(spec, 'model_id', spec) or '')
+    if mid in _forced_tags: return f'text (MCP refused: {_forced_tags[mid][:80]})'
+    return 'text only' if getattr(spec, 'runtime', '') in AGENTS and not claude_native() else 'native'
+
+def models_table(current='', legacy=False):
+    "The models this machine can use, one a line: provider, where it was found, how its tools travel and whether it takes an effort level; `*` marks `current`."
+    if not (rows := available_models(include_legacy=legacy)): return 'no models available'
+    def caps(n):
+        try: s = resolve(n)
+        except Exception: return '?', '?'
+        return native_support(s), 'no' if effort_support(s) else 'yes'
+    w = max(len(r['value']) for r in rows)
+    out = [f"  {'model':<{w}}  {'provider':<12} {'source':<12} {'tools':<10} effort"]
+    for r in rows:
+        t, e = caps(r['value'])
+        out.append(f"{'*' if r['value'] == current else ' '} {r['value']:<{w}}  {r['provider']:<12} {r['source']:<12} {t:<10} {e}")
+    return '\n'.join(out)
 
 # %% ../nbs/00_core.ipynb #e81acb32
 KEY_ENVS = {'openai': 'OPENAI_API_KEY', 'anthropic': 'ANTHROPIC_API_KEY', 'gemini': 'GEMINI_API_KEY', 'openrouter': 'OPENROUTER_API_KEY'}
@@ -811,6 +863,15 @@ class Routing:
                 self.fell(n, alt, why)
                 return spec
             raise err from e
+
+    def unset(self, job):
+        "Point `job` back at what its env var or config.toml names, else its default; returns the name it now runs on."
+        if job == 'turn': self.turn = env('MODEL') or setting('jobs.turn') or DFLT_TURN; return self.turn
+        self.chosen.discard(job)
+        if (v := env(f'MODEL_{job.upper()}') or setting(f'jobs.{job}')): self.policy[job] = v; self.chosen.add(job)
+        elif DEFAULT_POLICY.get(job): self.policy[job] = DEFAULT_POLICY[job]
+        else: self.policy.pop(job, None)
+        return self.name_for(job)
 
     def set(self, name, job='turn'):
         "Validate `name`, then point `job` at it."

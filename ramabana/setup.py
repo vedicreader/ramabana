@@ -14,14 +14,14 @@ from fastcore.xtras import Path
 
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
-           'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'PII_OFF', 'PII_MODES', 'VALUED', 'EARLY', 'FLAGS',
-           'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD',
-           'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX',
-           'LOG_KEEP', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal',
+           'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'EFFORTS', 'CHANNELS', 'PII_OFF', 'PII_MODES', 'VALUED',
+           'EARLY', 'FLAGS', 'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS',
+           'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG',
+           'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal',
            'launch_args', 'bare_resume', 'run_cli', 'config_path', 'load_config', 'setting', 'model_setting',
-           'env_names', 'set_setting', 'set_table', 'config_defaults', 'config_template', 'config_show', 'config_cli',
-           'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate',
-           'save_index', 'log_index', 'last_index']
+           'env_names', 'set_setting', 'set_table', 'config_defaults', 'config_template', 'config_show', 'config_set',
+           'config_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
+           'index_gate', 'save_index', 'log_index', 'last_index']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -151,6 +151,8 @@ class Setup:
 TMUX_MODES = {'auto': None, 'on': True, 'off': False}
 PANE_MODES = ('auto', 'on', 'off')
 PROFILES = ('auto', 'small', 'full')
+EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')   #: the effort levels a turn or a sub-agent may ask for
+CHANNELS = {'native': 'native', 'tags': 'tags', 'text': 'tags'}   #: what a person may name a tool channel; `text` is `tags`
 PII_OFF = 'off'
 PII_MODES = (PII_OFF, 'redact', 'refuse')
 
@@ -243,8 +245,10 @@ KEYS = {
     'compaction.auto': Key(bool, '', '', 'compact on crossing the reserve; false compacts only on /compact or when a turn cannot fit'),
     'compaction.strategy': Key(str, '', '', 'summary asks the summary model; surgical keeps a digest made without a model', ('summary', 'surgical')),
     'runtime.effort': Key(str, 'EFFORT', '', 'the reasoning effort a Claude turn asks for'),
-    'runtime.tool_channel': Key(str, 'TOOL_CHANNEL', '', 'native sends tool schemas on the wire, tags in the prompt; empty decides per model', ('', 'native', 'tags')),
+    'runtime.tool_channel': Key(str, 'TOOL_CHANNEL', '', 'native sends tool schemas on the wire, tags (or text) in the prompt; empty decides per model', ('', *CHANNELS)),
     'runtime.litert_backend': Key(str, 'LITERT_BACKEND', '', 'the engine a LiteRT model runs on; empty lets LiteRT choose', ('', 'cpu', 'gpu')),
+    'subagents.effort': Key(str, 'SUBAGENT_EFFORT', '', "the effort level a sub-agent asks for; empty takes its model's default", ('', *EFFORTS)),
+    'subagents.tool_channel': Key(str, 'SUBAGENT_TOOL_CHANNEL', '', "the channel a sub-agent's tool schemas travel on; empty follows runtime.tool_channel", ('', *CHANNELS)),
     'azure.endpoint': Key(str, 'AZURE_OPENAI_ENDPOINT', '', 'the Azure OpenAI resource, such as https://NAME.openai.azure.com; a model named azure/DEPLOYMENT goes to its v1 API', plain=True),
     'azure.api_key_env': Key(str, '', '', 'the env var holding the Azure OpenAI key; the key never goes in this file'),
     'cli.approve': Key(str, '', '--approve', 'which actions the terminal session asks about', ('ask', 'edits', 'auto', 'off', 'none')),
@@ -266,7 +270,9 @@ MODEL_KEYS = {'max_input_tokens': Key(int, doc='the input window the guard sizes
               'api_key_env': Key(str, doc='the env var holding its key; never the key'),
               'api_name': Key(str, doc="fastllm's wire format: openai (Responses), openai_chat, anthropic or gemini"),
               'vendor_name': Key(str, doc='the fastllm vendor, when it is not the one the model id implies'),
-              'ctx': Key(int, doc='the same as max_input_tokens')}
+              'ctx': Key(int, doc='the same as max_input_tokens'),
+              'tool_channel': Key(str, doc='native or tags (text) for this model, over runtime.tool_channel', choices=('', *CHANNELS)),
+              'effort': Key(str, doc='the effort level this model asks for when nothing else names one', choices=('', *EFFORTS))}
 
 #: keys an earlier release read, and what to do instead
 RETIRED_KEYS = {'azure.deployments': 'deployments no longer choose models; name one as azure/<deployment> in [jobs], or run `ramabana setup`'}
@@ -367,8 +373,8 @@ def set_setting(key, value, path=None):
     return value
 
 def _header(table):
-    "The TOML header for `table`: `jobs`, or a model name, quoted, under `model`."
-    return table if table in ('jobs', 'azure') or table.startswith('model.') else f'model.{json.dumps(table)}'
+    "The TOML header for `table`: one `KEYS` names, such as `jobs` or `runtime`, else a model name, quoted, under `model`."
+    return table if table in {k.rpartition('.')[0] for k in KEYS} - {''} or table.startswith('model.') else f'model.{json.dumps(table)}'
 
 def set_table(table, values, path=None):
     "Set `values` in config.toml's `[table]`, adding the table when it is missing, comments kept; a file that is not TOML is refused, never rewritten."
@@ -408,7 +414,7 @@ def config_defaults():
     d = {'learning': True, 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
          'window.margin': EST_MARGIN, 'window.image_tokens': IMG_TOKENS, 'window.reserve': RESERVE, 'window.keep_recent': KEEP_RECENT,
          'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'summary', 'runtime.effort': CLAUDE_EFFORT,
-         'runtime.tool_channel': '', 'runtime.litert_backend': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'jobs.image': DFLT_IMAGE, 'jobs.video': DFLT_VIDEO}
+         'runtime.tool_channel': '', 'runtime.litert_backend': '', 'subagents.effort': '', 'subagents.tool_channel': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'jobs.image': DFLT_IMAGE, 'jobs.video': DFLT_VIDEO}
     try:
         from ramabana.cli import main
         ps = inspect.signature(getattr(main, '__wrapped__', main)).parameters
@@ -476,15 +482,50 @@ def config_show(path=None):
             rows.append(f'model."{name}".{f} = {_toml(v)}   # config.toml{up}')
     return '\n'.join(rows + [f'warning: {b}' for b in bad])
 
-CONFIG_USAGE = 'usage: ramabana config [show | init [--force] | path]'
+CONFIG_USAGE = 'usage: ramabana config [show | init [--force] | path | set KEY VALUE | models]'
+
+def _parsed(key, raw):
+    "`raw`, as typed on a command line, in `key`'s type."
+    t, s = key.type, str(raw).strip()
+    if t is bool:
+        if s.lower() not in ('true', 'false', 'on', 'off', 'yes', 'no', '1', '0'): return s
+        return s.lower() in ('true', 'on', 'yes', '1')
+    try:
+        if t in (int, float): return t(s)
+        if isinstance(t, tuple): return int(s) if s.isdigit() else s
+    except ValueError: return s
+    return [x.strip() for x in s.split(',') if x.strip()] if t is list else s
+
+def config_set(key, raw, path=None):
+    "Set one key from a command line: a `KEYS` name, or `model.NAME.key`, NAME quoted when it holds a dot. Returns the line written."
+    if key.startswith('model.'):
+        head, _, f = key.rpartition('.')
+        name, k = head[len('model.'):].strip('"'), MODEL_KEYS.get(f)
+        if not name or k is None: raise ValueError(_unknown(key, [f'model."{name}".{m}' for m in MODEL_KEYS]))
+        table, shown = f'model.{json.dumps(name)}', f'model."{name}".{f}'
+    elif (k := KEYS.get(key)) is None: raise ValueError(_unknown(key, KEYS))
+    else: (table, _, f), shown = key.rpartition('.'), key
+    if (why := _why(k, v := _parsed(k, raw))): raise ValueError(f'{shown} = {raw!r}: it must be {why}')
+    set_table(table, {f: v}, path) if table else set_setting(key, v, path)
+    if f == 'tool_channel' and v == 'native':
+        from ramabana.core import forget_forced_tags
+        forget_forced_tags()
+    return f'{shown} = {_toml(v)}'
 SETUP_USAGE = 'usage: ramabana setup [--provider P --name N --model-id M --endpoint URL --region R --key-env VAR --api-name A --jobs turn,summary]'
 
 def config_cli(argv=()):
-    "`ramabana config`: `show` what is in effect, `init` a commented config.toml, or print its `path`."
+    "`ramabana config`: `show` what is in effect, `init` a commented config.toml, print its `path`, `set` one key, or list the `models`."
     a = list(argv); cmd = a[0] if a else 'show'
     p = config_path()
     if cmd == 'path': print(p); return 0
     if cmd == 'show': print(config_show(p)); return 0
+    if cmd == 'models':
+        from ramabana.core import models_table
+        print(models_table()); return 0
+    if cmd == 'set':
+        if len(a) != 3: print(CONFIG_USAGE, file=sys.stderr); return 2
+        try: print(f'{config_set(a[1], a[2], p)}   # in {p}'); return 0
+        except ValueError as e: print(e, file=sys.stderr); return 1
     if cmd != 'init' or set(a[1:]) - {'--force'}: print(CONFIG_USAGE, file=sys.stderr); return 2
     old = setting('learning')
     if p.exists():

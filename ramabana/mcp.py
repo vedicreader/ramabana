@@ -80,7 +80,8 @@ def _mount_ask(mcp, agent):
     "Add the `ask` tool: one Ramabana turn, returning only its answer."
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, openWorldHint=True))
-    async def ask(task: str) -> str:
+    async def ask(task: str, # one self-contained task, with what the agent needs to do it
+                  ) -> str:
         "Hand a whole task to Ramabana's agent and get back only its answer. Ask one self-contained task."
         return await anyio.to_thread.run_sync(agent.ask, task)
 

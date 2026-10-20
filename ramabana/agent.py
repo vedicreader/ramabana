@@ -12,15 +12,16 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES',
            'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX',
            'TREE_SPENT', 'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE',
-           'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST',
-           'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP',
-           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
-           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
-           'never', 'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt',
-           'prompt_directives', 'project_context', 'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt',
-           'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
-           'shell_denial', 'generated_denial', 'note_tools', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed',
-           'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'mk_host', 'mk_agent']
+           'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING',
+           'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK',
+           'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS',
+           'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask',
+           'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note',
+           'inline_for', 'request_text', 'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context',
+           'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family',
+           'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools',
+           'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer', 'request_body',
+           'request_title', 'model_title', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextvars, datetime, fnmatch, functools, hashlib, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -32,8 +33,8 @@ from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
-from .core import accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
-from .setup import load_config, setting
+from .core import accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
+from .setup import load_config, set_table, setting
 from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
@@ -1116,7 +1117,8 @@ def plan_tools(get_plan, save=None):
             except Exception: pass
 
     @summary(lambda a: f'Set plan: {len(a.get("items") or [])} steps')
-    def set_plan(items: list[str]) -> str:
+    def set_plan(items: list[str], # the steps in order, one text each; an empty list clears the plan
+                 ) -> str:
         "Replace the session plan with these step texts; an empty list clears it. Returns the checklist."
         todos = [str(x).strip() for x in (items if isinstance(items, (list, tuple)) else parse_plan_items(items)) if str(x).strip()]
         if not todos: get_plan().clear(); _save(); return 'plan cleared'
@@ -1124,7 +1126,10 @@ def plan_tools(get_plan, save=None):
         return get_plan().md()
 
     @summary(lambda a: f'Todo {a.get("id") or "new"} → {a.get("status") or ("update" if a.get("id") else "add")}')
-    def update_todo(id: str = '', status: str = '', text: str = '') -> str:
+    def update_todo(id: str = '',     # the todo's id or a unique prefix of it; empty adds `text` as a new step
+                    status: str = '', # pending, active, done or cancelled
+                    text: str = '',   # the step's new text, or the text of the step to add
+                    ) -> str:
         "Change a todo by id or unique prefix (status: pending, active, done, cancelled), or append `text` as a new step when `id` is empty."
         p = get_plan()
         if not id:
@@ -1222,6 +1227,7 @@ class Agent:
         self.on_watch = None             # callable(target, log_path), instead of a tmux pane
         self.on_background_done = None   # callable(run, answer)
         self.subagent_writes = bool(subagent_writes)
+        self.turn_channel = self.sub_channel = self.sub_effort = ''   # the session's `/model tools`, `/subagents tools` and `/subagents effort`; '' takes config.toml's
         self.subagent_steps, self.subagent_timeout, self.subagent_depth = _sub_steps(subagent_steps), _sub_timeout(subagent_timeout), _sub_depth(subagent_depth)
         self.sub_slots = Slots()   # one bound on sub-agents at once, across every delegation tree
         self.readonly, self.readonly_calls, self.plan_mode = bool(readonly), readonly_calls, False
@@ -1338,7 +1344,7 @@ def spec_or_none(self:Agent, job='turn'):
 def budget(self:Agent):
     "What the turn model can afford to be told. See `core.budget_for`."
     spec = self.spec_or_none()
-    return budget_for(spec, self.tool_max_len, tool_channel(spec))
+    return budget_for(spec, self.tool_max_len, tool_channel(spec, session=self.turn_channel))
 
 # %% ../nbs/03_agent.ipynb #6cd54ddc
 @patch(as_prop=True)
@@ -1412,6 +1418,48 @@ def _cloud_backend_or_none(self:Agent, model):
         backend = self._backends[key]
         return backend if backend.start() is not None else None
     except Exception: return None
+
+# %% ../nbs/03_agent.ipynb #c666e6c7
+@patch
+def _setup_problem(self:Agent, name):
+    "Why model `name` cannot run here, in ramabana's setup words, or ''."
+    try: spec = self.routing._resolve(str(name))
+    except KeyError as e: return f'{e.args[0] if e.args else unknown_model(name)} {SETUP_HINT}'
+    if (k := missing_key(spec)): return f'{name} {needs(k)}. {SETUP_HINT}'
+    if (m := missing_runtime(spec)): return f'{name}: {m}'
+    return ''
+
+@patch
+def _named_backend(self:Agent, name):
+    "A started backend for model `name`, without changing routing; a model that is unknown or not set up here raises its setup message, and nothing runs in its place."
+    name, sub = str(name).strip(), str(self.routing.name_for('subagent') or '')
+    try: self.routing._resolve(name)
+    except KeyError:   # `gpt-6-sol` for the sub-agent's own `openai/gpt-6-sol`
+        if name == sub.rsplit('/', 1)[-1] and (b := self._be_or_none('subagent')) is not None: return b
+    if (why := self._setup_problem(name)): raise AgentError(why)
+    spec = self.routing._resolve(name)
+    key = (spec.backend, spec.model_id)
+    if spec.local and key not in self._backends: raise AgentError(f"{name} is a local model this session has not loaded; a sub-agent runs on a local model only when it is the session's own")
+    if key not in self._backends: self._backends[key] = make_backend(spec)
+    if (b := self._backends[key]).start() is None: raise AgentError(b.note)
+    return b
+
+@patch
+def sub_effort_level(self:Agent, effort=''):
+    "The effort a sub-agent asks for: `effort`, the session's `/subagents effort`, `$SUBAGENT_EFFORT`, then `[subagents] effort`; '' leaves the model's default."
+    return norm_effort(effort) or self.sub_effort or norm_effort(env('SUBAGENT_EFFORT') or setting('subagents.effort'))
+
+@patch
+def _sub_backend(self:Agent, model='', effort=''):
+    "`(backend, spawn options, note)` for one delegated question: `model` strictly, else the sub-agent route; its effort and channel, read as the delegation starts."
+    b = self._named_backend(model) if model else self._be_or_none('subagent')
+    if b is None: raise AgentError('no model is available to delegate to' + (f" ({n})" if (n := self.routing.notes.get('subagent')) else ''))
+    spec, kw, note = b.spec, {}, ''
+    if (ch := tool_channel(spec, scope='subagent', session=self.sub_channel)) != tool_channel(spec): kw['tool_mode'] = ch
+    if (lvl := self.sub_effort_level(effort)):
+        if effort_support(spec): note = f'effort {lvl} is not supported on {spec.name} ({spec.runtime}); it ran at its default'
+        else: kw['effort'] = lvl
+    return b, kw, note
 
 # %% ../nbs/03_agent.ipynb #d69ed3f9
 GIT_SHELL = {'commit': 'git_commit', 'push': 'git_remote', 'pull': 'git_remote', 'fetch': 'git_remote',
@@ -1652,7 +1700,7 @@ def subagent_budget(self:Agent):
     "What the sub-agent model can afford."
     spec = self.spec_or_none('subagent')
     if spec is None: return self.budget
-    return budget_for(spec, self.tool_max_len, tool_channel(spec))
+    return budget_for(spec, self.tool_max_len, tool_channel(spec, scope='subagent', session=self.sub_channel))
 
 # %% ../nbs/03_agent.ipynb #6318c147
 @patch
@@ -1715,7 +1763,7 @@ def _delegation_tools(self:Agent, get_tools, background=None,
                           background=background, get_log_dir=lambda: self.runs_dir, get_pictures=lambda ps: read_pictures(self.host, ps),
                           get_steps=lambda: self.subagent_steps, get_timeout=lambda: self.subagent_timeout, slots=self.sub_slots, block=(),
                           get_max=get_max or (lambda: self.budget.tool_max),
-                          get_notes=lambda spec: MODEL_NOTES[model_family(spec)])
+                          get_notes=lambda spec: MODEL_NOTES[model_family(spec)], get_sub=self._sub_backend)
 
 @patch
 def _sub_tools(self:Agent, depth=0):
@@ -1841,8 +1889,15 @@ def lessons(self:Agent, limit=50):
 def note_tools(note, learning=lambda: True):
     "The memory tool a host without a vault still gets: shalya's `remember`, on the project's memory file."
     @summary(lambda a: f'Remember {_1(a.get("title") or a.get("text"), 80)}')
-    def remember(text: str, title: str = '', tags: str = '', key: str = '',
-                 cue: str = '', component: str = '', evidence: str = '', confidence: str = '') -> str:
+    def remember(text: str,             # the conclusion to keep, in a sentence or two
+                 title: str = '',       # a short heading for it
+                 tags: str = '',        # comma-separated words to find it by
+                 key: str = '',         # a stable name; a later note with the same key replaces this one
+                 cue: str = '',         # for a lesson: the situation that should bring it to mind
+                 component: str = '',   # for a lesson: rule, skill, extension, tool or memory
+                 evidence: str = '',    # for a lesson: what showed the mistake
+                 confidence: str = '',  # for a lesson: low, medium or high
+                 ) -> str:
         "Store a conclusion in this project's memory file (no vault here); the same `key` later replaces the line; a lesson from a mistake adds `cue`, `component` (rule, skill, extension, tool or memory), `evidence` and `confidence` (low, medium or high)."
         if not learning(): cue = component = evidence = confidence = ''   # learning off: a plain note
         try: body = lesson_text(text, cue, component, evidence, confidence)
@@ -1863,6 +1918,7 @@ def _be(self:Agent, job='turn'):
         if is_turn:
             kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
                       approve=(self.approvals.gate if self.approvals is not None else None))
+            if self.turn_channel: kw['tool_mode'] = self.turn_channel
         self._backends[key] = make_backend(spec, **kw)
     return self._backends[key]
 
@@ -2285,12 +2341,89 @@ def set_subagent_depth(self:Agent, n):
     "Set how many levels of sub-agents may delegate again, at most `SUB_DEPTH_MAX`."
     return self._set_sub('subagent_depth', _sub_depth(n), 'sub-agent nesting')
 
+SHOWN_CHANNEL = {'': 'auto', 'native': 'native', 'tags': 'text'}   #: a channel as a person reads it
+SUBAGENTS_USAGE = 'say /subagents on|off, steps N, timeout S or nest N, or /subagents model NAME|default, effort LEVEL|default or tools native|text|auto, any of the last three with --save'
+
+@patch(as_prop=True)
+def _sub_state(self:Agent):
+    "The sub-agent model, effort and tool channel in effect, as `subagent_settings` names them."
+    try: tools = self.sub_channel or norm_channel(env('SUBAGENT_TOOL_CHANNEL') or setting('subagents.tool_channel'))
+    except ValueError: tools = ''
+    return dict(model=str(self.routing.name_for('subagent') or ''), effort=self.sub_effort_level(), tools=SHOWN_CHANNEL[tools])
+
 @patch(as_prop=True)
 def subagent_report(self:Agent):
     "Every sub-agent setting, as `/subagents` reports it."
-    return (('sub-agents may write, run commands and run Python, behind this session\'s approvals'
+    s = self._sub_state
+    out = (('sub-agents may write, run commands and run Python, behind this session\'s approvals'
              if self.subagent_writes else 'sub-agents are read-only: they report what they found and change nothing') +
-            f"\nsteps {self.subagent_steps} · timeout {f'{self.subagent_timeout:g}s' if self.subagent_timeout else 'none'} · nest {self.subagent_depth}")
+            f"\nsteps {self.subagent_steps} · timeout {f'{self.subagent_timeout:g}s' if self.subagent_timeout else 'none'} · nest {self.subagent_depth}" +
+            f"\nmodel {s['model'] or 'none'} · effort {s['effort'] or 'default'} · tools {s['tools']}")
+    if (why := self._setup_problem(s['model']) if s['model'] else ''): out += f'\nthe sub-agent model cannot run here: {why}'
+    elif s['effort'] and (spec := self.spec_or_none('subagent')) is not None and effort_support(spec):
+        out += f"\neffort {s['effort']} is not supported on {spec.name} ({spec.runtime}); it runs at its default"
+    return out
+
+@patch
+def subagent_settings(self:Agent, model=None, effort=None, tools=None, save=False):
+    "Show or change the sub-agent model, effort and tool channel; None leaves one as it is, `default` takes config.toml's. `save` writes them to config.toml. One dict for every caller, JSON as it stands."
+    out, said = dict(ok=True, model='', effort='', tools='', note='', unavailable='', error=''), []
+    try:
+        m = None if model is None else str(model).strip()
+        if m and m.lower() not in ('default', 'auto') and (why := self._setup_problem(m)): raise AgentError(why)
+        e = None if effort is None else norm_effort(effort)
+        t = None if tools is None else norm_channel(tools)
+        if m is not None:
+            if m.lower() in ('', 'default', 'auto'): self.routing.unset('subagent'); m = ''
+            else: self.routing.set(m, 'subagent')
+            self._catalogs.clear(); self._views.clear()
+            said.append(f"sub-agent model {self.routing.name_for('subagent')}" + ('' if m else ' (default)'))
+        if e is not None: self.sub_effort = e; said.append(f"sub-agent effort {e or 'default'}")
+        if t is not None:
+            if t == 'native': forget_forced_tags()
+            self.sub_channel = t; self._catalogs.clear(); self._views.clear(); said.append(f'sub-agent tools {SHOWN_CHANNEL[t]}')
+        if save:
+            s, none = self._sub_state, all(v is None for v in (m, e, t))
+            if m is not None or none: set_table('jobs', {'subagent': m if m is not None else s['model']})
+            row = {**({'effort': s['effort']} if e is not None or none else {}), **({'tool_channel': norm_channel(s['tools'])} if t is not None or none else {})}
+            if row: set_table('subagents', row)
+            said.append('saved to config.toml')
+    except (AgentError, ValueError, KeyError, OSError) as x: out.update(ok=False, error=str(x.args[0]) if isinstance(x, KeyError) and x.args else str(x))
+    s = self._sub_state
+    out.update(s, unavailable=self._setup_problem(s['model']) if s['model'] else '', note=('; '.join(said) + '\n' if said else '') + self.subagent_report)
+    if said: self.note = '; '.join(said)
+    return out
+
+@patch
+def subagents_command(self:Agent, arg=''):
+    "`/subagents ARG` run, as the dict `subagent_settings` returns."
+    w = [x for x in str(arg or '').split() if x != '--save']
+    save, low, sets = '--save' in str(arg or '').split(), [x.lower() for x in w], {'steps': self.set_subagent_steps, 'timeout': self.set_subagent_timeout, 'nest': self.set_subagent_depth}
+    try:
+        if len(w) == 2 and low[0] in ('model', 'effort', 'tools'): return self.subagent_settings(save=save, **{low[0]: w[1]})
+        if len(w) == 1 and low[0] in ('on', 'off', 'read', 'write'): self.set_subagent_writes(low[0] in ('on', 'write'))
+        elif len(w) == 2 and low[0] in sets: sets[low[0]](w[1])
+        elif w: raise ValueError(arg)
+    except RuntimeError as e: return {**self.subagent_settings(), 'ok': False, 'error': str(e)}
+    except ValueError: return {**self.subagent_settings(), 'ok': False, 'error': SUBAGENTS_USAGE}
+    return self.subagent_settings(save=save)
+
+@patch
+def set_tool_channel(self:Agent, mode, save=False):
+    "Send the turn's tool schemas `native`, as `text` in the prompt, or `auto`; the conversation carries on. `save` writes `runtime.tool_channel` too."
+    ch = norm_channel(mode)
+    if self.busy: raise RuntimeError('cannot change how tools travel while the assistant is working')
+    if ch == 'native': forget_forced_tags()
+    if save: set_table('runtime', {'tool_channel': ch})
+    self.turn_channel, spec = ch, self.spec_or_none()
+    key = spec and (spec.backend, spec.model_id)
+    if (b := self._backends.pop(key, None) if key else None) is not None: hist = b.snapshot_hist(); b.close()
+    else: hist = None
+    self._tools = None
+    if hist is not None: self._be('turn').resume_hist(hist)
+    now = tool_channel(spec, session=ch) if spec is not None else ''
+    self.note = f"turn tools {SHOWN_CHANNEL[ch]}" + (f' ({SHOWN_CHANNEL[now]} for {spec.name})' if now else '') + (' · saved to config.toml' if save else '')
+    return self.note
 
 # %% ../nbs/03_agent.ipynb #5c5649f0
 @patch
@@ -3411,8 +3544,14 @@ def command(self:Agent, line):
     name, _, arg = line.partition(' ')
     arg = arg.strip()
     if name == 'model':
-        if not arg: return f'{self.routing.summary()}\n{"briefing":11} {self.profile} profile' + ('' if self.profile_choice != 'auto' else ' (auto)')
+        if not arg: return (f'{self.routing.summary()}\n{"briefing":11} {self.profile} profile' + ('' if self.profile_choice != 'auto' else ' (auto)') +
+                            (f'\n{"tools":11} {SHOWN_CHANNEL[tool_channel(s, session=self.turn_channel)]}' + ('' if self.turn_channel else ' (auto)') if (s := self.spec_or_none()) is not None else ''))
         job, _, m = arg.partition(' ')
+        if job == 'tools':
+            w = [x for x in m.split() if x != '--save']
+            if len(w) != 1: return 'say /model tools native|text|auto, with --save to keep it in config.toml'
+            try: return self.set_tool_channel(w[0], save='--save' in m.split())
+            except (RuntimeError, ValueError, OSError) as e: return str(e)
         try: return f'{model_note(self.set_model(m or job, job if m else "turn"))} · {self.profile} profile'
         except Exception as e: return agent_err(e)
     if name == 'sessions':
@@ -3427,20 +3566,8 @@ def command(self:Agent, line):
             s = self.resume_session(arg or 'latest')
             return f"resumed {s['id']} · {s['turns']} turns · {s['model']}"
         except Exception as e: return agent_err(e)
-    if name == 'models':
-        rows = available_models(include_legacy=arg.lower() in ('all', 'legacy'))
-        if not rows: return 'no models available'
-        width = max(len(r['value']) for r in rows)
-        return '\n'.join(f"{'*' if r['value'] == self.model.name else ' '} {r['value']:<{width}}  {r['provider']:<12} {r['source']}" for r in rows)
-    if name == 'subagents':
-        w, sets = arg.lower().split(), {'steps': self.set_subagent_steps, 'timeout': self.set_subagent_timeout, 'nest': self.set_subagent_depth}
-        try:
-            if len(w) == 1 and w[0] in ('on', 'off', 'read', 'write'): self.set_subagent_writes(w[0] in ('on', 'write'))
-            elif len(w) == 2 and w[0] in sets: sets[w[0]](w[1])
-            elif w: raise ValueError(arg)
-        except RuntimeError as e: return str(e)
-        except ValueError: return 'say /subagents on|off, or /subagents steps N, timeout S or nest N'
-        return self.subagent_report
+    if name == 'models': return models_table(self.model.name, legacy=arg.lower() in ('all', 'legacy'))
+    if name == 'subagents': return (d := self.subagents_command(arg))['error'] or d['note']
     if name == 'planmode':
         try: on = self.set_plan_mode(arg.lower() in ('on', 'yes', 'true', '1')) if arg else self.plan_mode
         except RuntimeError as e: return str(e)
@@ -4475,6 +4602,7 @@ def _be(self:Agent, job='turn'):
         if is_turn:
             kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
                       approve=(self.approvals.gate if self.approvals is not None else None))
+            if self.turn_channel: kw['tool_mode'] = self.turn_channel
         backend = make_backend(spec, **kw)
         if is_turn:
             for cb in getattr(self, '_chat_callbacks', {}).values(): backend.add_cb(cb)

@@ -13,15 +13,15 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
            'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
            'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
-           'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH',
-           'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'set_theme', 'plan_text',
-           'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
-           'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
+           'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'ALIVE_EVERY', 'REOPEN_EVERY',
+           'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'set_theme',
+           'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture',
+           'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
            'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'OpenDiff',
            'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index',
            'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'amain', 'headless_prompt',
-           'ask_once', 'host_kw', 'main', 'ref_text', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE',
-           'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs',
+           'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA',
+           'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs',
            'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
@@ -48,7 +48,7 @@ from teleprint.keys import Key, Parser, _mod
 from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
-from .core import EXTRAS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, env, installed, model_note, need, needs_setup, setup_guide
+from .core import EFFORTS, EXTRAS, JOBS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, available_models, env, installed, model_note, need, needs_setup, setup_guide
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
 from .pane import quit_mark, write_snapshot
@@ -359,8 +359,8 @@ options ↑/↓ move · enter choose · an option's own letter picks it · esc c
 shell   !COMMAND runs it in the first open folder, in agent mode · ctrl+c interrupts it, twice kills it · the output stays out of the model's context
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /planmode on|off withholds every tool that acts and asks for a plan · /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
-extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models · /model NAME · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
-subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N, timeout S, nest N set the rest
+extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
+subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N, timeout S, nest N · /subagents model NAME|default, effort low|medium|high|xhigh|max|default, tools native|text|auto, each with --save to keep it · tab completes them
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
 
@@ -409,6 +409,10 @@ READING A TURN
   ctrl+r browses, searches and copies blocks; /mouse to click them.
 WORK
   /plan  /todo  /sessions  /resume [ID|latest]  /model [NAME]
+  /model tools native|text|auto [--save]  how the turn's tools travel
+  /subagents model NAME|default  effort LEVEL|default
+  /subagents tools native|text|auto  --save keeps any of them
+  /models  each model, its tool channel and whether it takes effort
   /learned  /learned diff|accept|reject ID  review what Dhrona proposes
   /learned compact [ID]  a shorter learned AGENTS.md, ID folded in
   /learned on|off  learning on or off, for every session
@@ -2600,15 +2604,43 @@ def _file_matches(self:Ui):
     key = lambda e: (not Path(e.rstrip('/')).name.lower().startswith(low), e.rstrip('/').count('/'), not e.endswith('/'), e)
     return m.start(1), [ref_text(e) for e in sorted(rows, key=key) if '"' not in e][:REF_CAP], note
 
+SUB_WORDS = ('on', 'off', 'steps', 'timeout', 'nest', 'model', 'effort', 'tools')   #: what follows `/subagents `
+
+def arg_words(cmd, before, models=()):
+    "What may come next after `/cmd` and the words `before`: a subcommand, a level, a mode, a model name or `--save`."
+    if cmd == 'subagents':
+        if not before: return list(SUB_WORDS)
+        if len(before) == 1: return {'model': ['default', *models], 'effort': ['default', *EFFORTS], 'tools': ['native', 'text', 'auto']}.get(before[0], [])
+        return ['--save'] if len(before) == 2 and before[0] in ('model', 'effort', 'tools') else []
+    if cmd == 'model':
+        if not before: return ['tools', *[j for j in JOBS if j != 'turn'], *models]
+        if before[0] == 'tools': return ['native', 'text', 'auto'] if len(before) == 1 else ['--save'] if len(before) == 2 else []
+        return list(models) if len(before) == 1 and before[0] in JOBS else []
+    return []
+
+@patch
+def _arg_matches(self:Ui):
+    "`(start, matches)` for the argument of `/subagents` or `/model` under the cursor, or None."
+    if self.mode == 'python' or not (m := re.match(r'/(subagents|model) +(.*)$', self.buf.text[:self.buf.cursor])): return None
+    *before, cur = m.group(2).split(' ')
+    def names():
+        try: return [r['value'] for r in available_models()]
+        except Exception: return []
+    models = self._cached(('models',), names) if m.group(1) == 'model' or before[:1] == ['model'] else ()
+    return self.buf.cursor - len(cur), [w for w in arg_words(m.group(1), [b for b in before if b], models) if w.startswith(cur) and w != cur]
+
 @patch
 def _refresh_complete(self:Ui):
-    "Refresh slash-command or `@` path completion, saying once why a path cannot be listed."
+    "Refresh slash-command, command argument or `@` path completion, saying once why a path cannot be listed."
     hit = self._file_matches()
     if hit is not None:
         start, matches, note = hit
         self.complete = CompletionMenu(self.buf, matches, start=start, show=8) if matches else None
         if note and note != getattr(self, '_ref_note', ''): self.note(note, 'error')
         self._ref_note = note
+        return
+    if (arg := self._arg_matches()) is not None:
+        self.complete = CompletionMenu(self.buf, arg[1], start=arg[0], show=8) if arg[1] else None
         return
     hits = self._slash_matches()
     self.complete = CompletionMenu(self.buf, hits, start=0, show=8) if hits else None

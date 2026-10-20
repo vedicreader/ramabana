@@ -174,13 +174,16 @@ def cart_tools(cart):
         except Exception as e: return err('could not list stores', e)
 
     @summary(lambda a: f'Shop at {_1(a.get("url"), 100)}')
-    def cart_open(url: str) -> str:
+    def cart_open(url: str, # a store's home page or one product page
+                  ) -> str:
         "Point the shopping session at a store, or at one product page. Do this before searching."
         try: return f'now at {cart.open(url)}'
         except Exception as e: return err(f'could not open {url}', e)
 
     @summary(lambda a: f'Shop search: {_1(a.get("query"))}')
-    def cart_find(query: str, limit: int = 10) -> str:
+    def cart_find(query: str,     # what to search the store for
+                  limit: int = 10, # most products to list
+                  ) -> str:
         "Search the store you are on. Returns numbered products; the number is what `cart_add` takes."
         try:
             rows = cart.find(query, int(limit))
@@ -190,7 +193,10 @@ def cart_tools(cart):
 
     @writes
     @summary(lambda a: f'Add to trolley: {a.get("qty", 1)} x {_1(a.get("item"))}')
-    def cart_add(item: str, qty: int = 1, variant: str = '') -> str:
+    def cart_add(item: str,         # a number from `cart_find`, or an exact product title
+                 qty: int = 1,      # how many to add
+                 variant: str = '', # the size, colour or other option, as the store names it
+                 ) -> str:
         "Put a product in the trolley. `item` is a number from `cart_find`, or an exact title."
         try:
             r = cart.add(item, qty=int(qty), variant=variant or None)
@@ -212,7 +218,8 @@ def cart_tools(cart):
 
     @writes
     @summary(lambda a: f'Remove from trolley: {_1(a.get("line"))}')
-    def cart_remove(line: str) -> str:
+    def cart_remove(line: str, # a line's number in `cart_show`, or its exact title
+                    ) -> str:
         "Take one line out of the trolley, by its number in `cart_show` or by exact title."
         try: return clip(json.dumps(cart.remove(line), default=str))
         except Exception as e: return err(f'could not remove {line!r}', e)
