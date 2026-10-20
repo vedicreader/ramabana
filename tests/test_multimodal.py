@@ -255,7 +255,7 @@ def _drawing_turn(tmp_path, monkeypatch, cols=100, rows=40, turns=1):
 
     monkeypatch.setenv('OPENAI_API_KEY', 'k')
     monkeypatch.setenv('RAMABANA_KITTY', '1')
-    monkeypatch.chdir(tmp_path)
+    (away := tmp_path/'cwd').mkdir(); monkeypatch.chdir(away)   # media goes to the host's folder, not here
     png = _png(600, 600)
     monkeypatch.setattr('shalya.tools.post_image',
                         lambda *a, **kw: [{'b64_json': b64encode(png).decode()}])
@@ -265,7 +265,7 @@ def _drawing_turn(tmp_path, monkeypatch, cols=100, rows=40, turns=1):
         tty = EmuTty(cols, rows)
         comp = Compositor(tty); comp._register_signals = lambda: None
         await comp.start()
-        agent = Agent(MemHost({'/proj/a.py': 'x = 1\n'}), extensions=False, subagents=False, profile='full')
+        agent = Agent(MemHost({f'{tmp_path}/a.py': 'x = 1\n'}, root=str(tmp_path)), extensions=False, subagents=False, profile='full')
         be = ScriptedBackend(steps=[Step(tool=('generate_image', {'prompt': 'a bottle'})),
                                     Step('Drawn. There it is.')], token_delay=0, tools=agent.tools)
         agent.routing.spec = lambda job='turn', fallback=True: be.spec
@@ -298,6 +298,7 @@ def test_a_picture_a_tool_saved_is_not_saved_a_second_time(tmp_path, monkeypatch
     "`last_media` reads the file back as bytes; saving those again writes the same picture twice."
     ui, blob, said = _drawing_turn(tmp_path, monkeypatch)
     files = sorted(p.name for p in (tmp_path/'media').glob('*'))
+    assert not list((tmp_path/'cwd').iterdir())
     assert files == ['generated-1.png'], files
     assert ui.agent.resp_media == []
     assert len(ui.agent.last_media) == 1

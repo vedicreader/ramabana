@@ -1683,7 +1683,7 @@ def show_pic(self:Ui, path):
 def show_media(self:Ui, media, session=''):
     "Save the pictures the model itself returned and show each one."
     for m in media or []:
-        try: p = save_media(m, session or getattr(self.agent, 'session_dir', '') or '.')
+        try: p = save_media(m, session or getattr(self.agent, 'session_dir', ''), host=getattr(self.agent, 'host', None))
         except Exception as e:
             self.say(Text(f'could not save generated media ({agent_err(e)})'), 'error')
             continue

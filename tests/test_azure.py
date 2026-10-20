@@ -176,9 +176,14 @@ def test_the_image_job_goes_where_config_toml_says(monkeypatch, tmp_path):
         sent.append((url, kw['headers']['Authorization']))
         return httpx.Response(200, json={'data': [{'b64_json': b64encode(b'\x89PNG\r\n\x1a\n' + bytes(8)).decode()}]}, request=httpx.Request('POST', url))
     monkeypatch.setattr(httpx, 'post', post)
-    gen = next(t for t in tools_for(FullHost()) if t.__name__ == 'generate_image')
-    gen('a kettle')
+    h = FullHost()
+    gen = next(t for t in tools_for(h) if t.__name__ == 'generate_image')
+    (away := tmp_path/'cwd').mkdir()
+    monkeypatch.chdir(away)
+    out = gen('a kettle')
     assert sent == [(f'{AZ}/images/generations', 'Bearer azk')], 'Azure, never api.openai.com'
+    from pathlib import Path
+    assert Path(out).parent == h.root/'media' and not list(away.iterdir()), 'the host folder, never the working directory'
 
 
 def test_setup_writes_a_provider_and_its_jobs_and_never_a_key(capsys):
