@@ -22,9 +22,9 @@ import base64, contextvars, copy, json, math, mimetypes, os, re, sys, threading,
 from pathlib import Path
 from contextlib import contextmanager
 from dataclasses import dataclass
-from fastcore.basics import patch
+from fastcore.basics import first, patch
 from urai import resp_text, tool_rows, strip_hist_media, strip_media, is_media
-from .setup import setting
+from .setup import config_path, setting
 from .core import accepts, agent_err, claude_wire, env, force_tags, local_ctx, local_window, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
@@ -679,6 +679,7 @@ class Backend:
     narrates=True   # the text before each tool call reaches `hist` or the stream; see `QUIET_RUNTIMES`
     _tag_reminded=False
     turn_error=''   # why the last `send` or `stream` gave a failure note instead of a reply; '' when it answered
+    on_notice=None  # where a frontend shows a status note mid-turn; set on the class, as `TokenLogger.sink` is
     def __init__(self,spec,sp='',tools=(),approve=None,tool_max_len=None,shared=False,**kw):
         self.spec,self.sp,self.tools,self.approve=spec,sp,list(tools),approve
         self.tool_max_len,self.shared,self.kw=tool_max_len,shared,kw
@@ -694,6 +695,13 @@ class Backend:
     def busy(self): return self.lock.locked()
     @property
     def hist(self): return getattr(self.chat,'hist',[]) if self.chat else []
+    def notice(self,text):
+        "Show a status note now: the run's status, and the frontend's `on_notice`, else a problem."
+        if self.run is not None: self.run.set_status(text)
+        if (f:=type(self).on_notice) is not None:
+            try: return f(text)
+            except Exception: pass
+        self.problem(text)
     def problem(self,text):
         text=(text or '').strip()
         if text and (not self.problems or self.problems[-1]!=text): self.problems.append(text)
@@ -982,7 +990,10 @@ class RishiBackend(Backend):
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         if self.spec.runtime in ('remote','copilot') and tool_channel(self.spec)=='tags': kw.setdefault('tool_mode','tags')
         if self.spec.runtime in ('llama','ollama'): kw.setdefault('n_ctx',self.spec.ctx)
-        if self.spec.runtime=='claude': kw.setdefault('effort',env('EFFORT') or setting('runtime.effort') or CLAUDE_EFFORT)
+        if self.spec.runtime=='claude':
+            kw.setdefault('effort',env('EFFORT') or setting('runtime.effort') or CLAUDE_EFFORT)
+            kw.setdefault('on_stall',self.notice)
+            kw.setdefault('timeout_hint',f'timeout under [model."{self._cfg_name()}"] in {config_path()}')
         if self.spec.runtime=='litert':
             eng=dict(kw.pop('eng_kw',{}) or {})
             if 'backend' not in eng and 'backend' not in kw and (backend := env('LITERT_BACKEND') or setting('runtime.litert_backend')):
@@ -994,6 +1005,9 @@ class RishiBackend(Backend):
             kw['eng_kw']=eng
             if conv := dict(kw.pop('conv_kw',{}) or {}): kw['conv_kw']=conv
         return kw
+    def _cfg_name(self):
+        "The `[model.\"NAME\"]` table config.toml holds for this model, else the name to give a new one."
+        return first(n for n in (self.spec.name,self.spec.model_id) if n in (setting('model') or {})) or self.spec.name
     def _measure(self):
         "Narrow the window to what the model was trained for, capped by what is worth filling."
         if not self.spec.local: return

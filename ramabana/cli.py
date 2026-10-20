@@ -13,16 +13,16 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
            'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
            'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
-           'RESUME_SHOWN', 'CLI_FRESH', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key',
-           'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text',
-           'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note',
-           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells',
-           'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer',
-           'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop',
-           'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'amain', 'headless_prompt', 'ask_once', 'host_kw',
-           'main', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media',
-           'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
-           'media_parts', 'media_note']
+           'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH',
+           'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'set_theme', 'plan_text',
+           'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png',
+           'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
+           'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'OpenDiff',
+           'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index',
+           'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'amain', 'headless_prompt',
+           'ask_once', 'host_kw', 'main', 'ref_text', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE',
+           'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs',
+           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -41,7 +41,7 @@ from rich.table import Table
 from rich.padding import Padding
 import fastpylight
 from fastcore.script import call_parse
-from fastcore.basics import patch, ifnone, store_attr
+from fastcore.basics import first, patch, ifnone, store_attr
 from teleprint.buffer import Buffer
 from teleprint.compositor import Compositor
 from teleprint.keys import Key, Parser, _mod
@@ -346,11 +346,11 @@ MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
                     'join', 'kernels', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
 
-HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · alt+up take the queued text back into the composer · enter on an empty line steers the queued one · shift+tab cycle approvals, then plan mode · tab complete /commands · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+o fold all turns · alt+1..9 drill in · ctrl+c stop, keeping what is queued and typed in the composer · ctrl+d quit
+HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · alt+up take the queued text back into the composer · enter on an empty line steers the queued one · shift+tab cycle approvals, then plan mode · tab complete /commands and @paths · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+o fold all turns · alt+1..9 drill in · ctrl+c stop, keeping what is queued and typed in the composer · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
 transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
 edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
-media   drop or paste a path to attach · @path in a prompt · /attach PATH · /detach [N] · ctrl+v or /paste clipboard image
+media   drop or paste a path to attach · @path in a prompt, tab completes files and folders across the open folders, or from ~/, / or ../ when reading outside them is on · @"a path with spaces" · @folder/ attaches its listing · /attach PATH · /detach [N] · ctrl+v or /paste clipboard image
 memory  #note TEXT keeps a line for later sessions · /SKILL ARGS runs a skill or a <cfg>/commands/*.md file ($1..$n, $ARGUMENTS, @path) as a prompt
 copy    select with the mouse · /copy the last reply · /copy turn all of it · ctrl+r then y any block
 approve y approve · n ⏎ refuse · n: REASON ⏎ refuse with a reason · a approve all · ctrl+y approve with a note · A always allow this · anything else re-asks
@@ -422,6 +422,11 @@ WORK
   --profile auto|small|full  the model's tool set and briefing
 FILES AND API
   drop or paste media, write @path, or /attach PATH; /detach drops it.
+  @ then tab completes files and folders in the open folders; a folder
+  completes to @dir/ and further typing narrows inside it. ~/, / and ../
+  list from there when reading outside the open folders is on.
+  @folder/ attaches the folder's listing; quote a path with spaces as
+  @"my notes/plan.md".
   --spec enables api_load, api_ops, and api_call.
 
   /quit or /exit leaves; ctrl+c stops a turn and keeps the session."""
@@ -453,8 +458,8 @@ def guide_text(text):
     return out
 
 # %% ../nbs/05_cli.ipynb #bffc3eec
-from .tools import (MAX_MEDIA, MAX_ATTACH, MEDIA, CLIP_IMAGE, media_path, is_media, media_paths, ATTACH_REF, TRAILING, attach_refs, clipboard_png, Attachment, sendable, media_parts, media_note, _human)
-_all_ = ['MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
+from .tools import (MAX_MEDIA, MAX_ATTACH, MEDIA, CLIP_IMAGE, media_path, is_media, media_paths, ATTACH_REF, TRAILING, ref_tokens, attach_refs, clipboard_png, Attachment, sendable, media_parts, media_note, _human, code_tools, denied, DENY)
+_all_ = ['MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #e6190af7
 KITTY_ENV = ('KITTY_WINDOW_ID', 'GHOSTTY_RESOURCES_DIR')
@@ -551,29 +556,25 @@ def steer_note(atts):
     return f'\n\n<attachments>\n{rows}\n</attachments>\nThese came with this message by path: read each with view_file, which shows a picture.'
 
 def file_refs(text):
-    "Relative paths named as `@path` in a prompt, with sentence punctuation removed."
-    out = []
-    for m in ATTACH_REF.finditer(str(text or '')):
-        tok = m.group(1)
-        while tok and tok[-1] in TRAILING: tok = tok[:-1]
-        if tok: out.append(tok)
-    return out
+    "Paths named as `@path` or `@\"path with spaces\"` in a prompt, sentence punctuation removed from a bare one."
+    return [r for t, q in ref_tokens(text) if (r := t if q else t.rstrip(TRAILING))]
 
 class FileAttachment:
-    "One text or notebook source attachment, captured when the prompt is submitted."
+    "One text or notebook source attachment, or a folder's listing, captured when the prompt is submitted."
     kind = 'file'
-    def __init__(self, path, text): self.path, self.data = Path(path), str(text)
+    def __init__(self, path, text, folder=False): self.path, self.data, self.folder = Path(path), str(text), folder
     @property
     def name(self): return self.path.name
     def __len__(self): return len(self.data)
-    def label(self): return f'{self.name} ({_human(len(self))})'
-    def line(self): return f'file  {self.path}  text/plain  {_human(len(self))}'
+    def label(self): return f'{self.name}/ (listing)' if self.folder else f'{self.name} ({_human(len(self))})'
+    def line(self): return f'folder  {self.path}  listing' if self.folder else f'file  {self.path}  text/plain  {_human(len(self))}'
 
 def file_note(atts):
-    "The grounded text from selected workspace files, with their exact paths."
+    "The grounded text from selected workspace files and folder listings, with their exact paths."
     files = [a for a in atts if a.kind == 'file']
     if not files: return ''
-    return '\n\n<attached-files>\n' + '\n\n'.join(f'<file path="{a.path}">\n{a.data}\n</file>' for a in files) + '\n</attached-files>'
+    tag = lambda a: 'folder' if getattr(a, 'folder', False) else 'file'
+    return '\n\n<attached-files>\n' + '\n\n'.join(f'<{tag(a)} path="{a.path}">\n{a.data}\n</{tag(a)}>' for a in files) + '\n</attached-files>'
 
 # %% ../nbs/05_cli.ipynb #07ecef35
 @dataclass
@@ -654,7 +655,7 @@ async def run_turn(ui, prompt):
     atts, ui.attachments = list(ui.attachments), []
     ui.drawn = 0
     spec = ui.agent.model
-    ask, media = prompt + media_note(atts, spec), media_parts(atts, spec)
+    ask, media = prompt + media_note(atts, spec) + file_note([a for a in atts if getattr(a, 'folder', False)]), media_parts(atts, spec)   # a file goes by path, a folder with its listing
     stopped = threading.Event()
     def post(chunk):
         if stopped.is_set(): return
@@ -777,6 +778,8 @@ class Ui:
         self.proxy_url = ''
         from ramabana.runtime import TokenLogger
         TokenLogger.sink = self._usage_line
+        from ramabana.runtime import Backend
+        Backend.on_notice = self._usage_line
         self._join_ask = ''
         self._suggesting = False
         self.desc = []
@@ -2508,75 +2511,134 @@ def main(
 # %% ../nbs/05_cli.ipynb #240c918c
 @patch
 def attach_file(self:Ui, path):
-    "Attach one readable text/notebook file under the host's file policy."
-    try: p = self.agent.host.check(path, must_exist=True, reading=True)
+    "Attach one readable file, or a folder as its listing, under the host's read policy."
+    host = self.agent.host
+    try: p = host.check(path, must_exist=True, reading=True)
     except TypeError as e:
         if 'reading' not in str(e): return f'cannot attach {path}: {agent_err(e)}'
-        try: p = self.agent.host.check(path, must_exist=True)
+        try: p = host.check(path, must_exist=True)
         except Exception as e: return f'cannot attach {path}: {agent_err(e)}'
     except Exception as e: return f'cannot attach {path}: {agent_err(e)}'
-    p = Path(p).resolve()
-    roots = [Path(r).resolve() for r in self.agent.host.roots]
-    if not any(p == r or r in p.parents for r in roots): return f'cannot attach {p}: outside the open folders'
-    if p.is_dir(): return f'cannot attach {p.name}: it is a folder'
-    if p.suffix.lower() in MEDIA: return self.attach(p)
-    text = self.agent.host.text_at(p)
-    if text is None: return f'cannot attach {p.name}: not readable text'
-    if len(text) > MAX_FILE_ATTACH: return f'cannot attach {p.name}: {_human(len(text))} is over the {_human(MAX_FILE_ATTACH)} limit'
+    p = Path(p)
+    if denied(p, getattr(getattr(host, 'sandbox', None), 'deny', DENY)): return f'cannot attach {p.name}: a credential path is never attached'
+    if p.is_dir(): a = FileAttachment(p, first(t for t in code_tools(host) if t.__name__ == 'ls')(str(p)), folder=True)
+    elif p.suffix.lower() in MEDIA: return self.attach(p)
+    else:
+        text = host.text_at(p) or host.read(p)   # `text_at` reads only inside the open folders
+        if text is None: return f'cannot attach {p.name}: not readable text'
+        if len(text) > MAX_FILE_ATTACH: return f'cannot attach {p.name}: {_human(len(text))} is over the {_human(MAX_FILE_ATTACH)} limit'
+        a = FileAttachment(p, text)
     if len(self.attachments) >= MAX_ATTACH: return f'cannot attach {p.name}: {MAX_ATTACH} is the limit'
-    a = FileAttachment(p, text)
     if any(x.path == a.path for x in self.attachments): return f'{a.name} is already attached'
     self.attachments.append(a)
-    return f'attached file {a.label()}'
+    return f'attached {"folder" if a.folder else "file"} {a.label()}'
+
+REF_AT = re.compile(r'(?<!\S)@("[^"]*|[^\s"]*)$')   #: the `@` reference being typed
+REF_CAP, REF_TTL = 200, 5.0   #: most completions offered, and seconds a listing is reused while typing
+
+def ref_text(s):
+    "`s` as typed after `@`: quoted when it holds whitespace, a folder's quote left open so typing goes on inside it."
+    if not any(c.isspace() for c in s): return s
+    return f'"{s}' if s.endswith('/') else f'"{s}"'
+
+@patch
+def _cached(self:Ui, key, make):
+    "`make()`, reused for `REF_TTL` seconds under `key`."
+    c = self.__dict__.setdefault('_ref_cache', {})
+    if (hit := c.get(key)) and time.monotonic() - hit[0] < REF_TTL: return hit[1]
+    c[key] = (time.monotonic(), (v := make()))
+    return v
+
+@patch
+def _ref_entries(self:Ui):
+    "The files the host's walk finds, .gitignore respected, and the folders holding them: relative to the first root, absolute under the others."
+    host = self.agent.host
+    roots = [Path(r) for r in (*host.roots, *getattr(host, 'read_roots', ()))]
+    deny = getattr(getattr(host, 'sandbox', None), 'deny', DENY)
+    def make():
+        out = set()
+        for f in map(Path, host.walk()):
+            if denied(f, deny): continue
+            rel = f.relative_to(roots[0]) if roots and f.is_relative_to(roots[0]) else f
+            out |= {str(rel), *(f'{d}/' for d in rel.parents if str(d) not in ('.', '/'))}
+        return sorted(out)
+    return self._cached(('walk', *map(str, roots)), make)
+
+@patch
+def _ref_listing(self:Ui, d):
+    "One level of the folder `d` names, through the host's read policy: `(names, why not)`."
+    host = self.agent.host
+    if not hasattr(host, 'sandbox'): return [], 'this host lists only its open folders'
+    def make():
+        try: p = host.check(d, reading=True)
+        except Exception as e:
+            return [], (f'{d} is outside the open folders, and reading outside them is off' if not getattr(host, 'read_outside', False)
+                        else f'cannot list {d}: {agent_err(e)}')
+        try: kids = sorted(p.iterdir(), key=lambda k: k.name.lower()) if p.is_dir() else []
+        except OSError as e: return [], f'cannot list {d}: {agent_err(e)}'
+        out = []
+        for k in kids:
+            try: host.check(k, reading=True)   # what the deny list keeps out is not offered
+            except Exception: continue
+            out.append(k.name + ('/' if k.is_dir() else ''))
+        return out, ''
+    return self._cached(('ls', d), make)
 
 @patch
 def _file_matches(self:Ui):
-    "Root-scoped completion candidates for the final `@query` in the prompt."
-    m = re.search(r'(?<!\S)@([^\s]*)$', self.buf.text[:self.buf.cursor])
-    if m is None: return None
-    query = m.group(1).lower()
-    roots = [Path(r) for r in self.agent.host.roots]
-    rows = []
-    for p in map(Path, self.agent.host.walk()):
-        try:
-            root = next(r for r in roots if p == r or r in p.parents)
-            rel = str(p.relative_to(root))
-        except (StopIteration, ValueError): continue
-        if query in rel.lower(): rows.append(rel)
-    return (m.start(1), sorted(rows))
-
+    "Completion for the `@` reference under the cursor as `(start, matches, why none)`, or None when there is none."
+    if self.mode == 'python' or (m := REF_AT.search(self.buf.text[:self.buf.cursor])) is None: return None
+    q = m.group(1).lstrip('"')
+    d, sep, n = q.rpartition('/')
+    d, low, note = d + sep, n.lower(), ''
+    if q in ('~', '..'): rows = [q + '/']
+    elif q.startswith(('~/', '/', '../')):
+        names, note = self._ref_listing(d)
+        rows = [d + x for x in names if low in x.lower() and (n.startswith('.') or not x.startswith('.'))]
+    elif d: rows = [e for e in self._ref_entries() if e.startswith(d) and e != d and '/' not in e[len(d):].rstrip('/') and low in e[len(d):].lower()]
+    else: rows = [e for e in self._ref_entries() if low in e.lower()]
+    key = lambda e: (not Path(e.rstrip('/')).name.lower().startswith(low), e.rstrip('/').count('/'), not e.endswith('/'), e)
+    return m.start(1), [ref_text(e) for e in sorted(rows, key=key) if '"' not in e][:REF_CAP], note
 
 @patch
 def _refresh_complete(self:Ui):
-    "Refresh slash-command or root-scoped `@` file completion."
+    "Refresh slash-command or `@` path completion, saying once why a path cannot be listed."
     hit = self._file_matches()
     if hit is not None:
-        start, matches = hit
+        start, matches, note = hit
         self.complete = CompletionMenu(self.buf, matches, start=start, show=8) if matches else None
+        if note and note != getattr(self, '_ref_note', ''): self.note(note, 'error')
+        self._ref_note = note
         return
     hits = self._slash_matches()
     self.complete = CompletionMenu(self.buf, hits, start=0, show=8) if hits else None
 
+@patch
+def _in_ref(self:Ui):
+    "Whether the cursor is in an `@` reference, outside Python mode, where `@` is a decorator."
+    return self.ask is None and self.mode != 'python' and REF_AT.search(self.buf.text[:self.buf.cursor]) is not None
 
 _core_on_key_files = Ui.on_key
 @patch
 def on_key(self:Ui, k):
-    "Offer `@` completion with the same Tab menu used for slash commands."
-    if self.ask is None and k.name == 'tab' and self.complete is None and self._file_matches() is not None:
+    "Offer `@` completion with the same Tab menu used for slash commands; a folder completed whole opens onto its contents."
+    if k.name == 'tab' and self.complete is None and self._in_ref():
         self._refresh_complete()
         if self.complete is not None:
             if not self.complete.insert_common(): self.complete.cycle(1)
+            elif self.buf.text[:self.buf.cursor].endswith('/'): self._refresh_complete()
             return self.paint()
     out = _core_on_key_files(self, k)
-    if self.ask is None and self.complete is None and self._file_matches() is not None: self._refresh_complete()
+    if self.complete is None and self._in_ref(): self._refresh_complete()
     return out
-
 
 _core_run_turn_files = run_turn
 async def run_turn(ui, prompt):
-    "Run a turn after capturing its readable `@` file references."
-    for ref in file_refs(prompt): ui.attach_file(ref)
+    "Run a turn after attaching its `@` files and folders, saying what was attached or refused; a word that names nothing is let be."
+    got = [ui.attach_file(ref) for ref in file_refs(prompt)]
+    if (said := [g for g in got if g and 'no such file' not in g and 'already attached' not in g]): ui.note('\n'.join(said))
     return await _core_run_turn_files(ui, prompt)
+
 
 # %% ../nbs/05_cli.ipynb #79efe696
 @patch

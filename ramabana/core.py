@@ -578,7 +578,8 @@ def resolve(name):
 def _corrected(spec):
     "`spec` with config.toml's `[model.\"NAME\"]` window and output cap over fastllm's; the route name wins over the model id."
     if not (o := model_setting(spec.name, spec.model_id)): return spec
-    opts = {**(spec.opts or {}), **({'max_output_tokens': o['max_output_tokens']} if o.get('max_output_tokens') else {})}
+    opts = {**(spec.opts or {}), **({'max_output_tokens': o['max_output_tokens']} if o.get('max_output_tokens') else {}),
+            **({'timeout': o['timeout']} if o.get('timeout') and spec.runtime == 'claude' else {})}
     n = o.get('max_input_tokens') or o.get('ctx')
     return replace(spec, ctx=n or spec.ctx, note='' if n else spec.note, opts=opts)
 

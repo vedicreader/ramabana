@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.53
+
+- A Claude Code turn that sends nothing for 240 seconds is ended and tried once more, and the terminal shows a note saying so. Before, it waited 600 seconds in silence and then failed. Set the limit per model on this machine with `timeout` under `[model."NAME"]` in `~/.config/ramabana/config.toml`. If the retry goes silent too, the turn fails with an error that names the limit and that setting. Text already streamed is not repeated: the retry asks Claude Code to finish the reply. `Backend.notice` puts a status note on the run and passes it to `Backend.on_notice`, which the terminal sets. Requires rishi 0.1.49.
+- `tab` after `@` completes files and folders. It searches the open folders through the host's own file walk, which respects `.gitignore`. A folder completes to `@dir/`, and further typing narrows inside it. A path starting `~/`, `/` or `../` lists from there when the host lets reads go outside the open folders. When it does not, the terminal says so instead of showing nothing. A path with spaces is quoted as `@"my notes/plan.md"`, and `file_refs` and `attach_refs` read the quoted form. In Python mode `@` stays a decorator.
+- An `@folder` in a prompt attaches the folder's one-level listing, which reaches the model inside `<attached-files>`. Before, a folder was refused, and every `@path` failure was dropped silently. Attached files still go by path. A file outside the open folders attaches when the host's read policy allows it, and a credential path such as `.env` is never attached or offered. The terminal says what each `@path` attached or why it could not.
+
 ## 0.2.52
 
 - The beat that `ramabana-tick --install` schedules runs on the `PATH` of the shell that installed it, and `--install` prints that `PATH`. launchd and cron start a job on `/usr/bin:/bin`, so Dhrona's nightly batch found neither `claude` in `~/.local/bin` nor Homebrew's `git-lfs`: a round whose turn model runs on Claude Code could not start, and a replay of a repository that uses Git LFS could not check it out. Run `ramabana-tick --install` again to rewrite an installed launcher. Only `PATH` is carried; a key exported in a shell profile still does not reach the beat. Windows is unchanged.

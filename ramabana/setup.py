@@ -259,6 +259,7 @@ KEYS = {
 MODEL_KEYS = {'max_input_tokens': Key(int, doc='the input window the guard sizes each turn against'),
               'max_output_tokens': Key(int, doc='tokens one reply may spend'),
               'supports_images': Key(bool, doc='whether pictures may be sent to it'),
+              'timeout': Key(float, doc='seconds a Claude Code turn may send nothing before it is ended and tried once more; 240 by default'),
               'model_id': Key(str, doc='defines the model: the id sent to the runtime, such as a deployment name'),
               'runtime': Key(str, doc='the runtime that serves it; remote when an endpoint or key is named'),
               'base_url': Key(str, doc="the API's base URL"),
@@ -428,6 +429,10 @@ MODEL_EXAMPLE = '''
 # max_input_tokens = 272000   # the input window each turn is sized against
 # max_output_tokens = 32000   # tokens one reply may spend
 # supports_images = true      # whether pictures may be sent to it
+
+# A Claude Code turn that sends nothing for `timeout` seconds is ended and tried once more.
+# [model."claude-opus-5-5"]
+# timeout = 240               # raise it on a machine where Claude Code is slow to answer
 
 # A table with `model_id` defines a model of its own under that name, for `[jobs]`, `--model` and `/model`.
 # This one is an Azure OpenAI deployment on the v1 API; the key stays in the env var `api_key_env` names.

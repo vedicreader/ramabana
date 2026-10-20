@@ -123,6 +123,9 @@ margin = 1.2              # charge estimated token counts 20% more
 
 [model."openai/gpt-5.4"]  # correct a number fastllm's table has wrong
 max_input_tokens = 272000
+
+[model."claude-opus-5-5"] # a Claude Code turn silent this long is ended and tried once more
+timeout = 300
 ```
 
 An entry Ramabana cannot use is reported and takes its default; nothing fails to start over it.
@@ -286,7 +289,7 @@ The keys:
 | `ctrl+c` | stop the turn and drop queued lines and any steering the turn has not taken yet. A second press terminates it, a third quits |
 | `ctrl+d` | quit |
 
-A turn reads top to bottom: `┆` narration, `│` a tool call, then the answer. To send a file or an image with the prompt, drop its path on the terminal, write `@path` in the prompt, or use `/attach PATH`.
+A turn reads top to bottom: `┆` narration, `│` a tool call, then the answer. To send a file or an image with the prompt, drop its path on the terminal, write `@path` in the prompt, or use `/attach PATH`. `tab` after `@` completes files and folders in the open folders, and from `~/`, `/` or `../` when reading outside them is on. A folder attaches its listing. Quote a path with spaces: `@"my notes/plan.md"`.
 
 ## Approvals
 

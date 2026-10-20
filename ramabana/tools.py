@@ -11,20 +11,20 @@ __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_TIMEOUT', 'SUB_READ_ONLY', 'SUB_
            'draws_itself', 'image_tools', 'tools_for', 'small_tool', 'ToolEntry', 'ToolCatalog', 'inbox_note',
            'sub_briefing', 'sub_sp', 'bad_json', 'keep_media', 'path_write', 'write_targets', 'status_tool', 'Slots',
            'delegate', 'delegate_many', 'Background', 'named_skills', 'picture_mime', 'read_pictures', 'subagent_tools',
-           'parse_plan_items', 'mod_doc', 'media_path', 'is_media', 'media_paths', 'attach_refs', 'clipboard_png',
-           'Attachment', 'sendable', 'media_parts', 'media_note', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS',
-           'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host',
-           'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE',
-           'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API',
-           'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model',
-           'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text',
-           'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available',
-           'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line',
-           'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost',
-           'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools',
-           'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools',
-           'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools', 'research_tools', 'author_tools',
-           'legacy_tools']
+           'parse_plan_items', 'mod_doc', 'media_path', 'is_media', 'media_paths', 'ref_tokens', 'attach_refs',
+           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'API_VENDORS', 'Capability', 'DENY',
+           'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit',
+           'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API',
+           'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS',
+           'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill',
+           'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied',
+           'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools',
+           'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise',
+           'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost',
+           'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for',
+           'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index',
+           'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools', 'research_tools',
+           'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, contextvars, functools, json, re, tempfile, threading, time, uuid
@@ -796,15 +796,21 @@ def media_paths(text):
     paths = [media_path(t) for t in toks]
     return paths if paths and all(is_media(p) for p in paths) else []
 
-ATTACH_REF = re.compile(r'(?<!\S)@(\S+)')
+ATTACH_REF = re.compile(r'(?<!\S)@(?:"([^"]+)(?:"|\Z)|(\S+))')   # a quoted path may hold spaces, and is left open at the end of a line being typed
 
 TRAILING = '?!,;:.)]}\'"'
 
+def ref_tokens(text):
+    "Each `@path` in `text` as `(path, quoted)`; a bare one keeps whatever punctuation follows it."
+    return [(m[1], True) if m[1] else (m[2].lstrip('"'), False) for m in ATTACH_REF.finditer(str(text or ''))]
+
 def attach_refs(text):
-    "Media named `@path` in a prompt, trailing punctuation stripped."
+    "Media named `@path` or `@\"path\"` in a prompt, trailing punctuation stripped from a bare one."
     out = []
-    for m in ATTACH_REF.finditer(str(text or '')):
-        tok = m.group(1)
+    for tok, quoted in ref_tokens(text):
+        if quoted:
+            if is_media(p := media_path(tok)): out.append(p)
+            continue
         while tok:
             p = media_path(tok)
             if is_media(p):
