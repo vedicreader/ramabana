@@ -12,17 +12,18 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
            'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SETUP_HINT', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
            'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'TOOL_CHANNELS', 'EFFORT_RUNTIMES', 'KEY_ENVS',
-           'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO', 'GEMINI_BASE',
-           'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'claude_wire',
-           'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available',
-           'azure_base', 'azure_endpoint', 'azure_key_env', 'azure_ready', 'azure_host', 'is_azure', 'auth_status',
-           'register_model', 'unregister_model', 'use_aliases', 'alias_path', 'saved_models', 'load_models',
-           'save_model', 'delete_model', 'config_models', 'sync_models', 'model_problems', 'remote_models',
-           'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec', 'unknown_model',
-           'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for',
-           'profile_for', 'force_tags', 'forget_forced_tags', 'norm_channel', 'norm_effort', 'claude_native',
-           'tool_channel', 'effort_support', 'native_support', 'models_table', 'missing_key', 'needs', 'is_local',
-           'Routing', 'provider_ready', 'job_source', 'needs_setup', 'setup_guide', 'image_route', 'video_route']
+           'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS', 'READY_ORDER', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO',
+           'GEMINI_BASE', 'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx',
+           'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail',
+           'runtime_available', 'azure_base', 'azure_endpoint', 'azure_key_env', 'azure_ready', 'azure_host',
+           'is_azure', 'auth_status', 'register_model', 'unregister_model', 'use_aliases', 'alias_path', 'saved_models',
+           'load_models', 'save_model', 'delete_model', 'config_models', 'sync_models', 'model_problems',
+           'remote_models', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec',
+           'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts', 'model_note',
+           'Budget', 'budget_for', 'profile_for', 'force_tags', 'forget_forced_tags', 'norm_channel', 'norm_effort',
+           'claude_native', 'tool_channel', 'effort_support', 'native_support', 'models_table', 'missing_key', 'needs',
+           'is_local', 'Routing', 'provider_ready', 'ready_turn', 'job_source', 'needs_setup', 'setup_guide', 'welcome',
+           'image_route', 'video_route']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time, warnings
@@ -568,7 +569,7 @@ def reachable_hint():
     hint = f'{alt} runs here; choose it with `/model {alt}` or the model picker' if alt else 'no model runs on this machine yet'
     return f'{hint}. {SETUP_HINT}'
 
-SETUP_HINT = '`ramabana setup` lists the providers and adds one'
+SETUP_HINT = '`/login` adds a provider in a session, `ramabana setup` from a shell'
 
 def resolve(name):
     'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec; none is `DFLT_TURN`. A runtime this machine lacks is named in `missing`, not raised.'
@@ -791,6 +792,7 @@ class Routing:
 
     def __post_init__(self):
         sync_models()
+        self.named = bool(self.turn or env('MODEL'))   # named for this run, so `settle` leaves it
         if not self.turn: self.turn = env('MODEL') or setting('jobs.turn') or DFLT_TURN
         self.chosen = set()
         for job in JOBS:   # an env var beats config.toml's `[jobs]`
@@ -827,10 +829,11 @@ class Routing:
         return spec
 
     def alternatives(self, job):
-        "Where `job` goes when its own model cannot run here, best first: Sonnet for `DFLT_SMALL`, the other cloud routes, then `DFLT_FALLBACK` on the machine; nowhere for a job on a local turn."
+        "Where `job` goes when its own model cannot run here, best first: the turn for a job with no model of its own, else Sonnet for `DFLT_SMALL`; then the other cloud routes, then `DFLT_FALLBACK` on the machine; nowhere for a job on a local turn."
         if self.follows_turn(job): return []
         seen, out, n = {self.name_for(job)}, [], self.name_for(job)
-        for alt in (DFLT_SUBAGENT if n == DFLT_SMALL else None, self.policy.get('oneshot') if job in ONESHOT_JOBS else None,
+        lead = (self.turn,) if not self.own(job) else (DFLT_SUBAGENT if n == DFLT_SMALL else None,)
+        for alt in (*lead, self.policy.get('oneshot') if job in ONESHOT_JOBS else None,
                     self.turn, *(self.policy.get(j) for j in JOBS)):
             if alt and alt not in seen and not is_local(alt):
                 seen.add(alt); out.append(alt)
@@ -860,14 +863,15 @@ class Routing:
                 try: spec = self._usable(alt)
                 except Exception: continue
                 if spec.local and alt != DFLT_FALLBACK: continue
-                self.notes[job] = f'{n} {why}; using {alt}'
-                self.fell(n, alt, why)
+                if self.own(job) or alt != self.turn:   # a default landing on the turn is the plan, not news
+                    self.notes[job] = f'{n} {why}; using {alt}'
+                    self.fell(n, alt, why)
                 return spec
             raise err from e
 
     def unset(self, job):
         "Point `job` back at what its env var or config.toml names, else its default; returns the name it now runs on."
-        if job == 'turn': self.turn = env('MODEL') or setting('jobs.turn') or DFLT_TURN; return self.turn
+        if job == 'turn': self.turn, self.named = env('MODEL') or setting('jobs.turn') or DFLT_TURN, bool(env('MODEL')); return self.turn
         self.chosen.discard(job)
         if (v := env(f'MODEL_{job.upper()}') or setting(f'jobs.{job}')): self.policy[job] = v; self.chosen.add(job)
         elif DEFAULT_POLICY.get(job): self.policy[job] = DEFAULT_POLICY[job]
@@ -878,12 +882,17 @@ class Routing:
         "Validate `name`, then point `job` at it."
         spec = resolve(name)
         self.down.pop(name, None)
-        if job == 'turn': self.turn = name
+        if job == 'turn': self.turn, self.named = name, True
         else:
             self.policy[job] = name
             self.chosen.add(job)
         self._cache[name] = spec
         return spec
+
+    def settled(self):
+        "Where a turn nobody named for this run should go because its model cannot run here: `ready_turn()`, or '' when it stays."
+        if self.named or not self._why(self.turn) or not (alt := ready_turn()) or alt == self.turn: return ''
+        return alt
 
     def backends(self):
         "The distinct backend/model pairs this policy needs."
@@ -928,6 +937,23 @@ def provider_ready(key, auth=None):
     if key == 'custom': return bool(remote_models())
     return bool(((auth or auth_status()).get(key) or {}).get('available'))
 
+#: the providers `ready_turn` takes a turn from, best first: subscriptions, then keys; never one that needs a deployment or endpoint named
+READY_ORDER = ('claude', 'codex', 'copilot', 'anthropic', 'openai', 'gemini')
+
+def _ready_model(key):
+    "The turn model provider `key` offers: `DFLT_TURN` where its catalogue has it, else the catalogue's first; Copilot's from what the account lists."
+    if key == 'claude': return DFLT_TURN
+    if key == 'copilot':
+        ids = _copilot_chat_models()
+        return next((f'copilot/{m}' for m in (*CATALOG['anthropic'], *CATALOG['openai']) if m in ids), f'copilot/{ids[0]}' if ids else '')
+    cat = CATALOG.get(key, ())
+    return f'{key}/{DFLT_TURN if DFLT_TURN in cat else cat[0]}' if cat else ''
+
+def ready_turn(auth=None):
+    "The model a turn nobody named should run on here: the first ready provider in `READY_ORDER`, or '' when none is."
+    auth = auth or auth_status()
+    return next((m for k in READY_ORDER if provider_ready(k, auth) and (m := _ready_model(k))), '')
+
 def job_source(routing, job):
     "Where `job`'s model comes from: an env var, config.toml, `set`, the turn it follows, or the default."
     if job == 'turn': return 'env' if env('MODEL') else 'config.toml' if setting('jobs.turn') else 'chosen' if routing.turn != DFLT_TURN else 'default'
@@ -955,6 +981,15 @@ def setup_guide(routing=None):
     out += ['', f'`ramabana setup` adds a provider. By hand, in {config_path()}, for example:', '', PROVIDERS[4]['example'],
             '', 'A [model."NAME"] table with model_id, base_url, api_key_env and api_name defines any OpenAI-compatible model. Keys stay in the environment.']
     return '\n'.join(out)
+
+def welcome(routing=None):
+    "What a session whose turn cannot run says first: why, then the commands that fix it."
+    r = routing or Routing()
+    return '\n'.join([f'Welcome to Ramabana. No model runs here yet: {r.turn} {needs_setup(r).split(";")[0]}.', '',
+                      '  /login         sign in to Claude Code, Codex or Copilot, or add a key or an endpoint',
+                      '  /models        what this machine can run; /model NAME picks one',
+                      '  /config        show and change settings', '',
+                      'Everything runs on one model until you give a job its own.'])
 
 DFLT_IMAGE = 'openai/gpt-image-1'
 NO_IMAGES = ('bedrock-mantle', 'openrouter.ai')   #: hosts with no images endpoint

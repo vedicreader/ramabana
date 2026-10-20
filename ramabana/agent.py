@@ -2332,6 +2332,15 @@ def set_model(self:Agent, name, job='turn'):
     self.note = f'{job} → {model_note(spec)}' + (f' · {self.profile} profile' if job == 'turn' else '')
     return spec
 
+@patch
+def settle(self:Agent):
+    "Move a turn nobody named off a model that cannot run here onto `Routing.settled()`: the line saying so, or ''."
+    was = self.routing.turn
+    if not (alt := self.routing.settled()): return ''
+    why = self.routing._why(was)
+    self.set_model(alt)
+    return f'{was} cannot run here ({why.split(";")[0]}), so this session runs on {alt}, the model ready here · /model to change it, /login to add another'
+
 # %% ../nbs/03_agent.ipynb #942668d4
 @patch
 def set_subagent_writes(self:Agent, enabled):

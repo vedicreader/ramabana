@@ -48,14 +48,14 @@ from teleprint.keys import Key, Parser, _mod
 from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
-from .core import EFFORTS, EXTRAS, JOBS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, available_models, env, installed, model_note, need, needs_setup, setup_guide
+from .core import EFFORTS, EXTRAS, JOBS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, available_models, env, installed, model_note, need, needs_setup, setup_guide, welcome
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
 from .pane import quit_mark, write_snapshot
 from .tools import WRITE_TOOLS, path_write
 from . import hl, setup
 from .hl import HL_THEMES, is_diff
-from .setup import PANE_MODES, TMUX_MODES, Setup, refusal, setup_cli
+from .setup import PANE_MODES, TMUX_MODES, Setup, refusal
 from datetime import datetime
 from . import __version__
 
@@ -2356,7 +2356,9 @@ def show_resumed(self:Ui, n=RESUME_SHOWN):
         elif t.get('error'): self.note(str(t['error']), 'error')
 
 async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto',
-                resumed=False):   # draw the resumed session's turns before the first prompt
+                resumed=False,   # draw the resumed session's turns before the first prompt
+                first='',   # what the session says before anything else: the welcome, or the model it moved to
+                cold=False):   # no model runs here, so none is warmed
     "The tty loop: one terminal, one event loop, one keyboard owner."
     tty = AppTty()
     os.set_blocking(sys.stdout.fileno(), True)   # a process that shared this terminal may have left it non-blocking
@@ -2394,8 +2396,9 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
             ui.say(plan_text(agent.plan.md()), 'plan', fold=None, source=agent.plan.md())
             ui.show_plan = True
         else: ui.say(Text('tab completes /commands · ctrl+t toggles the plan · /help for keys', style=GRUVBOX['gray']), 'note', fold=None)
+        if first: ui.say(Text(first), 'note', fold=None)
         if attach or python or agent_proxy: await ui.warm_up()   # the kernel's host replaces this one, on a started model
-        else: ui.begin()
+        elif not cold: ui.begin()
         if attach: ui.hint = f'{hint} · attached to {await ui.attach_session(attach)}'
         elif python or agent_proxy:
             await ui.enter_python()
@@ -2530,20 +2533,21 @@ def main(
             return 2
         if (was := getattr(agent, 'resumed_roots', None)):
             print(f'that session had also opened {", ".join(was)} · /root add PATH to open again', file=sys.stderr)
-    if (why := needs_setup(agent.routing)) and not (python or attach):
+    own = python or attach   # the kernel's or the attached session's model, not this one's
+    moved = '' if own else agent.settle()
+    cold = not own and bool(needs_setup(agent.routing))
+    if cold and (prompt or not sys.stdin.isatty()):   # nobody is there to read a welcome
         print(setup_guide(agent.routing), file=sys.stderr)
-        if prompt or not sys.stdin.isatty(): return 1
-        try: go = input('Add a provider now with `ramabana setup`? [Y/n] ').strip().lower() in ('', 'y', 'yes')
-        except (EOFError, KeyboardInterrupt): go = False
-        if go and setup_cli([]) == 0: print('start ramabana again to use it', file=sys.stderr)
-        return 0 if go else 1
+        return 1
     if prompt:
+        if moved: print(moved, file=sys.stderr)
         start_agent(agent)
         return sys.exit(ask_once(agent, prompt, as_json=json))
     hint = f"{', '.join(host.roots)} · /python · /help"
     log = stderr_log(agent)
     try:
-        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane, resumed=bool(resume)))
+        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane, resumed=bool(resume),
+                                               first=welcome(agent.routing) if cold else moved, cold=cold))
     except KeyboardInterrupt: pass
     if log.exists() and log.stat().st_size: print(f'library output from the session is in {log}', file=sys.stderr)
 
