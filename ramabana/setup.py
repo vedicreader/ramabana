@@ -15,13 +15,14 @@ from fastcore.xtras import Path
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
            'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'EFFORTS', 'CHANNELS', 'PII_OFF', 'PII_MODES', 'VALUED',
-           'EARLY', 'FLAGS', 'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS',
-           'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG',
-           'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal',
-           'launch_args', 'bare_resume', 'run_cli', 'config_path', 'load_config', 'setting', 'model_setting',
-           'env_names', 'set_setting', 'set_table', 'config_defaults', 'config_template', 'config_show', 'config_set',
-           'config_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
-           'index_gate', 'save_index', 'log_index', 'last_index']
+           'EARLY', 'FLAGS', 'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'Key', 'KEYS', 'MODEL_KEYS',
+           'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE',
+           'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf',
+           'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path', 'keys_path', 'load_keys',
+           'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting', 'set_table',
+           'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset', 'setup_cli',
+           'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate', 'save_index',
+           'log_index', 'last_index']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -202,6 +203,7 @@ def bare_resume(argv):
 def run_cli():
     "The `ramabana` script: rerun inside tmux before anything heavy loads, then parse the command line for `cli.main`."
     global LAUNCHED
+    load_keys()
     if sys.argv[1:2] == ['config']: return config_cli(sys.argv[2:])
     if sys.argv[1:2] == ['setup']: return setup_cli(sys.argv[2:])
     if (msg := need('cli')): return _refuse(msg)()
@@ -227,6 +229,63 @@ CONFIG = '~/.config/ramabana/config.toml'   #: one per machine, edited by hand; 
 def config_path():
     "This machine's config file: `$RAMABANA_CONFIG`, else `CONFIG`. An app that embeds ramabana reads the same file."
     return Path(os.environ.get('RAMABANA_CONFIG') or CONFIG).expanduser()
+
+KEYS_ENV = 'keys.env'   #: owner-only API keys beside config.toml
+
+def keys_path():
+    "This machine's owner-only key file, beside config.toml."
+    return config_path().parent/KEYS_ENV
+
+def load_keys(path=None):
+    "Load keys not already in the environment, refusing a file others can read; returns the names set."
+    p = Path(path).expanduser() if path else keys_path()
+    if not p.exists(): return []
+    if os.name != 'nt' and p.stat().st_mode & 0o077:
+        print(f'{p} is readable by other users, so its keys were not loaded: chmod 600 {p}', file=sys.stderr)
+        return []
+    from dotenv import dotenv_values
+    got = []
+    for name, value in dotenv_values(p, interpolate=False).items():
+        if value is None or name in os.environ: continue
+        if value.startswith('$!'): value = value[1:]
+        elif value.startswith('!'):
+            try:
+                run = subprocess.run(value[1:], shell=True, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30)
+                value = run.stdout.strip() if run.returncode == 0 else ''
+            except (OSError, subprocess.SubprocessError): value = ''
+            if not value:
+                print(f'{name}: key command failed or returned no output', file=sys.stderr)
+                continue
+        os.environ[name] = value
+        got.append(name)
+    return got
+
+def save_key(name, value, path=None):
+    "Save one dotenv key atomically with mode 0600, keeping other entries and comments, and set it in this process."
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', name): raise ValueError('invalid environment variable name')
+    from dotenv.parser import parse_stream
+    p = Path(path).expanduser() if path else keys_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(p, os.O_CREAT | os.O_WRONLY, 0o600)
+    os.close(fd)
+    p.chmod(0o600)
+    stored = f'${value}' if value.startswith('!') else value   # a typed key is text, never a command to run on load
+    escaped = stored.replace('\\', '\\\\').replace("'", "\\'")
+    line, lines, replaced = f"{name}='{escaped}'\n", [], False
+    with p.open() as source:
+        for entry in parse_stream(source):
+            if entry.key == name:
+                if not replaced: lines.append(line)
+                replaced = True
+            else: lines.append(entry.original.string)
+    text = ''.join(lines)
+    if not replaced: text += ('\n' if text and not text.endswith('\n') else '') + line
+    old = os.umask(0o077)   # the temporary file `atomic_save` renames into place holds the key too
+    try: _locked_write(p, text)
+    finally: os.umask(old)
+    p.chmod(0o600)
+    os.environ[name] = value
+    return p
 
 Key = namedtuple('Key', 'type env flag doc choices plain', defaults=('', '', '', (), False))   # `plain`: the env var is read as named, with no prefix
 _JOB = 'the model the {} job runs on; empty takes the routing default'
@@ -527,17 +586,21 @@ def config_cli(argv=()):
         try: print(f'{config_set(a[1], a[2], p)}   # in {p}'); return 0
         except ValueError as e: print(e, file=sys.stderr); return 1
     if cmd != 'init' or set(a[1:]) - {'--force'}: print(CONFIG_USAGE, file=sys.stderr); return 2
-    old = setting('learning')
-    if p.exists():
-        if '--force' not in a:
-            print(f'{p} exists; `ramabana config init --force` replaces it and keeps it as {p.name}.bak', file=sys.stderr)
-            return 1
-        shutil.copy2(p, p.with_name(p.name + '.bak'))
+    if p.exists() and '--force' not in a:
+        print(f'{p} exists; `ramabana config init --force` replaces it and keeps it as {p.name}.bak', file=sys.stderr)
+        return 1
+    print(config_reset(p))
+    return 0
+
+def config_reset(path=None):
+    "Write the commented config.toml, keeping an old one as `config.toml.bak` and its `learning` setting: the line saying so."
+    p = Path(path).expanduser() if path else config_path()
+    old, bak = setting('learning'), p.exists()
+    if bak: shutil.copy2(p, p.with_name(p.name + '.bak'))
     _locked_write(p, config_template())
     _LOADED.pop(p, None)
     if old is not None: set_setting('learning', old, p)
-    print(f'wrote {p}')
-    return 0
+    return f'wrote {p}' + (f'; the old one is {p.name}.bak' if bak else '')
 
 
 # %% ../nbs/19_setup.ipynb #13410d75
@@ -555,8 +618,8 @@ def _flags(argv):
     return out
 
 def setup_cli(argv=(), ask=input, isatty=None, out=print):
-    "`ramabana setup`: add a provider's model to config.toml and name the jobs it serves. Asks only on a terminal; never writes a key."
-    from ramabana.core import AZURE_KEY_ENV, JOBS, PROVIDERS, azure_base, provider_ready, setup_guide
+    "`ramabana setup`: add a provider's model to config.toml, as the turn when no model runs here yet (`--jobs` names others). Asks only on a terminal; never writes a key."
+    from ramabana.core import AZURE_KEY_ENV, JOBS, PROVIDERS, azure_base, needs_setup, provider_ready, setup_guide
     f = _flags(argv)
     if f is None: print(SETUP_USAGE, file=sys.stderr); return 2
     tty = (isatty or (lambda: sys.stdin.isatty() and sys.stdout.isatty()))()
@@ -587,7 +650,7 @@ def setup_cli(argv=(), ask=input, isatty=None, out=print):
         else:
             name = get('model_id', 'model name, as /models lists it')
             if not name: out('no model named; nothing written'); return 1
-        jobs = [j.strip() for j in get('jobs', f'jobs it serves ({", ".join(JOBS)}, image, video; empty for none)').split(',') if j.strip()]
+        jobs = [j.strip() for j in f.get('jobs', '').split(',') if j.strip()] or (['turn'] if not setting('jobs.turn') and needs_setup() else [])   # the first model here runs every job
         if (bad := [j for j in jobs if j not in (*JOBS, 'image', 'video')]): out(f'unknown job {bad[0]!r}; nothing more written'); return 1
         if jobs: set_table('jobs', {j: name for j in jobs}); out(f'[jobs] {", ".join(jobs)} = "{name}"')
     except (EOFError, KeyboardInterrupt): return 1
@@ -754,5 +817,7 @@ def doctor(self:Setup):
           f'ramabana-pane: {pane}' if pane else 'ramabana-pane: not on PATH; the pane runs python -m ramabana.pane',
           f"extras: {', '.join(miss)} missing: pip install 'ramabana[{','.join(miss)}]'" if miss else 'extras: all installed',
           f'kosha: {last_index(self.cfg) or f"no decision yet; the first session writes {self.cfg/KOSHA_LOG}"}', sep='\n')
+    from ramabana.core import checklist, getting_started
+    print('', 'getting started:', checklist(getting_started()), sep='\n')
     if not v: self.offer_install(force=True)
     return 0

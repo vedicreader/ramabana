@@ -34,7 +34,7 @@ from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
-from .setup import load_config, set_table, setting
+from .setup import config_path, config_reset, config_set, config_show, load_config, set_table, setting
 from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
@@ -2339,7 +2339,42 @@ def settle(self:Agent):
     if not (alt := self.routing.settled()): return ''
     why = self.routing._why(was)
     self.set_model(alt)
+    self.routing.picked.discard('turn'); self.routing.named = False   # a stand-in, so config.toml can still name the turn
     return f'{was} cannot run here ({why.split(";")[0]}), so this session runs on {alt}, the model ready here · /model to change it, /login to add another'
+
+@patch
+def apply_config(self:Agent):
+    "Take config.toml's `[jobs]` again for every job this session has not set itself: one line per job that moved."
+    out, r = [], self.routing
+    for job in JOBS:
+        if job in r.picked or (job == 'turn' and r.named): continue
+        before = r.name_for(job)
+        if job == 'turn':
+            if not (want := setting('jobs.turn')) or want == before: continue
+            try: self.set_model(want)
+            except Exception as e: out.append(f'turn stays on {before}: {agent_err(e)}'); continue
+            r.picked.discard('turn'); r.named = False
+        elif r.unset(job) == before: continue
+        if job == 'subagent': self._catalogs.clear(); self._views.clear()
+        out.append(f'{job} → {r.name_for(job)}')
+    return out
+
+@patch
+def config_command(self:Agent, arg=''):
+    "`/config`: `show` what is in effect, its `path`, `set KEY VALUE`, `reset` to the commented template, or `reload` after an edit by hand."
+    cmd, _, rest = (arg.strip() or 'show').partition(' ')
+    if cmd == 'show': return config_show()
+    if cmd == 'path': return str(config_path())
+    try:
+        if cmd == 'set':
+            key, _, raw = rest.strip().partition(' ')
+            if not raw.strip(): return 'say /config set KEY VALUE; /config shows every key'
+            said = config_set(key, raw.strip())
+        elif cmd == 'reset': said = config_reset()
+        elif cmd == 'reload': said = f'read {config_path()}'
+        else: return 'say /config [show | path | set KEY VALUE | edit | reset | reload]'
+    except (ValueError, OSError) as e: return str(e)
+    return '\n'.join([said, *self.apply_config()])
 
 # %% ../nbs/03_agent.ipynb #942668d4
 @patch
@@ -3605,8 +3640,13 @@ def command(self:Agent, line):
             if len(w) != 1: return 'say /model tools native|text|auto, with --save to keep it in config.toml'
             try: return self.set_tool_channel(w[0], save='--save' in m.split())
             except (RuntimeError, ValueError, OSError) as e: return str(e)
-        try: return f'{model_note(self.set_model(m or job, job if m else "turn"))} · {self.profile} profile'
+        if not (words := [w for w in arg.split() if w != '--save']): return 'say /model [JOB] NAME --save to keep it in config.toml'
+        pick, job = words[-1], words[0] if len(words) > 1 else 'turn'
+        try: out = f'{model_note(self.set_model(pick, job))} · {self.profile} profile'
         except Exception as e: return agent_err(e)
+        if '--save' not in arg.split(): return out
+        try: return f'{out}\nsaved {config_set(f"jobs.{job}", pick)} in {config_path()}'
+        except (ValueError, OSError) as e: return f'{out}\nnot saved: {e}'
     if name == 'sessions':
         every = self.sessions()
         rows = every if arg.lower() == 'all' else [s for s in every if self._from_here(s['id'])]   # this folder's, unless asked for all
@@ -3620,6 +3660,7 @@ def command(self:Agent, line):
             return f"resumed {s['id']} · {s['turns']} turns · {s['model']}"
         except Exception as e: return agent_err(e)
     if name == 'models': return models_table(self.model.name, legacy=arg.lower() in ('all', 'legacy'))
+    if name == 'config': return self.config_command(arg)
     if name == 'subagents': return (d := self.subagents_command(arg))['error'] or d['note']
     if name == 'planmode':
         try: on = self.set_plan_mode(arg.lower() in ('on', 'yes', 'true', '1')) if arg else self.plan_mode
@@ -4078,7 +4119,7 @@ def unwatch(self:Agent, target='all'):
 @patch
 def commands(self:Agent):
     "Every command name, built-in and registered, for a help line or an autocomplete."
-    return sorted({'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
+    return sorted({'config', 'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
                    'subagents', 'plan', 'planmode', 'todos', 'todo', 'rewind', 'branches', 'branch', 'commit', 'pr', 'learned', *self.registry.commands})
 
 # %% ../nbs/03_agent.ipynb #8fd374fe

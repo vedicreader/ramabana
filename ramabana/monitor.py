@@ -401,15 +401,16 @@ def beat_env_path():
 def _open(p): return os.name != 'nt' and bool(p.stat().st_mode & 0o077)
 
 def load_beat_env(path=None):
-    "Set `beat.env`'s keys in this process under names not already set, unless others can read the file; returns the names set."
-    p = Path(path or beat_env_path())
-    if not p.exists(): return []
-    if _open(p):
-        print(f'{p} is readable by other users, so its keys were not loaded: chmod 600 {p}', file=sys.stderr)
-        return []
+    "Load `beat.env`, then `keys.env`, under names not already set; returns only the names set from `beat.env`."
+    from ramabana.setup import load_keys
     from dotenv import dotenv_values
-    got = {k: v for k, v in dotenv_values(p).items() if v is not None and k not in os.environ}
-    os.environ.update(got)
+    p, got = Path(path or beat_env_path()), {}
+    if p.exists():
+        if _open(p): print(f'{p} is readable by other users, so its keys were not loaded: chmod 600 {p}', file=sys.stderr)
+        else:
+            got = {k: v for k, v in dotenv_values(p).items() if v is not None and k not in os.environ}
+            os.environ.update(got)
+    load_keys()
     return list(got)
 
 def beat_problems(hb=None, tools=BEAT_TOOLS):

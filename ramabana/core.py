@@ -12,7 +12,7 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
            'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SETUP_HINT', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
            'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'TOOL_CHANNELS', 'EFFORT_RUNTIMES', 'KEY_ENVS',
-           'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS', 'READY_ORDER', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO',
+           'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS', 'READY_ORDER', 'KEY_VARS', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO',
            'GEMINI_BASE', 'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx',
            'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail',
            'runtime_available', 'azure_base', 'azure_endpoint', 'azure_key_env', 'azure_ready', 'azure_host',
@@ -22,15 +22,16 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts', 'model_note',
            'Budget', 'budget_for', 'profile_for', 'force_tags', 'forget_forced_tags', 'norm_channel', 'norm_effort',
            'claude_native', 'tool_channel', 'effort_support', 'native_support', 'models_table', 'missing_key', 'needs',
-           'is_local', 'Routing', 'provider_ready', 'ready_turn', 'job_source', 'needs_setup', 'setup_guide', 'welcome',
-           'image_route', 'video_route']
+           'is_local', 'Routing', 'provider_ready', 'ready_model', 'ready_turn', 'job_source', 'needs_setup',
+           'setup_guide', 'welcome', 'on_wsl', 'getting_started', 'checklist', 'watch_getting_started', 'image_route',
+           'video_route']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time, warnings
 from urllib.parse import urlsplit, urlunsplit
 from fastcore.all import Path, atomic_save, first
 from shalya.host import HostError
-from .setup import CHANNELS, EFFORTS, ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES, config_path, model_setting, setting
+from .setup import CHANNELS, EFFORTS, ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES, config_path, load_keys, model_setting, setting
 import urai, rishi.core   # registers rishi's backends with urai
 from .models import CATALOG, claude_ids, claude_aliases, provider_models
 from dataclasses import dataclass, field, replace
@@ -798,15 +799,20 @@ class Routing:
         for job in JOBS:   # an env var beats config.toml's `[jobs]`
             if (v := env(f'MODEL_{job.upper()}') or (job != 'turn' and setting(f'jobs.{job}'))): self.policy[job] = v; self.chosen.add(job)
         self._cache, self.notes, self.said, self.news = {}, {}, set(), []
+        self.picked = set()   # jobs this session set with `set`, which a config.toml change leaves alone
         self.down = {}   # name -> (why, when): a cloud model set aside for `DOWN_TTL`, or until named again
 
     def own(self, job):
         "Whether `job` has a model of its own: set by env, `set`, or a policy that is not the default."
         return bool(v := self.policy.get(job)) and (job in self.chosen or v != DEFAULT_POLICY.get(job))
 
+    def chose(self, job):
+        "Whether someone chose `job`'s model: its own, or for a cheap job, `oneshot`'s."
+        return self.own(job) or (job in ONESHOT_JOBS and self.own('oneshot'))
+
     def follows_turn(self, job):
-        "Whether `job` stays on a local turn: it has no model of its own, nor through `oneshot`."
-        return job != 'turn' and is_local(self.turn) and not self.own(job) and not (job in ONESHOT_JOBS and self.own('oneshot'))
+        "Whether `job` stays on a local turn: nobody chose its model."
+        return job != 'turn' and is_local(self.turn) and not self.chose(job)
 
     def name_for(self, job='turn'):
         "The model name for `job`: a local turn's when it follows one, else its policy, then `oneshot` for a cheap job, then `turn`."
@@ -832,7 +838,7 @@ class Routing:
         "Where `job` goes when its own model cannot run here, best first: the turn for a job with no model of its own, else Sonnet for `DFLT_SMALL`; then the other cloud routes, then `DFLT_FALLBACK` on the machine; nowhere for a job on a local turn."
         if self.follows_turn(job): return []
         seen, out, n = {self.name_for(job)}, [], self.name_for(job)
-        lead = (self.turn,) if not self.own(job) else (DFLT_SUBAGENT if n == DFLT_SMALL else None,)
+        lead = (self.turn,) if not self.chose(job) else (DFLT_SUBAGENT if n == DFLT_SMALL else None,)
         for alt in (*lead, self.policy.get('oneshot') if job in ONESHOT_JOBS else None,
                     self.turn, *(self.policy.get(j) for j in JOBS)):
             if alt and alt not in seen and not is_local(alt):
@@ -863,7 +869,7 @@ class Routing:
                 try: spec = self._usable(alt)
                 except Exception: continue
                 if spec.local and alt != DFLT_FALLBACK: continue
-                if self.own(job) or alt != self.turn:   # a default landing on the turn is the plan, not news
+                if self.chose(job) or alt != self.turn:   # a default landing on the turn is the plan, not news
                     self.notes[job] = f'{n} {why}; using {alt}'
                     self.fell(n, alt, why)
                 return spec
@@ -871,6 +877,7 @@ class Routing:
 
     def unset(self, job):
         "Point `job` back at what its env var or config.toml names, else its default; returns the name it now runs on."
+        self.picked.discard(job)
         if job == 'turn': self.turn, self.named = env('MODEL') or setting('jobs.turn') or DFLT_TURN, bool(env('MODEL')); return self.turn
         self.chosen.discard(job)
         if (v := env(f'MODEL_{job.upper()}') or setting(f'jobs.{job}')): self.policy[job] = v; self.chosen.add(job)
@@ -882,6 +889,7 @@ class Routing:
         "Validate `name`, then point `job` at it."
         spec = resolve(name)
         self.down.pop(name, None)
+        self.picked.add(job)
         if job == 'turn': self.turn, self.named = name, True
         else:
             self.policy[job] = name
@@ -913,18 +921,22 @@ class Routing:
         return '\n'.join(rows)
 
 # %% ../nbs/00_core.ipynb #1604ccee
-#: what each provider needs, and a config.toml that uses it; `provider_ready` says which are set up here
+#: what each provider needs, and a config.toml that uses it; `provider_ready` says which are set up here.
+#: `/login` runs `login`, the provider's own sign-in, after `install` when its program is missing, and asks for the key in `env`
 PROVIDERS = (
-    dict(key='claude', label='Claude Code subscription', needs='Claude Code installed and `claude /login`', example='[jobs]\nturn = "claude-opus-5-5"'),
-    dict(key='codex', label='Codex (ChatGPT) subscription', needs='`codex login`', example='[jobs]\nsummary = "gpt-6-luna"'),
-    dict(key='openai', label='OpenAI API', needs='OPENAI_API_KEY', example='[jobs]\nturn = "gpt-5.4"'),
-    dict(key='azure', label='Azure OpenAI', needs='AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY', example='[jobs]\nturn = "azure/<deployment>"'),
-    dict(key='bedrock', label='AWS Bedrock, OpenAI-compatible (Mantle) endpoint', needs='AWS_BEARER_TOKEN_BEDROCK, a Bedrock API key',
+    dict(key='claude', label='Claude Code subscription', needs='Claude Code installed and `claude /login`', example='[jobs]\nturn = "claude-opus-5-5"',
+         login=('claude', 'auth', 'login'), install='curl -fsSL https://claude.ai/install.sh | bash'),
+    dict(key='codex', label='Codex (ChatGPT) subscription', needs='`codex login`', example='[jobs]\nsummary = "gpt-6-luna"',
+         login=('codex', 'login'), install='npm install -g @openai/codex'),
+    dict(key='openai', label='OpenAI API', needs='OPENAI_API_KEY', example='[jobs]\nturn = "gpt-5.4"', env='OPENAI_API_KEY'),
+    dict(key='azure', label='Azure OpenAI', needs='AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY', example='[jobs]\nturn = "azure/<deployment>"', env='AZURE_OPENAI_API_KEY'),
+    dict(key='bedrock', label='AWS Bedrock, OpenAI-compatible (Mantle) endpoint', needs='AWS_BEARER_TOKEN_BEDROCK, a Bedrock API key', env='AWS_BEARER_TOKEN_BEDROCK',
          example='[model."bedrock-gpt"]\nmodel_id = "openai.gpt-5.4"\nbase_url = "https://bedrock-mantle.<region>.api.aws/v1"\napi_key_env = "AWS_BEARER_TOKEN_BEDROCK"\napi_name = "openai"\n\n[jobs]\nturn = "bedrock-gpt"'),
-    dict(key='anthropic', label='Anthropic API', needs='ANTHROPIC_API_KEY', example='[jobs]\nturn = "anthropic/<model>"'),
-    dict(key='gemini', label='Gemini API', needs='GEMINI_API_KEY', example='[jobs]\nturn = "gemini/<model>"'),
-    dict(key='openrouter', label='OpenRouter', needs='OPENROUTER_API_KEY', example='[jobs]\nturn = "openrouter/<vendor>/<model>"'),
-    dict(key='copilot', label='GitHub Copilot subscription', needs='a Copilot sign-in in an editor', example='[jobs]\nturn = "copilot/<model>"'),
+    dict(key='anthropic', label='Anthropic API', needs='ANTHROPIC_API_KEY', example='[jobs]\nturn = "anthropic/<model>"', env='ANTHROPIC_API_KEY'),
+    dict(key='gemini', label='Gemini API', needs='GEMINI_API_KEY', example='[jobs]\nturn = "gemini/<model>"', env='GEMINI_API_KEY'),
+    dict(key='openrouter', label='OpenRouter', needs='OPENROUTER_API_KEY', example='[jobs]\nturn = "openrouter/<vendor>/<model>"', env='OPENROUTER_API_KEY'),
+    dict(key='copilot', label='GitHub Copilot subscription', needs='a Copilot sign-in', example='[jobs]\nturn = "copilot/<model>"',
+         login=(sys.executable, '-c', 'from rishi.copilot import copilot_login; copilot_login()')),
     dict(key='custom', label='Any OpenAI-compatible endpoint', needs='its base URL, and an env var holding its key',
          example='[model."mine"]\nmodel_id = "<model>"\nbase_url = "https://<host>/v1"\napi_key_env = "MY_API_KEY"\napi_name = "openai_chat"'),
     dict(key='local', label='On this machine', needs='a local runtime: LiteRT ships with rishi; mlx, llama.cpp or ollama', example='[jobs]\nturn = "gemma-e4b"'))
@@ -940,7 +952,7 @@ def provider_ready(key, auth=None):
 #: the providers `ready_turn` takes a turn from, best first: subscriptions, then keys; never one that needs a deployment or endpoint named
 READY_ORDER = ('claude', 'codex', 'copilot', 'anthropic', 'openai', 'gemini')
 
-def _ready_model(key):
+def ready_model(key):
     "The turn model provider `key` offers: `DFLT_TURN` where its catalogue has it, else the catalogue's first; Copilot's from what the account lists."
     if key == 'claude': return DFLT_TURN
     if key == 'copilot':
@@ -952,7 +964,7 @@ def _ready_model(key):
 def ready_turn(auth=None):
     "The model a turn nobody named should run on here: the first ready provider in `READY_ORDER`, or '' when none is."
     auth = auth or auth_status()
-    return next((m for k in READY_ORDER if provider_ready(k, auth) and (m := _ready_model(k))), '')
+    return next((m for k in READY_ORDER if provider_ready(k, auth) and (m := ready_model(k))), '')
 
 def job_source(routing, job):
     "Where `job`'s model comes from: an env var, config.toml, `set`, the turn it follows, or the default."
@@ -990,6 +1002,47 @@ def welcome(routing=None):
                       '  /models        what this machine can run; /model NAME picks one',
                       '  /config        show and change settings', '',
                       'Everything runs on one model until you give a job its own.'])
+
+def on_wsl():
+    "Whether this is Linux under Windows' WSL."
+    if os.environ.get('WSL_DISTRO_NAME'): return True
+    try: return 'microsoft' in Path('/proc/version').read_text().lower()
+    except OSError: return False
+
+#: the key variables `getting_started` reports, in `PROVIDERS` order
+KEY_VARS = tuple(p['env'] for p in PROVIDERS if p.get('env'))
+
+def getting_started(auth=None, wsl=None):
+    "What a first run should know about this machine: `(done, line)` rows, the last saying which model a session runs on."
+    auth, wsl = auth or auth_status(), on_wsl() if wsl is None else wsl
+    here, prov = ' inside WSL' if wsl else '', {p['key']: p for p in PROVIDERS}
+    rows = [(True, 'WSL: Ramabana sees this Linux only, so logins, programs and variables set in Windows do not reach it')] if wsl else []
+    for key, name, prog in (('claude', 'Claude Code', 'claude'), ('codex', 'Codex', 'codex')):
+        ok = bool(auth[key]['available'])
+        rows.append((ok, f'{name}: signed in' if ok else f'{name}: installed, not signed in; /login {key}' if shutil.which(prog)
+                         else f"{name}: not installed{here}; {prov[key]['install']}, then /login {key}"))
+    ok = bool(auth['copilot']['available'])
+    rows.append((ok, 'GitHub Copilot: signed in' if ok else 'GitHub Copilot: not signed in; /login copilot'))
+    keys = [k for k in KEY_VARS if os.environ.get(k)]
+    rows.append((bool(keys), f"API keys: {', '.join(keys)}" if keys else
+                 'API keys: none set; /login openai, anthropic or gemini keeps one in keys.env' + ('; a key set in Windows does not reach WSL' if wsl else '')))
+    tm = 'sudo apt install tmux' if shutil.which('apt-get') else 'brew install tmux' if shutil.which('brew') else 'install tmux'
+    rows.append((bool(os.environ.get('TMUX')), 'tmux: this session runs in it' if os.environ.get('TMUX') else f'tmux: not running here; {tm} for the side panes'))
+    m = ready_turn(auth)
+    return rows + [(bool(m), f'Ready: a session runs on {m}' if m else 'Not ready: no model runs here yet; sign in to one of the above')]
+
+def checklist(rows):
+    "`getting_started` rows as lines, each marked done or to do."
+    return '\n'.join(f"{'✓' if ok else '·'} {line}" for ok, line in rows)
+
+def watch_getting_started(every=3):
+    "The Getting started pane: the checklist, drawn again every `every` seconds until a model is ready."
+    while True:
+        load_keys()   # a key `/login` saved in the session beside this pane
+        rows = getting_started()
+        print('\x1b[2J\x1b[HGetting started with Ramabana\n\n' + checklist(rows) + '\n\n/login in the session beside this pane signs in, or keeps a key.', flush=True)
+        if rows[-1][0]: return print('\nA model is ready. You can close this pane.', flush=True)
+        time.sleep(every)
 
 DFLT_IMAGE = 'openai/gpt-image-1'
 NO_IMAGES = ('bedrock-mantle', 'openrouter.ai')   #: hosts with no images endpoint

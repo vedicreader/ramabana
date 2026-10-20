@@ -195,10 +195,10 @@ def test_setup_writes_a_provider_and_its_jobs_and_never_a_key(capsys):
     d = tomllib.loads(config_path().read_text())
     assert d['model']['bed'] == {'model_id': 'openai.gpt-5.4', 'base_url': 'https://bedrock-mantle.eu-west-1.api.aws/v1', 'api_key_env': 'AWS_BEARER_TOKEN_BEDROCK', 'api_name': 'openai'}
     assert d['jobs'] == {'turn': 'bed', 'summary': 'bed'}
-    answers = iter(['4', 'gpt-5.4', 'https://res.openai.azure.com/', '', '', '', 'completion'])
+    answers = iter(['4', 'gpt-5.4', 'https://res.openai.azure.com/', '', '', ''])
     assert setup_cli([], ask=lambda q: next(answers), isatty=lambda: True, out=lambda *a: None) == 0
     d = tomllib.loads(config_path().read_text())
-    assert d['model']['azure-gpt-5.4']['base_url'] == AZ and d['jobs']['completion'] == 'azure-gpt-5.4' and d['jobs']['turn'] == 'bed'
+    assert d['model']['azure-gpt-5.4']['base_url'] == AZ and d['jobs'] == {'turn': 'bed', 'summary': 'bed'}, 'no jobs question, and a named turn stays'
     assert setup_cli([], isatty=lambda: False) == 2 and 'Providers:' in capsys.readouterr().err, 'headless: the guide, no prompt'
     config_path().write_text('learning = [')
     assert setup_cli(['--provider', 'openai', '--model-id', 'gpt-5.4', '--jobs', 'turn'], isatty=lambda: False) == 1 and config_path().read_text() == 'learning = ['

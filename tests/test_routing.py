@@ -223,7 +223,7 @@ def no_codex_login(monkeypatch, tmp_path):
     monkeypatch.delenv('CODEX_AUTH_TOKEN', raising=False)
     monkeypatch.setenv('CODEX_AUTH_PATH', str(tmp_path/'auth.json'))
 
-def test_without_a_codex_login_medium_jobs_fall_back_and_say_so_once(monkeypatch, tmp_path):
+def test_without_a_codex_login_medium_jobs_fall_back_to_the_turn_quietly(monkeypatch, tmp_path):
     no_model_env(monkeypatch); no_codex_login(monkeypatch, tmp_path)
     monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: FakeBackend(spec, **kw))
     notes = []
@@ -231,8 +231,7 @@ def test_without_a_codex_login_medium_jobs_fall_back_and_say_so_once(monkeypatch
     a = Agent(h, extensions=False, subagents=False)
     for job in ('classify', 'completion'): assert a.routing.spec(job).name == 'claude-haiku-5-5'
     for job in ('oneshot', 'summary', 'inline', 'summary'): assert a._be_or_none(job).spec.name == 'claude-opus-5-5'
-    said = [n for n in notes if core.DFLT_MEDIUM in n]
-    assert len(said) == 1 and 'Codex login' in said[0] and 'claude-opus-5-5' in said[0], notes
+    assert not [n for n in notes if core.DFLT_MEDIUM in n], 'a job nobody gave a model runs on the turn, and that is no news'
 
 
 # -- with no cloud route left, a job runs on Gemma on the machine ------------------------

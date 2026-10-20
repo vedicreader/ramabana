@@ -13,16 +13,17 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK',
            'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
            'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
-           'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'ALIVE_EVERY',
-           'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg',
-           'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
-           'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option',
-           'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table',
-           'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md',
-           'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'loop_error',
-           'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'pane_cmd', 'MAX_MEDIA',
-           'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING',
-           'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
+           'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'GUIDE_CMD',
+           'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme',
+           'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
+           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
+           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich',
+           'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode',
+           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log',
+           'pick_session', 'loop_error', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text',
+           'arg_words', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media',
+           'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment',
+           'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, itertools, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -49,13 +50,15 @@ from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
 from .core import EFFORTS, EXTRAS, JOBS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, available_models, env, installed, model_note, need, needs_setup, setup_guide, welcome
+from .core import PROVIDERS, auth_status, checklist, config_models, getting_started, provider_ready, ready_model
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
 from .pane import quit_mark, write_snapshot
 from .tools import WRITE_TOOLS, path_write
 from . import hl, setup
 from .hl import HL_THEMES, is_diff
-from .setup import PANE_MODES, TMUX_MODES, Setup, refusal
+from .setup import PANE_MODES, SETUP_FIELDS, TMUX_MODES, Setup, config_path, config_reset, keys_path, model_setting, refusal, save_key, setup_cli
+import getpass
 from datetime import datetime
 from . import __version__
 
@@ -349,7 +352,7 @@ MAX_GROUP_ROWS = 8
 DIFF_OPEN = 20    #: diff lines a finished call shows until the reader opens it
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
-                    'join', 'kernels', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
+                    'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
 
 HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · alt+up take the queued text back into the composer · enter on an empty line steers the queued one · shift+tab cycle approvals, then plan mode · tab complete /commands and @paths · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+o fold all turns · alt+1..9 drill in · ctrl+c stop, keeping what is queued and typed in the composer · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
@@ -364,6 +367,7 @@ options ↑/↓ move · enter choose · an option's own letter picks it · esc c
 shell   !COMMAND runs it in the first open folder, in agent mode · ctrl+c interrupts it, twice kills it · the output stays out of the model's context
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /planmode on|off withholds every tool that acts and asks for a plan · /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
+setup   /login lists the providers · /login NAME signs in, or keeps a key or an endpoint · /config shows each setting and where it came from · /config set KEY VALUE · /config edit · /config reset · /config reload · /model NAME --save keeps it
 extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
 subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N, timeout S, nest N · /subagents model NAME|default, effort low|medium|high|xhigh|max|default, tools native|text|auto, each with --save to keep it · tab completes them
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
@@ -412,6 +416,10 @@ READING A TURN
   Narration, calls and the answer land in the order they happened.
   ctrl+o folds or opens all the working; alt+1..9 opens one entry.
   ctrl+r browses, searches and copies blocks; /mouse to click them.
+SETUP
+  /login [NAME]  sign in to a provider, or keep its key or endpoint
+  /config  /config set KEY VALUE  /config edit  /config reset  /config reload
+  /model NAME --save  switch model and keep it in config.toml
 WORK
   /plan  /todo  /sessions  /resume [ID|latest]  /model [NAME]
   /model tools native|text|auto [--save]  how the turn's tools travel
@@ -2403,7 +2411,8 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         elif python or agent_proxy:
             await ui.enter_python()
             if agent_proxy: await ui.enable_agent_proxy()
-        ui.start_pane(pane)
+        if cold: ui.open_guide()
+        else: ui.start_pane(pane)
         ui.paint()
         comp._reader_on()
         try:
@@ -2413,7 +2422,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
                 if tty.dropped: tty.dropped = False; comp._invalidate(); ui.paint()   # repaint the rows a dropped frame never drew
         finally: comp.stop()
     finally:
-        if ui is not None: ui.close_pane()
+        if ui is not None: ui.close_pane(); ui.close_guide()
         with contextlib.suppress(OSError): os.set_blocking(sys.stdout.fileno(), True)   # the shell gets the terminal back blocking
         tty.write('\x1b[?2004l' + MOUSE_OFF + (KEYS_OFF if ext_keys_ok(tty) else '') + '\r\n')   # `stop` never ran if setup raised
         tty.restore()
@@ -2738,11 +2747,84 @@ def open_root(self:Ui, path=''):
     return self.note(f'opened {opened} · reads and writes now reach it')
 
 
+@patch
+async def lend(self:Ui, fn):
+    "Run `fn` in a thread with the terminal lent to it in the shell's own line mode, then take it back: what `fn` returned."
+    async with self.comp.borrow():
+        self.comp.tty.restore()   # `borrow` lends raw mode, where a prompt's Enter never ends its line
+        return await asyncio.to_thread(fn)
+
+@patch
+async def edit_config(self:Ui):
+    "Open config.toml in `$VISUAL`, `$EDITOR`, nano or vi, then apply what changed."
+    p = config_path()
+    if not p.exists(): config_reset(p)
+    ed = os.environ.get('VISUAL') or os.environ.get('EDITOR') or next((e for e in ('nano', 'vi') if shutil.which(e)), '')
+    if not ed: return self.note(f'no editor found: set $EDITOR, or edit {p} and then /config reload', 'error')
+    code = await self.lend(lambda: subprocess.run([*shlex.split(ed), str(p)]).returncode)
+    said = self.agent.config_command('reload')
+    return self.note(said if not code else f'{ed} exited {code}\n{said}')
+
+GUIDE_CMD = f"{shlex.quote(sys.executable)} -c 'from ramabana.core import watch_getting_started; watch_getting_started()'"
+
+@patch
+def open_guide(self:Ui):
+    "Open the Getting started pane beside a session with no model; outside tmux, show its checklist here."
+    try: self.guide = self.agent.host.open_pane(GUIDE_CMD, title='Getting started')
+    except Exception:
+        self.guide = None
+        return self.note(checklist(getting_started()))
+
+@patch
+def close_guide(self:Ui):
+    "Close the Getting started pane, if one is open."
+    if (g := getattr(self, 'guide', None)) is None: return
+    self.guide = None
+    with contextlib.suppress(Exception): self.agent.host.close_pane(g)
+
+@patch
+def login_list(self:Ui):
+    "`/login` alone: every provider, and which are ready here."
+    auth = auth_status()
+    rows = [f"  {p['key']:10} {p['label']:48} {'ready' if provider_ready(p['key'], auth) else ''}".rstrip() for p in PROVIDERS if p['key'] != 'local']
+    return self.note('\n'.join(['/login NAME signs in, or keeps a key or an endpoint:', *rows]))
+
+@patch
+async def login(self:Ui, key):
+    "Sign in to provider `key`: its own login in this terminal, its endpoint into config.toml, its key into keys.env; a turn that cannot run moves to it."
+    if (p := next((p for p in PROVIDERS if p['key'] == key and key != 'local'), None)) is None: return self.note(f'no provider {key!r}; /login lists them', 'error')
+    before = set(config_models())
+    if (cmd := p.get('login')):
+        if not shutil.which(cmd[0]): return self.note(f"{p['label']} needs `{cmd[0]}` on this machine's PATH first: {p.get('install') or p['needs']}", 'error')
+        await self.lend(lambda: subprocess.run(list(cmd)))
+    if key in SETUP_FIELDS: await self.lend(lambda: setup_cli(['--provider', key]))
+    new = [n for n in config_models() if n not in before]
+    for k in dict.fromkeys([p.get('env'), *(model_setting(n).get('api_key_env') for n in new)]):
+        if not k or os.environ.get(k): continue
+        got = await self.lend(lambda: getpass.getpass(f'{k}, hidden, kept in {keys_path()} for you alone (empty skips): '))
+        if got.strip(): save_key(k, got.strip())
+    if not (new or provider_ready(key)): return self.note(f"{p['label']} is not ready yet: it needs {p['needs']}", 'error')
+    pick, r = new[-1] if new else ready_model(key), self.agent.routing
+    if pick and r._why(r.turn):
+        try: self.agent.set_model(pick)
+        except Exception as e: return self.note(f"{p['label']} is ready, but {pick} would not start: {agent_err(e)}", 'error')
+        self.close_guide()
+        return self.note(f"{p['label']} is ready, and this session runs on {pick} · /model {pick} --save keeps it")
+    return self.note(f"{p['label']} is ready" + (f' · /model {pick} to use it' if pick else ''))
+
+
 _submit_theme = Ui.submit
 @patch
 def submit(self:Ui):
-    "Handle `/theme`, `/root` and `/pane` before other commands."
+    "Handle `/theme`, `/root`, `/pane`, `/login` and `/config edit` before other commands."
     line = self.buf.text.strip()
+    if line == '/login' or line.startswith('/login '):
+        self.buf.clear()
+        key = line[len('/login'):].strip().lower()
+        return self.start_turn(self.login(key)) if key else self.login_list()
+    if line == '/config edit':
+        self.buf.clear()
+        return self.start_turn(self.edit_config())
     if line == '/pane' or line.startswith('/pane '):
         self.buf.clear()
         self._quick = 0
