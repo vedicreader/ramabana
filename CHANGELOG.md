@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.59
+
+- Requires rishi 0.1.52. A Gemini model routed as `gemini/<model>` no longer gets 404, and a Claude Code session that fails while connecting is tried once more, with a note in the session.
+
 ## 0.2.58
 
 - A session no longer freezes and then quits on the next key when its terminal was left non-blocking. A process that shares the terminal can set it non-blocking; a large frame then went out in part and the next write failed with `EAGAIN`. `AppTty` counted that as a hangup, dropped every later write, and the next keypress ended the session with status 0, which closed the tmux session. Since 0.2.17. `AppTty.write` now writes the whole frame and waits up to `WRITE_WAIT` (5 seconds) for a full terminal to drain. Past that it drops the rest of the frame and the next tick repaints the screen. Only an error other than `EAGAIN` marks the terminal gone. `amain` sets the terminal blocking when it starts and again before it hands the terminal back.
