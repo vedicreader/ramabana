@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.52
+
+- The beat that `ramabana-tick --install` schedules runs on the `PATH` of the shell that installed it, and `--install` prints that `PATH`. launchd and cron start a job on `/usr/bin:/bin`, so Dhrona's nightly batch found neither `claude` in `~/.local/bin` nor Homebrew's `git-lfs`: a round whose turn model runs on Claude Code could not start, and a replay of a repository that uses Git LFS could not check it out. Run `ramabana-tick --install` again to rewrite an installed launcher. Only `PATH` is carried; a key exported in a shell profile still does not reach the beat. Windows is unchanged.
+
 ## 0.2.51
 
 - Requires rishi 0.1.48 and uraiyadal 0.0.15. A `<parameter>` element a model leaves outside any tool call is stripped from the reply text instead of shown.

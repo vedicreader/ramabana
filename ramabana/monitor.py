@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/monitor.html.md"""
 # %% ../nbs/17_monitor.ipynb #a361b376
 from __future__ import annotations
 
-import fnmatch, json, shlex, subprocess, sys, threading, time, uuid
+import fnmatch, json, os, shlex, subprocess, sys, threading, time, uuid
 from collections import Counter, deque
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -356,10 +356,11 @@ def beat_notice(notes, mx=REVIEW_MAX_CHARS):
 BEAT_TAG = 'ramabana'   #: names the launcher, log and job
 TICK_GROUP = 'ramabana.ticks'   #: entry points: each name is a schedule, each value the callback a fire of it runs
 
-def beat_command(exe):
-    "`exe --quiet` as the launcher's shell reads it, with `exe` quoted."
-    q = subprocess.list2cmdline([str(exe)]) if sys.platform == 'win32' else shlex.quote(str(exe))
-    return f'{q} --quiet'
+def beat_command(exe, path=None):
+    "`exe --quiet` as the launcher's shell reads it, quoted; off Windows it runs on `path`, the installing `PATH` by default."
+    if sys.platform == 'win32': return f'{subprocess.list2cmdline([str(exe)])} --quiet'
+    path = os.environ.get('PATH', '') if path is None else path
+    return (f'/usr/bin/env PATH={shlex.quote(path)} ' if path else '') + f'{shlex.quote(str(exe))} --quiet'
 
 LEARNING_TICKS = ('dhrona',)   #: schedules that learn, and so do nothing while learning is off
 LEARNING_OFF = 'learning is off'
@@ -392,6 +393,7 @@ def tick(db: str = '',         # the shared database; pobblebonk's own by defaul
             print('stopped' if hb.uninstall(BEAT_TAG) else 'nothing was scheduled')
             return 0
         print(f'every {every}s: {hb.install(beat_command(Path(sys.executable).parent/"ramabana-tick"), tag=BEAT_TAG, every=every)}')
+        if sys.platform != 'win32': print(f"each beat runs on this PATH: {os.environ.get('PATH', '')}")
         return 0
     p = pob(db or None)
     if p is None:

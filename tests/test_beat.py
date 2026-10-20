@@ -73,6 +73,33 @@ def test_the_installed_launcher_runs_a_tick_whose_path_has_a_space(tmp_path):
     assert (tmp_path/'t.log').read_text() == 'ran --quiet\n'
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='the launcher here is a shell script')
+def test_the_installed_launcher_carries_the_installing_path(tmp_path, monkeypatch):
+    "launchd and cron run a job on `/usr/bin:/bin`, where Dhrona's nightly found neither `claude` nor `git-lfs`."
+    from pobblebonk.heartbeat import launcher
+    tools = tmp_path/"it's $HOME tools"/'bin'
+    tools.mkdir(parents=True)
+    (tools/'claude').write_text('#!/bin/sh\n'); (tools/'claude').chmod(0o755)
+    exe = tmp_path/'ramabana-tick'
+    exe.write_text('#!/bin/sh\ncommand -v claude || echo missing\n'); exe.chmod(0o755)
+    monkeypatch.setenv('PATH', f'{tools}:/usr/bin:/bin')
+    sh = launcher(beat_command(exe), dirn=tmp_path, tag='t', win=False)
+    subprocess.run([str(sh)], check=True, env={'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(tmp_path)})
+    assert (tmp_path/'t.log').read_text() == f'{tools}/claude\n'
+
+
+def test_a_beat_installed_without_a_path_runs_the_bare_command(monkeypatch):
+    monkeypatch.delenv('PATH', raising=False)
+    assert beat_command('/x/ramabana-tick') == '/x/ramabana-tick --quiet'
+    assert beat_command('/x/ramabana-tick', path='') == '/x/ramabana-tick --quiet'
+
+
+def test_the_windows_beat_command_is_unchanged(monkeypatch):
+    "Task Scheduler gives a job the user's environment."
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    assert beat_command(r'C:\a b\ramabana-tick', path='C:\\bin') == r'"C:\a b\ramabana-tick" --quiet'
+
+
 def test_a_session_reads_the_beat_under_its_own_id_and_only_once(tmp_path, monkeypatch):
     import ramabana.monitor as mo
     # a real database at a real path, so `beat` opens it the way it would on a machine with a beat
