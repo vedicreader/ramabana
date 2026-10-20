@@ -261,7 +261,7 @@ KEYS = {
 }
 #: what a `[model."NAME"]` table may correct in fastllm's numbers for that model, and, given `model_id`, what defines a model of that name
 MODEL_KEYS = {'max_input_tokens': Key(int, doc='the input window the guard sizes each turn against'),
-              'max_output_tokens': Key(int, doc='tokens one reply may spend'),
+              'max_output_tokens': Key(int, doc="tokens one reply may spend; unset, the model's own maximum, or 16000 for a model fastllm does not know"),
               'supports_images': Key(bool, doc='whether pictures may be sent to it'),
               'timeout': Key(float, doc='seconds a Claude Code turn may send nothing before it is ended and tried once more; 240 by default'),
               'model_id': Key(str, doc='defines the model: the id sent to the runtime, such as a deployment name'),
@@ -433,7 +433,7 @@ MODEL_EXAMPLE = '''
 # runs past the window it was trained for.
 # [model."openai/gpt-5.4"]
 # max_input_tokens = 272000   # the input window each turn is sized against
-# max_output_tokens = 32000   # tokens one reply may spend
+# max_output_tokens = 32000   # tokens one reply may spend; unset, the model's own maximum (16000 if unknown)
 # supports_images = true      # whether pictures may be sent to it
 
 # A Claude Code turn that sends nothing for `timeout` seconds is ended and tried once more.

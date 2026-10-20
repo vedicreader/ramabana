@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.61
+
+- Requires rishi 0.1.54 and uraiyadal 0.0.16. A hosted model's tool call cut off at the output limit, or with arguments that are not JSON, goes back to the model once, at a raised cap when cut off. A second failure fails the turn or the delegation with `ToolCallError` and the reason, for example "delegation failed after the sub-agent was asked: openai/gpt-5.6 failed (ToolCallError: openai/gpt-5.6's tool call was cut off at its 16384-token output limit; …)". It failed with a bare `JSONDecodeError`. A reply cut off while the model was still thinking is handled the same way.
+- A hosted model with no `max_output_tokens` in config.toml now gets its own maximum output from fastllm's model table, or 16,000 tokens when the table does not know it. It got 4096, which a reasoning model's thinking could use up. The `max_output_tokens` key's documentation says so.
+
 ## 0.2.60
 
 - Requires rishi 0.1.53, gheasy 0.0.14 and fossick 0.1.20 (search). `claude --version`, `ollama serve`, Git through gheasy's gateway, and Chrome and `gh_clone`'s git in fossick get `/dev/null` as standard input, so none of them can read keystrokes or set the session's terminal non-blocking.
