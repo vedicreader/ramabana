@@ -32,7 +32,7 @@ from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
-from .core import accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, needs, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
+from .core import accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .setup import load_config, setting
 from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
@@ -2309,7 +2309,9 @@ def lend_model(self:Agent):
         b = self._backends.get((spec.backend, spec.model_id))
         engine = getattr(getattr(b, 'chat', None), 'engine', None)
         shared = {'engine': engine} if spec.local and engine is not None else {}
-        return Chat(spec.model_id, runtime=spec.runtime, ctx_limit=spec.ctx, **shared, **kw)
+        cfg = {k: v for k, v in (spec.config or {}).items() if k != 'api_key_env'}   # an endpoint of its own, as the session's backend has
+        if (k := (spec.config or {}).get('api_key_env')): cfg['api_key'] = os.environ.get(k)
+        return Chat(spec.model_id, runtime=spec.runtime, ctx_limit=spec.ctx, **{**cfg, **shared, **kw})
     self.host.mk_chat = mk
     return True
 
@@ -3304,7 +3306,7 @@ def problems(self:Agent):
         for p in b.problems:
             if p not in out: out.append(p)
     if (n := self.compactor.note).startswith('compaction') and n not in out: out.append(n)
-    out += [b for b in load_config()[1] if b not in out]
+    out += [b for b in load_config()[1] + model_problems() if b not in out]
     if self.approvals is not None and self.approvals.problem: out.append(self.approvals.problem)
     return out[-10:]
 

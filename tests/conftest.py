@@ -27,3 +27,11 @@ def hide_runtime(monkeypatch):
 def _own_config(tmp_path_factory, monkeypatch):
     "Point every test at a config.toml of its own, so none reads or writes the machine's."
     monkeypatch.setenv('RAMABANA_CONFIG', str(tmp_path_factory.mktemp('config')/'config.toml'))
+
+
+@pytest.fixture(autouse=True)
+def _own_aliases(tmp_path_factory, monkeypatch):
+    "Saved aliases in a file of each test's own, and no Azure OpenAI from the machine's environment."
+    import ramabana.core as core
+    monkeypatch.setattr(core, 'MODEL_ALIASES', tmp_path_factory.mktemp('aliases')/'models.json')
+    for k in ('AZURE_OPENAI_ENDPOINT', 'AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_DEPLOYMENTS'): monkeypatch.delenv(k, raising=False)

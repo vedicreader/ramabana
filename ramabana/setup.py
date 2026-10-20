@@ -18,7 +18,7 @@ __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN'
            'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'Key', 'KEYS', 'MODEL_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE',
            'CONFIG_USAGE', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need',
            'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path',
-           'load_config', 'setting', 'model_setting', 'set_setting', 'config_defaults', 'config_template',
+           'load_config', 'setting', 'model_setting', 'env_names', 'set_setting', 'config_defaults', 'config_template',
            'config_show', 'config_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
            'index_gate', 'save_index', 'log_index', 'last_index']
 
@@ -224,7 +224,7 @@ def config_path():
     "This machine's config file: `$RAMABANA_CONFIG`, else `CONFIG`. An app that embeds ramabana reads the same file."
     return Path(os.environ.get('RAMABANA_CONFIG') or CONFIG).expanduser()
 
-Key = namedtuple('Key', 'type env flag doc choices', defaults=('', '', '', ()))
+Key = namedtuple('Key', 'type env flag doc choices plain', defaults=('', '', '', (), False))   # `plain`: the env var is read as named, with no prefix
 _JOB = 'the model the {} job runs on; empty takes the routing default'
 #: every key config.toml knows: its type, the env var (after the prefix) and the flag that beat it, what it sets, and its choices
 KEYS = {
@@ -241,6 +241,9 @@ KEYS = {
     'runtime.effort': Key(str, 'EFFORT', '', 'the reasoning effort a Claude turn asks for'),
     'runtime.tool_channel': Key(str, 'TOOL_CHANNEL', '', 'native sends tool schemas on the wire, tags in the prompt; empty decides per model', ('', 'native', 'tags')),
     'runtime.litert_backend': Key(str, 'LITERT_BACKEND', '', 'the engine a LiteRT model runs on; empty lets LiteRT choose', ('', 'cpu', 'gpu')),
+    'azure.endpoint': Key(str, 'AZURE_OPENAI_ENDPOINT', '', 'the Azure OpenAI resource, such as https://NAME.openai.azure.com; a model named azure/DEPLOYMENT goes to its v1 API', plain=True),
+    'azure.api_key_env': Key(str, '', '', 'the env var holding the Azure OpenAI key; the key never goes in this file'),
+    'azure.deployments': Key(list, 'AZURE_OPENAI_DEPLOYMENTS', '', 'the deployments the picker lists and the routing may use, the first for the turn; the env var is comma-separated', plain=True),
     'cli.approve': Key(str, '', '--approve', 'which actions the terminal session asks about', ('ask', 'edits', 'auto', 'off', 'none')),
     'cli.theme': Key(str, '', '--theme', 'the terminal palette', ('auto', 'dark', 'light')),
     'cli.tmux': Key(str, '', '--tmux', 'whether the terminal session runs in tmux panes', ('auto', 'on', 'off')),
@@ -249,10 +252,17 @@ KEYS = {
     'cli.max_tool_calls': Key((int, str), '', '--max-tool-calls', 'tool calls one turn may make: auto, or 20 to 400'),
     'cli.max_steps': Key((int, str), '', '--max-steps', 'model and tool steps one turn may take: auto, or 8 to 80'),
 }
-#: what a `[model."NAME"]` table may correct in fastllm's numbers for that model
+#: what a `[model."NAME"]` table may correct in fastllm's numbers for that model, and, given `model_id`, what defines a model of that name
 MODEL_KEYS = {'max_input_tokens': Key(int, doc='the input window the guard sizes each turn against'),
               'max_output_tokens': Key(int, doc='tokens one reply may spend'),
-              'supports_images': Key(bool, doc='whether pictures may be sent to it')}
+              'supports_images': Key(bool, doc='whether pictures may be sent to it'),
+              'model_id': Key(str, doc='defines the model: the id sent to the runtime, such as a deployment name'),
+              'runtime': Key(str, doc='the runtime that serves it; remote when an endpoint or key is named'),
+              'base_url': Key(str, doc="the API's base URL"),
+              'api_key_env': Key(str, doc='the env var holding its key; never the key'),
+              'api_name': Key(str, doc="fastllm's wire format: openai (Responses), openai_chat, anthropic or gemini"),
+              'vendor_name': Key(str, doc='the fastllm vendor, when it is not the one the model id implies'),
+              'ctx': Key(int, doc='the same as max_input_tokens')}
 
 def _why(key, v):
     "What `v` would have to be to suit `key`, or '' when it does."
@@ -261,6 +271,7 @@ def _why(key, v):
     elif t is int: ok, need = isinstance(v, int) and not isinstance(v, bool) and v >= 0, 'a whole number, 0 or more'
     elif t is float: ok, need = isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 1, 'a number, 1 or more'
     elif t is str: ok, need = isinstance(v, str), 'a string'
+    elif t is list: ok, need = isinstance(v, list) and all(isinstance(x, str) for x in v), 'a list of strings'
     else: ok, need = isinstance(v, t) and not isinstance(v, bool), 'a number or a string'
     if ok and key.choices and v not in key.choices: ok, need = False, 'one of ' + ', '.join(map(repr, key.choices))
     return '' if ok else need
@@ -315,7 +326,11 @@ def model_setting(*names):
 
 def _toml(v):
     "`v` as a TOML value."
-    return ('true' if v else 'false') if isinstance(v, bool) else json.dumps(v) if isinstance(v, str) else repr(v)
+    return ('true' if v else 'false') if isinstance(v, bool) else json.dumps(v) if isinstance(v, (str, list)) else repr(v)
+
+def env_names(key):
+    "The env vars that beat `key`, most specific first: its name as given for a `plain` key, else under each prefix."
+    return [key.env] if key.plain else [p+key.env for p in env_prefixes()] if key.env else []
 
 def _locked_write(p, text):
     import fcntl
@@ -350,12 +365,12 @@ from itertools import groupby
 
 def config_defaults():
     "Every key's built-in default, read from the module that owns it."
-    from ramabana.core import DEFAULT_POLICY, DFLT_TURN
+    from ramabana.core import AZURE_KEY_ENV, DEFAULT_POLICY, DFLT_TURN
     from ramabana.runtime import CLAUDE_EFFORT, EST_MARGIN, IMG_TOKENS, KEEP_RECENT, RESERVE
     d = {'learning': True, 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
          'window.margin': EST_MARGIN, 'window.image_tokens': IMG_TOKENS, 'window.reserve': RESERVE, 'window.keep_recent': KEEP_RECENT,
          'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'summary', 'runtime.effort': CLAUDE_EFFORT,
-         'runtime.tool_channel': '', 'runtime.litert_backend': ''}
+         'runtime.tool_channel': '', 'runtime.litert_backend': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'azure.deployments': []}
     try:
         from ramabana.cli import main
         ps = inspect.signature(getattr(main, '__wrapped__', main)).parameters
@@ -376,6 +391,15 @@ MODEL_EXAMPLE = '''
 # max_input_tokens = 272000   # the input window each turn is sized against
 # max_output_tokens = 32000   # tokens one reply may spend
 # supports_images = true      # whether pictures may be sent to it
+
+# A table with `model_id` defines a model of its own under that name, for `[jobs]`, `--model` and `/model`.
+# This one is an Azure OpenAI deployment on the v1 API; the key stays in the env var `api_key_env` names.
+# [model."az-big"]
+# model_id = "gpt-5.4"        # the deployment name
+# base_url = "https://NAME.openai.azure.com/openai/v1"
+# api_key_env = "AZURE_OPENAI_API_KEY"
+# api_name = "openai"         # the Responses API; the default on an Azure host
+# max_input_tokens = 272000
 '''
 
 def config_template():
@@ -384,7 +408,7 @@ def config_template():
     for table, rows in groupby(KEYS.items(), lambda kv: kv[0].rpartition('.')[0]):
         if table: out.append(f'[{table}]')
         for k, key in rows:
-            beat = ' and '.join(x for x in (key.flag and f'the flag {key.flag}', key.env and f'${ENV_DEFAULT[0]}{key.env}') if x)
+            beat = ' and '.join(x for x in (key.flag and f'the flag {key.flag}', key.env and f'${"" if key.plain else ENV_DEFAULT[0]}{key.env}') if x)
             out += [f'# {key.doc}' + (f'; {beat} beats it' if beat else ''), f'# {k.rpartition(".")[2]} = {_toml(d.get(k, ""))}']
         out.append('')
     return '\n'.join(out) + MODEL_EXAMPLE
@@ -396,7 +420,7 @@ def config_show(path=None):
     d = config_defaults()
     rows = [f'# {p}' + ('' if p.exists() else ' does not exist; `ramabana config init` writes one')]
     for k, key in KEYS.items():
-        e = next((pre + key.env for pre in env_prefixes() if key.env and os.environ.get(pre + key.env)), None)
+        e = next((n for n in env_names(key) if os.environ.get(n)), None)
         v, src = (os.environ[e], f'${e}') if e else (vals[k], 'config.toml') if k in vals else (d.get(k, ''), 'built-in')
         rows.append(f'{k} = {_toml(v)}   # {src}' + (f'; {key.flag} beats it' if key.flag else ''))
     for name, o in vals.get('model', {}).items():

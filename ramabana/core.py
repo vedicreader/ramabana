@@ -8,22 +8,26 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE_ALIASES', 'CLAUDE', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
            'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PROBE_TTL', 'PROBE_DIR', 'HARNESS',
-           'DFLT_TURN', 'DFLT_SMALL', 'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES',
-           'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
-           'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'API_KEYS', 'MODEL_ALIASES', 'TOOL_CHANNELS',
-           'KEY_ENVS', 'CODEX_LOGIN', 'DOWN_TTL', 'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix', 'env',
-           'claude_ctx', 'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail',
-           'runtime_available', 'auth_status', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx',
+           'AZURE_KEY_ENV', 'AZURE_HOSTS', 'API_KEYS', 'MODEL_ALIASES', 'DEFINES', 'DFLT_TURN', 'DFLT_SMALL',
+           'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
+           'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'AZURE_UNNAMED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
+           'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'TOOL_CHANNELS', 'KEY_ENVS', 'CODEX_LOGIN',
+           'DOWN_TTL', 'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx',
+           'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail',
+           'runtime_available', 'azure_base', 'azure_endpoint', 'azure_key_env', 'azure_deployments', 'azure_ready',
+           'azure_host', 'is_azure', 'auth_status', 'register_model', 'unregister_model', 'use_aliases', 'alias_path',
+           'saved_models', 'load_models', 'save_model', 'delete_model', 'config_models', 'sync_models',
+           'model_problems', 'remote_models', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx',
            'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts',
-           'model_note', 'Budget', 'budget_for', 'profile_for', 'register_model', 'unregister_model', 'alias_path',
-           'saved_models', 'load_models', 'save_model', 'delete_model', 'force_tags', 'forget_forced_tags',
-           'tool_channel', 'missing_key', 'needs', 'is_local', 'Routing']
+           'model_note', 'Budget', 'budget_for', 'profile_for', 'force_tags', 'forget_forced_tags', 'tool_channel',
+           'missing_key', 'needs', 'is_local', 'Routing']
 
 # %% ../nbs/00_core.ipynb #41a0b203
-import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time
+import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time, warnings
+from urllib.parse import urlsplit, urlunsplit
 from fastcore.all import Path, atomic_save
 from shalya.host import HostError
-from .setup import ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES, model_setting, setting
+from .setup import ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES, config_path, model_setting, setting
 import urai, rishi.core   # registers rishi's backends with urai
 from .models import CATALOG, claude_ids, claude_aliases, provider_models
 from dataclasses import dataclass, field, replace
@@ -231,6 +235,41 @@ def _codex_login():
     "Whether a Codex sign-in is on hand: its token in the environment, or `codex login`'s auth file."
     return bool(os.getenv('CODEX_AUTH_TOKEN') or _json_has(os.getenv('CODEX_AUTH_PATH', '~/.codex/auth.json'), 'tokens', 'access_token'))
 
+AZURE_KEY_ENV = 'AZURE_OPENAI_API_KEY'
+AZURE_HOSTS = ('.azure.com', '.azure.us', '.azure.cn')   #: public, Government and China clouds
+
+def azure_base(url):
+    "Azure OpenAI's v1 API base for a resource URL, however much of a path or query it carries; '' for none."
+    if not (url := (url or '').strip()): return ''
+    u = urlsplit(url if '://' in url else f'https://{url}')
+    path = u.path.rstrip('/')
+    return urlunsplit((u.scheme, u.netloc, (path[:path.index('/openai')] if '/openai' in path else path) + '/openai/v1', '', ''))
+
+def azure_endpoint():
+    "The v1 base of `$AZURE_OPENAI_ENDPOINT`, else of config.toml's `azure.endpoint`, else ''."
+    return azure_base(os.environ.get('AZURE_OPENAI_ENDPOINT') or setting('azure.endpoint'))
+
+def azure_key_env():
+    "The env var holding the Azure OpenAI key: config.toml's `azure.api_key_env`, else `AZURE_KEY_ENV`."
+    return setting('azure.api_key_env') or AZURE_KEY_ENV
+
+def azure_deployments():
+    "The deployments in `$AZURE_OPENAI_DEPLOYMENTS`, comma-separated, else config.toml's `azure.deployments`, in order."
+    v = os.environ.get('AZURE_OPENAI_DEPLOYMENTS')
+    return list(dict.fromkeys(d.strip() for d in (v.split(',') if v else setting('azure.deployments') or []) if d.strip()))
+
+def azure_ready():
+    "Whether Azure OpenAI has an endpoint and its key is in the environment."
+    return bool(azure_endpoint() and os.environ.get(azure_key_env()))
+
+def azure_host(url):
+    "Whether `url` is on an Azure host."
+    return (urlsplit(url or '').hostname or '').endswith(AZURE_HOSTS)
+
+def is_azure(spec):
+    "Whether `spec` goes to Azure OpenAI: named `azure/...`, or its `base_url` is an Azure host."
+    return str(getattr(spec, 'name', '')).startswith('azure/') or azure_host((getattr(spec, 'config', None) or {}).get('base_url'))
+
 def auth_status():
     'Which credential sources this machine has, per vendor, without reading or returning any secret.'
     codex = _codex_login()
@@ -243,7 +282,146 @@ def auth_status():
         'claude': {'available': claude_login, 'source': 'Claude Code login' if claude_login else ''},
         'gemini': {'available': bool(os.getenv('GEMINI_API_KEY')), 'source': 'GEMINI_API_KEY'},
         'copilot': {'available': copilot, 'source': 'GitHub Copilot sign-in' if copilot else ''},
+        'azure': {'available': azure_ready(), 'source': f'AZURE_OPENAI_ENDPOINT and {azure_key_env()}' if azure_ready() else ''},
     }
+
+# %% ../nbs/00_core.ipynb #3e2adbad
+def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):
+    "Add a model name that lasts until this process exits; `save_model` keeps one on disk."
+    name, model_id = (name or '').strip(), (model_id or '').strip()
+    if model_id.startswith(('https://huggingface.co/', 'http://huggingface.co/')): 
+        model_id = model_id.split('huggingface.co/', 1)[1].strip('/').split('/tree/', 1)[0]
+    if not name: name = model_id.rsplit('/', 1)[-1]
+    if not name or not model_id: raise ValueError('model name and model id are required')
+    if runtime is None:
+        from urai import resolve_runtime
+        runtime, model_id = resolve_runtime(model_id)
+    if runtime not in RUNTIME_NAMES: raise ValueError(f'unknown runtime {runtime!r}')
+    if runtime != 'remote' and not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
+    MODELS[name] = (runtime, model_id); _LOCAL_CTX[name] = int(ctx or 128_000)
+    CUSTOM[name] = {'name': name, 'model_id': model_id, 'runtime': runtime, 'ctx': int(ctx or 128_000), 'note': note, 'config': config}
+    return resolve(name)
+
+def unregister_model(name):
+    "Remove one process-local configurable model alias."
+    CUSTOM.pop(name, None); MODELS.pop(name, None); _LOCAL_CTX.pop(name, None)
+
+# %% ../nbs/00_core.ipynb #17dbd05c
+#: never a secret: `api_key_env` names the env var
+API_KEYS = ('base_url', 'api_key_env', 'vendor_name', 'api_name')
+MODEL_ALIASES = Path('~/.config/ramabana/models.json')
+
+def use_aliases(path):
+    "Point every alias call that names no file at an application's own, as `use_env_prefix` does for env vars."
+    global MODEL_ALIASES
+    MODEL_ALIASES = Path(path)
+    return MODEL_ALIASES
+
+def alias_path(path=None):
+    "The file one application keeps its model aliases in."
+    return Path(path or MODEL_ALIASES).expanduser()
+
+def saved_models(path=None):
+    "The alias rows on disk, or `[]` if the file is missing or malformed."
+    try: rows = json.loads(alias_path(path).read_text())
+    except Exception: return []
+    return rows if isinstance(rows, list) else []
+
+def _write_aliases(rows, path=None):
+    p = alias_path(path)
+    with atomic_save(p, 'w') as f: f.write(json.dumps(rows, indent=2)+'\n')
+
+def load_models(path=None):
+    "Register every saved alias that still resolves, and return those rows."
+    out, defined = [], config_models()
+    for row in saved_models(path):
+        if row.get('name') in defined: continue   # config.toml wins a name both define
+        try:
+            cfg = {k: row.get(k) for k in API_KEYS if row.get(k)}
+            spec = register_model(row.get('name'), row.get('model_id'), row.get('runtime'),
+                                  row.get('ctx', 128_000), 'saved model', **cfg)
+            out.append({**row, 'name': spec.name, 'model_id': spec.model_id, 'runtime': spec.runtime, 'ctx': spec.ctx})
+        except Exception: continue
+    return out
+
+def save_model(row, path=None):
+    "Validate, register and persist one alias. Returns the row as written."
+    name = str(row.get('name') or '').strip()
+    model_id = str(row.get('model_id') or '').strip()
+    runtime = str(row.get('runtime') or '').strip()
+    if not re.match(r'^[A-Za-z0-9][\w.-]{0,63}$', name): raise ValueError('name must use letters, numbers, _, . or -')
+    if runtime not in RUNTIME_NAMES: raise ValueError(f'runtime must be one of {", ".join(RUNTIME_NAMES)}')
+    if name in MODELS and name not in CUSTOM: raise ValueError(f'{name!r} is a built-in model name')
+    if name in config_models(): raise ValueError(f'{name!r} is defined in {config_path()}, which wins; choose another name or edit that file')
+    ctx = int(row.get('ctx') or 128_000)
+    if not 1024 <= ctx <= 10_000_000: raise ValueError('context must be between 1,024 and 10,000,000 tokens')
+    cfg = {k: str(row.get(k) or '').strip() for k in API_KEYS if row.get(k)}
+    if runtime != 'remote' and cfg: raise ValueError('API settings apply only to the remote runtime')
+    spec = register_model(name, model_id, runtime, ctx, 'saved model', **cfg)
+    clean = {'name': name, 'model_id': spec.model_id, 'runtime': runtime, 'ctx': ctx, **cfg}
+    _write_aliases([x for x in saved_models(path) if x.get('name') != name] + [clean], path)
+    return clean
+
+def delete_model(name, path=None):
+    "Forget one alias, on disk and in this process."
+    _write_aliases([x for x in saved_models(path) if x.get('name') != name], path)
+    unregister_model(name)
+    return name
+
+# %% ../nbs/00_core.ipynb #3c0e5cdd
+DEFINES = ('runtime', *API_KEYS)   #: the keys that define a model, besides `model_id`
+_SYNC, _sync_lock = {'key': None, 'names': [], 'bad': []}, threading.RLock()
+
+def config_models():
+    "config.toml's `[model.\"NAME\"]` tables that define a model, those with `model_id`: `{name: table}`."
+    return {n: o for n, o in (setting('model') or {}).items() if o.get('model_id')}
+
+def _define(name, o):
+    "Register one config.toml definition, raising what is wrong with it."
+    cfg = {k: o[k].strip() for k in API_KEYS if (o.get(k) or '').strip()}
+    if azure_host(cfg.get('base_url')): cfg = {'api_name': 'openai', 'api_key_env': azure_key_env(), **cfg}
+    rt = o.get('runtime') or ('remote' if cfg else None)
+    if name in MODELS and name not in CUSTOM: raise ValueError(f'{name!r} is a built-in model name; choose another')
+    if rt and rt != 'remote' and cfg: raise ValueError('base_url, api_key_env, api_name and vendor_name apply only to runtime "remote"')
+    return register_model(name, o['model_id'], rt, o.get('ctx') or o.get('max_input_tokens') or DFLT_AGENT_CTX, 'config.toml', **cfg)
+
+def sync_models():
+    "Register the saved aliases, then config.toml's definitions, again whenever either changes; config.toml wins a name both define. The names registered."
+    p, tables = alias_path(), setting('model') or {}
+    try: st = p.stat(); stamp = (st.st_mtime_ns, st.st_size)
+    except OSError: stamp = None
+    key = (str(p), stamp, json.dumps(tables, sort_keys=True, default=str))
+    with _sync_lock:
+        if key == _SYNC['key']: return _SYNC['names']
+        _SYNC['key'] = key   # first: registering resolves, and resolving syncs
+        for n in _SYNC['names']: unregister_model(n)
+        names, bad = [r['name'] for r in load_models()], []
+        for n, o in tables.items():
+            if not o.get('model_id'):
+                if (k := [k for k in DEFINES if k in o]): bad.append(f'{config_path()}: model."{n}" sets {", ".join(k)} but no model_id, so it defines nothing')
+                continue
+            try: _define(n, o); names.append(n)
+            except Exception as e: bad.append(f'{config_path()}: model."{n}" is ignored: {agent_err(e)}')
+        for b in bad:
+            if b not in _SYNC['bad']: warnings.warn(b, stacklevel=2)
+        _SYNC['names'], _SYNC['bad'] = list(dict.fromkeys(names)), bad
+        return _SYNC['names']
+
+def model_problems():
+    "Why a config.toml definition was ignored, one line each."
+    sync_models()
+    return list(_SYNC['bad'])
+
+def remote_models():
+    "Hosted models defined here whose credentials are set, in the order the routing takes them: config.toml's, Azure's listed deployments, then saved aliases."
+    names = sync_models()
+    cfg = [n for n in config_models() if n in names]
+    out = []
+    for n in dict.fromkeys(cfg + ([f'azure/{d}' for d in azure_deployments()] if azure_ready() else []) + names):
+        try: spec = resolve(n)
+        except Exception: continue
+        if spec.runtime == 'remote' and not missing_key(spec): out.append(n)
+    return out
 
 # %% ../nbs/00_core.ipynb #56303cec
 def _copilot_catalog():
@@ -281,6 +459,13 @@ def available_models(include_legacy=False):
     for vendor in ('openai', 'codex', 'gemini', 'anthropic'):
         if not auth[vendor]['available']: continue
         rows += [{'value': f'{vendor}/{m}', 'label': m, 'provider': vendor, 'source': auth[vendor]['source']} for m in provider_models(vendor, include_legacy)]
+    for n in list(config_models()):
+        try: spec = resolve(n)
+        except Exception: continue
+        if n in CUSTOM and not (spec.missing or missing_key(spec)):
+            rows.append({'value': n, 'label': n, 'provider': 'azure' if is_azure(spec) else spec.runtime, 'source': 'config.toml'})
+    if auth['azure']['available']:
+        rows += [{'value': f'azure/{d}', 'label': d, 'provider': 'azure', 'source': 'Azure OpenAI deployment'} for d in azure_deployments()]
     seen, out = set(), []
     for row in rows:
         if row['value'] in seen: continue
@@ -359,7 +544,7 @@ def _cloud_ctx(model_id):
 # %% ../nbs/00_core.ipynb #1d37d28a
 def unknown_model(name):
     "The error message for a model name nobody knows, with the closest known names."
-    near = difflib.get_close_matches(str(name), MODELS, n=2, cutoff=0.6)
+    near = difflib.get_close_matches(str(name), list(MODELS), n=2, cutoff=0.6)
     hint = f'; did you mean {" or ".join(repr(n) for n in near)}?' if near else '.'
     return (f'unknown model {name!r}{hint} `/models` lists what is configured, and any vendor/model spec works too.')
 
@@ -385,10 +570,14 @@ def reachable_hint():
     "Which model to try instead, from `available_models`. A suggestion: nothing is switched."
     try: alt = next((r['value'] for r in available_models()), None)
     except Exception: alt = None
-    return f'{alt} runs here; choose it with `/model {alt}` or the model picker' if alt else 'no model runs on this machine yet'
+    hint = f'{alt} runs here; choose it with `/model {alt}` or the model picker' if alt else 'no model runs on this machine yet'
+    return f'{hint}. {AZURE_UNNAMED}' if azure_ready() and not azure_deployments() else hint
+
+AZURE_UNNAMED = 'Azure OpenAI is set up but names no deployment: set AZURE_OPENAI_DEPLOYMENTS, or choose `azure/<deployment>`'
 
 def resolve(name):
     'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec; none is `DFLT_TURN`. A runtime this machine lacks is named in `missing`, not raised.'
+    sync_models()
     spec = _corrected(_spec_for(name))
     return replace(spec, missing=m) if (m := missing_runtime(spec)) else spec
 
@@ -396,8 +585,13 @@ def _corrected(spec):
     "`spec` with config.toml's `[model.\"NAME\"]` window and output cap over fastllm's; the route name wins over the model id."
     if not (o := model_setting(spec.name, spec.model_id)): return spec
     opts = {**(spec.opts or {}), **({'max_output_tokens': o['max_output_tokens']} if o.get('max_output_tokens') else {})}
-    n = o.get('max_input_tokens')
+    n = o.get('max_input_tokens') or o.get('ctx')
     return replace(spec, ctx=n or spec.ctx, note='' if n else spec.note, opts=opts)
+
+def _window_note(name, mid, note):
+    "`note`, or for a window fastllm cannot give, what to set in config.toml."
+    if not note.startswith('context window unknown'): return note
+    return f'{mid!r} is no model id fastllm knows, so its window is taken as 128k; set max_input_tokens under [model."{name}"] in config.toml'
 
 def _spec_for(name):
     if not name: name = DFLT_TURN
@@ -411,7 +605,10 @@ def _spec_for(name):
             ctx, note = _copilot_ctx(mid)
             return ModelSpec(name, backend, mid, ctx, note, config)
         ctx, note = _cloud_ctx(mid)
-        return ModelSpec(name, backend, mid, ctx, note, config)
+        return ModelSpec(name, backend, mid, ctx, _window_note(name, mid, note) if name in CUSTOM else note, config)
+    if name.startswith('azure/') and (dep := name.split('/', 1)[1]):
+        ctx, note = _cloud_ctx(dep)
+        return ModelSpec(name, 'remote', dep, ctx, _window_note(name, dep, note), {'base_url': azure_endpoint(), 'api_key_env': azure_key_env(), 'api_name': 'openai'})
     if re.match(r'^(?:claude-|(?:opus|sonnet|haiku|fable)-\d)', name):    # an untabled Claude id; Claude Code decides
         mid = name if name.startswith('claude-') else f'claude-{name}'
         return ModelSpec(name, 'claude', mid, claude_ctx(mid))
@@ -451,7 +648,7 @@ def accepts(spec, kind):
 
 def model_note(spec):
     "One line about a resolved model, for a status bar."
-    where = 'local' if spec.local else 'cloud'
+    where = 'local' if spec.local else 'Azure OpenAI' if is_azure(spec) else 'cloud'
     out = f'{spec.name} · {where} · {spec.ctx//1000}k ctx'
     if (c := spec_caps(spec)) is not None and (m := c.fmt()): out += f' · {m}'
     return out + (f' · {spec.note}' if spec.note else '') + (f' · {spec.missing}' if getattr(spec, 'missing', '') else '')
@@ -491,81 +688,6 @@ def profile_for(spec, profile='auto'):
     ctx = getattr(spec, 'ctx', 0) or 0
     return 'small' if getattr(spec, 'local', False) or 0 < ctx <= SMALL_PROFILE_CTX else 'full'
 
-# %% ../nbs/00_core.ipynb #3e2adbad
-def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):
-    "Add a model name that lasts until this process exits; `save_model` keeps one on disk."
-    name, model_id = (name or '').strip(), (model_id or '').strip()
-    if model_id.startswith(('https://huggingface.co/', 'http://huggingface.co/')): 
-        model_id = model_id.split('huggingface.co/', 1)[1].strip('/').split('/tree/', 1)[0]
-    if not name: name = model_id.rsplit('/', 1)[-1]
-    if not name or not model_id: raise ValueError('model name and model id are required')
-    if runtime is None:
-        from urai import resolve_runtime
-        runtime, model_id = resolve_runtime(model_id)
-    if runtime not in RUNTIME_NAMES: raise ValueError(f'unknown runtime {runtime!r}')
-    if runtime != 'remote' and not runtime_available(runtime): raise RuntimeError(f'{runtime} runtime is unavailable; {runtime_remedy(runtime)}')
-    MODELS[name] = (runtime, model_id); _LOCAL_CTX[name] = int(ctx or 128_000)
-    CUSTOM[name] = {'name': name, 'model_id': model_id, 'runtime': runtime, 'ctx': int(ctx or 128_000), 'note': note, 'config': config}
-    return resolve(name)
-
-def unregister_model(name):
-    "Remove one process-local configurable model alias."
-    CUSTOM.pop(name, None); MODELS.pop(name, None); _LOCAL_CTX.pop(name, None)
-
-# %% ../nbs/00_core.ipynb #17dbd05c
-#: never a secret: `api_key_env` names the env var
-API_KEYS = ('base_url', 'api_key_env', 'vendor_name', 'api_name')
-MODEL_ALIASES = Path('~/.config/ramabana/models.json')
-
-def alias_path(path=None):
-    "The file one application keeps its model aliases in."
-    return Path(path or MODEL_ALIASES).expanduser()
-
-def saved_models(path=None):
-    "The alias rows on disk, or `[]` if the file is missing or malformed."
-    try: rows = json.loads(alias_path(path).read_text())
-    except Exception: return []
-    return rows if isinstance(rows, list) else []
-
-def _write_aliases(rows, path=None):
-    p = alias_path(path)
-    with atomic_save(p, 'w') as f: f.write(json.dumps(rows, indent=2)+'\n')
-
-def load_models(path=None):
-    "Register every saved alias that still resolves, and return those rows."
-    out = []
-    for row in saved_models(path):
-        try:
-            cfg = {k: row.get(k) for k in API_KEYS if row.get(k)}
-            spec = register_model(row.get('name'), row.get('model_id'), row.get('runtime'),
-                                  row.get('ctx', 128_000), 'saved model', **cfg)
-            out.append({**row, 'name': spec.name, 'model_id': spec.model_id, 'runtime': spec.runtime, 'ctx': spec.ctx})
-        except Exception: continue
-    return out
-
-def save_model(row, path=None):
-    "Validate, register and persist one alias. Returns the row as written."
-    name = str(row.get('name') or '').strip()
-    model_id = str(row.get('model_id') or '').strip()
-    runtime = str(row.get('runtime') or '').strip()
-    if not re.match(r'^[A-Za-z0-9][\w.-]{0,63}$', name): raise ValueError('name must use letters, numbers, _, . or -')
-    if runtime not in RUNTIME_NAMES: raise ValueError(f'runtime must be one of {", ".join(RUNTIME_NAMES)}')
-    if name in MODELS and name not in CUSTOM: raise ValueError(f'{name!r} is a built-in model name')
-    ctx = int(row.get('ctx') or 128_000)
-    if not 1024 <= ctx <= 10_000_000: raise ValueError('context must be between 1,024 and 10,000,000 tokens')
-    cfg = {k: str(row.get(k) or '').strip() for k in API_KEYS if row.get(k)}
-    if runtime != 'remote' and cfg: raise ValueError('API settings apply only to the remote runtime')
-    spec = register_model(name, model_id, runtime, ctx, 'saved model', **cfg)
-    clean = {'name': name, 'model_id': spec.model_id, 'runtime': runtime, 'ctx': ctx, **cfg}
-    _write_aliases([x for x in saved_models(path) if x.get('name') != name] + [clean], path)
-    return clean
-
-def delete_model(name, path=None):
-    "Forget one alias, on disk and in this process."
-    _write_aliases([x for x in saved_models(path) if x.get('name') != name], path)
-    unregister_model(name)
-    return name
-
 # %% ../nbs/00_core.ipynb #1e5cd7ee
 TOOL_CHANNELS = ('native', 'tags')
 _forced_tags = {}
@@ -599,6 +721,7 @@ def missing_key(spec):
     "The credential a cloud `spec` needs and this environment lacks: an env var, or `CODEX_LOGIN`; else ''."
     if spec.runtime != 'remote': return ''
     vendor, k = spec.model_id.partition('/')[0], (spec.config or {}).get('api_key_env')
+    if is_azure(spec) and not (spec.config or {}).get('base_url'): return 'AZURE_OPENAI_ENDPOINT'
     if vendor == 'codex' and not k: return '' if _codex_login() else CODEX_LOGIN
     k = k or KEY_ENVS.get(vendor)
     return k if k and not os.environ.get(k) else ''
@@ -618,16 +741,20 @@ class Routing:
     policy: dict = field(default_factory=lambda: dict(DEFAULT_POLICY))
 
     def __post_init__(self):
+        sync_models()
+        self.given = bool(self.turn or env('MODEL') or setting('jobs.turn'))   # the turn was chosen, not defaulted
         if not self.turn: self.turn = env('MODEL') or setting('jobs.turn') or DFLT_TURN
         self.chosen = set()
         for job in JOBS:   # an env var beats config.toml's `[jobs]`
             if (v := env(f'MODEL_{job.upper()}') or (job != 'turn' and setting(f'jobs.{job}'))): self.policy[job] = v; self.chosen.add(job)
         self._cache, self.notes, self.said, self.news = {}, {}, set(), []
         self.down = {}   # name -> (why, when): a cloud model set aside for `DOWN_TTL`, or until named again
+        self.rehomed = set()   # jobs `_rehome` moved off a default that cannot run here
+        self._rehome()
 
     def own(self, job):
         "Whether `job` has a model of its own: set by env, `set`, or a policy that is not the default."
-        return bool(v := self.policy.get(job)) and (job in self.chosen or v != DEFAULT_POLICY.get(job))
+        return bool(v := self.policy.get(job)) and (job in self.chosen or (v != DEFAULT_POLICY.get(job) and job not in self.rehomed))
 
     def follows_turn(self, job):
         "Whether `job` stays on a local turn: it has no model of its own, nor through `oneshot`."
@@ -661,7 +788,32 @@ class Routing:
                     self.turn, *(self.policy.get(j) for j in JOBS)):
             if alt and alt not in seen and not is_local(alt):
                 seen.add(alt); out.append(alt)
-        return out + ([] if DFLT_FALLBACK in seen else [DFLT_FALLBACK])
+        return out + [r for r in remote_models() if r not in seen] + ([] if DFLT_FALLBACK in seen else [DFLT_FALLBACK])
+
+    def _why(self, name):
+        "Why `name` cannot run here, or '' when it can."
+        try: self._usable(name); return ''
+        except Exception as e: return str(e) if isinstance(e, AgentError) else f'unavailable ({agent_err(e)})'
+
+    def _rehome(self):
+        "Move each job still on a default that cannot run here to a hosted model configured here, with a note: the chosen turn when it is one, else the first, and a mini or nano for the cheap jobs."
+        mine = [self.turn] if self.given and not is_local(self.turn) and not self._why(self.turn) else []
+        if not (pool := list(dict.fromkeys(mine + remote_models()))):
+            if azure_ready() and not self.given and self._why(self.turn): self.news.append(AZURE_UNNAMED)
+            return
+        todo = [(j, n, why) for j in JOBS if (j == 'turn' and not self.given) or (j != 'turn' and j not in self.chosen and DEFAULT_POLICY.get(j))
+                for n in [self.name_for(j)] if (why := self._why(n))]
+        if not todo: return
+        big = pool[0]
+        small = next((n for n in pool if re.search(r'mini|nano', n)), big)
+        for j, n, why in todo:
+            alt = small if j in ONESHOT_JOBS else big
+            if j == 'turn': self.turn = alt
+            else: self.policy[j] = alt; self.rehomed.add(j)
+            self.notes[j] = f'{n} {why}; using {alt}'
+            self.said.add((n, alt))
+        moved = ', '.join(dict.fromkeys(n for _, n, _ in todo))
+        self.news.append(f'{moved} cannot run here, so their jobs use {big}' + (f' and the cheap jobs {small}' if small != big else '') + '; `/model` shows why')
 
     def fell(self, n, alt, why):
         "Queue one chat note in `news` each time a model's jobs land somewhere new, however many jobs fell with it."
@@ -694,7 +846,7 @@ class Routing:
         if job == 'turn': self.turn = name
         else:
             self.policy[job] = name
-            self.chosen.add(job)
+            self.chosen.add(job); self.rehomed.discard(job)
         self._cache[name] = spec
         return spec
 
