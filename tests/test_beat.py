@@ -106,6 +106,7 @@ def test_a_session_reads_the_beat_under_its_own_id_and_only_once(tmp_path, monke
     home = tmp_path/'.pobblebonk'
     home.mkdir()
     monkeypatch.setattr(mo, 'POB_HOME', home)
+    monkeypatch.setattr('ramabana.agent.beat_problems', lambda: [])   # this machine's installed launcher is not under test
     pob(home/'pob.db').note('watches', '1 fired')
     a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
     assert a.beat_drain() == ['watches: 1 fired']
@@ -122,6 +123,7 @@ def test_the_reader_does_not_move_when_a_session_is_resumed(tmp_path, monkeypatc
     home = tmp_path/'.pobblebonk'
     home.mkdir()
     monkeypatch.setattr(mo, 'POB_HOME', home)
+    monkeypatch.setattr('ramabana.agent.beat_problems', lambda: [])   # this machine's installed launcher is not under test
     pob(home/'pob.db').note('watches', 'x')
     a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
     assert a.beat_drain() == ['watches: x']

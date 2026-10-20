@@ -9,10 +9,10 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT', 'INLINE_SKILLS',
            'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS',
-           'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES',
-           'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT',
-           'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'WARM_ROUNDS',
-           'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST',
+           'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES',
+           'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX',
+           'TREE_SPENT', 'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE',
+           'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST',
            'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP',
            'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
            'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
@@ -836,6 +836,9 @@ def work_rules(names=(), rules=RULES, pictures=True):
 
 
 CATALOGUE_CHARS = 70   # chars of one skill's description in the briefing
+#: skills the catalogue names the work for, when the session has them
+SKILL_POINTERS = {'coding_patterns': ' Read `coding_patterns` before writing, reviewing or refactoring code.',
+                  'debugging': ' Read `debugging` before diagnosing a failure or a tool that misbehaves.'}
 
 def skill_catalogue(skills):
     "The briefing's skill list: one line per skill, the first sentence of its description clipped to `CATALOGUE_CHARS`."
@@ -843,7 +846,8 @@ def skill_catalogue(skills):
     def first(desc):
         s = re.split(r'(?<=[.!?])\s', ' '.join((desc or '').split()), maxsplit=1)[0]
         return s if len(s) <= CATALOGUE_CHARS else s[:CATALOGUE_CHARS].rsplit(' ', 1)[0].rstrip(',;:') + '…'
-    point = ' Read `coding_patterns` before writing, reviewing or refactoring code.' if any(s.name == 'coding_patterns' for s in skills) else ''
+    names = {s.name for s in skills}
+    point = ''.join(t for n, t in SKILL_POINTERS.items() if n in names)
     rows = '\n'.join(f'- `{s.name}`: {first(s.description)}' for s in skills)
     return f'\n\n## Skills\n\nRead a skill with `read_skill(name)` before the work it covers.{point}\n\n{rows}'
 

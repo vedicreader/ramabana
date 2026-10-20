@@ -84,7 +84,7 @@ def test_sub_agent_calls_spend_neither_the_root_budget_nor_its_hooks():
         a, _ = fake_agent(max_tool_calls=20)
         a.subagent_writes, hooked = writes, []
         a.registry.on('before_tool', lambda agent, name, args: hooked.append(current_run().kind))
-        be = _delegating(a, [], ('delegate_search', {'questions': ['what does a.py define?', 'who imports it?', 'is it tested?']}),
+        be = _delegating(a, [], ('delegate_search', {'questions': ['what does a.py define?', 'who imports it?', 'is it tested?'], 'writes': writes}),
                          reads=8, after=[Step(tool=READ)])
         list(a.stream('go'))
         results = [m['content'] for m in be.hist_ if m['role'] == 'tool']

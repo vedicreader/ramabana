@@ -24,15 +24,25 @@ def _stepping(be):
 
 def test_a_delegations_max_steps_is_capped_by_the_session_and_floored():
     """A turn model asked for five or eight steps, and its sub-agents ran out before they could report.
-    A delegation gets at least `SUB_MAX_STEPS`, within the session's cap, and is told the budget notice is ours."""
-    from ramabana.tools import SUB_MAX_STEPS, sub_briefing
+    A delegation gets at least `SUB_MIN_STEPS`, within the session's cap, and is told the budget notice is ours."""
+    from ramabana.tools import SUB_MIN_STEPS, sub_briefing
     be = _stepping(FakeBackend())
     subs = _subs(be, get_steps=lambda: 20)
     for n in (50, 3, 0): subs['delegate_search'](['q'], max_steps=n)
     _subs(be, get_steps=lambda: 5)['delegate_search'](['q'], max_steps=3)
     _subs(be, get_steps=lambda: 80)['delegate_search'](['q'], max_steps=3)
-    assert [s.max_steps for s in be.spawned] == [20, min(SUB_MAX_STEPS, 20), 20, 5, SUB_MAX_STEPS]
+    assert [s.max_steps for s in be.spawned] == [20, min(SUB_MIN_STEPS, 20), 20, 5, SUB_MIN_STEPS]
     assert 'budget' in sub_briefing() and 'harness' in sub_briefing()
+
+
+def test_a_request_below_the_cap_is_not_raised_to_it():
+    """The floor was `SUB_MAX_STEPS`, so once the session cap equalled it every smaller request ran to the cap."""
+    from ramabana.tools import SUB_MAX_STEPS, SUB_MIN_STEPS
+    be = _stepping(FakeBackend())
+    subs = _subs(be, get_steps=lambda: SUB_MAX_STEPS)
+    for n in (SUB_MIN_STEPS + 10, 0, SUB_MAX_STEPS + 5): subs['delegate_search'](['q'], max_steps=n)
+    assert [s.max_steps for s in be.spawned] == [SUB_MIN_STEPS + 10, SUB_MAX_STEPS, SUB_MAX_STEPS]
+    assert SUB_MAX_STEPS == 80
 
 
 class _Hung:
@@ -196,9 +206,16 @@ def test_read_only_questions_run_at_once_even_when_sub_agents_may_write():
     assert be.ctx == [True] * 3, 'a nested delegation inherits read-only'
 
 
+def test_delegate_search_is_read_only_unless_asked_to_write():
+    "Several read-only questions run at once, so read-only is the default and `writes=True` asks for the write tools."
+    be = _Overlap()
+    _writing(be)['delegate_search'](['a', 'b', 'c'])
+    assert be.peak > 1 and all(names == {'view_file'} for names, _ in be.handed), be.handed
+
+
 def test_sub_agents_that_may_write_still_run_one_after_another():
     be = _Overlap()
-    _writing(be)['delegate_search'](['a', 'b'])
+    _writing(be)['delegate_search'](['a', 'b'], writes=True)
     assert be.peak == 1 and all('create_file' in names for names, _ in be.handed)
 
 

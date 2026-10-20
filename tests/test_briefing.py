@@ -251,6 +251,14 @@ def test_a_large_window_is_pointed_at_coding_patterns_not_given_its_body(host):
     assert 'Read this before' not in catalogue    # the first sentence of a description, no more
 
 
+def test_the_catalogue_points_at_debugging_when_the_session_has_it():
+    "`debugging` is named for the work it covers, the way `coding_patterns` is, and only when it is present."
+    dbg = Skill(name='debugging', source='test', where='test', _text='x', description='Diagnose a failure.')
+    assert 'Read `debugging` before diagnosing' in A.skill_catalogue([PATTERNS, dbg])
+    assert 'Read `coding_patterns`' in A.skill_catalogue([PATTERNS, dbg])
+    assert 'Read `debugging`' not in A.skill_catalogue([PATTERNS])
+
+
 def test_model_notes_follow_the_family_and_the_quiet_sentence_follows_the_runtime(host):
     """`MODEL_NOTES` is chosen from the turn spec. Only a runtime that hides the text between tool calls
     (`QUIET_RUNTIMES`) is told that text may never reach the user."""

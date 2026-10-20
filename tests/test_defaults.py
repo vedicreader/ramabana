@@ -18,4 +18,4 @@ def test_default_routes_and_subagent_settings(monkeypatch):
     assert signature(main).parameters['subagent_writes'].default is True
     agent, _ = fake_agent()
     assert agent.subagents and agent.subagent_writes
-    assert (agent.subagent_steps, agent.subagent_timeout, agent.subagent_depth) == (60, 1800, 2)
+    assert (agent.subagent_steps, agent.subagent_timeout, agent.subagent_depth) == (80, 1800, 2)

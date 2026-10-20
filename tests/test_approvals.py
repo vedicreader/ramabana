@@ -43,7 +43,7 @@ def test_a_writing_sub_agent_is_recorded_and_gated_the_way_the_main_agent_is():
     assert a._sub_plain() == [t for t in a.tools if t.__name__ not in agent.ROOT_ONLY]
 
     before = len(a.calls)
-    search(questions=['add a docstring to a.py'])
+    search(questions=['add a docstring to a.py'], writes=True)
     spawned = be.spawned[-1]
     assert spawned.approve is not None and len(a.calls) > before
     # the briefing is built from named halves, so these are the halves and not a phrase to match

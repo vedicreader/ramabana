@@ -2,6 +2,18 @@
 
 <!-- do not remove -->
 
+## 0.2.56
+
+- Recorded chats replay again. Since 0.2.53 a Claude chat is built with `on_stall`, a bound method whose repr holds a memory address, and `timeout_hint`, which names this machine's config path, and both went into the recording's key, so no key matched twice. `recorded()` now builds a `Recorder`, a `CachedChat` that leaves out of the key every option that is not plain data and the `UNKEYED` options (`timeout_hint`, `api_key`), and hands them to the live chat only. A test checks that two runs in two home folders give one key.
+- The `03_agent` replays read a temporary config.toml and no `$RAMABANA_*` or `$LEELA_*` variable. Since 0.2.45 the effort a Claude turn asks for came from config.toml's `runtime.effort`, so a machine whose config set `effort = "medium"` keyed every turn differently from the recording.
+- `delegate_search` is read-only by default, so several questions run at once. `writes=True` hands its sub-agents the session's write tools when the session allows them, and those run one after another. A read-only delegation's own sub-agents stay read-only.
+- A sub-agent takes at most 80 steps by default, up from 60. A delegation that asks for fewer gets at least `SUB_MIN_STEPS` (20), not the session cap: the floor was `SUB_MAX_STEPS`, so every smaller request ran to the cap. The time limit stays 1800 seconds.
+- The sub-agent briefing says a tool result that contradicts what the sub-agent just saw is likely a harness fault, to be confirmed once another way and named in its answer.
+- The briefing's skill list points at `debugging` for diagnosing a failure or a tool that misbehaves, as it points at `coding_patterns` for code. The replayed `03_agent` turns list `debugging` too.
+- Usage counts a Claude Code turn's thinking tokens under `reasoning`. It recorded 0. Requires rishi 0.1.50.
+- The `[dhrona]` extra requires dhrona 0.1.14.
+- The `03_agent` recordings are re-recorded.
+
 ## 0.2.55
 
 - `ramabana-tick --install` warns when its `PATH` is launchd's default or cannot find `claude`, `git`, `git-lfs` (with the `node` a `#!/usr/bin/env node` claude needs) or the `ramabana-tick` it schedules, and names what is missing. It still installs.

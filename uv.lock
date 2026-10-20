@@ -979,7 +979,7 @@ wheels = [
 
 [[package]]
 name = "dhrona"
-version = "0.1.13"
+version = "0.1.14"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
@@ -989,9 +989,9 @@ dependencies = [
     { name = "shalya" },
     { name = "uraiyadal" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/f8/543b82843ebe945a215c31797681bf4e7aa2bb879da0928c72f4ae35580f/dhrona-0.1.13.tar.gz", hash = "sha256:cd5aa73c91b8bd11e47cd815a9fe8b4114ec7569b9b41710a71dcaf0d7408fdf", size = 44443, upload-time = "2026-10-19T08:54:10.679Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/42/a8/cb3d0358a41a2217fc64defaa8b00f6c3a56dd0093f0d96205c968d55567/dhrona-0.1.14.tar.gz", hash = "sha256:67d0761215a7a28bf600dd8cbd31e51af537b7efc99a7ca45a9ff24d193fe76d", size = 45513, upload-time = "2026-10-20T06:04:40.145Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/5c/fc78dc98b33bdfb8f5f2cd3cc546b97a26d9917bbeb8b257fde7a5c85ef7/dhrona-0.1.13-py3-none-any.whl", hash = "sha256:83ae3a5b8fd443f608bfb2379318799ac0909989250205f35d7cf778556db430", size = 50137, upload-time = "2026-10-19T08:54:09.495Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/76/aeb071e5c90813e4bbadb4a50e50d013646d9855770dc7d99d56cee64916/dhrona-0.1.14-py3-none-any.whl", hash = "sha256:0bb6fdf208be8e9d3749f43a03696179733fa3c4a3f53219061e60801011a03e", size = 51255, upload-time = "2026-10-20T06:04:38.756Z" },
 ]
 
 [[package]]
@@ -3960,9 +3960,9 @@ requires-dist = [
     { name = "dhrishti", marker = "extra == 'cli'", specifier = ">=0.1.3" },
     { name = "dhrishti", marker = "extra == 'dev'", specifier = ">=0.1.3" },
     { name = "dhrishti", marker = "extra == 'python'", specifier = ">=0.1.3" },
-    { name = "dhrona", marker = "extra == 'all'", specifier = ">=0.1.13" },
-    { name = "dhrona", marker = "extra == 'dev'", specifier = ">=0.1.13" },
-    { name = "dhrona", marker = "extra == 'dhrona'", specifier = ">=0.1.13" },
+    { name = "dhrona", marker = "extra == 'all'", specifier = ">=0.1.14" },
+    { name = "dhrona", marker = "extra == 'dev'", specifier = ">=0.1.14" },
+    { name = "dhrona", marker = "extra == 'dhrona'", specifier = ">=0.1.14" },
     { name = "exhash", specifier = ">=0.4.11" },
     { name = "fastcore", specifier = ">=2.2.19" },
     { name = "fastpylight", marker = "extra == 'all'", specifier = ">=0.1.18" },
@@ -4007,8 +4007,8 @@ requires-dist = [
     { name = "rich", marker = "extra == 'cli'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'dev'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'python'", specifier = ">=15.0.0" },
-    { name = "rishi", specifier = ">=0.1.49" },
-    { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.49" },
+    { name = "rishi", specifier = ">=0.1.50" },
+    { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.50" },
     { name = "shalya", specifier = ">=0.1.17" },
     { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.17" },
     { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.17" },
@@ -4168,7 +4168,7 @@ wheels = [
 
 [[package]]
 name = "rishi"
-version = "0.1.49"
+version = "0.1.50"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
@@ -4184,9 +4184,9 @@ dependencies = [
     { name = "truststore" },
     { name = "uraiyadal" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/55/bd/f49a38344f02d111aed9014f57d7ed2c1fd2a2703f896e9ae92cd8748176/rishi-0.1.49.tar.gz", hash = "sha256:04c8fb5318f11a7dbe37d93ec2edcb97f9be9bcd2feec8037b8e4eaa27b87a01", size = 81168, upload-time = "2026-10-20T05:18:53.155Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f6/b3/45a9e34b288c3da499816f65692824cd0538c67fd0b894c5b9654d766b03/rishi-0.1.50.tar.gz", hash = "sha256:d3e43b6aad81abe901e06dbb6877d8cb3c57488fb5aa9212f433641bcb4f62ff", size = 81304, upload-time = "2026-10-20T06:22:06.802Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/13/6416bd94aa70f2408efe12126acff523a3f0e556c08ad46244cc3518e961/rishi-0.1.49-py3-none-any.whl", hash = "sha256:e33e672661ff2b3edd1c35be9d5ff81eb0c2999f884049ebef712d2b90e61437", size = 90385, upload-time = "2026-10-20T05:18:51.664Z" },
+    { url = "https://files.pythonhosted.org/packages/48/6d/2361814740ea0218c07bd0d9383b0d7cf7ab28bc5dd3905d09664197a474/rishi-0.1.50-py3-none-any.whl", hash = "sha256:5993c3360f4298b921d7310158027f116f4df3e77806d595a434fa7e98589d9e", size = 90441, upload-time = "2026-10-20T06:22:05.353Z" },
 ]
 
 [package.optional-dependencies]
