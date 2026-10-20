@@ -7,8 +7,9 @@ Docs: https://vedicreader.github.io/ramabana/monitor.html.md"""
 # %% ../nbs/17_monitor.ipynb #a361b376
 from __future__ import annotations
 
-import fnmatch, json, os, shlex, subprocess, sys, threading, time, uuid
+import fnmatch, json, os, shlex, shutil, signal, subprocess, sys, threading, time, uuid
 from collections import Counter, deque
+from contextlib import contextmanager
 from importlib.metadata import entry_points
 from pathlib import Path
 
@@ -22,9 +23,11 @@ from shalya.core import one_line as _1
 
 # %% auto #0
 __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_STEPS', 'PENDING_MAX', 'DFLT_SETTLE', 'REVIEW_SP',
-           'POB_READER', 'TICKS', 'POB_HOME', 'BEAT_TAG', 'TICK_GROUP', 'LEARNING_TICKS', 'LEARNING_OFF', 'secs',
-           'files_under', 'snapshot', 'changed', 'summarise', 'report', 'review_prompt', 'review_notice', 'FolderWatch',
-           'Monitors', 'on_tick', 'pob_path', 'pob', 'beat_notes', 'beat_notice', 'beat_command', 'heartbeat', 'tick']
+           'POB_READER', 'TICKS', 'POB_HOME', 'BEAT_TAG', 'TICK_GROUP', 'BEAT_TOOLS', 'LAUNCHD_PATHS', 'BEAT_LIMIT',
+           'BEAT_ENV', 'LEARNING_TICKS', 'LEARNING_OFF', 'secs', 'files_under', 'snapshot', 'changed', 'summarise',
+           'report', 'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'on_tick', 'pob_path', 'pob',
+           'beat_notes', 'beat_notice', 'beat_command', 'beat_missing', 'beat_env_path', 'load_beat_env',
+           'beat_problems', 'heartbeat', 'BeatTimeout', 'tick']
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
 SNAP_MAX_FILES = 2000
@@ -356,11 +359,73 @@ def beat_notice(notes, mx=REVIEW_MAX_CHARS):
 BEAT_TAG = 'ramabana'   #: names the launcher, log and job
 TICK_GROUP = 'ramabana.ticks'   #: entry points: each name is a schedule, each value the callback a fire of it runs
 
-def beat_command(exe, path=None):
+def beat_command(exe, path=None, limit=0):
     "`exe --quiet` as the launcher's shell reads it, quoted; off Windows it runs on `path`, the installing `PATH` by default."
-    if sys.platform == 'win32': return f'{subprocess.list2cmdline([str(exe)])} --quiet'
+    lim = f' --limit {int(limit)}' if limit else ''
+    if sys.platform == 'win32': return f'{subprocess.list2cmdline([str(exe)])} --quiet{lim}'
     path = os.environ.get('PATH', '') if path is None else path
-    return (f'/usr/bin/env PATH={shlex.quote(path)} ' if path else '') + f'{shlex.quote(str(exe))} --quiet'
+    return (f'/usr/bin/env PATH={shlex.quote(path)} ' if path else '') + f'{shlex.quote(str(exe))} --quiet{lim}'
+
+BEAT_TOOLS = ('claude', 'git', 'git-lfs')   #: what a beat's runs call by name: Claude Code, and git with LFS for a replay's clone
+LAUNCHD_PATHS = ('/usr/bin:/bin:/usr/sbin:/sbin', '/usr/bin:/bin')   #: the PATH launchd or cron gives a job
+BEAT_LIMIT = 6*3600   #: seconds one beat may run: launchd starts no other beat while one runs
+BEAT_ENV = 'beat.env'   #: keys for the beat, beside config.toml, readable by its owner only
+
+def _finds(tool, path):
+    "Whether `tool` resolves on `path`, along with the interpreter a `#!/usr/bin/env X` first line names."
+    if not (p := shutil.which(tool, path=path)): return False
+    try: w = open(p, 'rb').readline(200).decode(errors='replace').split()
+    except OSError: return True
+    if not w or not w[0].startswith('#!') or Path(w[0][2:]).name != 'env': return True
+    return (x := next((x for x in w[1:] if not x.startswith('-') and '=' not in x), None)) is None or bool(shutil.which(x, path=path))
+
+def beat_missing(path, exe=None, tools=BEAT_TOOLS):
+    "What a beat on `path` cannot find: each of `tools`, then `exe` when it is gone."
+    return [t for t in tools if not _finds(t, path)] + ([str(exe)] if exe and not Path(exe).exists() else [])
+
+def _launcher(text):
+    "`(PATH, exe)` from a launcher's `exec` line; PATH is None for a launcher written before it carried one."
+    for line in text.splitlines():
+        try: w = shlex.split(line)
+        except ValueError: continue
+        if w[:1] != ['exec'] or len(w) < 2: continue
+        if w[1] == '/usr/bin/env' and len(w) > 3 and w[2].startswith('PATH='): return w[2][5:], w[3]
+        return None, w[1]
+    return None, None
+
+def beat_env_path():
+    "The beat's key file, beside this machine's config.toml."
+    from ramabana.setup import config_path
+    return config_path().parent/BEAT_ENV
+
+def _open(p): return os.name != 'nt' and bool(p.stat().st_mode & 0o077)
+
+def load_beat_env(path=None):
+    "Set `beat.env`'s keys in this process under names not already set, unless others can read the file; returns the names set."
+    p = Path(path or beat_env_path())
+    if not p.exists(): return []
+    if _open(p):
+        print(f'{p} is readable by other users, so its keys were not loaded: chmod 600 {p}', file=sys.stderr)
+        return []
+    from dotenv import dotenv_values
+    got = {k: v for k, v in dotenv_values(p).items() if v is not None and k not in os.environ}
+    os.environ.update(got)
+    return list(got)
+
+def beat_problems(hb=None, tools=BEAT_TOOLS):
+    "What is wrong with the installed beat, each with what to run; empty when none is installed, off Windows only."
+    if sys.platform == 'win32' or (hb := hb or heartbeat()) is None: return []
+    fix, out = 'run `ramabana-tick --install` again from your usual shell', []
+    try:
+        if (script := hb.installed(BEAT_TAG)) and Path(script).exists():
+            path, exe = _launcher(Path(script).read_text())
+            if path is None: out.append(f'the scheduled beat in {script} predates ramabana 0.2.52 and runs on the PATH launchd gives it, which finds no claude or git-lfs: {fix}')
+            elif (gone := [t for t in tools if _finds(t, os.environ.get('PATH', '')) and not _finds(t, path)]):
+                out.append(f"the scheduled beat's PATH finds no {', '.join(gone)}, which this shell finds: {fix}")
+            if exe and not Path(exe).exists(): out.append(f'the scheduled beat runs {exe}, which is gone: {fix}')
+        if (e := beat_env_path()).exists() and _open(e): out.append(f'{e} is readable by other users, so the beat does not load its keys: chmod 600 {e}')
+    except Exception: pass
+    return out
 
 LEARNING_TICKS = ('dhrona',)   #: schedules that learn, and so do nothing while learning is off
 LEARNING_OFF = 'learning is off'
@@ -377,13 +442,42 @@ def heartbeat():
     except ImportError: return None
     return heartbeat
 
+class BeatTimeout(Exception): "The beat ran past its limit, or was told to stop."
+
+def _watchdog(secs, exit=os._exit):
+    "End the process `secs` from now, for a fire stuck where no signal reaches it; `cancel()` the timer to spare it."
+    def _go(): print(f'the beat was still running after {secs:.0f}s; exiting', file=sys.stderr, flush=True); exit(124)
+    t = threading.Timer(secs, _go)
+    t.daemon = True
+    t.start()
+    return t
+
+@contextmanager
+def _deadline(secs, stop):
+    "Raise `BeatTimeout` in the main thread after `secs` or on SIGTERM, setting `stop`; the watchdog ends the process 60s later."
+    def _raise(n, _): stop.set(); raise BeatTimeout(f'the beat ran past its {secs}s limit' if n == signal.SIGALRM else 'the beat was told to stop')
+    sig = hasattr(signal, 'SIGALRM') and threading.current_thread() is threading.main_thread()
+    if sig: was = signal.signal(signal.SIGALRM, _raise), signal.signal(signal.SIGTERM, _raise); signal.alarm(int(secs))
+    dog = _watchdog(secs + 60)
+    try: yield
+    finally:
+        dog.cancel()
+        if sig: signal.alarm(0); signal.signal(signal.SIGALRM, was[0]); signal.signal(signal.SIGTERM, was[1])
+
 @call_parse
 def tick(db: str = '',         # the shared database; pobblebonk's own by default
          quiet: bool = False,  # say nothing on success
          install: bool = False,# schedule this command instead of running one beat
          uninstall: bool = False,  # stop the scheduled beat
-         every: int = 60):     # seconds between installed beats, whole minutes
+         every: int = 60,      # seconds between installed beats, whole minutes
+         limit: int = 0,       # seconds a beat may run before it stops itself; `BEAT_LIMIT` when 0
+         check: bool = False): # say what is wrong with the installed beat
     "One beat: run the schedules that are due and leave what they found as notes."
+    if check:
+        if install or uninstall: print('--check runs alone', file=sys.stderr); return 2
+        for m in (got := beat_problems()): print(m)
+        if not got: print('the installed beat looks right')
+        return 1 if got else 0
     if install or uninstall:
         hb = heartbeat()
         if hb is None:
@@ -392,8 +486,13 @@ def tick(db: str = '',         # the shared database; pobblebonk's own by defaul
         if uninstall:
             print('stopped' if hb.uninstall(BEAT_TAG) else 'nothing was scheduled')
             return 0
-        print(f'every {every}s: {hb.install(beat_command(Path(sys.executable).parent/"ramabana-tick"), tag=BEAT_TAG, every=every)}')
-        if sys.platform != 'win32': print(f"each beat runs on this PATH: {os.environ.get('PATH', '')}")
+        exe, path = Path(sys.executable).parent/'ramabana-tick', os.environ.get('PATH', '')
+        print(f'every {every}s: {hb.install(beat_command(exe, limit=limit), tag=BEAT_TAG, every=every)}')
+        if sys.platform == 'win32': return 0
+        print(f'each beat runs on this PATH: {path}')
+        if (gone := beat_missing(path, exe)) or path in LAUNCHD_PATHS:
+            print(f"warning: each beat runs on this PATH{', which is launchd' + chr(39) + 's default,' if path in LAUNCHD_PATHS else ''}"
+                  f"{' and finds no ' + ', '.join(gone) if gone else ''}. Run `ramabana-tick --install` again from a terminal whose shell finds them.", file=sys.stderr)
         return 0
     p = pob(db or None)
     if p is None:
@@ -401,6 +500,16 @@ def tick(db: str = '',         # the shared database; pobblebonk's own by defaul
         return 1
     for ep in entry_points(group=TICK_GROUP): p.on(ep.name)(lambda fire, ep=ep: _fire(ep, fire))
     for name, fn in TICKS.items(): p.on(name)(fn)
-    got = p.tick()
-    if not quiet: print(f'{len(got.ran)} ran of {len(got.fired)} fired')
+    load_beat_env()
+    lim, stop, ran = limit or BEAT_LIMIT, threading.Event(), []
+    end = time.monotonic() + lim
+    try:
+        with _deadline(lim, stop):
+            got = p.tick(run=False)
+            while not stop.is_set() and time.monotonic() < end and (r := p.work(limit=1)): ran += r
+    except BeatTimeout as e:
+        print(e, file=sys.stderr)
+        return 1
+    if stop.is_set(): print(f'stopped after {len(ran)} ran', file=sys.stderr)
+    if not quiet: print(f'{len(ran)} ran of {len(got.fired)} fired')
     return 0

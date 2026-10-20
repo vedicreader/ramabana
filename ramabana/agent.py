@@ -41,7 +41,7 @@ from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, Too
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background, Slots, SUB_MAX_STEPS, SUB_TIMEOUT, SUB_READ_ONLY, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
-from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
+from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, beat_problems, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
 MAX_DETAIL = 4000     # chars of a result kept for the fold
@@ -2434,9 +2434,11 @@ def beat(self:Agent):
 
 @patch
 def beat_drain(self:Agent):
-    "Notes the beat left that this session has not read. Empty when no beat runs here."
+    "Notes the beat left that this session has not read, after what is wrong with the installed beat on the first call. Empty when no beat runs here."
     if self.beat is None: return []
-    return beat_notes(self.beat, reader=self._beat_reader)
+    first = [] if getattr(self, '_beat_checked', False) else [f'beat: {m}' for m in beat_problems()]
+    self._beat_checked = True
+    return first + beat_notes(self.beat, reader=self._beat_reader)
 
 # %% ../nbs/03_agent.ipynb #0ccb8d65
 def repo_state(folder):

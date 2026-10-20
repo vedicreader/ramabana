@@ -26,7 +26,8 @@ dependencies = [
     "rishi>=0.1.49",   # 0.1.49 ClaudeChat(on_stall=, timeout_hint=), the silence retry; pins uraiyadal 0.0.15
     "fastspec>=0.2.4",
     "pyyaml>=6.0.3",
-    "pobblebonk>=0.0.3",
+    "pobblebonk>=0.0.5",   # retry_after: a schedule's own delay before a retry
+    "python-dotenv>=1.0.1",   # the beat reads its keys from beat.env
 ]
 
 [project.optional-dependencies]

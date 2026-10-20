@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.2.55
+
+- `ramabana-tick --install` warns when its `PATH` is launchd's default or cannot find `claude`, `git`, `git-lfs` (with the `node` a `#!/usr/bin/env node` claude needs) or the `ramabana-tick` it schedules, and names what is missing. It still installs.
+- `beat_problems` reads the installed launcher and reports one written before the `PATH` was carried, a tool this shell finds that the launcher's `PATH` does not, a `ramabana-tick` that is gone, and a `beat.env` others can read, each with the command to run. A session's first beat note carries these lines, and `ramabana-tick --check` prints them and exits 1.
+- Each beat loads keys from `~/.config/ramabana/beat.env` (python-dotenv), beside `config.toml`, for names its environment lacks. A file others can read is refused. Keys never go in the launcher.
+- A beat stops itself after `--limit` seconds, six hours by default: SIGALRM, or the SIGTERM launchd sends, raises `BeatTimeout` in the running fire, which pobblebonk records as that fire's failure, and the beat claims no further fire. A watchdog ends the process a minute later if no signal reaches the fire. `--install --limit N` writes the limit into the launcher.
+- The `03_agent` tests read a temporary beat database, never `~/.pobblebonk/pob.db`, so a real beat note no longer changes a recorded prompt.
+- Requires pobblebonk 0.0.5 (`retry_after`) and python-dotenv.
+
 ## 0.2.54
 
 - A fifth bundled skill, `debugging`, for diagnosing a failure, a tool that misbehaves, or Ramabana itself. It asks for the raw error before a hypothesis, a reproduction in the environment the failure ran in, and a read of the code before any claim about what it does or lacks, including the version that ran. A tool result that contradicts what the agent has seen, such as "no matches" for text it has just read, is treated as a harness fault: confirmed once by another route, recorded with `remember(component='tool')`, and named in the reply. It maps where Ramabana keeps its config, turn history, run logs, saved sub-agent answers, Claude Code transcripts, beat launcher, scheduler entry and Dhrona's nightly summaries, and how to check the `PATH` a scheduled beat runs on. Its test checks each path against the code that writes it.
