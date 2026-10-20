@@ -4005,16 +4005,16 @@ requires-dist = [
     { name = "rich", marker = "extra == 'cli'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'dev'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'python'", specifier = ">=15.0.0" },
-    { name = "rishi", specifier = ">=0.1.46" },
-    { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.46" },
-    { name = "shalya", specifier = ">=0.1.16" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.16" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.16" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'dev'", specifier = ">=0.1.16" },
+    { name = "rishi", specifier = ">=0.1.47" },
+    { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.47" },
+    { name = "shalya", specifier = ">=0.1.17" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.17" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.17" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'dev'", specifier = ">=0.1.17" },
     { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.3,<0.1.4" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.3,<0.1.4" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.3,<0.1.4" },
-    { name = "uraiyadal", specifier = ">=0.0.12" },
+    { name = "uraiyadal", specifier = ">=0.0.14" },
     { name = "vishalakshi", marker = "extra == 'all'", specifier = ">=0.1.17" },
     { name = "vishalakshi", marker = "extra == 'cli'", specifier = ">=0.1.17" },
     { name = "vishalakshi", marker = "extra == 'dev'", specifier = ">=0.1.17" },
@@ -4166,7 +4166,7 @@ wheels = [
 
 [[package]]
 name = "rishi"
-version = "0.1.46"
+version = "0.1.47"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
@@ -4182,9 +4182,9 @@ dependencies = [
     { name = "truststore" },
     { name = "uraiyadal" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d1/e9/93711f3eee42db35096b8f7f11ccf992e1a7c85b42457303f41bdf612169/rishi-0.1.46.tar.gz", hash = "sha256:16728bda4cfb9eb69b0556913ab8daa46d8a6b10caac832746241f266bfefe64", size = 80007, upload-time = "2026-10-20T00:53:07.268Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d2/18/c18def87efb669e62daf957bdfac7027ce22c08c5eecd061633e7474dcbe/rishi-0.1.47.tar.gz", hash = "sha256:e38d7de78ff35d46cb1f9e74af1a9ab3d9007a49a48f32da05ebe8a78042b7e6", size = 80032, upload-time = "2026-10-20T04:02:14.056Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/62/fb/8a4a8d7f3d2010927601b3cc83dc85b660ca920ea4a233b2889478a8bda9/rishi-0.1.46-py3-none-any.whl", hash = "sha256:1af735af440cfe61bc9b9188b2ae2da87dece385d7ea0e2af09aa73848060b50", size = 89227, upload-time = "2026-10-20T00:53:05.665Z" },
+    { url = "https://files.pythonhosted.org/packages/70/00/dfb8869c31b21cbb9dc234a1cb4e97e405054bf46dd306b5537a323175f3/rishi-0.1.47-py3-none-any.whl", hash = "sha256:c0f363228337c6afd5371f20fbbcc7f9d5b0c374102d87672f2dc43b760275b0", size = 89249, upload-time = "2026-10-20T04:02:12.542Z" },
 ]
 
 [package.optional-dependencies]
@@ -4433,7 +4433,7 @@ wheels = [
 
 [[package]]
 name = "shalya"
-version = "0.1.16"
+version = "0.1.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dhrishti" },
@@ -4446,9 +4446,9 @@ dependencies = [
     { name = "litesearch" },
     { name = "vishalakshi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/1c/394a6a64b706eef35ac58a4190e21f2ad0d75e1422ce01c171506a91462f/shalya-0.1.16.tar.gz", hash = "sha256:827f1a655c6bb47d325798ae11bb404e70d0ec514eb2da7021c80efad410c976", size = 60972, upload-time = "2026-10-20T03:45:00.528Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ce/7b/9c5a2dd34b0f3d28b38b3e4b344e4d5c7b71460e7530b289b105d02d0a8d/shalya-0.1.17.tar.gz", hash = "sha256:072b381039122364d26c02264540e429e07fdb988875c043666284ab4fd18572", size = 61870, upload-time = "2026-10-20T04:03:00.196Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/1b/59bb201220817a4e7ca5ec0f188f9ba1b8bbc2b9e666d78a6d4ddb3cbc3c/shalya-0.1.16-py3-none-any.whl", hash = "sha256:32d3df65fcb1ece805c8c704feb1838db836073057635c4450e07d855a82a6c9", size = 64496, upload-time = "2026-10-20T03:44:59.2Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/37/5f688797dc4a7cec58df6b4c3da83cc5e6afa6d6a77088cd057d4a6953b5/shalya-0.1.17-py3-none-any.whl", hash = "sha256:7cc563dad5a7e619817e0a7571a57a2b9d4055101bd875f42db5c42506ffdbd7", size = 65433, upload-time = "2026-10-20T04:02:58.708Z" },
 ]
 
 [package.optional-dependencies]
@@ -4795,7 +4795,7 @@ wheels = [
 
 [[package]]
 name = "uraiyadal"
-version = "0.0.12"
+version = "0.0.14"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
@@ -4806,9 +4806,9 @@ dependencies = [
     { name = "safepyrun" },
     { name = "truststore" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/bc/1538734591a717e2a2a2ed563a43ed424f4babfb98ae7649b831609a2372/uraiyadal-0.0.12.tar.gz", hash = "sha256:abd478b90107d1bfa1a984c6d2835c0abbea600100c1b9ab75851dacea1ba672", size = 48331, upload-time = "2026-10-09T02:35:08.974Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/2b/f3732415850c8da75faa119cc3f6b562290603636d63e7b90320f65b3986/uraiyadal-0.0.14.tar.gz", hash = "sha256:292adb799e12a583ecfd7b5f85940168e9449c5d095e5a272f82b0fbf0aba627", size = 49421, upload-time = "2026-10-20T04:01:10.14Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/8a/5a08be1f8fe99f62b2ac1f56a215f45cacda7bf23e12ad84b08d371457a7/uraiyadal-0.0.12-py3-none-any.whl", hash = "sha256:323a1cda426a6e4a74608bff814db61a081158a9dad2be37d7dbf3675ff140cd", size = 55165, upload-time = "2026-10-09T02:35:07.651Z" },
+    { url = "https://files.pythonhosted.org/packages/25/b6/592d2b1df8bdcc88283d09600eb4aa409fc0637bf7ddbd5d2121ca4d74eb/uraiyadal-0.0.14-py3-none-any.whl", hash = "sha256:6a7be11ba34322445b0d1d48eca338d58884e70eac3334e95310850091005343", size = 56277, upload-time = "2026-10-20T04:01:08.761Z" },
 ]
 
 [[package]]

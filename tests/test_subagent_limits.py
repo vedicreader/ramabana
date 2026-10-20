@@ -157,3 +157,53 @@ def test_delegate_result_reads_a_long_answer_in_pages_by_offset():
     assert got == 'A' * 20000 and offset > 0, (len(got), offset)
     assert 'offset' in subs['delegate_result'](rid)
     assert 'past the end' in subs['delegate_result'](rid, offset=99999)
+
+
+def create_file(path: str, content: str) -> str:
+    "A write tool."
+    return 'wrote'
+
+
+class _Overlap:
+    "A backend whose sub-agents note how many of them work at once, and what each was handed."
+    def __init__(self):
+        self.spec, self.lock, self.now, self.peak, self.handed, self.ctx = AttrDict(name='fake', local=False), threading.Lock(), 0, 0, [], []
+    def spawn(self, tools=(), **kw):
+        self.handed.append(({t.__name__ for t in tools}, kw.get('approve')))
+        be = self
+        class Sub:
+            max_steps = 0
+            def send(self, q, run=None):
+                from ramabana.tools import SUB_READ_ONLY
+                with be.lock: be.now += 1; be.peak = max(be.peak, be.now)
+                be.ctx.append(SUB_READ_ONLY.get())
+                time.sleep(.3)
+                with be.lock: be.now -= 1
+                return 'found it'
+            def close(self): pass
+        return Sub()
+
+
+def _writing(be): return {t.__name__: t for t in subagent_tools(lambda: be, lambda: [view_file, create_file], get_writes=lambda: True, get_approve=lambda: (lambda tc: True))}
+
+
+def test_read_only_questions_run_at_once_even_when_sub_agents_may_write():
+    "Sub-agents may write by default, and writing ones run one after another, so four read-only questions took four turns of waiting."
+    be = _Overlap()
+    out = _writing(be)['delegate_search'](['a', 'b', 'c'], writes=False)
+    assert out.count('found it') == 3 and be.peak > 1, be.peak
+    assert all(names == {'view_file'} and approve is None for names, approve in be.handed), be.handed
+    assert be.ctx == [True] * 3, 'a nested delegation inherits read-only'
+
+
+def test_sub_agents_that_may_write_still_run_one_after_another():
+    be = _Overlap()
+    _writing(be)['delegate_search'](['a', 'b'])
+    assert be.peak == 1 and all('create_file' in names for names, _ in be.handed)
+
+
+def test_a_read_only_delegation_cannot_start_a_writing_one_below_it():
+    from ramabana.tools import SUB_READ_ONLY
+    tok = SUB_READ_ONLY.set(True)
+    try: assert 'read-only' in _writing(_Overlap())['delegate_async']('q', writes=True)
+    finally: SUB_READ_ONLY.reset(tok)

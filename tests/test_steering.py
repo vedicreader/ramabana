@@ -231,3 +231,32 @@ def test_queued_prompts_run_in_order_and_unread_steering_joins_the_next_turn(tmp
     assert [r.reply for r in results] == ['two', 'three'] and all(r.state == 'complete' for r in results)
     assert 'also check the footnotes' in str(be.sent[1]) and 'second' in str(be.sent[1]), 'the unread line joins the next turn'
     assert 'footnotes' not in str(be.sent[2]) and not a.queued and a.run_queued() == []
+
+
+def test_a_line_sent_during_a_result_at_the_cap_survives_the_backends_cut():
+    "A result filling the cap, a wide delegation or a clipped file, lost the line appended after it: the backend cut it off."
+    a, _ = fake_agent()
+    def big() -> str:
+        "A result as long as a result may be."
+        return 'x' * a.budget.tool_max
+    a.add_tool(big)
+    be = ScriptedBackend(steps=[Step('looking'), Step(tool=('big', {})), Step('done')], token_delay=0, tools=a.tools, sp=a.system_prompt())
+    a._be = a._be_or_none = lambda job='turn': be
+    got, find = [], be._tool
+    be._tool = lambda name: (lambda f: lambda **kw: got.append(f(**kw)) or got[-1])(find(name))   # the whole result, not the hist's head
+    g = a.stream('go')
+    next(g)
+    assert a.steer('also pull the new release')
+    list(g)
+    out, = got
+    assert len(out) <= a.budget.tool_max, 'the backend cuts anything longer from the end'
+    assert out.endswith(_tag(a, 'also pull the new release'))
+    assert 'full text saved to' in out, 'the body gave way, and says where the rest is'
+
+
+def test_a_line_longer_than_the_cap_still_arrives_and_names_where_the_rest_is():
+    from ramabana.runtime import Run
+    from ramabana.tools import _inboxed
+    r = Run('r'); r.tell('y' * 5000)
+    out = _inboxed(lambda: 'z' * 3000, r, mx=lambda: 4000)()
+    assert len(out) <= 4000 and out.endswith('</user-message>') and out.count('full text saved to') == 2

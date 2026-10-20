@@ -76,3 +76,13 @@ def test_a_list_result_and_a_prompt_of_parts(tmp_path):
     a, be = _agent([[1, 2, 3]], tmp_path)
     r = a.ask(['look at this', 'how many?'], schema=list[int])
     assert r.result == [1, 2, 3] and 'submit_result' in str(be.sent[0])
+
+
+def test_the_small_profile_keeps_submit_result(tmp_path):
+    "The small profile keeps only marked registry tools, and `submit_result` was unmarked: a typed result could never be handed back."
+    a, _ = fake_agent(cfg=tmp_path, profile='small')
+    be = Submitting(a, [{'lawful': True, 'reason': 'public domain'}])
+    a._be = a._be_or_none = lambda job='turn': be
+    assert a.profile == 'small'
+    assert a.ask('is it lawful?', schema=Verdict, strict=True).result == Verdict(True, 'public domain')
+    assert 'submit_result' not in {t.__name__ for t in a.tools}

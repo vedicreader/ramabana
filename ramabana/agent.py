@@ -40,7 +40,7 @@ from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as less
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, Slots, SUB_MAX_STEPS, SUB_TIMEOUT, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
+                            tools_for, Background, Slots, SUB_MAX_STEPS, SUB_TIMEOUT, SUB_READ_ONLY, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
 from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -1680,6 +1680,11 @@ def catalog(self:Agent):
 @patch(as_prop=True)
 def _plain(self:Agent): return self.catalog.tools
 
+@patch(as_prop=True)
+def _sub_writes(self:Agent):
+    "Whether a sub-agent gets write tools now: the session's toggle, unless this delegation asked for read-only ones."
+    return self.subagent_writes and not SUB_READ_ONLY.get()
+
 @patch
 def _sub_plain(self:Agent):
     "The sub-agent policy view of the same catalog-building path, without `ROOT_ONLY`."
@@ -1688,8 +1693,8 @@ def _sub_plain(self:Agent):
     source = self._catalog_for(budget, full=same)
     held = self.readonly or self.plan_mode   # what the foreground withholds, sub-agents and reviewers are not given either
     if held: source = source.read_only(self.readonly_calls, effects=False, block=NO_SUB)
-    if same and self.subagent_writes: tools = self.tools
-    elif not self.subagent_writes: tools = source.tools
+    if same and self._sub_writes: tools = self.tools
+    elif not self._sub_writes: tools = source.tools
     else:
         key = ('subagent', budget.tool_max, tuple(budget.drop), held)
         if key not in self._views: self._views[key] = source.map(self._record)
@@ -1712,7 +1717,7 @@ def _delegation_tools(self:Agent, get_tools, background=None,
 def _sub_tools(self:Agent, depth=0):
     "What a sub-agent `depth` levels below the root's own gets: `_sub_plain`, observed, and `delegate_search` while `depth < subagent_depth`."
     tools = self._sub_plain()
-    tools = tools if self.subagent_writes else [self._observe(t) for t in tools]
+    tools = tools if self._sub_writes else [self._observe(t) for t in tools]
     if not self.subagents or depth >= self.subagent_depth: return tools
     nest = first(t for t in self._delegation_tools(lambda: self._sub_tools(depth + 1), get_max=lambda: self.subagent_budget.tool_max) if t.__name__ == 'delegate_search')
     return tools + [self._observe(nest)]
@@ -1755,7 +1760,7 @@ def tools(self:Agent):
             self.approvals.tools = self.approvals.tools | view.writes
             self.approvals.prune()
         root = lambda: r if (r := current_run()) is self.run() else None
-        self._tools = view.map(lambda f: _inboxed(self._record(f), root, self._heard_steer)).tools + ([status_tool(root)] if self._quiet else [])
+        self._tools = view.map(lambda f: _inboxed(self._record(f), root, self._heard_steer, mx=lambda: self.budget.tool_max)).tools + ([status_tool(root)] if self._quiet else [])
     return self._tools
 
 
@@ -3570,7 +3575,7 @@ def _result_tool(schema, got):
         except Exception as e: return f'that result does not match the schema ({agent_err(e)}); call submit_result again with it fixed'
         return 'result received'
     submit_result.__doc__ = f'Hand back the result of this task, once, as `result`. Its JSON schema:\n{json.dumps(spec)}'
-    return submit_result
+    return small_tool(submit_result)   # the small profile keeps only marked registry tools
 
 def _with_note(prompt, note):
     "`prompt` with `note` after its text; a prompt of parts gets it on its last text part."

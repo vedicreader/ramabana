@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.50
+
+- A line sent into a running turn reaches the model when the tool result it rides on is already as long as a result may be. The line was appended after the result, and the backend cut every result to `tool_max_len` from the end, so a wide `delegate_search` or a clipped file view dropped it unread. `_inboxed(mx=)` now shortens the body instead, saving the whole to a file the note names, and a line longer than half the cap arrives with its rest in a file too. Sub-agents get the same cap from their own backend.
+- `delegate_search(writes=False)` hands its sub-agents read tools only, and several questions then run at once. Sub-agents may write by default, and sub-agents that may write run one after another, so every delegation of several questions ran them in turn: four read-only questions took four times as long. A read-only delegation's own sub-agents are read-only too, and `delegate_async(writes=True)` below one is refused.
+- `ask(schema=)` works under the small profile. The small profile keeps only registry tools marked with `small_tool`, and `submit_result` was not marked, so a typed result could never be handed back.
+- Requires shalya 0.1.17, whose `grep` finds a folder named in `path_filter`, and rishi 0.1.47 with uraiyadal 0.0.14, whose tool schemas spell a `Literal` as an `enum` and read a pydantic model's fields.
+
 ## 0.2.49
 
 - `generate_image` with no session folder saves under `media/` in the host's first open folder, not the process's working directory (shalya 0.1.16). In a desktop app the working directory is its data folder, so pictures used to land there rather than in the project.
