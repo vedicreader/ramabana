@@ -57,6 +57,7 @@ ramabana = "ramabana._modidx:d"
 
 [project.entry-points.pyskills]
 coding_patterns = "ramabana.coding_patterns"
+debugging = "ramabana.debugging"
 theory = "ramabana.theory"
 write_prose = "ramabana.write_prose"
 write_docs = "ramabana.write_docs"

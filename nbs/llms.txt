@@ -5,6 +5,7 @@
 ## Modules
 
 - [ramabana.coding_patterns](https://vedicreader.github.io/ramabana/coding_patterns.html.md): Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
+- [ramabana.debugging](https://vedicreader.github.io/ramabana/debugging.html.md): Diagnose a failure, a misbehaving tool, or Ramabana itself.
 - [ramabana.racp](https://vedicreader.github.io/ramabana/acp.html.md): Ramabana as an [Agent Client Protocol](https://agentclientprotocol.com/) agent: an editor drives this host through its own files and terminal.
 - [ramabana.theory](https://vedicreader.github.io/ramabana/theory.html.md): Naur's programming-as-theory-building, in the sense this team uses the word.
 - [ramabana.vault](https://vedicreader.github.io/ramabana/vault.html.md): Memory that outlives the process: a vishalakshi vault behind the host, and the watches that bring work back to the agent later.

@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.54
+
+- A fifth bundled skill, `debugging`, for diagnosing a failure, a tool that misbehaves, or Ramabana itself. It asks for the raw error before a hypothesis, a reproduction in the environment the failure ran in, and a read of the code before any claim about what it does or lacks, including the version that ran. A tool result that contradicts what the agent has seen, such as "no matches" for text it has just read, is treated as a harness fault: confirmed once by another route, recorded with `remember(component='tool')`, and named in the reply. It maps where Ramabana keeps its config, turn history, run logs, saved sub-agent answers, Claude Code transcripts, beat launcher, scheduler entry and Dhrona's nightly summaries, and how to check the `PATH` a scheduled beat runs on. Its test checks each path against the code that writes it.
+- The replayed `03_agent` turns list only the four skills they were recorded with, so a new bundled skill no longer changes their system prompt.
+
 ## 0.2.53
 
 - A Claude Code turn that sends nothing for 240 seconds is ended and tried once more, and the terminal shows a note saying so. Before, it waited 600 seconds in silence and then failed. Set the limit per model on this machine with `timeout` under `[model."NAME"]` in `~/.config/ramabana/config.toml`. If the retry goes silent too, the turn fails with an error that names the limit and that setting. Text already streamed is not repeated: the retry asks Claude Code to finish the reply. `Backend.notice` puts a status note on the run and passes it to `Backend.on_notice`, which the terminal sets. Requires rishi 0.1.49.
