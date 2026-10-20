@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.51
+
+- Requires rishi 0.1.48 and uraiyadal 0.0.15. A `<parameter>` element a model leaves outside any tool call is stripped from the reply text instead of shown.
+
 ## 0.2.50
 
 - A line sent into a running turn reaches the model when the tool result it rides on is already as long as a result may be. The line was appended after the result, and the backend cut every result to `tool_max_len` from the end, so a wide `delegate_search` or a clipped file view dropped it unread. `_inboxed(mx=)` now shortens the body instead, saving the whole to a file the note names, and a line longer than half the cap arrives with its rest in a file too. Sub-agents get the same cap from their own backend.

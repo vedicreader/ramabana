@@ -19,11 +19,11 @@ classifiers = [
 ]
 dependencies = [
     "shalya>=0.1.17",   # grep path_filter finds folders; outside-folder grep and ls say so
-    "uraiyadal>=0.0.14",   # Literal as enum, pydantic models by their fields
+    "uraiyadal>=0.0.15",   # parse_tool_tags strips <parameter> elements left outside any call
     "gheasy>=0.0.10",
     "exhash>=0.4.11",
     "fastcore>=2.2.19",
-    "rishi>=0.1.47",   # local structured schemas through mk_toolspec
+    "rishi>=0.1.48",   # pins uraiyadal 0.0.15
     "fastspec>=0.2.4",
     "pyyaml>=6.0.3",
     "pobblebonk>=0.0.3",
@@ -38,7 +38,7 @@ serve = ["mcp>=1.29.1", "agent-client-protocol>=0.12.1"]
 dhrona = ["dhrona>=0.1.13"]   # `compact_learned(onto=)` for `/learned compact ID`
 cli = ["ramabana[search,python]", "teleprint>=0.1.3,<0.1.4", "pyghostty>=0.1.0", "shalya[tmux]>=0.1.17", "fastpylight>=0.1.18"]
 all = ["ramabana[search,python,serve,dhrona,cli]"]
-dev = ["ramabana[all]", "rishi[all]>=0.1.47", "nbdev>=3.3.25", "notebook>=7.6.2", "pytest>=9.1.1", "pytest-xdist>=3.8.0"]   # CI and the docs build install `.[dev]`
+dev = ["ramabana[all]", "rishi[all]>=0.1.48", "nbdev>=3.3.25", "notebook>=7.6.2", "pytest>=9.1.1", "pytest-xdist>=3.8.0"]   # CI and the docs build install `.[dev]`
 
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
