@@ -12,16 +12,16 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
            'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SETUP_HINT', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
            'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'TOOL_CHANNELS', 'KEY_ENVS', 'CODEX_LOGIN',
-           'DOWN_TTL', 'PROVIDERS', 'DFLT_IMAGE', 'NO_IMAGES', 'BranchChanged', 'ContextFull', 'agent_err',
-           'use_env_prefix', 'env', 'claude_ctx', 'claude_wire', 'probe_path', 'probed', 'forget_probes',
-           'runtime_remedy', 'runtime_detail', 'runtime_available', 'azure_base', 'azure_endpoint', 'azure_key_env',
-           'azure_ready', 'azure_host', 'is_azure', 'auth_status', 'register_model', 'unregister_model', 'use_aliases',
-           'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model', 'config_models', 'sync_models',
-           'model_problems', 'remote_models', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx',
-           'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts',
-           'model_note', 'Budget', 'budget_for', 'profile_for', 'force_tags', 'forget_forced_tags', 'tool_channel',
-           'missing_key', 'needs', 'is_local', 'Routing', 'provider_ready', 'job_source', 'needs_setup', 'setup_guide',
-           'image_route']
+           'DOWN_TTL', 'PROVIDERS', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO', 'GEMINI_BASE', 'BranchChanged',
+           'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'claude_wire', 'probe_path', 'probed',
+           'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available', 'azure_base', 'azure_endpoint',
+           'azure_key_env', 'azure_ready', 'azure_host', 'is_azure', 'auth_status', 'register_model',
+           'unregister_model', 'use_aliases', 'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model',
+           'config_models', 'sync_models', 'model_problems', 'remote_models', 'copilot_catalog', 'available_models',
+           'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve',
+           'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for', 'force_tags',
+           'forget_forced_tags', 'tool_channel', 'missing_key', 'needs', 'is_local', 'Routing', 'provider_ready',
+           'job_source', 'needs_setup', 'setup_guide', 'image_route', 'video_route']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time, warnings
@@ -887,8 +887,8 @@ def setup_guide(routing=None):
     for j in JOBS:
         n = r.name_for(j)
         out.append(f'  {j:11} {n:28} {job_source(r, j):17} ' + (f'cannot run: {w}' if (w := r._why(n)) else 'runs here'))
-    img = image_route()
-    out.append(f"  {'image':11} {img['name'] if isinstance(img, dict) else '-':28} {'':17} " + ('runs here' if isinstance(img, dict) else img))
+    for j, rt in (('image', image_route()), ('video', video_route())):
+        out.append(f"  {j:11} {rt['name'] if isinstance(rt, dict) else '-':28} {'':17} " + ('runs here' if isinstance(rt, dict) else rt))
     out += ['', f'`ramabana setup` adds a provider. By hand, in {config_path()}, for example:', '', PROVIDERS[4]['example'],
             '', 'A [model."NAME"] table with model_id, base_url, api_key_env and api_name defines any OpenAI-compatible model. Keys stay in the environment.']
     return '\n'.join(out)
@@ -909,3 +909,23 @@ def image_route():
     if any(h in base for h in NO_IMAGES): return f'image job: {base} has no images endpoint; {fix}'
     key = os.environ.get(cfg.get('api_key_env') or KEY_ENVS.get(vendor, ''))
     return dict(name=name, base_url=base, api_key=key, model=spec.model_id.removeprefix('openai/'))
+
+DFLT_VIDEO = 'gemini/veo-3.0-generate-001'
+GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta'
+
+def video_route(name=None):
+    "The `video` job's endpoint, `{name, api, base_url, api_key, model}`, from `name`, `$RAMABANA_MODEL_VIDEO`, config.toml's `[jobs] video` or `DFLT_VIDEO`; else what to set up."
+    name = name or env('MODEL_VIDEO') or setting('jobs.video') or DFLT_VIDEO
+    fix = 'set [jobs] video in config.toml to a video model you have, such as gemini/veo-3.0-generate-001 or an OpenAI or Azure sora-2'
+    try: spec = resolve(name)
+    except Exception as e: return f'video job: {agent_err(e)}; {fix}'
+    if spec.runtime != 'remote': return f'video job: {name} runs on {spec.runtime}, and video comes only from a hosted API; {fix}'
+    if (c := spec_caps(spec)) is not None and c.known and not c.gen_video: return f'video job: {name} makes no video ({c.fmt() or "text in, text out"}); {fix}'
+    cfg, vendor = spec.config or {}, spec.model_id.partition('/')[0]
+    gem = (cfg.get('api_name') or vendor) == 'gemini'
+    k = cfg.get('api_key_env') or KEY_ENVS.get(vendor, '')
+    key = os.environ.get(k) or (os.environ.get('GOOGLE_API_KEY') if gem and not cfg.get('api_key_env') else '')
+    if (m := missing_key(spec)) and not key: return f'video job: {name} {needs(m)}; or {fix}'
+    base = cfg.get('base_url') or (GEMINI_BASE if gem else 'https://api.openai.com/v1' if vendor == 'openai' else '')
+    if not base or any(h in base for h in NO_IMAGES): return f'video job: {base or name} has no video endpoint; {fix}'
+    return dict(name=name, api='gemini' if gem else 'openai', base_url=base.rstrip('/'), api_key=key, model=spec.model_id.removeprefix(f'{vendor}/') if vendor in ('gemini', 'openai') else spec.model_id)

@@ -204,3 +204,26 @@ def test_set_table_keeps_comments_and_quotes_a_model_name(tmp_path):
     p.write_text('learning = false   # mine\n')
     set_table('jobs', {'turn': 'x'}, p); set_table('a/b c', {'model_id': 'm'}, p); set_table('jobs', {'turn': 'y', 'summary': 'z'}, p)
     assert '# mine' in p.read_text() and tomllib.loads(p.read_text()) == {'learning': False, 'jobs': {'turn': 'y', 'summary': 'z'}, 'model': {'a/b c': {'model_id': 'm'}}}
+
+
+def test_the_video_job_goes_where_config_toml_says_and_refuses_what_makes_no_video(monkeypatch):
+    "Leela's generate_video asked Gemini by name; it now asks the `video` job, and a model that cannot make video is refused."
+    from ramabana.setup import load_config
+    for k in ('GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY', 'RAMABANA_MODEL_VIDEO', 'LEELA_MODEL_VIDEO'): monkeypatch.delenv(k, raising=False)
+    r = core.video_route()
+    assert isinstance(r, str) and 'gemini/veo-3.0-generate-001 needs GEMINI_API_KEY' in r and '[jobs] video' in r
+    monkeypatch.setenv('GOOGLE_API_KEY', 'gk')
+    assert core.video_route() == dict(name=core.DFLT_VIDEO, api='gemini', base_url=core.GEMINI_BASE, api_key='gk', model='veo-3.0-generate-001')
+    _write('[jobs]\nvideo = "gemini/gemini-2.5-flash"\n')
+    assert load_config()[1] == [], '[jobs] video is a setting'
+    assert 'gemini/gemini-2.5-flash makes no video' in core.video_route()
+    monkeypatch.setenv('AZURE_OPENAI_API_KEY', 'azk')
+    _write('[model."az-sora"]\nmodel_id = "sora-2"\nbase_url = "https://res.openai.azure.com/openai/v1"\n[jobs]\nvideo = "az-sora"\n')
+    assert core.video_route() == dict(name='az-sora', api='openai', base_url=AZ, api_key='azk', model='sora-2')
+    monkeypatch.setenv('OPENAI_API_KEY', 'ok')
+    assert core.video_route('openai/sora-2') == dict(name='openai/sora-2', api='openai', base_url='https://api.openai.com/v1', api_key='ok', model='sora-2'), 'a named model beats the job'
+    monkeypatch.setenv('RAMABANA_MODEL_VIDEO', 'gemma-e4b')
+    assert 'video comes only from a hosted API' in core.video_route()
+    monkeypatch.setenv('OPENROUTER_API_KEY', 'k')
+    assert 'no video endpoint' in core.video_route('openrouter/openai/sora-2')
+    assert 'video ' in core.setup_guide()

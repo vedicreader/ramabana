@@ -165,6 +165,7 @@ turn = "azure/gpt-5.4"                        # a deployment, named by its deplo
 completion = "azure/gpt-5.4-mini"
 classify = "azure/gpt-5.4-mini"
 image = "az-image"
+video = "gemini/veo-3.0-generate-001"        # generate_video; or an Azure sora-2 [model."NAME"]
 
 [model."azure/prod-chat"]                     # a deployment named for no known model needs its window
 max_input_tokens = 200000

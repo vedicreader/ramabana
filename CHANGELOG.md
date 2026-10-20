@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.48
+
+- A `video` job. `video_route()` gives the model a host's `generate_video` asks, from `$RAMABANA_MODEL_VIDEO`, config.toml's `[jobs] video`, or `gemini/veo-3.0-generate-001` (`DFLT_VIDEO`): `{name, api, base_url, api_key, model}`, where `api` is `gemini` for Gemini's long-running Veo API or `openai` for an OpenAI-shaped `/videos` API, such as `sora-2` on OpenAI or an Azure deployment. A local model, a model fastllm knows returns no video, a missing key and a host with no video endpoint are each refused with what to set up. `video_route(name)` resolves one model by name, so a job started earlier is polled through the route it started on. `GOOGLE_API_KEY` serves a Gemini model when `GEMINI_API_KEY` is unset.
+- config.toml accepts `[jobs] video`, `ramabana setup --jobs` accepts `video`, and `setup_guide` lists the video job beside the image job.
+
 ## 0.2.47
 
 - Nothing is chosen for you. 0.2.46 moved every job onto Azure deployments, or another configured hosted model, when Claude Code and Codex were absent; that is gone, with `AZURE_OPENAI_DEPLOYMENTS` and `[azure] deployments` (config.toml now says what to do instead) and the `azure/...` rows `available_models` listed from them. A job falls back exactly as in 0.2.45. A deployment is used only where you name it: `azure/<deployment>`, or a `[model."NAME"]` table.

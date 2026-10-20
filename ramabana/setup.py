@@ -234,6 +234,7 @@ KEYS = {
     'jobs.turn': Key(str, 'MODEL', '--model', 'the model each turn runs on'),
     **{f'jobs.{j}': Key(str, f'MODEL_{j.upper()}', '', _JOB.format(j)) for j in ('oneshot', 'inline', 'completion', 'classify', 'summary', 'subagent')},
     'jobs.image': Key(str, 'MODEL_IMAGE', '', 'the OpenAI-compatible image model generate_image draws with, such as a [model."NAME"] on Azure'),
+    'jobs.video': Key(str, 'MODEL_VIDEO', '', 'the video model generate_video asks: Gemini Veo, or an OpenAI-shaped /videos API such as sora-2'),
     'window.margin': Key(float, '', '', 'what a token count estimated from characters is multiplied by before it is held against the window'),
     'window.image_tokens': Key(int, '', '', 'tokens one picture is charged against the window'),
     'window.reserve': Key(int, '', '', 'tokens of headroom kept below the window; a conversation past that line compacts'),
@@ -401,12 +402,12 @@ from itertools import groupby
 
 def config_defaults():
     "Every key's built-in default, read from the module that owns it."
-    from ramabana.core import AZURE_KEY_ENV, DEFAULT_POLICY, DFLT_IMAGE, DFLT_TURN
+    from ramabana.core import AZURE_KEY_ENV, DEFAULT_POLICY, DFLT_IMAGE, DFLT_TURN, DFLT_VIDEO
     from ramabana.runtime import CLAUDE_EFFORT, EST_MARGIN, IMG_TOKENS, KEEP_RECENT, RESERVE
     d = {'learning': True, 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
          'window.margin': EST_MARGIN, 'window.image_tokens': IMG_TOKENS, 'window.reserve': RESERVE, 'window.keep_recent': KEEP_RECENT,
          'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'summary', 'runtime.effort': CLAUDE_EFFORT,
-         'runtime.tool_channel': '', 'runtime.litert_backend': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'jobs.image': DFLT_IMAGE}
+         'runtime.tool_channel': '', 'runtime.litert_backend': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'jobs.image': DFLT_IMAGE, 'jobs.video': DFLT_VIDEO}
     try:
         from ramabana.cli import main
         ps = inspect.signature(getattr(main, '__wrapped__', main)).parameters
@@ -540,8 +541,8 @@ def setup_cli(argv=(), ask=input, isatty=None, out=print):
         else:
             name = get('model_id', 'model name, as /models lists it')
             if not name: out('no model named; nothing written'); return 1
-        jobs = [j.strip() for j in get('jobs', f'jobs it serves ({", ".join(JOBS)}, image; empty for none)').split(',') if j.strip()]
-        if (bad := [j for j in jobs if j not in (*JOBS, 'image')]): out(f'unknown job {bad[0]!r}; nothing more written'); return 1
+        jobs = [j.strip() for j in get('jobs', f'jobs it serves ({", ".join(JOBS)}, image, video; empty for none)').split(',') if j.strip()]
+        if (bad := [j for j in jobs if j not in (*JOBS, 'image', 'video')]): out(f'unknown job {bad[0]!r}; nothing more written'); return 1
         if jobs: set_table('jobs', {j: name for j in jobs}); out(f'[jobs] {", ".join(jobs)} = "{name}"')
     except (EOFError, KeyboardInterrupt): return 1
     except ValueError as e: print(e, file=sys.stderr); return 1
