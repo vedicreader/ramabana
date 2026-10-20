@@ -1228,6 +1228,7 @@ class Agent:
         self.on_background_done = None   # callable(run, answer)
         self.subagent_writes = bool(subagent_writes)
         self.turn_channel = self.sub_channel = self.sub_effort = ''   # the session's `/model tools`, `/subagents tools` and `/subagents effort`; '' takes config.toml's
+        self._be_lock = threading.RLock()   # one backend per model, however many delegations ask for it at once
         self.subagent_steps, self.subagent_timeout, self.subagent_depth = _sub_steps(subagent_steps), _sub_timeout(subagent_timeout), _sub_depth(subagent_depth)
         self.sub_slots = Slots()   # one bound on sub-agents at once, across every delegation tree
         self.readonly, self.readonly_calls, self.plan_mode = bool(readonly), readonly_calls, False
@@ -1396,8 +1397,9 @@ def skills(self:Agent):
 def _be_or_none(self:Agent, job='turn'):
     "The backend for `job` if it can start, else None with the reason in `routing.notes[job]`; a model that fell back says so in the chat, once."
     try:
-        b = self._be(job)
-        if b.start() is not None: return b
+        with self._be_lock:
+            b = self._be(job)
+            if b.start() is not None: return b
         self.routing.notes[job] = b.note
     except Exception as e: self.routing.notes[job] = str(e) if isinstance(e, AgentError) else agent_err(e)
     finally:
@@ -1434,20 +1436,28 @@ def _named_backend(self:Agent, name):
     "A started backend for model `name`, without changing routing; a model that is unknown or not set up here raises its setup message, and nothing runs in its place."
     name, sub = str(name).strip(), str(self.routing.name_for('subagent') or '')
     try: self.routing._resolve(name)
-    except KeyError:   # `gpt-6-sol` for the sub-agent's own `openai/gpt-6-sol`
-        if name == sub.rsplit('/', 1)[-1] and (b := self._be_or_none('subagent')) is not None: return b
+    except KeyError:   # `gpt-6-sol` for the sub-agent's own `openai/gpt-6-sol`, and never the route's fallback
+        if name == sub.rsplit('/', 1)[-1]: name = sub
     if (why := self._setup_problem(name)): raise AgentError(why)
     spec = self.routing._resolve(name)
     key = (spec.backend, spec.model_id)
-    if spec.local and key not in self._backends: raise AgentError(f"{name} is a local model this session has not loaded; a sub-agent runs on a local model only when it is the session's own")
-    if key not in self._backends: self._backends[key] = make_backend(spec)
-    if (b := self._backends[key]).start() is None: raise AgentError(b.note)
+    with self._be_lock:
+        if spec.local and key not in self._backends: raise AgentError(f"{name} is a local model this session has not loaded; a sub-agent runs on a local model only when it is the session's own")
+        if key not in self._backends: self._backends[key] = make_backend(spec)
+        if (b := self._backends[key]).start() is None: raise AgentError(b.note)
     return b
 
 @patch
 def sub_effort_level(self:Agent, effort=''):
     "The effort a sub-agent asks for: `effort`, the session's `/subagents effort`, `$SUBAGENT_EFFORT`, then `[subagents] effort`; '' leaves the model's default."
-    return norm_effort(effort) or self.sub_effort or norm_effort(env('SUBAGENT_EFFORT') or setting('subagents.effort'))
+    return norm_effort(effort) or self.sub_effort or self._cfg_effort()[0]
+
+@patch
+def _cfg_effort(self:Agent):
+    "`$SUBAGENT_EFFORT`, else `[subagents] effort`, as a level, and why a value that is no level was ignored."
+    v = env('SUBAGENT_EFFORT') or setting('subagents.effort') or ''
+    try: return norm_effort(v), ''
+    except ValueError as e: return '', f'sub-agent effort {v!r} from the environment is ignored: {e}'
 
 @patch
 def _sub_backend(self:Agent, model='', effort=''):
@@ -1910,17 +1920,18 @@ def note_tools(note, learning=lambda: True):
 @patch
 def _be(self:Agent, job='turn'):
     "The backend for `job`, built on first use and shared by every job on the same model."
-    spec = self.routing.spec(job)
-    key = (spec.backend, spec.model_id)
-    if key not in self._backends:
-        is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
-        kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
-        if is_turn:
-            kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
-                      approve=(self.approvals.gate if self.approvals is not None else None))
-            if self.turn_channel: kw['tool_mode'] = self.turn_channel
-        self._backends[key] = make_backend(spec, **kw)
-    return self._backends[key]
+    with self._be_lock:
+        spec = self.routing.spec(job)
+        key = (spec.backend, spec.model_id)
+        if key not in self._backends:
+            is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
+            kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
+            if is_turn:
+                kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
+                          approve=(self.approvals.gate if self.approvals is not None else None))
+                if self.turn_channel: kw['tool_mode'] = self.turn_channel
+            self._backends[key] = make_backend(spec, **kw)
+        return self._backends[key]
 
 # %% ../nbs/03_agent.ipynb #1b4fa81d
 #: bytes of log read back; the first bound to bite wins
@@ -2359,6 +2370,7 @@ def subagent_report(self:Agent):
              if self.subagent_writes else 'sub-agents are read-only: they report what they found and change nothing') +
             f"\nsteps {self.subagent_steps} · timeout {f'{self.subagent_timeout:g}s' if self.subagent_timeout else 'none'} · nest {self.subagent_depth}" +
             f"\nmodel {s['model'] or 'none'} · effort {s['effort'] or 'default'} · tools {s['tools']}")
+    if (bad := self._cfg_effort()[1]): out += f'\n{bad}'
     if (why := self._setup_problem(s['model']) if s['model'] else ''): out += f'\nthe sub-agent model cannot run here: {why}'
     elif s['effort'] and (spec := self.spec_or_none('subagent')) is not None and effort_support(spec):
         out += f"\neffort {s['effort']} is not supported on {spec.name} ({spec.runtime}); it runs at its default"
@@ -2382,11 +2394,10 @@ def subagent_settings(self:Agent, model=None, effort=None, tools=None, save=Fals
         if t is not None:
             if t == 'native': forget_forced_tags()
             self.sub_channel = t; self._catalogs.clear(); self._views.clear(); said.append(f'sub-agent tools {SHOWN_CHANNEL[t]}')
-        if save:
-            s, none = self._sub_state, all(v is None for v in (m, e, t))
-            if m is not None or none: set_table('jobs', {'subagent': m if m is not None else s['model']})
-            row = {**({'effort': s['effort']} if e is not None or none else {}), **({'tool_channel': norm_channel(s['tools'])} if t is not None or none else {})}
-            if row: set_table('subagents', row)
+        if save and all(v is None for v in (m, e, t)): said.append('nothing was saved: --save keeps a model, effort or tools change')
+        elif save:
+            if m is not None: set_table('jobs', {'subagent': m})
+            if (row := {**({'effort': e} if e is not None else {}), **({'tool_channel': t} if t is not None else {})}): set_table('subagents', row)
             said.append('saved to config.toml')
     except (AgentError, ValueError, KeyError, OSError) as x: out.update(ok=False, error=str(x.args[0]) if isinstance(x, KeyError) and x.args else str(x))
     s = self._sub_state
@@ -4594,20 +4605,21 @@ def chat_callback(self:Agent, name):
 @patch
 def _be(self:Agent, job='turn'):
     "The backend for `job`, applying registered turn callbacks when it is first built."
-    spec = self.routing.spec(job)
-    key = (spec.backend, spec.model_id)
-    if key not in self._backends:
-        is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
-        kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
-        if is_turn:
-            kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
-                      approve=(self.approvals.gate if self.approvals is not None else None))
-            if self.turn_channel: kw['tool_mode'] = self.turn_channel
-        backend = make_backend(spec, **kw)
-        if is_turn:
-            for cb in getattr(self, '_chat_callbacks', {}).values(): backend.add_cb(cb)
-        self._backends[key] = backend
-    return self._backends[key]
+    with self._be_lock:
+        spec = self.routing.spec(job)
+        key = (spec.backend, spec.model_id)
+        if key not in self._backends:
+            is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
+            kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
+            if is_turn:
+                kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
+                          approve=(self.approvals.gate if self.approvals is not None else None))
+                if self.turn_channel: kw['tool_mode'] = self.turn_channel
+            backend = make_backend(spec, **kw)
+            if is_turn:
+                for cb in getattr(self, '_chat_callbacks', {}).values(): backend.add_cb(cb)
+            self._backends[key] = backend
+        return self._backends[key]
 
 # %% ../nbs/03_agent.ipynb #08c3bf66
 from .core import PII_OFF

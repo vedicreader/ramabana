@@ -15,6 +15,11 @@
 - `/models` and `ramabana config models` show each model's tool channel and whether it takes an effort level.
 - `ramabana config set KEY VALUE` writes one key, including `model."NAME".key`. config.toml takes `[subagents] effort`, `[subagents] tool_channel`, and `tool_channel` and `effort` in a `[model."NAME"]` table. `set_table` writes `[runtime]` and `[subagents]` under their own headers; they were written as model tables.
 - Every parameter of Ramabana's own tools has a description: the delegation tools, `submit_result`, `set_plan`, `update_todo`, `remember`, `status`, the cart tools and the MCP `ask`.
+- A per-turn effort level the model refuses is retried once without it. The chat keeps its own level, the note names the refused one, and that level is not sent again to that model. A refusal of the chat's own level drops it, as before.
+- A local runtime (ollama, llama.cpp, MLX, LiteRT) always reports the native channel, since it takes no `tool_mode`.
+- A `$RAMABANA_SUBAGENT_EFFORT` that is no level is ignored, and `/subagents` names it.
+- `--save` writes only the setting its command changed. With no model, effort or tools change it writes nothing and says so.
+- A sub-agent model named by its short name never runs on another model. Delegations that ask for one model at once share one backend.
 - Requires rishi 0.1.51 and shalya 0.1.18.
 
 ## 0.2.56

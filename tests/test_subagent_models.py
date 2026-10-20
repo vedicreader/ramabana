@@ -313,3 +313,74 @@ def test_a_default_remote_or_claude_chat_gets_no_new_options():
     assert not {'tool_mode', 'effort'} & set(RishiBackend(GPT)._runtime_kw())
     kw = RishiBackend(CL)._runtime_kw()
     assert 'tool_mode' not in kw and kw['effort'] == 'high'
+
+# the review of caafd9c
+
+def test_a_bad_effort_in_the_environment_is_reported_not_raised(tmp_path, monkeypatch):
+    a, _ = fake_agent(cfg=tmp_path)
+    monkeypatch.setenv('RAMABANA_SUBAGENT_EFFORT', 'huge')
+    d = a.subagent_settings()
+    assert d['ok'] and d['effort'] == '' and "'huge'" in d['note'] and 'ignored' in d['note']
+    assert "'huge'" in a.command('/subagents')
+    a._be_or_none = lambda job='turn': FakeBackend(GPT)
+    assert a._sub_backend()[1] == {}, 'a delegation runs at the model default'
+
+def test_a_local_runtime_reports_the_native_channel_it_really_uses(monkeypatch):
+    assert core.tool_channel(GEMMA, session='text') == 'native'
+    monkeypatch.setenv('RAMABANA_TOOL_CHANNEL', 'tags')
+    assert core.tool_channel(GEMMA) == 'native' and core.tool_channel(GPT) == 'tags'
+    assert core.native_support(GEMMA) == 'native'
+
+def test_the_short_name_never_runs_another_model(tmp_path, monkeypatch):
+    a, _ = fake_agent(cfg=tmp_path)
+    a.routing.policy['subagent'] = 'openai/zz-sub-9'
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    with pytest.raises(core.AgentError) as e: a._named_backend('zz-sub-9')
+    assert 'needs OPENAI_API_KEY' in str(e.value), 'not the fake backend the fallback route gives'
+    monkeypatch.setenv('OPENAI_API_KEY', 'x')
+    with use_chat(Native): b = a._named_backend('zz-sub-9')
+    assert b.spec.model_id == 'openai/zz-sub-9'
+
+def test_a_refused_per_turn_effort_keeps_the_chat_s_own():
+    class Picky(Native):
+        def __call__(self, msg, stream=False, **kw):
+            if kw.get('effort') == 'max': raise ValueError("invalid effort level 'max' for this model")
+            return super().__call__(msg, stream, **kw)
+    Native.made.clear()
+    be = RishiBackend(CL)
+    with use_chat(Picky):
+        assert be.send('hi', reasoning_effort='max') == 'done'
+        assert be.fell_back == ['cl refused effort max; it ran at high'] and not be._no_effort
+        assert Native.made[-1].kw['effort'] == 'high', "the constructor's effort is kept"
+        be.send('again', reasoning_effort='max')
+        assert Native.made[-1].calls[-1] == {} and len(be.fell_back) == 1, 'a refused level is not sent again'
+    class Dropping(Native):
+        dropped_effort = None
+        def __call__(self, msg, stream=False, **kw):
+            if kw.get('effort'): self.dropped_effort = 'refused'
+            return super().__call__(msg, stream, **kw)
+    be = RishiBackend(GPT)
+    with use_chat(Dropping): be.send('hi', reasoning_effort='xhigh')
+    assert be.fell_back == ['gpt refused effort xhigh; it ran at its default'] and be.chat.dropped_effort is None and not be._no_effort
+
+def test_two_delegations_start_one_backend_for_one_model(tmp_path, monkeypatch):
+    a, _ = fake_agent(cfg=tmp_path)
+    a.routing._cache['gpt'] = GPT
+    monkeypatch.setenv('OPENAI_API_KEY', 'x')
+    made = []
+    def slow(spec, **kw): time.sleep(.1); made.append(spec); return FakeBackend(spec)
+    monkeypatch.setattr('ramabana.agent.make_backend', slow)
+    ts = [threading.Thread(target=a._named_backend, args=('gpt',)) for _ in range(3)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    assert len(made) == 1
+
+def test_save_writes_only_what_the_command_named(tmp_path, monkeypatch):
+    monkeypatch.setenv('RAMABANA_CONFIG', str(p := tmp_path/'config.toml'))
+    monkeypatch.setenv('RAMABANA_SUBAGENT_EFFORT', 'low')
+    a, _ = fake_agent(cfg=tmp_path)
+    for cmd in ('--save', 'on --save', 'steps 30 --save'):
+        assert 'nothing was saved' in a.subagents_command(cmd)['note'] and not p.exists(), cmd
+    a.subagents_command('tools text --save')
+    text = p.read_text()
+    assert 'tool_channel = "tags"' in text and 'effort' not in text and '[jobs]' not in text

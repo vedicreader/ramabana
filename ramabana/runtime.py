@@ -686,7 +686,7 @@ class Backend:
         self.chat,self.use,self.note=None,Usage(model=spec.model_id),'not started'
         self.problems,self.last_native,self._tried,self.run=[], '', False, None
         self._resume_hist=None
-        self.fell_back=[]   # what this backend gave up to answer, a refused tool wire or effort, for the caller to be told
+        self.fell_back,self._refused=[],set()   # what this backend gave up to answer, for the caller to be told; per-turn levels the model refused
         self._used,self._rewrote,self._est=0,None,0
         self.spill,self.how=_unsaved,''   # where cut content is kept whole, and how the model reads it back
         self.lock=threading.Lock()
@@ -977,7 +977,7 @@ ROUTINE_CBS = frozenset({'ToolReminderCallback','_ToolReminderCallback','Sliding
 class RishiBackend(Backend):
     "The `Backend` that runs every model, local or hosted, through rishi's `Chat`."
     kind='rishi'
-    effort,_no_effort='',False   # the effort level the chat was built with; set once a refusal took it away
+    effort,_no_effort,_sent='',False,''   # the level the chat was built with; set once a refusal took it away; the level this call sent
     def __init__(self,*a,max_steps=MAX_STEPS,**kw):
         self.max_steps,self._prefill,self._seen_use=max_steps,None,None; super().__init__(*a,**kw)
     @property
@@ -1055,36 +1055,43 @@ class RishiBackend(Backend):
         "This turn's generation controls: its `reasoning_effort` becomes the chat's `effort` for this call only, on a runtime that takes one."
         kw = dict(kw or {})
         e = str(kw.pop('reasoning_effort', None) or kw.pop('effort', None) or '').strip().lower()
-        if e in ('', 'auto', 'default') or self._no_effort or self.spec.runtime not in EFFORT_RUNTIMES: return kw
-        if self.spec.runtime != 'claude' or e in EFFORTS: kw['effort'] = e
+        self._sent = ''
+        if e in ('', 'auto', 'default') or e in self._refused or self.spec.runtime not in EFFORT_RUNTIMES: return kw
+        if self.spec.runtime != 'claude' or e in EFFORTS: kw['effort'] = self._sent = e
         return kw
     def _send(self,msg,**kw):
         try: return answer_only(resp_text(self.chat(msg,**self._turn_kw(kw))))
         finally: self._dropped()
     def _dropped(self):
-        "Tell the caller, once, that the provider refused the effort and the chat answered without one."
-        if (why:=getattr(self.chat,'dropped_effort',None)) and not self._no_effort:
-            self._no_effort=True; self.fell_back.append(self.problem(f'{self.spec.name} refused effort {self.effort or "its level"}; it ran at its default'))
+        "Tell the caller, once, that the provider refused the effort; a refused per-turn level is not sent again, and the chat goes back to its own."
+        if not getattr(self.chat,'dropped_effort',None): return
+        if self._sent: self._refuse(self._sent); self.chat.dropped_effort=None
+        elif not self._no_effort: self._no_effort=True; self.fell_back.append(self.problem(f'{self.spec.name} refused effort {self.effort or "its level"}; it ran at its default'))
+    def _refuse(self,level):
+        "Stop sending the per-turn `level`, and say what ran instead."
+        self._refused.add(level)
+        self.fell_back.append(self.problem(f'{self.spec.name} refused effort {level}; it ran at {self.effort or "its default"}'))
     MCP_REFUSED=('mcp','strict_mcp_config','allowed_tools','disallowed','not permitted','policy')
     EFFORT_REFUSED=('invalid','unsupported','not supported','not allowed','refus')
     def _effort_refused(self,e):
-        "Whether `e` refused the effort level this chat was built with."
-        if not self.effort or self._no_effort: return False
+        "The level `e` refused, the one this call sent or the chat's own, else ''."
+        if not (lvl:=self._sent or ('' if self._no_effort else self.effort)): return ''
         try:
             from rishi.remote import effort_refused
-            if effort_refused(e): return True
+            if effort_refused(e): return lvl
         except ImportError: pass
         s=f'{e}'.lower()
-        return 'effort' in s and any(w in s for w in self.EFFORT_REFUSED)
+        return lvl if 'effort' in s and any(w in s for w in self.EFFORT_REFUSED) else ''
     def _recover(self,e):
         "Learn that this model's wire tool channel is closed, and retry on tags; or that it refused the effort, and retry without one. Returns the cause."
         if self.tools and self.tool_channel!='tags' and any(s in f'{e}'.lower() for s in self.MCP_REFUSED):
             force_tags(self.spec.model_id,agent_err(e)); why='mcp'
             self.fell_back.append(self.problem(f'{self.spec.name}: the wire refused the tool schemas, so they now travel in '
                          f'the system prompt instead ({agent_err(e)})'))
-        elif self._effort_refused(e):
+        elif (lvl:=self._effort_refused(e)) and lvl==self._sent: self._refuse(lvl); why='turn effort'
+        elif lvl:
             self._no_effort,why=True,'effort'
-            self.fell_back.append(self.problem(f'{self.spec.name} refused effort {self.effort}; it ran at its default'))
+            self.fell_back.append(self.problem(f'{self.spec.name} refused effort {lvl}; it ran at its default'))
         else: return False
         hist=self.hist
         self.close(); self.retry()

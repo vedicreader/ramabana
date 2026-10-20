@@ -729,6 +729,7 @@ def tool_channel(spec, chat=None, scope='turn', session=''):
     "The channel ('native' or 'tags') `spec`'s tool schemas travel on: `$TOOL_CHANNEL`, a refusal, the `session`'s choice, `[model.\"NAME\"] tool_channel`, the `scope`'s config, then the runtime's default. `chat` is not asked."
     mid = str(getattr(spec, 'model_id', spec) or '')
     rt = getattr(spec, 'runtime', '') or (mid.split('/', 1)[0] if '/' in mid else '')
+    if (r := getattr(spec, 'runtime', '')) and r not in ('remote', 'copilot', *AGENTS): return 'native'   # a local engine takes no `tool_mode`
     cfg = (env('SUBAGENT_TOOL_CHANNEL') or setting('subagents.tool_channel') if scope == 'subagent' else '') or setting('runtime.tool_channel')
     if (v := _channel(env('TOOL_CHANNEL'))): pass
     elif mid in _forced_tags: return 'tags'
