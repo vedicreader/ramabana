@@ -47,7 +47,7 @@ def learned_folder(cfg='~/.config/ramabana'):
     "`<cfg>/learned`, whether or not a session runs with it."
     return Path(cfg).expanduser()/LEARNED
 
-def _git(d, *a, check=True): return subprocess.run(['git', '-C', str(d), *a], capture_output=True, text=True, check=check)
+def _git(d, *a, check=True): return subprocess.run(['git', '-C', str(d), *a], stdin=subprocess.DEVNULL, capture_output=True, text=True, check=check)
 
 @contextmanager
 def _locked(folder):
@@ -81,7 +81,7 @@ def restack(folder):
         if (tree := _picked(folder, ref)) is None: stale.append(p['id']); continue
         an, ae, ad, msg = _git(folder, 'log', '-1', '--format=%an%x00%ae%x00%ad%x00%B', ref).stdout.split('\0', 3)
         env = os.environ | dict(GIT_AUTHOR_NAME=an, GIT_AUTHOR_EMAIL=ae, GIT_AUTHOR_DATE=ad)
-        sha = subprocess.run(['git', '-C', str(folder), *_AS, 'commit-tree', tree, '-p', head, '-m', msg.strip()], capture_output=True, text=True, check=True, env=env).stdout.strip()
+        sha = subprocess.run(['git', '-C', str(folder), *_AS, 'commit-tree', tree, '-p', head, '-m', msg.strip()], stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, env=env).stdout.strip()
         _git(folder, 'update-ref', f'refs/heads/{ref}', sha); moved.append(p['id'])
     return moved, stale
 

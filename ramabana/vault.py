@@ -264,7 +264,7 @@ class WorkspaceHost(VaultHost, SpecHost):
         import subprocess
         repo = Path(repo).expanduser().resolve()
         path = Path(path).expanduser() if path else repo.parent/f"{repo.name}-{re.sub(r'[^A-Za-z0-9._-]+', '-', branch)}"
-        git = lambda *a: subprocess.run(['git', '-C', str(repo), *a], capture_output=True, text=True)
+        git = lambda *a: subprocess.run(['git', '-C', str(repo), *a], stdin=subprocess.DEVNULL, capture_output=True, text=True)
         made = git('rev-parse', '--verify', '--quiet', f'refs/heads/{branch}').returncode != 0
         r = git('worktree', 'add', *(['-b', branch, str(path)] if made else [str(path), branch]))
         if r.returncode: raise RuntimeError(f'git worktree add {branch}: {(r.stderr or r.stdout).strip()}')

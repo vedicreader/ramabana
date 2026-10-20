@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.60
+
+- Requires rishi 0.1.53, gheasy 0.0.14 and fossick 0.1.20 (search). `claude --version`, `ollama serve`, Git through gheasy's gateway, and Chrome and `gh_clone`'s git in fossick get `/dev/null` as standard input, so none of them can read keystrokes or set the session's terminal non-blocking.
+- The git commands behind the code-index gate (`root_state`), `add_worktree` and the learned folder get `/dev/null` as standard input too.
+- `hydrate_turns(cfg, turns)` is public. It gives rows read from `<cfg>`'s log their long tool results back from the details file, so a reader without an `Agent`, such as Dhrona, sees whole results. It was `_hydrate`.
+
 ## 0.2.59
 
 - Requires rishi 0.1.52. A Gemini model routed as `gemini/<model>` no longer gets 404, and a Claude Code session that fails while connecting is tried once more, with a note in the session.

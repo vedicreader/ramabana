@@ -676,8 +676,8 @@ def _worktree(root, out):
 def root_state(root):
     "A root's git HEAD and working-tree digest, staged changes included; outside git, the newest mtime of its entries."
     try:
-        r = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True, text=True, timeout=10)
-        st = subprocess.run(['git', '--no-optional-locks', '-C', str(root), 'status', '--porcelain=v1', '-z'], capture_output=True, text=True, timeout=10) if r.returncode == 0 else None
+        r = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+        st = subprocess.run(['git', '--no-optional-locks', '-C', str(root), 'status', '--porcelain=v1', '-z'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10) if r.returncode == 0 else None
     except (OSError, subprocess.SubprocessError): r = None
     if r is not None and r.returncode == 0:
         return dict(head=r.stdout.strip(), worktree=_worktree(root, st.stdout))

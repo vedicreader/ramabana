@@ -20,8 +20,8 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context',
            'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family',
            'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools',
-           'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer', 'request_body',
-           'request_title', 'model_title', 'mk_host', 'mk_agent']
+           'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer',
+           'request_body', 'request_title', 'model_title', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextvars, datetime, fnmatch, functools, hashlib, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -1958,7 +1958,7 @@ def _log_turn(line):
     try: return json.loads(line.decode('utf-8', 'replace'))
     except ValueError: return None
 
-def _hydrate(cfg, turns):
+def hydrate_turns(cfg, turns):
     "Give rows that sent results to a details file those results back whole; a missing or torn file leaves the clipped ones."
     files = {}
     for t in turns:
@@ -2844,7 +2844,7 @@ def sessions(self:Agent):
 @patch
 def session_turns(self:Agent, sid):
     "One conversation's turns, from memory; a log-backed agent seeks them instead."
-    return _hydrate(self.cfg, [dict(t) for t in self.history if (t.get('session') or '') == str(sid)])
+    return hydrate_turns(self.cfg, [dict(t) for t in self.history if (t.get('session') or '') == str(sid)])
 
 # %% ../nbs/03_agent.ipynb #6a449082
 @patch
@@ -4625,7 +4625,7 @@ def session_turns(self:Agent, sid):
             for s, e in spans:
                 f.seek(int(s)); chunks.append(f.read(max(0, int(e) - int(s))))
     mine = (lambda t: not (t.get('session') or '')) if sid.startswith('legacy-') else (lambda t: (t.get('session') or '') == sid)
-    return _hydrate(self.cfg, [t for t in map(_log_turn, b'\n'.join(chunks).split(b'\n')) if t is not None and mine(t)])
+    return hydrate_turns(self.cfg, [t for t in map(_log_turn, b'\n'.join(chunks).split(b'\n')) if t is not None and mine(t)])
 
 @patch
 def _remember(self:Agent, prompt, text, error='', state='complete'):
