@@ -1,4 +1,4 @@
-"Azure OpenAI, and any hosted model config.toml defines, for a machine with no Claude Code and no Codex. Nothing here calls the network."
+"Azure OpenAI, AWS Bedrock and any hosted model config.toml defines, and the setup step when nothing runs. Nothing here calls the network."
 import os, subprocess, sys, warnings
 import pytest
 from ramabana import core
@@ -24,7 +24,6 @@ def bare(monkeypatch):
 def azure(monkeypatch):
     monkeypatch.setenv('AZURE_OPENAI_ENDPOINT', 'https://res.openai.azure.com/')
     monkeypatch.setenv('AZURE_OPENAI_API_KEY', 'k')
-    monkeypatch.setenv('AZURE_OPENAI_DEPLOYMENTS', 'gpt-5.4,gpt-5.4-mini')
 
 
 @pytest.mark.parametrize('url', ['https://res.openai.azure.com', 'https://res.openai.azure.com/', 'res.openai.azure.com',
@@ -59,7 +58,7 @@ def test_a_definition_without_its_key_says_which_env_var_it_needs(monkeypatch, t
 
 def test_entries_that_cannot_define_a_model_warn_and_never_raise():
     _write('[model."half"]\nbase_url = "https://x"\n[model."odd"]\nmodel_id = "m"\nruntime = "nosuch"\n'
-           '[model."gpt-5.4"]\nmodel_id = "gpt-5.4"\nbase_url = "https://x"\n[azure]\ndeployments = "not-a-list"\n')
+           '[model."gpt-5.4"]\nmodel_id = "gpt-5.4"\nbase_url = "https://x"\n[azure]\ndeployments = ["d"]\n')
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always')
         with pytest.raises(KeyError): resolve('odd')
@@ -67,7 +66,7 @@ def test_entries_that_cannot_define_a_model_warn_and_never_raise():
     assert any('half' in b and 'no model_id' in b for b in bad) and any('odd' in b and 'unknown runtime' in b for b in bad)
     assert any('gpt-5.4' in b and 'built-in' in b for b in bad), bad
     assert resolve('gpt-5.4').model_id == 'openai/gpt-5.4', 'a built-in name is never taken over'
-    assert any('azure.deployments' in str(x.message) for x in w) and core.azure_deployments() == []
+    assert any('no longer choose models' in str(x.message) for x in w), 'a key 0.2.46 read says what to do instead'
 
 
 def test_config_toml_wins_a_name_a_saved_alias_also_defines(tmp_path):
@@ -88,19 +87,6 @@ def test_ramabanas_own_saved_aliases_load_without_a_call():
     assert resolve('saved-az').config['base_url'] == AZ
 
 
-def test_azure_deployments_appear_everywhere_a_model_is_listed(azure):
-    assert auth_status()['azure'] == {'available': True, 'source': 'AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY'}
-    rows = [r for r in available_models() if r['provider'] == 'azure']
-    assert [r['value'] for r in rows] == ['azure/gpt-5.4', 'azure/gpt-5.4-mini']
-    spec = resolve('azure/gpt-5.4')
-    assert (spec.runtime, spec.model_id, spec.config) == ('remote', 'gpt-5.4', {'base_url': AZ, 'api_key_env': 'AZURE_OPENAI_API_KEY', 'api_name': 'openai'})
-    assert not spec.note and spec.ctx > 128_000, 'a deployment named for its model gets that model window'
-    odd = resolve('azure/prod-chat')
-    assert odd.ctx == 128_000 and 'max_input_tokens under [model."azure/prod-chat"]' in odd.note
-    _write('[model."azure/prod-chat"]\nmax_input_tokens = 64000\n')
-    assert (resolve('azure/prod-chat').ctx, resolve('azure/prod-chat').note) == (64000, '')
-
-
 def test_an_azure_model_without_an_endpoint_or_key_says_what_is_missing(monkeypatch):
     assert missing_key(resolve('azure/gpt-5.4')) == 'AZURE_OPENAI_ENDPOINT'
     monkeypatch.setenv('AZURE_OPENAI_ENDPOINT', 'https://res.openai.azure.com')
@@ -108,43 +94,6 @@ def test_an_azure_model_without_an_endpoint_or_key_says_what_is_missing(monkeypa
     _write('[azure]\napi_key_env = "MY_AZ_KEY"\n')
     monkeypatch.setenv('MY_AZ_KEY', 'k')
     assert missing_key(resolve('azure/gpt-5.4')) == '' and auth_status()['azure']['available']
-
-
-def test_with_only_azure_every_job_moves_there_with_one_note(bare, azure):
-    r = Routing()
-    assert r.turn == 'azure/gpt-5.4'
-    assert {j: r.name_for(j) for j in JOBS} == dict(turn='azure/gpt-5.4', oneshot='azure/gpt-5.4-mini', inline='azure/gpt-5.4-mini', completion='azure/gpt-5.4-mini',
-                                                     classify='azure/gpt-5.4-mini', summary='azure/gpt-5.4', subagent='azure/gpt-5.4')
-    assert len(r.news) == 1 and 'cannot run here' in r.news[0] and 'azure/gpt-5.4-mini' in r.news[0], r.news
-    assert 'claude' in r.notes['turn'] and 'Codex' in r.notes['summary']
-    assert all(r.spec(j).config['base_url'] == AZ for j in JOBS)
-    r.set('qwen-4b')
-    assert r.name_for('summary') == 'qwen-4b', 'a rehomed job is not chosen, so it follows a local turn'
-
-
-def test_a_chosen_azure_turn_takes_the_jobs_and_a_chosen_job_stays(bare, monkeypatch):
-    monkeypatch.setenv('AZURE_OPENAI_ENDPOINT', 'https://res.openai.azure.com')
-    monkeypatch.setenv('AZURE_OPENAI_API_KEY', 'k')
-    _write('[jobs]\nturn = "azure/big"\nclassify = "azure/tiny"\n')
-    r = Routing()
-    assert (r.turn, r.name_for('summary'), r.name_for('completion'), r.name_for('classify')) == ('azure/big', 'azure/big', 'azure/big', 'azure/tiny')
-
-
-def test_azure_without_deployments_says_how_to_name_one(bare, monkeypatch):
-    monkeypatch.setenv('AZURE_OPENAI_ENDPOINT', 'https://res.openai.azure.com')
-    monkeypatch.setenv('AZURE_OPENAI_API_KEY', 'k')
-    r = Routing()
-    assert r.turn == core.DFLT_TURN and core.AZURE_UNNAMED in r.news
-    assert 'AZURE_OPENAI_DEPLOYMENTS' in core.reachable_hint()
-
-
-def test_where_claude_code_runs_azure_only_catches_what_falls(azure, monkeypatch):
-    monkeypatch.setattr(core, '_claude_available', lambda: True)
-    monkeypatch.setattr(core, '_codex_login', lambda: False)
-    r = Routing()
-    assert (r.turn, r.name_for('completion'), r.name_for('summary')) == (core.DFLT_TURN, core.DFLT_SMALL, 'azure/gpt-5.4')
-    alts = r.alternatives('completion')
-    assert {'azure/gpt-5.4', 'azure/gpt-5.4-mini'} <= set(alts) and alts[-1] == core.DFLT_FALLBACK, alts
 
 
 def test_a_lent_chat_keeps_the_endpoint(azure, tmp_path, monkeypatch):
@@ -169,9 +118,89 @@ def test_the_cli_process_resolves_a_config_toml_model(tmp_path):
     assert out.stdout.split() == ['az-big', 'gpt-5.4', 'https://res.openai.azure.com'], out.stderr
 
 
-def test_a_stock_hosted_turn_with_nothing_configured_moves_no_job(monkeypatch):
-    "CI has Claude Code and no Codex: `Routing(turn='sonnet')` moved the summary job onto sonnet, though no hosted model was configured."
-    monkeypatch.setattr(core, '_claude_available', lambda: True)
-    monkeypatch.setattr(core, '_codex_login', lambda: False)
-    r = Routing(turn='sonnet')
-    assert (r.name_for('summary'), r.news) == ('gpt-6-luna', [])
+
+
+def test_azure_in_the_environment_chooses_nothing(bare, azure):
+    "0.2.46 moved every job onto Azure deployments by itself; a provider is only ever used where a person names it."
+    r = Routing()
+    assert r.turn == core.DFLT_TURN and r.news == [] and not any(x['provider'] == 'azure' for x in available_models())
+    assert auth_status()['azure']['available'] and core.needs_setup(r)
+    _write('[jobs]\nturn = "azure/gpt-5.4"\n')
+    r = Routing()
+    assert r.spec('turn').config['base_url'] == AZ and not core.needs_setup(r)
+    spec = resolve('azure/gpt-5.4')
+    assert (spec.runtime, spec.model_id, spec.config) == ('remote', 'gpt-5.4', {'base_url': AZ, 'api_key_env': 'AZURE_OPENAI_API_KEY', 'api_name': 'openai'})
+    assert not spec.note and spec.ctx > 128_000, 'a deployment named for its model gets that model window'
+    assert 'max_input_tokens under [model."azure/prod-chat"]' in resolve('azure/prod-chat').note
+
+
+def test_with_nothing_set_up_the_guide_lists_every_provider_and_job(bare, monkeypatch, tmp_path):
+    for k in ('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'AWS_BEARER_TOKEN_BEDROCK'): monkeypatch.delenv(k, raising=False)
+    g = core.setup_guide()
+    for label in ('OpenAI API', 'Azure OpenAI', 'AWS Bedrock', 'Anthropic API', 'Gemini API', 'OpenRouter', 'Claude Code', 'Codex', 'On this machine'): assert label in g, label
+    assert 'cannot run here' in g and 'ramabana setup' in g and 'turn        claude-opus-5-5' in g and 'default' in g
+    assert 'image' in g and 'OPENAI_API_KEY' in g, 'the image job says what it lacks'
+    a = Agent(MemHost(), cfg=tmp_path/'cfg', extensions=False, subagents=False)
+    assert 'ramabana setup' in a.ask('hello')
+
+
+def test_a_missing_key_turn_points_at_setup(tmp_path, monkeypatch):
+    _write('[model."az-big"]\nmodel_id = "gpt-5.4"\nbase_url = "https://res.openai.azure.com"\n')
+    a = Agent(MemHost(), model='az-big', cfg=tmp_path/'cfg', extensions=False, subagents=False)
+    out = a.ask('hello')
+    assert 'needs AZURE_OPENAI_API_KEY' in out and 'ramabana setup' in out, out
+
+
+def test_a_bedrock_mantle_definition_resolves_with_its_window(monkeypatch):
+    monkeypatch.setenv('AWS_BEARER_TOKEN_BEDROCK', 'k')
+    _write('[model."bedrock-gpt"]\nmodel_id = "openai.gpt-5.4"\nbase_url = "https://bedrock-mantle.us-east-1.api.aws/v1"\napi_key_env = "AWS_BEARER_TOKEN_BEDROCK"\napi_name = "openai"\n')
+    spec = resolve('bedrock-gpt')
+    assert (spec.runtime, spec.model_id, spec.ctx, spec.note) == ('remote', 'openai.gpt-5.4', 272000, '')
+    assert core.provider_ready('bedrock') and core.remote_models() == ['bedrock-gpt']
+    assert 'no images endpoint' in (_write('[model."bedrock-gpt"]\nmodel_id = "openai.gpt-5.4"\nbase_url = "https://bedrock-mantle.us-east-1.api.aws/v1"\napi_key_env = "AWS_BEARER_TOKEN_BEDROCK"\n[jobs]\nimage = "bedrock-gpt"\n') and core.image_route())
+
+
+def test_the_image_job_goes_where_config_toml_says(monkeypatch, tmp_path):
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    assert 'OPENAI_API_KEY' in core.image_route()
+    from ramabana.tools import tools_for
+    from ramabana.testing import FullHost
+    assert 'generate_image' not in [t.__name__ for t in tools_for(FullHost())], 'no image model, no tool'
+    monkeypatch.setenv('AZURE_OPENAI_API_KEY', 'azk')
+    _write('[model."az-image"]\nmodel_id = "gpt-image-1"\nbase_url = "https://res.openai.azure.com/openai/v1"\n[jobs]\nimage = "az-image"\n')
+    assert core.image_route() == dict(name='az-image', base_url=AZ, api_key='azk', model='gpt-image-1')
+    import httpx
+    from base64 import b64encode
+    sent = []
+    def post(url, **kw):
+        sent.append((url, kw['headers']['Authorization']))
+        return httpx.Response(200, json={'data': [{'b64_json': b64encode(b'\x89PNG\r\n\x1a\n' + bytes(8)).decode()}]}, request=httpx.Request('POST', url))
+    monkeypatch.setattr(httpx, 'post', post)
+    gen = next(t for t in tools_for(FullHost()) if t.__name__ == 'generate_image')
+    gen('a kettle')
+    assert sent == [(f'{AZ}/images/generations', 'Bearer azk')], 'Azure, never api.openai.com'
+
+
+def test_setup_writes_a_provider_and_its_jobs_and_never_a_key(capsys):
+    from ramabana.setup import setup_cli
+    assert setup_cli(['--provider', 'bedrock', '--model-id', 'openai.gpt-5.4', '--region', 'eu-west-1', '--name', 'bed', '--jobs', 'turn,summary'], isatty=lambda: False) == 0
+    import tomllib
+    d = tomllib.loads(config_path().read_text())
+    assert d['model']['bed'] == {'model_id': 'openai.gpt-5.4', 'base_url': 'https://bedrock-mantle.eu-west-1.api.aws/v1', 'api_key_env': 'AWS_BEARER_TOKEN_BEDROCK', 'api_name': 'openai'}
+    assert d['jobs'] == {'turn': 'bed', 'summary': 'bed'}
+    answers = iter(['4', 'gpt-5.4', 'https://res.openai.azure.com/', '', '', '', 'completion'])
+    assert setup_cli([], ask=lambda q: next(answers), isatty=lambda: True, out=lambda *a: None) == 0
+    d = tomllib.loads(config_path().read_text())
+    assert d['model']['azure-gpt-5.4']['base_url'] == AZ and d['jobs']['completion'] == 'azure-gpt-5.4' and d['jobs']['turn'] == 'bed'
+    assert setup_cli([], isatty=lambda: False) == 2 and 'Providers:' in capsys.readouterr().err, 'headless: the guide, no prompt'
+    config_path().write_text('learning = [')
+    assert setup_cli(['--provider', 'openai', '--model-id', 'gpt-5.4', '--jobs', 'turn'], isatty=lambda: False) == 1 and config_path().read_text() == 'learning = ['
+
+
+def test_set_table_keeps_comments_and_quotes_a_model_name(tmp_path):
+    from ramabana.setup import set_table
+    import tomllib
+    p = tmp_path/'c.toml'
+    p.write_text('learning = false   # mine\n')
+    set_table('jobs', {'turn': 'x'}, p); set_table('a/b c', {'model_id': 'm'}, p); set_table('jobs', {'turn': 'y', 'summary': 'z'}, p)
+    assert '# mine' in p.read_text() and tomllib.loads(p.read_text()) == {'learning': False, 'jobs': {'turn': 'y', 'summary': 'z'}, 'model': {'a/b c': {'model_id': 'm'}}}

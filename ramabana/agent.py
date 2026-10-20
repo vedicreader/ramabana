@@ -32,7 +32,7 @@ from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
-from .core import accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
+from .core import accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel
 from .setup import load_config, setting
 from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
@@ -2196,7 +2196,7 @@ def start(self:Agent):
     "Build the turn backend, once. Returns it, or None with `note` explaining why not."
     b = self._be('turn')
     if (k := missing_key(b.spec)):
-        self.note = f'turn job: {b.spec.name} {needs(k)}'
+        self.note = f'turn job: {b.spec.name} {needs(k)}. {SETUP_HINT}'
         return None
     if (m := missing_runtime(b.spec)):
         self.note = f'turn job: {b.spec.name} cannot run here: {m}. {reachable_hint()}'

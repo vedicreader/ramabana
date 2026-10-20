@@ -10,17 +10,18 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PROBE_TTL', 'PROBE_DIR', 'HARNESS',
            'AZURE_KEY_ENV', 'AZURE_HOSTS', 'API_KEYS', 'MODEL_ALIASES', 'DEFINES', 'DFLT_TURN', 'DFLT_SMALL',
            'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
-           'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'AZURE_UNNAMED', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
+           'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SETUP_HINT', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
            'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'TOOL_CHANNELS', 'KEY_ENVS', 'CODEX_LOGIN',
-           'DOWN_TTL', 'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx',
-           'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail',
-           'runtime_available', 'azure_base', 'azure_endpoint', 'azure_key_env', 'azure_deployments', 'azure_ready',
-           'azure_host', 'is_azure', 'auth_status', 'register_model', 'unregister_model', 'use_aliases', 'alias_path',
-           'saved_models', 'load_models', 'save_model', 'delete_model', 'config_models', 'sync_models',
+           'DOWN_TTL', 'PROVIDERS', 'DFLT_IMAGE', 'NO_IMAGES', 'BranchChanged', 'ContextFull', 'agent_err',
+           'use_env_prefix', 'env', 'claude_ctx', 'claude_wire', 'probe_path', 'probed', 'forget_probes',
+           'runtime_remedy', 'runtime_detail', 'runtime_available', 'azure_base', 'azure_endpoint', 'azure_key_env',
+           'azure_ready', 'azure_host', 'is_azure', 'auth_status', 'register_model', 'unregister_model', 'use_aliases',
+           'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model', 'config_models', 'sync_models',
            'model_problems', 'remote_models', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx',
            'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts',
            'model_note', 'Budget', 'budget_for', 'profile_for', 'force_tags', 'forget_forced_tags', 'tool_channel',
-           'missing_key', 'needs', 'is_local', 'Routing']
+           'missing_key', 'needs', 'is_local', 'Routing', 'provider_ready', 'job_source', 'needs_setup', 'setup_guide',
+           'image_route']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time, warnings
@@ -253,11 +254,6 @@ def azure_key_env():
     "The env var holding the Azure OpenAI key: config.toml's `azure.api_key_env`, else `AZURE_KEY_ENV`."
     return setting('azure.api_key_env') or AZURE_KEY_ENV
 
-def azure_deployments():
-    "The deployments in `$AZURE_OPENAI_DEPLOYMENTS`, comma-separated, else config.toml's `azure.deployments`, in order."
-    v = os.environ.get('AZURE_OPENAI_DEPLOYMENTS')
-    return list(dict.fromkeys(d.strip() for d in (v.split(',') if v else setting('azure.deployments') or []) if d.strip()))
-
 def azure_ready():
     "Whether Azure OpenAI has an endpoint and its key is in the environment."
     return bool(azure_endpoint() and os.environ.get(azure_key_env()))
@@ -413,11 +409,11 @@ def model_problems():
     return list(_SYNC['bad'])
 
 def remote_models():
-    "Hosted models defined here whose credentials are set, in the order the routing takes them: config.toml's, Azure's listed deployments, then saved aliases."
+    "Hosted models defined here, in config.toml or as saved aliases, whose credentials are set: config.toml's first."
     names = sync_models()
     cfg = [n for n in config_models() if n in names]
     out = []
-    for n in dict.fromkeys(cfg + ([f'azure/{d}' for d in azure_deployments()] if azure_ready() else []) + names):
+    for n in dict.fromkeys(cfg + names):
         try: spec = resolve(n)
         except Exception: continue
         if spec.runtime == 'remote' and not missing_key(spec): out.append(n)
@@ -464,8 +460,6 @@ def available_models(include_legacy=False):
         except Exception: continue
         if n in CUSTOM and not (spec.missing or missing_key(spec)):
             rows.append({'value': n, 'label': n, 'provider': 'azure' if is_azure(spec) else spec.runtime, 'source': 'config.toml'})
-    if auth['azure']['available']:
-        rows += [{'value': f'azure/{d}', 'label': d, 'provider': 'azure', 'source': 'Azure OpenAI deployment'} for d in azure_deployments()]
     seen, out = set(), []
     for row in rows:
         if row['value'] in seen: continue
@@ -571,9 +565,9 @@ def reachable_hint():
     try: alt = next((r['value'] for r in available_models()), None)
     except Exception: alt = None
     hint = f'{alt} runs here; choose it with `/model {alt}` or the model picker' if alt else 'no model runs on this machine yet'
-    return f'{hint}. {AZURE_UNNAMED}' if azure_ready() and not azure_deployments() else hint
+    return f'{hint}. {SETUP_HINT}'
 
-AZURE_UNNAMED = 'Azure OpenAI is set up but names no deployment: set AZURE_OPENAI_DEPLOYMENTS, or choose `azure/<deployment>`'
+SETUP_HINT = '`ramabana setup` lists the providers and adds one'
 
 def resolve(name):
     'A `ModelSpec` for `name`: a short name from the tables, or any full `vendor/model` spec; none is `DFLT_TURN`. A runtime this machine lacks is named in `missing`, not raised.'
@@ -605,6 +599,7 @@ def _spec_for(name):
             ctx, note = _copilot_ctx(mid)
             return ModelSpec(name, backend, mid, ctx, note, config)
         ctx, note = _cloud_ctx(mid)
+        if note and 'bedrock-mantle' in (config.get('base_url') or ''): ctx, note = _cloud_ctx(f'bedrock_mantle/{mid}')   # fastllm tables Bedrock's ids under that vendor
         return ModelSpec(name, backend, mid, ctx, _window_note(name, mid, note) if name in CUSTOM else note, config)
     if name.startswith('azure/') and (dep := name.split('/', 1)[1]):
         ctx, note = _cloud_ctx(dep)
@@ -713,7 +708,7 @@ def tool_channel(spec, chat=None):
     return 'native'
 
 # %% ../nbs/00_core.ipynb #e81acb32
-KEY_ENVS = {'openai': 'OPENAI_API_KEY', 'anthropic': 'ANTHROPIC_API_KEY', 'gemini': 'GEMINI_API_KEY'}
+KEY_ENVS = {'openai': 'OPENAI_API_KEY', 'anthropic': 'ANTHROPIC_API_KEY', 'gemini': 'GEMINI_API_KEY', 'openrouter': 'OPENROUTER_API_KEY'}
 CODEX_LOGIN = 'Codex login'
 DOWN_TTL = 300   #: seconds a cloud model that failed or answered nothing waits before it is tried again
 
@@ -742,19 +737,16 @@ class Routing:
 
     def __post_init__(self):
         sync_models()
-        self.given = bool(self.turn or env('MODEL') or setting('jobs.turn'))   # the turn was chosen, not defaulted
         if not self.turn: self.turn = env('MODEL') or setting('jobs.turn') or DFLT_TURN
         self.chosen = set()
         for job in JOBS:   # an env var beats config.toml's `[jobs]`
             if (v := env(f'MODEL_{job.upper()}') or (job != 'turn' and setting(f'jobs.{job}'))): self.policy[job] = v; self.chosen.add(job)
         self._cache, self.notes, self.said, self.news = {}, {}, set(), []
         self.down = {}   # name -> (why, when): a cloud model set aside for `DOWN_TTL`, or until named again
-        self.rehomed = set()   # jobs `_rehome` moved off a default that cannot run here
-        self._rehome()
 
     def own(self, job):
         "Whether `job` has a model of its own: set by env, `set`, or a policy that is not the default."
-        return bool(v := self.policy.get(job)) and (job in self.chosen or (v != DEFAULT_POLICY.get(job) and job not in self.rehomed))
+        return bool(v := self.policy.get(job)) and (job in self.chosen or v != DEFAULT_POLICY.get(job))
 
     def follows_turn(self, job):
         "Whether `job` stays on a local turn: it has no model of its own, nor through `oneshot`."
@@ -788,33 +780,12 @@ class Routing:
                     self.turn, *(self.policy.get(j) for j in JOBS)):
             if alt and alt not in seen and not is_local(alt):
                 seen.add(alt); out.append(alt)
-        return out + [r for r in remote_models() if r not in seen] + ([] if DFLT_FALLBACK in seen else [DFLT_FALLBACK])
+        return out + ([] if DFLT_FALLBACK in seen else [DFLT_FALLBACK])
 
     def _why(self, name):
         "Why `name` cannot run here, or '' when it can."
         try: self._usable(name); return ''
         except Exception as e: return str(e) if isinstance(e, AgentError) else f'unavailable ({agent_err(e)})'
-
-    def _rehome(self):
-        "Move each job still on a default that cannot run here to a hosted model configured here, with a note: the chosen turn when it is one, else the first, and a mini or nano for the cheap jobs."
-        configured = self.turn in CUSTOM or is_azure(self._resolve(self.turn))   # a stock hosted turn takes no jobs: that is the fallback's business
-        mine = [self.turn] if self.given and configured and not is_local(self.turn) and not self._why(self.turn) else []
-        if not (pool := list(dict.fromkeys(mine + remote_models()))):
-            if azure_ready() and not self.given and self._why(self.turn): self.news.append(AZURE_UNNAMED)
-            return
-        todo = [(j, n, why) for j in JOBS if (j == 'turn' and not self.given) or (j != 'turn' and j not in self.chosen and DEFAULT_POLICY.get(j))
-                for n in [self.name_for(j)] if (why := self._why(n))]
-        if not todo: return
-        big = pool[0]
-        small = next((n for n in pool if re.search(r'mini|nano', n)), big)
-        for j, n, why in todo:
-            alt = small if j in ONESHOT_JOBS else big
-            if j == 'turn': self.turn = alt
-            else: self.policy[j] = alt; self.rehomed.add(j)
-            self.notes[j] = f'{n} {why}; using {alt}'
-            self.said.add((n, alt))
-        moved = ', '.join(dict.fromkeys(n for _, n, _ in todo))
-        self.news.append(f'{moved} cannot run here, so their jobs use {big}' + (f' and the cheap jobs {small}' if small != big else '') + '; `/model` shows why')
 
     def fell(self, n, alt, why):
         "Queue one chat note in `news` each time a model's jobs land somewhere new, however many jobs fell with it."
@@ -847,7 +818,7 @@ class Routing:
         if job == 'turn': self.turn = name
         else:
             self.policy[job] = name
-            self.chosen.add(job); self.rehomed.discard(job)
+            self.chosen.add(job)
         self._cache[name] = spec
         return spec
 
@@ -868,3 +839,73 @@ class Routing:
             except Exception as e: row = f'unavailable ({agent_err(e)})'
             rows.append(f'{j:11} {row}' + (f'  [{self.notes[j]}]' if j in self.notes else ''))
         return '\n'.join(rows)
+
+# %% ../nbs/00_core.ipynb #1604ccee
+#: what each provider needs, and a config.toml that uses it; `provider_ready` says which are set up here
+PROVIDERS = (
+    dict(key='claude', label='Claude Code subscription', needs='Claude Code installed and `claude /login`', example='[jobs]\nturn = "claude-opus-5-5"'),
+    dict(key='codex', label='Codex (ChatGPT) subscription', needs='`codex login`', example='[jobs]\nsummary = "gpt-6-luna"'),
+    dict(key='openai', label='OpenAI API', needs='OPENAI_API_KEY', example='[jobs]\nturn = "gpt-5.4"'),
+    dict(key='azure', label='Azure OpenAI', needs='AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY', example='[jobs]\nturn = "azure/<deployment>"'),
+    dict(key='bedrock', label='AWS Bedrock, OpenAI-compatible (Mantle) endpoint', needs='AWS_BEARER_TOKEN_BEDROCK, a Bedrock API key',
+         example='[model."bedrock-gpt"]\nmodel_id = "openai.gpt-5.4"\nbase_url = "https://bedrock-mantle.<region>.api.aws/v1"\napi_key_env = "AWS_BEARER_TOKEN_BEDROCK"\napi_name = "openai"\n\n[jobs]\nturn = "bedrock-gpt"'),
+    dict(key='anthropic', label='Anthropic API', needs='ANTHROPIC_API_KEY', example='[jobs]\nturn = "anthropic/<model>"'),
+    dict(key='gemini', label='Gemini API', needs='GEMINI_API_KEY', example='[jobs]\nturn = "gemini/<model>"'),
+    dict(key='openrouter', label='OpenRouter', needs='OPENROUTER_API_KEY', example='[jobs]\nturn = "openrouter/<vendor>/<model>"'),
+    dict(key='copilot', label='GitHub Copilot subscription', needs='a Copilot sign-in in an editor', example='[jobs]\nturn = "copilot/<model>"'),
+    dict(key='custom', label='Any OpenAI-compatible endpoint', needs='its base URL, and an env var holding its key',
+         example='[model."mine"]\nmodel_id = "<model>"\nbase_url = "https://<host>/v1"\napi_key_env = "MY_API_KEY"\napi_name = "openai_chat"'),
+    dict(key='local', label='On this machine', needs='a local runtime: LiteRT ships with rishi; mlx, llama.cpp or ollama', example='[jobs]\nturn = "gemma-e4b"'))
+
+def provider_ready(key, auth=None):
+    "Whether provider `key`'s credential or runtime is on this machine; nothing is chosen by it."
+    if key == 'bedrock': return bool(os.environ.get('AWS_BEARER_TOKEN_BEDROCK'))
+    if key == 'openrouter': return bool(os.environ.get('OPENROUTER_API_KEY'))
+    if key == 'local': return any(runtime_available(r) for r in LOCAL_RUNTIMES)
+    if key == 'custom': return bool(remote_models())
+    return bool(((auth or auth_status()).get(key) or {}).get('available'))
+
+def job_source(routing, job):
+    "Where `job`'s model comes from: an env var, config.toml, `set`, the turn it follows, or the default."
+    if job == 'turn': return 'env' if env('MODEL') else 'config.toml' if setting('jobs.turn') else 'chosen' if routing.turn != DFLT_TURN else 'default'
+    if env(f'MODEL_{job.upper()}'): return 'env'
+    if setting(f'jobs.{job}'): return 'config.toml'
+    if job in routing.chosen: return 'chosen'
+    return 'follows the turn' if routing.name_for(job) == routing.turn else 'default'
+
+def needs_setup(routing=None):
+    "Why the turn's model cannot run here, a missing runtime or key, or '' when it can."
+    r = routing or Routing()
+    return r._why(r.turn)
+
+def setup_guide(routing=None):
+    "The providers Ramabana can use, which are set up here, and the model each job runs on and whether it can: nothing is chosen."
+    r, auth = routing or Routing(), auth_status()
+    out = [f'The turn model, {r.turn}, cannot run here: {why}' if (why := needs_setup(r)) else f'The turn runs on {r.turn}.', '', 'Providers:']
+    out += [f"  {p['label']:50} {'ready' if provider_ready(p['key'], auth) else 'needs ' + p['needs']}" for p in PROVIDERS]
+    out += ['', 'Jobs, the model each runs on, and where it was chosen:']
+    for j in JOBS:
+        n = r.name_for(j)
+        out.append(f'  {j:11} {n:28} {job_source(r, j):17} ' + (f'cannot run: {w}' if (w := r._why(n)) else 'runs here'))
+    img = image_route()
+    out.append(f"  {'image':11} {img['name'] if isinstance(img, dict) else '-':28} {'':17} " + ('runs here' if isinstance(img, dict) else img))
+    out += ['', f'`ramabana setup` adds a provider. By hand, in {config_path()}, for example:', '', PROVIDERS[4]['example'],
+            '', 'A [model."NAME"] table with model_id, base_url, api_key_env and api_name defines any OpenAI-compatible model. Keys stay in the environment.']
+    return '\n'.join(out)
+
+DFLT_IMAGE = 'openai/gpt-image-1'
+NO_IMAGES = ('bedrock-mantle', 'openrouter.ai')   #: hosts with no images endpoint
+
+def image_route():
+    "The `image` job's endpoint, `{name, base_url, api_key, model}`, from `$RAMABANA_MODEL_IMAGE`, config.toml's `[jobs] image` or `DFLT_IMAGE`; else what to set up."
+    name = env('MODEL_IMAGE') or setting('jobs.image') or DFLT_IMAGE
+    fix = f'set [jobs] image in config.toml to an OpenAI-compatible image model you have, such as an Azure gpt-image-1 deployment'
+    try: spec = resolve(name)
+    except Exception as e: return f'image job: {agent_err(e)}; {fix}'
+    cfg, vendor = spec.config or {}, spec.model_id.partition('/')[0]
+    base = cfg.get('base_url') or ('https://api.openai.com/v1' if vendor == 'openai' and spec.runtime == 'remote' else '')
+    if (k := missing_key(spec)): return f'image job: {name} {needs(k)}; or {fix}'
+    if not base: return f'image job: {name} has no images endpoint; {fix}'
+    if any(h in base for h in NO_IMAGES): return f'image job: {base} has no images endpoint; {fix}'
+    key = os.environ.get(cfg.get('api_key_env') or KEY_ENVS.get(vendor, ''))
+    return dict(name=name, base_url=base, api_key=key, model=spec.model_id.removeprefix('openai/'))

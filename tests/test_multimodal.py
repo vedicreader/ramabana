@@ -318,7 +318,7 @@ def test_the_image_group_reads_the_turns_model_on_every_call(tmp_path, monkeypat
     monkeypatch.setattr('ramabana.core._caps', lambda model_id, backend: by_model[model_id])
     monkeypatch.setenv('OPENAI_API_KEY', 'k')
     monkeypatch.setattr('shalya.tools.post_responses',
-                        lambda prompt, model, timeout=300: seen.update(responses=model) or
+                        lambda prompt, model, timeout=300, **kw: seen.update(responses=model) or
                         {'output': [{'type': 'image_generation_call', 'result': b64encode(png).decode()}]})
     monkeypatch.setattr('shalya.tools.post_image',
                         lambda *a, **kw: seen.update(images=kw.get('model')) or

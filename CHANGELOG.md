@@ -4,7 +4,12 @@
 
 ## 0.2.47
 
-- A stock hosted turn takes no jobs from the rehoming. Under 0.2.46, `Routing(turn='sonnet')` on a machine with Claude Code and no Codex login moved `oneshot` and `summary` onto `sonnet` with a note, though no hosted model was configured. They reached the same model through the fallback before, and now do again; only a configured model, `azure/...` or a config.toml or saved definition, draws jobs to a chosen turn.
+- Nothing is chosen for you. 0.2.46 moved every job onto Azure deployments, or another configured hosted model, when Claude Code and Codex were absent; that is gone, with `AZURE_OPENAI_DEPLOYMENTS` and `[azure] deployments` (config.toml now says what to do instead) and the `azure/...` rows `available_models` listed from them. A job falls back exactly as in 0.2.45. A deployment is used only where you name it: `azure/<deployment>`, or a `[model."NAME"]` table.
+- When the turn's model cannot run here, the terminal prints `setup_guide()`: the providers Ramabana can use (`PROVIDERS`: OpenAI, Azure OpenAI, AWS Bedrock, Anthropic, Gemini, OpenRouter, Claude Code, Codex, Copilot, any OpenAI-compatible server, this machine), which are set up (`provider_ready`), and each job's model, where it was chosen (`job_source`) and whether it runs. A one-shot run prints it and exits 1; a session offers `ramabana setup`. `needs_setup(routing)` says why the turn cannot run. `Agent.start`'s note for a missing key or runtime ends with `SETUP_HINT`, as `reachable_hint` does.
+- `ramabana setup` adds a provider: it asks which, writes a `[model."NAME"]` table for Azure, Bedrock or an OpenAI-compatible server, and the `[jobs]` it serves. Flags answer without a terminal. It never writes a key. `set_table` edits or adds one config.toml table and keeps every comment.
+- AWS Bedrock works through its OpenAI-compatible Mantle endpoint, `https://bedrock-mantle.<region>.api.aws/v1`, with a Bedrock API key in `AWS_BEARER_TOKEN_BEDROCK`; windows come from fastllm's `bedrock_mantle` table. Claude on Bedrock and Bedrock's native Converse API are not supported, since fastllm has no SigV4 signing, AWS profiles or Converse format.
+- `generate_image` draws with the `image` job: `[jobs] image`, `$RAMABANA_MODEL_IMAGE`, or `openai/gpt-image-1` by default (`image_route`). An Azure deployment of `gpt-image-1` works through a `[model."NAME"]` table, and nothing goes to api.openai.com by name. Without an image model the tool is left out, and `setup_guide` says what it lacks. A turn on a custom endpoint no longer tries to draw itself through OpenAI. Requires shalya 0.1.15.
+- `openrouter/<vendor>/<model>` checks `OPENROUTER_API_KEY`.
 
 ## 0.2.46
 

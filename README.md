@@ -88,6 +88,7 @@ export RAMABANA_MODEL=sonnet    # the same choice in every session
 | `anthropic/<id>` | the Anthropic API | `ANTHROPIC_API_KEY` |
 | `copilot/<id>` | GitHub Copilot | a Copilot sign-in |
 | `azure/<deployment>` | Azure OpenAI, v1 API | `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` |
+| `openrouter/<vendor>/<model>` | OpenRouter | `OPENROUTER_API_KEY` |
 | `gemma-e2b`, `gemma-e4b`, `gemma-12b` | LiteRT, on the device | none |
 | `qwen-4b`, `mini-coder-4b`, `ornith-9b` | MLX, on Apple silicon | none |
 | `llama-qwen-0.6b`, `llama-qwen-1.7b`, `llama-qwen-4b` | llama.cpp, on the device | none |
@@ -126,47 +127,67 @@ max_input_tokens = 272000
 
 An entry Ramabana cannot use is reported and takes its default; nothing fails to start over it.
 
-### Azure OpenAI
+### Set up a provider
 
-Azure OpenAI works with no Claude Code and no Codex login. Set the resource and its key, and name your deployments:
+Ramabana chooses no provider for you. When the turn’s model cannot run here, because Claude Code is missing or a key is not set, the terminal prints the providers it can use, which are set up, and the model each job runs on, then offers `ramabana setup`:
 
 ``` sh
-export AZURE_OPENAI_ENDPOINT=https://NAME.openai.azure.com
-export AZURE_OPENAI_API_KEY=...
-export AZURE_OPENAI_DEPLOYMENTS=gpt-5.4,gpt-5.4-mini    # the first runs the turn; a mini or nano runs the cheap jobs
+ramabana setup                         # pick a provider, answer its questions, name the jobs it serves
+ramabana setup --provider azure --model-id gpt-5.4 --endpoint https://NAME.openai.azure.com --jobs turn,summary
 ```
 
-With neither Claude Code nor Codex here, every job that would have gone to them goes to these deployments, and the session says so once. `azure/<deployment>` names one anywhere a model is named, listed or not, and `[jobs]` in config.toml chooses per job instead:
+It writes a `[model."NAME"]` table and `[jobs]` lines into config.toml. It never writes a key; export the env var it names. `ramabana config show` prints what is in effect.
+
+| provider | needs | name a model as |
+|----|----|----|
+| OpenAI API | `OPENAI_API_KEY` | `gpt-5.4` |
+| Azure OpenAI | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | `azure/<deployment>`, or a `[model."NAME"]` table |
+| AWS Bedrock | `AWS_BEARER_TOKEN_BEDROCK`, a Bedrock API key | a `[model."NAME"]` table on the Mantle endpoint |
+| Anthropic API | `ANTHROPIC_API_KEY` | `anthropic/<model>` |
+| Gemini API | `GEMINI_API_KEY` | `gemini/<model>` |
+| OpenRouter | `OPENROUTER_API_KEY` | `openrouter/<vendor>/<model>` |
+| Claude Code, Codex, Copilot | a sign-in | `claude-opus-5-5`, `gpt-6-luna`, `copilot/<model>` |
+| any OpenAI-compatible server | its URL and an env var with its key | a `[model."NAME"]` table |
+| this machine | a local runtime | `gemma-e4b`, `qwen-4b`, `ollama/<model>` |
+
+Azure OpenAI, by hand:
 
 ``` toml
 [azure]
-endpoint = "https://NAME.openai.azure.com"   # instead of $AZURE_OPENAI_ENDPOINT
-deployments = ["gpt-5.4", "gpt-5.4-mini"]     # instead of $AZURE_OPENAI_DEPLOYMENTS
-# api_key_env = "AZURE_OPENAI_API_KEY"        # the env var holding the key; the key never goes in this file
+endpoint = "https://NAME.openai.azure.com"   # or $AZURE_OPENAI_ENDPOINT; the key stays in $AZURE_OPENAI_API_KEY
+
+[model."az-image"]                            # an Azure deployment of gpt-image-1, for generate_image
+model_id = "gpt-image-1"
+base_url = "https://NAME.openai.azure.com/openai/v1"
 
 [jobs]
-turn = "azure/gpt-5.4"
+turn = "azure/gpt-5.4"                        # a deployment, named by its deployment name
 completion = "azure/gpt-5.4-mini"
 classify = "azure/gpt-5.4-mini"
+image = "az-image"
 
-[model."azure/prod-chat"]   # a deployment named for no known model needs its window
+[model."azure/prod-chat"]                     # a deployment named for no known model needs its window
 max_input_tokens = 200000
 ```
 
-Requests go to `https://NAME.openai.azure.com/openai/v1/responses` with the deployment name as the model; no `api-version` is needed. A deployment named for a model, such as `gpt-5.4`, gets that model’s window and briefing. Any other name runs with a 128k window until `max_input_tokens` corrects it, and its cost reads as \$0, because prices are looked up by model name. [`auth_status`](https://vedicreader.github.io/ramabana/core.html#auth_status), `/models` and the status bar show Azure.
+Requests go to `https://NAME.openai.azure.com/openai/v1/responses` with the deployment name as the model; no `api-version` is needed. A deployment named for a model, such as `gpt-5.4`, gets that model’s window and briefing. Any other name runs with a 128k window until `max_input_tokens` corrects it, and its cost reads as \$0, because prices are looked up by model name.
 
-A `[model."NAME"]` table with `model_id` defines a hosted model of any OpenAI-compatible kind under a name of your own, with nothing else to load:
+AWS Bedrock, by hand, through its OpenAI-compatible Mantle endpoint:
 
 ``` toml
-[model."az-big"]
-model_id = "gpt-5.4"                                   # the deployment
-base_url = "https://NAME.openai.azure.com/openai/v1"
-api_key_env = "AZURE_OPENAI_API_KEY"
-api_name = "openai"                                    # Responses; the default on an Azure host
-max_input_tokens = 272000
+[model."bedrock-gpt"]
+model_id = "openai.gpt-5.4"                   # Bedrock's model id
+base_url = "https://bedrock-mantle.us-east-1.api.aws/v1"
+api_key_env = "AWS_BEARER_TOKEN_BEDROCK"      # a Bedrock API key; short-lived keys need renewing
+api_name = "openai"                           # Responses; openai_chat for the models that offer only chat completions
+
+[jobs]
+turn = "bedrock-gpt"
 ```
 
-Saved model aliases live in `~/.config/ramabana/models.json` (Leela keeps its own in `~/.config/leela/models.json`). Every Ramabana process loads them, and config.toml’s definitions, on first use. A name defined in both places is config.toml’s. A scheduled job, such as Dhrona’s nightly batch, sees only the environment it was started with, so export the key there too.
+Claude on Bedrock, and anything else that needs Bedrock’s native Converse API, AWS profiles or SigV4 signing, is not supported yet: fastllm, which makes the requests, implements none of them. The Mantle endpoint has no images endpoint, so `generate_image` needs another `[jobs] image`.
+
+A `[model."NAME"]` table with `model_id` defines a hosted model of any OpenAI-compatible kind under a name of your own: `model_id`, `base_url`, `api_key_env` (the env var, never the key), `api_name` (`openai` for Responses, `openai_chat` for chat completions; `openai` is the default on an Azure host), `vendor_name`, `runtime` and `ctx`. Saved model aliases live in `~/.config/ramabana/models.json` (Leela keeps its own in `~/.config/leela/models.json`). Every Ramabana process loads them, and config.toml’s definitions, on first use; a name defined in both places is config.toml’s. A scheduled job, such as Dhrona’s nightly batch, sees only the environment it was started with, so export the key there too.
 
 A message too large for the window still goes out. A huge paste, a screenshot too many or a giant tool result is cut to its head and its end, the whole kept in a file under the session’s run folder, and the note in its place tells the model where the file is and to read it in pieces.
 

@@ -42,8 +42,8 @@ from shalya.core import Media
 from urai import tool_media
 from shalya.core import one_line as _1
 from shalya.host import LocalHost, fuse
-from shalya.tools import post_responses, image_tools as _image_tools, tools_for as _tools_for, mime_for
-from .core import AgentError, agent_err, spec_caps, accepts, installed
+from shalya.tools import post_responses, openai_route, image_tools as _image_tools, tools_for as _tools_for, mime_for
+from .core import AgentError, agent_err, spec_caps, accepts, installed, image_route
 from .runtime import REPEAT_CALLS, Run, current_run, run_context
 
 # %% ../nbs/02_tools.ipynb #e0ca9981
@@ -95,7 +95,7 @@ def exists(self:LocalHost, path):
 # %% ../nbs/02_tools.ipynb #55c1bbd5
 def draws_itself(spec):
     "Whether the model behind `spec` can draw pictures itself when given the image tool."
-    if spec is None: return False
+    if spec is None or (getattr(spec, 'config', None) or {}).get('base_url'): return False   # drawing itself goes through OpenAI's Responses API, not another endpoint's
     c = spec_caps(spec)
     return bool(c is not None and 'image' in getattr(c, 'tools', ()))
 
@@ -108,7 +108,7 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
     "Shalya's image tools for `host`, checking the turn's model on every call."
     spec = lambda: (get_spec() if get_spec else None)
     return _image_tools(host, mx, session, draws_itself=lambda: draws_itself(spec()),
-                        from_reply=_from_responses,
+                        from_reply=_from_responses, route=image_route, turn_route=openai_route,
                         model_id=lambda: getattr(spec(), 'model_id', ''), on_media=on_media)
 
 # %% ../nbs/02_tools.ipynb #de2cd1e8
@@ -116,7 +116,7 @@ def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_s
     "The tools for `host`: a group per capability it declares, plus skills, images and extensions, less `drop` and plus `optin`."
     # `generate_image` saves files, so it needs a writable host
     image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
-             if image_available() and host.writes and 'image' not in set(drop or ()) else None)
+             if not isinstance(image_route(), str) and host.writes and 'image' not in set(drop or ()) else None)
     tools = _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image, optin=optin)
     # `LocalHost.search` fuses its legs with litesearch
     if isinstance(host, LocalHost) and not installed('litesearch'): tools = [t for t in tools if t.__name__ != 'search_code']

@@ -48,14 +48,14 @@ from teleprint.keys import Key, Parser, _mod
 from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
-from .core import EXTRAS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, env, installed, model_note, need
+from .core import EXTRAS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, env, installed, model_note, need, needs_setup, setup_guide
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
 from .pane import quit_mark, write_snapshot
 from .tools import WRITE_TOOLS, path_write
 from . import hl, setup
 from .hl import HL_THEMES, is_diff
-from .setup import PANE_MODES, TMUX_MODES, Setup, refusal
+from .setup import PANE_MODES, TMUX_MODES, Setup, refusal, setup_cli
 from datetime import datetime
 from . import __version__
 
@@ -2488,6 +2488,13 @@ def main(
             return 2
         if (was := getattr(agent, 'resumed_roots', None)):
             print(f'that session had also opened {", ".join(was)} · /root add PATH to open again', file=sys.stderr)
+    if (why := needs_setup(agent.routing)) and not (python or attach):
+        print(setup_guide(agent.routing), file=sys.stderr)
+        if prompt or not sys.stdin.isatty(): return 1
+        try: go = input('Add a provider now with `ramabana setup`? [Y/n] ').strip().lower() in ('', 'y', 'yes')
+        except (EOFError, KeyboardInterrupt): go = False
+        if go and setup_cli([]) == 0: print('start ramabana again to use it', file=sys.stderr)
+        return 0 if go else 1
     if prompt:
         start_agent(agent)
         return sys.exit(ask_once(agent, prompt, as_json=json))

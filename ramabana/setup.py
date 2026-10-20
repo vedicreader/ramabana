@@ -15,12 +15,13 @@ from fastcore.xtras import Path
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
            'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'PII_OFF', 'PII_MODES', 'VALUED', 'EARLY', 'FLAGS',
-           'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'Key', 'KEYS', 'MODEL_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE',
-           'CONFIG_USAGE', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need',
-           'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path',
-           'load_config', 'setting', 'model_setting', 'env_names', 'set_setting', 'config_defaults', 'config_template',
-           'config_show', 'config_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
-           'index_gate', 'save_index', 'log_index', 'last_index']
+           'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD',
+           'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX',
+           'LOG_KEEP', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal',
+           'launch_args', 'bare_resume', 'run_cli', 'config_path', 'load_config', 'setting', 'model_setting',
+           'env_names', 'set_setting', 'set_table', 'config_defaults', 'config_template', 'config_show', 'config_cli',
+           'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate',
+           'save_index', 'log_index', 'last_index']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -200,6 +201,7 @@ def run_cli():
     "The `ramabana` script: rerun inside tmux before anything heavy loads, then parse the command line for `cli.main`."
     global LAUNCHED
     if sys.argv[1:2] == ['config']: return config_cli(sys.argv[2:])
+    if sys.argv[1:2] == ['setup']: return setup_cli(sys.argv[2:])
     if (msg := need('cli')): return _refuse(msg)()
     sys.argv[1:] = bare_resume(sys.argv[1:])   # both parsers, and the rerun inside tmux, see a value
     if (kw := launch_args(sys.argv[1:])) is not None:
@@ -231,6 +233,7 @@ KEYS = {
     'learning': Key(bool, '', '--no-learned', "learning: the learned briefing and skills, lessons, start.json and Dhrona's nightly batch"),
     'jobs.turn': Key(str, 'MODEL', '--model', 'the model each turn runs on'),
     **{f'jobs.{j}': Key(str, f'MODEL_{j.upper()}', '', _JOB.format(j)) for j in ('oneshot', 'inline', 'completion', 'classify', 'summary', 'subagent')},
+    'jobs.image': Key(str, 'MODEL_IMAGE', '', 'the OpenAI-compatible image model generate_image draws with, such as a [model."NAME"] on Azure'),
     'window.margin': Key(float, '', '', 'what a token count estimated from characters is multiplied by before it is held against the window'),
     'window.image_tokens': Key(int, '', '', 'tokens one picture is charged against the window'),
     'window.reserve': Key(int, '', '', 'tokens of headroom kept below the window; a conversation past that line compacts'),
@@ -243,7 +246,6 @@ KEYS = {
     'runtime.litert_backend': Key(str, 'LITERT_BACKEND', '', 'the engine a LiteRT model runs on; empty lets LiteRT choose', ('', 'cpu', 'gpu')),
     'azure.endpoint': Key(str, 'AZURE_OPENAI_ENDPOINT', '', 'the Azure OpenAI resource, such as https://NAME.openai.azure.com; a model named azure/DEPLOYMENT goes to its v1 API', plain=True),
     'azure.api_key_env': Key(str, '', '', 'the env var holding the Azure OpenAI key; the key never goes in this file'),
-    'azure.deployments': Key(list, 'AZURE_OPENAI_DEPLOYMENTS', '', 'the deployments the picker lists and the routing may use, the first for the turn; the env var is comma-separated', plain=True),
     'cli.approve': Key(str, '', '--approve', 'which actions the terminal session asks about', ('ask', 'edits', 'auto', 'off', 'none')),
     'cli.theme': Key(str, '', '--theme', 'the terminal palette', ('auto', 'dark', 'light')),
     'cli.tmux': Key(str, '', '--tmux', 'whether the terminal session runs in tmux panes', ('auto', 'on', 'off')),
@@ -263,6 +265,9 @@ MODEL_KEYS = {'max_input_tokens': Key(int, doc='the input window the guard sizes
               'api_name': Key(str, doc="fastllm's wire format: openai (Responses), openai_chat, anthropic or gemini"),
               'vendor_name': Key(str, doc='the fastllm vendor, when it is not the one the model id implies'),
               'ctx': Key(int, doc='the same as max_input_tokens')}
+
+#: keys an earlier release read, and what to do instead
+RETIRED_KEYS = {'azure.deployments': 'deployments no longer choose models; name one as azure/<deployment> in [jobs], or run `ramabana setup`'}
 
 def _why(key, v):
     "What `v` would have to be to suit `key`, or '' when it does."
@@ -294,7 +299,8 @@ def _check(raw):
             if not isinstance(v, dict): bad.append('model is ignored: it holds one table per model, [model."NAME"]')
             continue
         for kk, x in ([(f'{k}.{a}', b) for a, b in v.items()] if isinstance(v, dict) else [(k, v)]):
-            if (key := KEYS.get(kk)) is None: bad.append(_unknown(kk, KEYS))
+            if kk in RETIRED_KEYS: bad.append(f'{kk} is ignored: {RETIRED_KEYS[kk]}')
+            elif (key := KEYS.get(kk)) is None: bad.append(_unknown(kk, KEYS))
             elif (why := _why(key, x)): bad.append(f'{kk} = {x!r} is ignored: it must be {why}')
             else: vals[kk] = str(x) if isinstance(key.type, tuple) else x
     return vals, bad
@@ -358,6 +364,36 @@ def set_setting(key, value, path=None):
     _LOADED.pop(p, None)
     return value
 
+def _header(table):
+    "The TOML header for `table`: `jobs`, or a model name, quoted, under `model`."
+    return table if table in ('jobs', 'azure') or table.startswith('model.') else f'model.{json.dumps(table)}'
+
+def set_table(table, values, path=None):
+    "Set `values` in config.toml's `[table]`, adding the table when it is missing, comments kept; a file that is not TOML is refused, never rewritten."
+    p = Path(path).expanduser() if path else config_path()
+    try: text = p.read_text()
+    except FileNotFoundError: text = ''
+    try: tomllib.loads(text)
+    except (UnicodeError, tomllib.TOMLDecodeError) as e:
+        raise ValueError(f'{p} is not valid TOML ({e}); fix it by hand: ramabana never rewrites a file it cannot read') from None
+    h = _header(table)
+    find = lambda: re.search(rf'^\[{re.escape(h)}\][ \t]*$', text, re.M)
+    if not (m := find()): text = text.rstrip('\n') + ('\n\n' if text.strip() else '') + f'[{h}]\n'; m = find()
+    end = m.end() + n.start() if (n := re.search(r'^[ \t]*\[', text[m.end():], re.M)) else len(text)
+    block = text[m.end():end]
+    for k, v in values.items():
+        line = f'{k} = {_toml(v)}'
+        for pat in (rf'^{re.escape(k)}[ \t]*=.*$', rf'^#[ \t]*{re.escape(k)}[ \t]*=.*$'):
+            if re.search(pat, block, re.M): block = re.sub(pat, line, block, count=1, flags=re.M); break
+        else: block = f'\n{line}' + block
+    new = text[:m.end()] + block + text[end:]
+    got = tomllib.loads(new)
+    for part in (['model', table.removeprefix('model.').strip('"')] if h.startswith('model.') else [table]): got = got.get(part, {})
+    if any(got.get(k) != v for k, v in values.items()): raise ValueError(f'{p}: could not set [{h}] without breaking the file; set it by hand')
+    _locked_write(p, new if new.endswith('\n') else new + '\n')
+    _LOADED.pop(p, None)
+    return values
+
 
 # %% ../nbs/19_setup.ipynb #3ed0bb06
 import inspect
@@ -365,12 +401,12 @@ from itertools import groupby
 
 def config_defaults():
     "Every key's built-in default, read from the module that owns it."
-    from ramabana.core import AZURE_KEY_ENV, DEFAULT_POLICY, DFLT_TURN
+    from ramabana.core import AZURE_KEY_ENV, DEFAULT_POLICY, DFLT_IMAGE, DFLT_TURN
     from ramabana.runtime import CLAUDE_EFFORT, EST_MARGIN, IMG_TOKENS, KEEP_RECENT, RESERVE
     d = {'learning': True, 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
          'window.margin': EST_MARGIN, 'window.image_tokens': IMG_TOKENS, 'window.reserve': RESERVE, 'window.keep_recent': KEEP_RECENT,
          'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'summary', 'runtime.effort': CLAUDE_EFFORT,
-         'runtime.tool_channel': '', 'runtime.litert_backend': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'azure.deployments': []}
+         'runtime.tool_channel': '', 'runtime.litert_backend': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'jobs.image': DFLT_IMAGE}
     try:
         from ramabana.cli import main
         ps = inspect.signature(getattr(main, '__wrapped__', main)).parameters
@@ -435,6 +471,7 @@ def config_show(path=None):
     return '\n'.join(rows + [f'warning: {b}' for b in bad])
 
 CONFIG_USAGE = 'usage: ramabana config [show | init [--force] | path]'
+SETUP_USAGE = 'usage: ramabana setup [--provider P --name N --model-id M --endpoint URL --region R --key-env VAR --api-name A --jobs turn,summary]'
 
 def config_cli(argv=()):
     "`ramabana config`: `show` what is in effect, `init` a commented config.toml, or print its `path`."
@@ -455,6 +492,61 @@ def config_cli(argv=()):
     print(f'wrote {p}')
     return 0
 
+
+# %% ../nbs/19_setup.ipynb #13410d75
+#: what `ramabana setup` asks for each provider that needs a `[model."NAME"]` table: the prompt, and how the answers become one
+SETUP_FIELDS = {'azure': ('deployment name', 'AZURE_OPENAI_API_KEY', 'openai'), 'bedrock': ('Bedrock model id, such as openai.gpt-5.4', 'AWS_BEARER_TOKEN_BEDROCK', 'openai'),
+                'custom': ('model id', 'MY_API_KEY', 'openai_chat')}
+
+def _flags(argv):
+    "`--key value` pairs as a dict, keys with `-` as `_`; None for a stray word."
+    out, it = {}, iter(argv)
+    for a in it:
+        if not a.startswith('--'): return None
+        k, eq, v = a[2:].partition('=')
+        out[k.replace('-', '_')] = v if eq else next(it, '')
+    return out
+
+def setup_cli(argv=(), ask=input, isatty=None, out=print):
+    "`ramabana setup`: add a provider's model to config.toml and name the jobs it serves. Asks only on a terminal; never writes a key."
+    from ramabana.core import AZURE_KEY_ENV, JOBS, PROVIDERS, azure_base, provider_ready, setup_guide
+    f = _flags(argv)
+    if f is None: print(SETUP_USAGE, file=sys.stderr); return 2
+    tty = (isatty or (lambda: sys.stdin.isatty() and sys.stdout.isatty()))()
+    if not f.get('provider'):
+        if not tty: print(setup_guide(), file=sys.stderr); print(SETUP_USAGE, file=sys.stderr); return 2
+        out(setup_guide()); out('')
+        for n, pr in enumerate(PROVIDERS, 1): out(f"{n:2}. {pr['label']}" + (' (ready)' if provider_ready(pr['key']) else ''))
+        try: c = ask('Provider number: ').strip()
+        except (EOFError, KeyboardInterrupt): return 1
+        if not c.isdigit() or not 1 <= int(c) <= len(PROVIDERS): out('no provider chosen; nothing written'); return 1
+        f['provider'] = PROVIDERS[int(c) - 1]['key']
+    key = f['provider']
+    if key not in {pr['key'] for pr in PROVIDERS}: print(f'unknown provider {key!r}; one of {", ".join(pr["key"] for pr in PROVIDERS)}', file=sys.stderr); return 2
+    get = lambda k, q, d='': f.get(k) or (tty and ask(f'{q}' + (f' [{d}]' if d else '') + ': ').strip()) or d
+    try:
+        if key in SETUP_FIELDS:
+            what, kenv, api = SETUP_FIELDS[key]
+            mid = get('model_id', what)
+            if key == 'azure': base = azure_base(get('endpoint', 'Azure OpenAI endpoint', os.environ.get('AZURE_OPENAI_ENDPOINT', '')))
+            elif key == 'bedrock': base = f"https://bedrock-mantle.{get('region', 'AWS region', os.environ.get('AWS_REGION', 'us-east-1'))}.api.aws/v1"
+            else: base = get('endpoint', 'base URL, such as https://host/v1')
+            if not (mid and base): out('a model id and an endpoint are needed; nothing written'); return 1
+            name = get('name', 'name to choose it by', f'{key}-{mid}'.replace('/', '-'))
+            row = dict(model_id=mid, base_url=base, api_key_env=get('key_env', 'env var holding the key', kenv if key != 'azure' else setting('azure.api_key_env') or AZURE_KEY_ENV),
+                       api_name=get('api_name', 'API: openai (Responses) or openai_chat', api))
+            set_table(name, row)
+            out(f'wrote [model."{name}"] in {config_path()}; export {row["api_key_env"]} in the shell that runs ramabana')
+        else:
+            name = get('model_id', 'model name, as /models lists it')
+            if not name: out('no model named; nothing written'); return 1
+        jobs = [j.strip() for j in get('jobs', f'jobs it serves ({", ".join(JOBS)}, image; empty for none)').split(',') if j.strip()]
+        if (bad := [j for j in jobs if j not in (*JOBS, 'image')]): out(f'unknown job {bad[0]!r}; nothing more written'); return 1
+        if jobs: set_table('jobs', {j: name for j in jobs}); out(f'[jobs] {", ".join(jobs)} = "{name}"')
+    except (EOFError, KeyboardInterrupt): return 1
+    except ValueError as e: print(e, file=sys.stderr); return 1
+    out('`ramabana config show` prints what is in effect')
+    return 0
 
 # %% ../nbs/19_setup.ipynb #235e735b
 @patch
