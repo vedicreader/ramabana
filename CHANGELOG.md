@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.47
+
+- A stock hosted turn takes no jobs from the rehoming. Under 0.2.46, `Routing(turn='sonnet')` on a machine with Claude Code and no Codex login moved `oneshot` and `summary` onto `sonnet` with a note, though no hosted model was configured. They reached the same model through the fallback before, and now do again; only a configured model, `azure/...` or a config.toml or saved definition, draws jobs to a chosen turn.
+
 ## 0.2.46
 
 - Azure OpenAI is a route of its own. `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` set it up; `azure/<deployment>` names a deployment anywhere a model is named, and goes to the resource's v1 API through the Responses API, with no `api-version`. `AZURE_OPENAI_DEPLOYMENTS`, comma-separated, lists the deployments to offer and route to. config.toml's `[azure]` table can hold `endpoint`, `deployments` and `api_key_env` instead; the env vars beat it, and the key never goes in the file. Any shape of endpoint pasted from the portal is reduced to the v1 base (`azure_base`).

@@ -167,3 +167,11 @@ def test_the_cli_process_resolves_a_config_toml_model(tmp_path):
     code = 'from ramabana.core import Routing; s = Routing().spec("turn"); print(s.name, s.model_id, s.config["base_url"])'
     out = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True, timeout=120)
     assert out.stdout.split() == ['az-big', 'gpt-5.4', 'https://res.openai.azure.com'], out.stderr
+
+
+def test_a_stock_hosted_turn_with_nothing_configured_moves_no_job(monkeypatch):
+    "CI has Claude Code and no Codex: `Routing(turn='sonnet')` moved the summary job onto sonnet, though no hosted model was configured."
+    monkeypatch.setattr(core, '_claude_available', lambda: True)
+    monkeypatch.setattr(core, '_codex_login', lambda: False)
+    r = Routing(turn='sonnet')
+    assert (r.name_for('summary'), r.news) == ('gpt-6-luna', [])

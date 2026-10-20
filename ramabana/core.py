@@ -797,7 +797,8 @@ class Routing:
 
     def _rehome(self):
         "Move each job still on a default that cannot run here to a hosted model configured here, with a note: the chosen turn when it is one, else the first, and a mini or nano for the cheap jobs."
-        mine = [self.turn] if self.given and not is_local(self.turn) and not self._why(self.turn) else []
+        configured = self.turn in CUSTOM or is_azure(self._resolve(self.turn))   # a stock hosted turn takes no jobs: that is the fallback's business
+        mine = [self.turn] if self.given and configured and not is_local(self.turn) and not self._why(self.turn) else []
         if not (pool := list(dict.fromkeys(mine + remote_models()))):
             if azure_ready() and not self.given and self._why(self.turn): self.news.append(AZURE_UNNAMED)
             return
