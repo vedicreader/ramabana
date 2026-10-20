@@ -37,7 +37,7 @@ The running code is the installed package. With the interpreter that "On this ma
 The config folder is `~/.config/ramabana` unless `--cfg` names another:
 
 - `config.toml` holds models, jobs and settings, and `models.json` the saved model aliases.
-- `agent-history.jsonl` has one line per finished turn, with its model, usage, error and the lines the user sent while it ran (`steered`).
+- `agent-history.jsonl` has one line per finished turn, with its model, usage, error and the lines the user sent while it ran (`steered`). A tool result over 600 characters is clipped there; the whole result is in `agent-details/<session>.jsonl`, named by the row's `details`.
 - `runs/<session>/` has one folder per session. `run_<id>.log` is one run's transcript, the turn's or a sub-agent's. `answer_<id>.txt` is a sub-agent's whole answer. `stderr.log` is the process's error output, where a backend crash can appear and nowhere else. `start.json` records each open folder's repository state at the first turn.
 - `learned/` is a git repository of the rules, skills and extensions that learning keeps.
 

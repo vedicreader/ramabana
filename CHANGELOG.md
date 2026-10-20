@@ -5,6 +5,9 @@
 ## 0.2.59
 
 - Requires rishi 0.1.52. A Gemini model routed as `gemini/<model>` no longer gets 404, and a Claude Code session that fails while connecting is tried once more, with a note in the session.
+- Requires shalya 0.1.19. A command the agent runs gets `/dev/null` as standard input. It used to inherit the terminal, so it could read keystrokes or set the terminal non-blocking, which froze the session before 0.2.58. `claude auth status`, the clipboard reader and the tmux log pane get `/dev/null` too.
+- The turn log no longer keeps long tool results. A result over `RESUME_DETAIL` (600 characters) goes whole to `<history_name>-details/<session>.jsonl` in the config folder, and the row keeps its first 600 characters and a `details` reference. A resume replays only those 600 characters, so it reads the row alone; `session_turns` restores the whole results for a transcript or a branch editor. Results were about a quarter of a long-used `agent-history.jsonl`. Rows written before this keep their results inline and read as before; nothing rewrites the log.
+- The session index lists each session's byte ranges as `spans`, and `session_turns` reads only those. It used to read everything from a session's first turn to its last, which for a session resumed weeks later is most of the log. Index rows written before this, or past `MAX_SPANS` ranges, keep the first-to-last read.
 
 ## 0.2.58
 

@@ -285,7 +285,7 @@ class Viewer:
         b = next((b for b in (self.snap or {}).get('background', []) if ('bg', b['id']) == key and b.get('log')), None)
         if b is None: return False
         subprocess.Popen(['tmux', 'split-window', '-v', '-t', os.environ.get('TMUX_PANE', ''), f"less -R +F {shlex.quote(b['log'])}"],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
 
     def move(self, key):

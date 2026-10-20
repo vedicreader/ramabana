@@ -229,7 +229,7 @@ def _claude_login():
     "Whether Claude Code is logged in, from status metadata only."
     if not shutil.which('claude'): return False
     try:
-        p = subprocess.run(['claude', 'auth', 'status', '--json'], capture_output=True, text=True, timeout=3)
+        p = subprocess.run(['claude', 'auth', 'status', '--json'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=3)
         return p.returncode == 0 and bool(json.loads(p.stdout).get('loggedIn'))
     except Exception: return False
 

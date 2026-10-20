@@ -15,9 +15,9 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING',
            'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK',
            'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS',
-           'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'Act', 'Activity', 'preview_for', 'Ask',
-           'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note',
-           'inline_for', 'request_text', 'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context',
+           'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'Act', 'Activity', 'preview_for',
+           'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply',
+           'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context',
            'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family',
            'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools',
            'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer', 'request_body',
@@ -1958,6 +1958,22 @@ def _log_turn(line):
     try: return json.loads(line.decode('utf-8', 'replace'))
     except ValueError: return None
 
+def _hydrate(cfg, turns):
+    "Give rows that sent results to a details file those results back whole; a missing or torn file leaves the clipped ones."
+    files = {}
+    for t in turns:
+        ref = t.get('details')
+        if cfg is None or not isinstance(ref, str) or Path(ref).is_absolute() or len(parts := Path(ref).parts) != 2 or '..' in parts: continue
+        if ref not in files:
+            got = files[ref] = {}
+            try: raw = (cfg/ref).read_bytes()
+            except OSError: continue
+            for d in map(_log_turn, raw.split(b'\n')):
+                if isinstance(d, dict) and isinstance(d.get('details'), dict): got.update(d['details'])
+        if got := files[ref]:
+            t['activity'] = [a | {'detail': got[a['id']]} if isinstance(a, dict) and a.get('id') in got else a for a in t.get('activity') or ()]
+    return turns
+
 # %% ../nbs/03_agent.ipynb #d8f9fcfe
 @patch
 def _load_plan(self:Agent):
@@ -2828,7 +2844,7 @@ def sessions(self:Agent):
 @patch
 def session_turns(self:Agent, sid):
     "One conversation's turns, from memory; a log-backed agent seeks them instead."
-    return [t for t in self.history if (t.get('session') or '') == str(sid)]
+    return _hydrate(self.cfg, [dict(t) for t in self.history if (t.get('session') or '') == str(sid)])
 
 # %% ../nbs/03_agent.ipynb #6a449082
 @patch
@@ -2967,6 +2983,23 @@ def _event(self:Agent, kind, **data):
                 _append_line(p, line)
             except Exception: pass
 
+@patch(as_prop=True)
+def details_path(self:Agent):
+    "`<cfg>/<history_name>-details/<session>.jsonl`: tool results too long for the turn log, or None without a config dir."
+    return None if self.cfg is None else self.cfg/f'{self.history_name}-details'/f'{self.session_id}.jsonl'
+
+@patch
+def _slim(self:Agent, turn):
+    "`turn` as the log keeps it: each result over `RESUME_DETAIL` goes whole to `details_path` first, and the row keeps its start."
+    long = {a['id']: a['detail'] for a in turn.get('activity') or () if a.get('id') and len(a.get('detail') or '') > RESUME_DETAIL}
+    if not long or (d := self.details_path) is None: return turn
+    try:
+        d.parent.mkdir(parents=True, exist_ok=True)
+        _append_line(d, json.dumps({'turn_id': turn.get('turn_id', ''), 'details': long}, ensure_ascii=False) + '\n')
+    except Exception: return turn   # the row keeps them whole instead
+    acts = [a | {'detail': _clip(a['detail'], RESUME_DETAIL)} if a.get('id') in long else a for a in turn['activity']]
+    return turn | {'activity': acts, 'details': f'{d.parent.name}/{d.name}'}
+
 @patch
 def _remember(self:Agent, prompt, text, error='', state='complete'):
     turn = {'at': time.time(), 'session': getattr(self, 'session_id', '') or '', 'state': state,
@@ -2981,7 +3014,7 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
     if (p := self.history_path) is not None:
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
-            self._last_span = _append_line(p, json.dumps(turn, ensure_ascii=False) + '\n')
+            self._last_span = _append_line(p, json.dumps(self._slim(turn), ensure_ascii=False) + '\n')
         except Exception: pass
     self._event('turn_end', turn_id=turn['turn_id'], state=state, error=error, usage=turn['usage'], reply=str(text or '')[:4000])
     self._save_hist()
@@ -4350,13 +4383,34 @@ def _index_turn(agent, turn, start, end):
     row['turns'] = int(row.get('turns', 0)) + 1
     row['last_at'], row['last_offset'] = turn.get('at', 0), end
     row['model'] = turn.get('model', '')
-    if row.get('first_offset') is None:
+    if (fresh := row.get('first_offset') is None):
         row['first_offset'], row['first_at'] = start, turn.get('at', 0)
         row['first_title'] = request_title(turn.get('prompt', ''))
+    _set_spans(row, _add_span(row.get('spans') or [], start, end) if fresh or 'spans' in row else None)
     rows[sid] = {'version': _SESSION_META_VERSION, **_SESSION_DEFAULTS} | row
     _write_session_rows(agent, rows)
 
-_INDEX_KEYS = ('turns', 'first_at', 'first_offset', 'first_title', 'last_at', 'last_offset', 'model')
+_INDEX_KEYS = ('turns', 'first_at', 'first_offset', 'first_title', 'last_at', 'last_offset', 'model', 'spans')
+MAX_SPANS = 256   #: byte ranges an index row lists; past this a session is read from its first turn to its last
+
+def _add_span(spans, start, end):
+    "`spans` with `[start, end]` added, joined to the last range when they touch; None past `MAX_SPANS` or without `spans`."
+    if spans is None: return None
+    out = [list(s) for s in spans]
+    if out and out[-1][1] == start: out[-1][1] = end
+    else: out.append([start, end])
+    return out if len(out) <= MAX_SPANS else None
+
+def _join_spans(a, b):
+    "The ranges of `a` then `b`, or None when either is missing or the sum is too many."
+    if a is None or b is None: return None
+    for s, e in b:
+        if (a := _add_span(a, s, e)) is None: return None
+    return a
+
+def _set_spans(row, spans):
+    if spans is None: row.pop('spans', None)
+    else: row['spans'] = spans
 
 def _index_start(agent, rows):
     "Where the log has to be read from: None when the index covers it, 0 to rebuild, else where the index ends."
@@ -4390,10 +4444,11 @@ def _index_from_log(p, offset=0, legacy_n=0, legacy_last=None):
                 if legacy_last is None or at - legacy_last > LEGACY_GAP: legacy_n += 1
                 sid, legacy_last = f'legacy-{legacy_n}', at
             if sid not in found:
-                found[sid] = {'turns': 0, 'first_at': at, 'first_offset': start, 'first_title': request_title(turn.get('prompt', ''))}
+                found[sid] = {'turns': 0, 'first_at': at, 'first_offset': start, 'first_title': request_title(turn.get('prompt', '')), 'spans': []}
             row = found[sid]
             row['turns'] += 1
             row['last_at'], row['last_offset'] = at, offset
+            _set_spans(row, _add_span(row.get('spans'), start, offset))
             row['model'] = turn.get('model', '')
     return found
 
@@ -4426,6 +4481,7 @@ def rebuild_index(self:Agent, force=False):
         for sid, row in found.items():
             if start and (old := rows.get(sid) or {}).get('turns'):
                 found[sid] = old | row | {k: old[k] for k in ('first_at', 'first_offset', 'first_title') if k in old} | {'turns': int(old['turns']) + row['turns']}
+                _set_spans(found[sid], _join_spans(old.get('spans'), row.get('spans')))
         out = {sid: {'version': _SESSION_META_VERSION, **_SESSION_DEFAULTS}
                     | {k: v for k, v in (rows.get(sid) or {}).items() if k in _SESSION_DEFAULTS}
                     | row
@@ -4558,18 +4614,18 @@ def sessions(self:Agent):
 
 @patch
 def session_turns(self:Agent, sid):
-    "One conversation's turns, read from its indexed byte range and filtered by session."
+    "One conversation's turns, read from its indexed byte ranges and filtered by session, with long tool results from its details file."
     sid = str(sid)
     row, p = self.rebuild_index().get(sid), self.history_path
     if row is None or 'first_offset' not in row or p is None or not p.exists():
         return _agent_session_turns(self, sid)
-    start, end = int(row['first_offset']), int(row.get('last_offset', 0))
+    spans, chunks = row.get('spans') or [(row['first_offset'], row.get('last_offset', 0))], []
     with _history_lock(self):
         with p.open('rb') as f:
-            f.seek(start)
-            raw = f.read(max(0, end - start))
+            for s, e in spans:
+                f.seek(int(s)); chunks.append(f.read(max(0, int(e) - int(s))))
     mine = (lambda t: not (t.get('session') or '')) if sid.startswith('legacy-') else (lambda t: (t.get('session') or '') == sid)
-    return [t for t in map(_log_turn, raw.split(b'\n')) if t is not None and mine(t)]
+    return _hydrate(self.cfg, [t for t in map(_log_turn, b'\n'.join(chunks).split(b'\n')) if t is not None and mine(t)])
 
 @patch
 def _remember(self:Agent, prompt, text, error='', state='complete'):

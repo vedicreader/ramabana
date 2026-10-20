@@ -61,6 +61,7 @@ def _submit(u, line):
 
 class PipeTty(EmuTty):
     "An emulated terminal with a real fd, so `amain` can wait on its keys."
+    dropped = False   # `amain` repaints after `AppTty` drops a frame
     def __init__(self, *a):
         super().__init__(*a)
         self.fd, self.w = os.pipe()

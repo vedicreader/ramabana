@@ -906,7 +906,7 @@ def clipboard_png():
     "The clipboard picture as PNG bytes, or None."
     for cmd in CLIP_IMAGE:
         if shutil.which(cmd[0]) is None: continue
-        try: out = subprocess.run(cmd, capture_output=True, timeout=5).stdout
+        try: out = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, timeout=5).stdout
         except Exception: continue
         if out[:8] == b'\x89PNG\r\n\x1a\n': return out
     return None
