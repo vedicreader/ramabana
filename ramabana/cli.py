@@ -43,6 +43,7 @@ from rich.padding import Padding
 import fastpylight
 from fastcore.script import call_parse
 from fastcore.basics import first, patch, ifnone, store_attr
+from teleprint.blocks import Block
 from teleprint.buffer import Buffer
 from teleprint.compositor import Compositor
 from teleprint.keys import Key, Parser, _mod
@@ -61,6 +62,8 @@ from .setup import PANE_MODES, SETUP_FIELDS, TMUX_MODES, Setup, config_path, con
 import getpass, io
 from datetime import datetime
 from . import __version__
+
+Block.tag = None   # ramabana labels blocks ('tool', 'reply', ...) after `put` returns, but `put` calls `on_change` first: every block starts untagged
 
 
 # %% ../nbs/05_cli.ipynb #05b4d036
@@ -1113,7 +1116,9 @@ class Ui:
     def _put(self, blk, *body, source=None, **kw):
         "Replace `blk`'s content in place, keeping its gutter, fold threshold, padding and dim unless `kw` sets them."
         kw = dict(gutter=blk.gutter, collapse_at=blk.collapse_at, dim=blk.dim, pad=blk.pad) | kw
-        return self.comp.put(blk.key, *body, source=source, **kw)
+        new = self.comp.put(blk.key, *body, source=source, **kw)
+        if new is not blk: new.tag = blk.tag   # a block put back after a drop is a new object
+        return new
 
     def _refold(self, act, blk, *body, source=None):
         "Replace a call's content and fold it as `_folded` decides, in one frame at its final height."
