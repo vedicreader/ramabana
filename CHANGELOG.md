@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.64
+
+- A block printed while the transcript view is open during a turn no longer crashes the session with `AttributeError: 'Block' object has no attribute 'tag'`. teleprint's `Compositor.put` calls `on_change` before it returns the new block, and the open view's repaint read `tag` before Ramabana had set it. Every teleprint `Block` now starts with `tag = None`, and `Ui._put` keeps a block's `tag` when `put` returns a new block for a key that was dropped.
+- Requires shalya 0.1.20. The Getting started pane, the now pane and `/watch` panes open beside the session's own pane, `$TMUX_PANE`, instead of beside whichever tmux pane is active.
+
 ## 0.2.63
 
 - A session opens whatever the machine has. When the turn's model cannot run here and neither `--model` nor `$RAMABANA_MODEL` named it, `Agent.settle` moves it to `ready_turn()`: the first ready provider in `READY_ORDER`, a Claude Code, Codex or Copilot sign-in, then an Anthropic, OpenAI or Gemini key. Azure, Bedrock and custom endpoints are never picked. The session says which model it moved to and why. Building a `Routing` changes nothing, and `Routing.settled()` only names the move.
