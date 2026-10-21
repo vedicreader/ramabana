@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.65
+
+- `Ui.kinds` maps each block's key to its kind ('tool', 'reply', 'note', 'step', ...), and `Ui.kind(blk)` reads it. `say` records the kind before teleprint's `put` runs, so an `on_change` observer such as the open transcript view sees it from the first repaint. A block put back under its key after a drop keeps its kind.
+- Ramabana no longer sets `tag` on teleprint blocks, and no longer patches teleprint's `Block` class. 0.2.64's `Block.tag = None` and its `Ui._put` carry-over are gone. Code that read `blk.tag` on a Ramabana block reads `ui.kind(blk)`.
+
 ## 0.2.64
 
 - A block printed while the transcript view is open during a turn no longer crashes the session with `AttributeError: 'Block' object has no attribute 'tag'`. teleprint's `Compositor.put` calls `on_change` before it returns the new block, and the open view's repaint read `tag` before Ramabana had set it. Every teleprint `Block` now starts with `tag = None`, and `Ui._put` keeps a block's `tag` when `put` returns a new block for a key that was dropped.
