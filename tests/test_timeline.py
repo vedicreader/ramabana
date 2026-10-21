@@ -47,9 +47,9 @@ def test_narration_stays_as_a_step_above_each_call(ui):
     blocks = a_turn(ui, [('Looking for it.\n', 'search_code', 'runtime.py:88'),
                          ('And the caller.\n', 'view_file', 'line 120'),
                          ('And the tests.\n', 'search_code', 'test_context.py:44')])
-    assert [b.tag for b in blocks] == ['step', 'tool', 'step', 'tool', 'step', 'tool', 'reply']
-    assert [ui.transcript.block_text(b) for b in blocks if b.tag == 'step'] == ['Looking for it.', 'And the caller.', 'And the tests.']
-    assert all(not b.collapsed for b in blocks if b.tag == 'step'), 'narration is there to be read'
+    assert [ui.kind(b) for b in blocks] == ['step', 'tool', 'step', 'tool', 'step', 'tool', 'reply']
+    assert [ui.transcript.block_text(b) for b in blocks if ui.kind(b) == 'step'] == ['Looking for it.', 'And the caller.', 'And the tests.']
+    assert all(not b.collapsed for b in blocks if ui.kind(b) == 'step'), 'narration is there to be read'
     assert ui.transcript.block_text(blocks[-1]) == '## Answer\n\nBoth of them.\n'
     assert ui._reply == '## Answer\n\nBoth of them.\n'
 
@@ -80,11 +80,11 @@ def test_stopping_a_turn_does_not_leave_the_reply_growing_above_the_note(ui):
 
     assert ui._seg_blk is None
     assert ui.transcript.block_text(seg) == 'part way through', 'the flush lost the last chunk'
-    tags = [b.tag for b in ui.comp.blocks.values()]
+    tags = [ui.kind(b) for b in ui.comp.blocks.values()]
     assert tags == ['reply', 'note'], tags
 
     ui.stream(seg, ' and a straggler')
-    tags = [b.tag for b in ui.comp.blocks.values()]
+    tags = [ui.kind(b) for b in ui.comp.blocks.values()]
     assert tags == ['reply', 'note', 'reply'], 'the straggler grew the block above the note'
 
 
@@ -106,11 +106,11 @@ def test_folding_and_drilling_reach_this_turn_and_not_the_session(ui):
     that crosses it is inked into scrollback for good -- no keystroke takes it back.
     """
     for _ in range(3): a_finished_turn(ui)
-    every = [b for b in ui.comp.blocks.values() if b.tag == 'tool' and b.height > 1]
+    every = [b for b in ui.comp.blocks.values() if ui.kind(b) == 'tool' and b.height > 1]
     assert len(every) == 6, len(every)
 
     assert len(ui.turn_blocks()) < len(ui.comp.blocks), 'the turn is not a subset of the session'
-    assert len(ui.drillable()) == 2, [b.tag for b in ui.drillable()]
+    assert len(ui.drillable()) == 2, [ui.kind(b) for b in ui.drillable()]
 
     ui.fold_work()
     opened = [b for b in every if not b.collapsed]
@@ -215,7 +215,7 @@ def test_a_turn_that_ends_during_a_poll_still_shows_its_answer(monkeypatch):
         return u
     u = asyncio.run(go())
     assert u._reply.strip() == 'THE WHOLE ANSWER', repr(u._reply)
-    assert any(b.tag == 'reply' and u.transcript.block_text(b).strip() == 'THE WHOLE ANSWER' for b in u.comp.blocks.values())
+    assert any(u.kind(b) == 'reply' and u.transcript.block_text(b).strip() == 'THE WHOLE ANSWER' for b in u.comp.blocks.values())
 
 
 # -- teleprint 0.1.4: keyed blocks, `put`, and a mouse that `start` turns on ---------------------------
@@ -237,7 +237,7 @@ def test_notes_said_while_a_reply_streams_land_above_it_in_order(ui):
     ui.note('first'); ui.note('second')
     ui.stream(seg, 'answer')
     ui.flush_stream()
-    assert [(b.tag, b.source) for b in ui.comp.blocks.values()] == [('note', 'banner'), ('note', 'first'), ('note', 'second'), ('reply', 'partial answer')]
+    assert [(ui.kind(b), b.source) for b in ui.comp.blocks.values()] == [('note', 'banner'), ('note', 'first'), ('note', 'second'), ('reply', 'partial answer')]
 
 
 def test_a_click_toggles_by_key_and_a_one_liner_is_not_held(ui):

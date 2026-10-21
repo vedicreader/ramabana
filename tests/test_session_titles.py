@@ -112,7 +112,7 @@ def _ui(agent):
     asyncio.run(comp.start())
     return Ui(comp, agent), tty
 
-def _drawn(ui, tag): return [b.source for b in ui.comp.blocks.values() if b.tag == tag]
+def _drawn(ui, tag): return [b.source for b in ui.comp.blocks.values() if ui.kind(b) == tag]
 
 def test_a_resumed_session_draws_its_last_turns(tmp_path):
     a, _ = fake_agent(cfg=tmp_path)

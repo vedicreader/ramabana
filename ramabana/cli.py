@@ -43,7 +43,6 @@ from rich.padding import Padding
 import fastpylight
 from fastcore.script import call_parse
 from fastcore.basics import first, patch, ifnone, store_attr
-from teleprint.blocks import Block
 from teleprint.buffer import Buffer
 from teleprint.compositor import Compositor
 from teleprint.keys import Key, Parser, _mod
@@ -63,7 +62,6 @@ import getpass, io
 from datetime import datetime
 from . import __version__
 
-Block.tag = None   # ramabana labels blocks ('tool', 'reply', ...) after `put` returns, but `put` calls `on_change` first: every block starts untagged
 
 
 # %% ../nbs/05_cli.ipynb #05b4d036
@@ -814,6 +812,7 @@ class Ui:
         self._acted_at = 0.0
         self._held = set()
         self._keys = itertools.count(1)   #: block keys, so a later block has a larger key
+        self.kinds = {}   #: block key -> what it is ('tool', 'reply', 'note', ...), recorded before `put` so `on_change` observers see it
         self._turn_at = 0.0
         self._turn_from = 0
         self._rendered = ''
@@ -922,7 +921,7 @@ class Ui:
     def drillable(self):
         "The turn's foldable entries, newest first: what alt+1..9 reaches."
         return [b for b in reversed(self.turn_blocks())
-                if b.tag == 'tool' and b.height > 1][:9]
+                if self.kind(b) == 'tool' and b.height > 1][:9]
 
     def drill(self, n):
         "Toggle the `n`th newest foldable entry; False if there is none."
@@ -1047,15 +1046,18 @@ class Ui:
             keys = list(self.comp.blocks)
             if (i := keys.index(reply.key)): after = keys[i - 1]
             else: first = reply
-        blk = self.comp.put(next(self._keys), body, gutter=GUTTERS.get(kind, GUTTERS['reply']),
+        self.kinds[key := next(self._keys)] = kind
+        blk = self.comp.put(key, body, gutter=GUTTERS.get(kind, GUTTERS['reply']),
                             collapse_at=fold, source=source, pad=pad, after=after)
-        blk.tag = kind
-        if first:   # nothing to go after: the reply moves below instead
+        if first:   # nothing to go after: the reply moves below instead, under the same key and kind
             self.comp.drop(first.key)
             self._seg_blk = self._put(first, *first.body, source=first.source)
-            self._seg_blk.tag = 'reply'
         self.touch(now=True)
         return blk
+
+    def kind(self, blk):
+        "What `blk` is, as `say` recorded it: 'tool', 'reply', 'note', 'step', ..."
+        return self.kinds.get(blk.key)
 
     def note(self, text, kind='note'):
         "Print one unfolded `kind` block; returns None."
@@ -1066,7 +1068,7 @@ class Ui:
         "Open or shut tool blocks in this turn or the whole transcript; True when shut."
         self.flush_stream()
         blocks = self.comp.blocks.values() if all_turns else self.turn_blocks()
-        work = [b for b in blocks if b.tag == 'tool' and b.height > 1]
+        work = [b for b in blocks if self.kind(b) == 'tool' and b.height > 1]
         if not work: return False
         shut = not all(b.collapsed or self._capped(b) for b in work)
         for b in work:   # one frame for all: a frame per block would ink rows of blocks still to change
@@ -1116,9 +1118,7 @@ class Ui:
     def _put(self, blk, *body, source=None, **kw):
         "Replace `blk`'s content in place, keeping its gutter, fold threshold, padding and dim unless `kw` sets them."
         kw = dict(gutter=blk.gutter, collapse_at=blk.collapse_at, dim=blk.dim, pad=blk.pad) | kw
-        new = self.comp.put(blk.key, *body, source=source, **kw)
-        if new is not blk: new.tag = blk.tag   # a block put back after a drop is a new object
-        return new
+        return self.comp.put(blk.key, *body, source=source, **kw)
 
     def _refold(self, act, blk, *body, source=None):
         "Replace a call's content and fold it as `_folded` decides, in one frame at its final height."
@@ -1403,7 +1403,7 @@ class Ui:
             if not self._reply: return 'no turn to copy'
             text = self._reply
         else:
-            blk = next((b for b in reversed(self.turn_blocks()) if b.tag == tag), None)
+            blk = next((b for b in reversed(self.turn_blocks()) if self.kind(b) == tag), None)
             if blk is None: return f'no {tag} block in this turn to copy'
             text = self.transcript.block_text(blk)
         self.comp.tty.write('\x1b]52;c;' + b64encode(text.encode()).decode() + '\x07')
@@ -2172,7 +2172,7 @@ def _close_seg(self:Ui):
     text = self._seg.strip()
     self._seg_blk, self._seg, self._reply, self._rendered = None, '', '', ''
     if not text: return self.comp.drop(blk.key)
-    blk.tag = 'step'
+    self.kinds[blk.key] = 'step'
     self._put(blk, self.reply(text), source=text, gutter=GUTTERS['step'], collapse_at=None)
 
 @patch

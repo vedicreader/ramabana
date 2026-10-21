@@ -105,7 +105,7 @@ def test_the_learned_command_in_the_interface(tmp_path):
     ui = Ui(comp, agent)
     def run(line):
         ui.buf.insert(line); ui.submit()
-        return [blk.source for blk in ui.comp.blocks.values() if blk.tag == 'note'][-1]
+        return [blk.source for blk in ui.comp.blocks.values() if ui.kind(blk) == 'note'][-1]
     try:
         assert a in run('/learned') and b in run('/learned list')
         assert '+Read sizes from ls.' in run(f'/learned diff {a}')
@@ -144,7 +144,7 @@ def test_the_learned_compact_command_in_the_interface(tmp_path, monkeypatch):
     ui = Ui(comp, agent)
     def run(line):
         ui.buf.insert(line); ui.submit()
-        return [blk.source for blk in ui.comp.blocks.values() if blk.tag == 'note'][-1]
+        return [blk.source for blk in ui.comp.blocks.values() if ui.kind(blk) == 'note'][-1]
     try:
         out = run('/learned compact')
         assert out.startswith('compaction pending as ') and '→' in out and sent, out
@@ -185,7 +185,7 @@ def test_a_candidate_refused_for_size_is_folded_into_a_compaction(tmp_path, monk
     ui = Ui(comp, agent)
     def run(line):
         ui.buf.insert(line); ui.submit()
-        return [blk.source for blk in ui.comp.blocks.values() if blk.tag == 'note'][-1]
+        return [blk.source for blk in ui.comp.blocks.values() if ui.kind(blk) == 'note'][-1]
     try:
         assert f'run `/learned compact {big}`' in run(f'/learned accept {big}')
         out = run(f'/learned compact {big}')

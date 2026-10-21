@@ -105,7 +105,7 @@ async def demo(out: Path):
             tag = 'working' if (ui.turn is not None or not saw_working) else f'stream-{i:03d}'
             if ui.turn is not None: saw_working = True
             snap(tag if tag == 'working' and not any(p.name.endswith('-working.png') for p in shots) else f'stream-{i:03d}')
-        tags = [b.tag for b in comp.blocks.values()]
+        tags = [ui.kind(b) for b in comp.blocks.values()]
         if saw_working and ui.turn is None and 'reply' in tags:
             ui.paint()
             snap('reply')
