@@ -2,6 +2,19 @@
 
 <!-- do not remove -->
 
+## 0.2.63
+
+- A session opens whatever the machine has. When the turn's model cannot run here and neither `--model` nor `$RAMABANA_MODEL` named it, `Agent.settle` moves it to `ready_turn()`: the first ready provider in `READY_ORDER`, a Claude Code, Codex or Copilot sign-in, then an Anthropic, OpenAI or Gemini key. Azure, Bedrock and custom endpoints are never picked. The session says which model it moved to and why. Building a `Routing` changes nothing, and `Routing.settled()` only names the move.
+- A turn on Claude Code counts as unable to run when `claude auth status` reports `loggedIn: false`. It used to count as ready when the binary and SDK were installed, and the first turn then failed.
+- A job whose default model cannot run here runs on the turn model and posts no note. A job someone gave a model of its own, directly or through `oneshot` (`Routing.chose`), keeps the old fallback order and says so once.
+- An interactive session with no model that runs no longer exits. It opens on `welcome()`, warms no model, and in tmux opens a Getting started pane beside it: `getting_started()` as a checklist that redraws until a model is ready. On WSL the checklist says that Windows sign-ins, programs and variables do not reach Linux, and gives each missing tool's install line. A one-shot or piped run with nothing ready still prints `setup_guide()` and exits 1. `ramabana --doctor` prints the same checklist.
+- `/login` lists the providers and which are ready. `/login NAME` runs the provider's own sign-in in this terminal (`claude auth login`, `codex login`, rishi's Copilot login), asks the endpoint questions for Azure, Bedrock and a custom endpoint, and asks for a missing key without echoing it. A turn that cannot run moves to the new provider, and a cold session then starts its model and code index. A turn that runs is left alone; `/model` switches it.
+- Keys typed into `/login` go to `~/.config/ramabana/keys.env`, mode 0600, through `save_key`. `load_keys` reads it at startup for names the environment lacks, and refuses a file other users can read. A value written by hand as `!command` is a command whose output is the key, such as `!security find-generic-password -ws openai`. A typed value that starts with `!` is stored as text. The beat loads `keys.env` after `beat.env`.
+- `/config` shows each setting and where it came from. `/config set KEY VALUE`, `/config reset` (the commented template, keeping `config.toml.bak`), `/config edit` (`$VISUAL`, `$EDITOR`, nano or vi in this terminal) and `/config reload` apply `[jobs]` to the running session through `Agent.apply_config`. A job this session set with `/model` keeps its model. A turn moves only to a model that runs here.
+- `/model [JOB] NAME --save` switches and writes `[jobs]`.
+- `ramabana setup` no longer asks which jobs a model serves. The new model becomes `[jobs] turn` when config.toml names no turn and no provider is ready. `--jobs` still names jobs. `config_reset` is the shared code behind `/config reset` and `ramabana config init --force`.
+- `SETUP_HINT` names `/login` first. `/help`, the guide and tab completion know `/login` and `/config`.
+
 ## 0.2.62
 
 - Requires teleprint 0.1.4 and pyghostty 0.1.3 (cli). Teleprint 0.1.4 names each block with a key and replaces `print_block`, `set_body`, `refresh_block` and `remove_block` with `put`, `extend` and `drop`, and `release` and `reanchor` with `async with borrow()`. Blocks are keyed by a counter in `Ui`, so a later block has a larger key. `blk.id` is now `blk.key`, and `Ui.toggle` takes a key, as teleprint's click and transcript view pass one.
