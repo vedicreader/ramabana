@@ -13,17 +13,17 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK',
            'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
            'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
-           'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'GUIDE_CMD',
-           'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme',
-           'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
-           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
-           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich',
-           'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode',
-           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log',
-           'pick_session', 'loop_error', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text',
-           'arg_words', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media',
-           'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment',
-           'sendable', 'media_parts', 'media_note']
+           'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'ALIVE_EVERY',
+           'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg',
+           'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
+           'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option',
+           'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table',
+           'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md',
+           'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'loop_error',
+           'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'guide_cmd', 'pane_cmd',
+           'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF',
+           'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
+           'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, itertools, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -58,7 +58,7 @@ from .tools import WRITE_TOOLS, path_write
 from . import hl, setup
 from .hl import HL_THEMES, is_diff
 from .setup import PANE_MODES, SETUP_FIELDS, TMUX_MODES, Setup, config_path, config_reset, keys_path, model_setting, refusal, save_key, setup_cli
-import getpass
+import getpass, io
 from datetime import datetime
 from . import __version__
 
@@ -2543,7 +2543,8 @@ def main(
         if (was := getattr(agent, 'resumed_roots', None)):
             print(f'that session had also opened {", ".join(was)} · /root add PATH to open again', file=sys.stderr)
     own = python or attach   # the kernel's or the attached session's model, not this one's
-    moved = '' if own else agent.settle()
+    try: moved = '' if own else agent.settle()
+    except Exception as e: moved = f'could not move the turn to a model that runs here: {agent_err(e)}'
     cold = not own and bool(needs_setup(agent.routing))
     if cold and (prompt or not sys.stdin.isatty()):   # nobody is there to read a welcome
         print(setup_guide(agent.routing), file=sys.stderr)
@@ -2765,21 +2766,27 @@ async def edit_config(self:Ui):
     said = self.agent.config_command('reload')
     return self.note(said if not code else f'{ed} exited {code}\n{said}')
 
-GUIDE_CMD = f"{shlex.quote(sys.executable)} -c 'from ramabana.core import watch_getting_started; watch_getting_started()'"
+def guide_cmd(env_file):
+    "The command the Getting started pane runs, in the environment saved at `env_file`."
+    code = f'from ramabana.core import watch_getting_started; watch_getting_started(env_file={str(env_file)!r})'
+    return f'{shlex.quote(sys.executable)} -c {shlex.quote(code)}'
 
 @patch
 def open_guide(self:Ui):
     "Open the Getting started pane beside a session with no model; outside tmux, show its checklist here."
-    try: self.guide = self.agent.host.open_pane(GUIDE_CMD, title='Getting started')
+    fd, env_file = tempfile.mkstemp(prefix='ramabana-guide-', suffix='.json')   # owner-only: it holds the session's keys
+    with os.fdopen(fd, 'w') as f: f.write(_json.dumps(dict(os.environ)))
+    try: self.guide_pane = self.agent.host.open_pane(guide_cmd(env_file), title='Getting started')
     except Exception:
-        self.guide = None
+        self.guide_pane = None
+        os.unlink(env_file)
         return self.note(checklist(getting_started()))
 
 @patch
 def close_guide(self:Ui):
     "Close the Getting started pane, if one is open."
-    if (g := getattr(self, 'guide', None)) is None: return
-    self.guide = None
+    if (g := getattr(self, 'guide_pane', None)) is None: return
+    self.guide_pane = None
     with contextlib.suppress(Exception): self.agent.host.close_pane(g)
 
 @patch
@@ -2797,7 +2804,12 @@ async def login(self:Ui, key):
     if (cmd := p.get('login')):
         if not shutil.which(cmd[0]): return self.note(f"{p['label']} needs `{cmd[0]}` on this machine's PATH first: {p.get('install') or p['needs']}", 'error')
         await self.lend(lambda: subprocess.run(list(cmd)))
-    if key in SETUP_FIELDS: await self.lend(lambda: setup_cli(['--provider', key]))
+    if key in SETUP_FIELDS:
+        err = io.StringIO()
+        def ask():
+            with contextlib.redirect_stderr(err): return setup_cli(['--provider', key])
+        await self.lend(ask)
+        if err.getvalue().strip(): self.note(err.getvalue().strip(), 'error')   # the session's stderr goes to its log
     new = [n for n in config_models() if n not in before]
     for k in dict.fromkeys([p.get('env'), *(model_setting(n).get('api_key_env') for n in new)]):
         if not k or os.environ.get(k): continue
@@ -2805,10 +2817,13 @@ async def login(self:Ui, key):
         if got.strip(): save_key(k, got.strip())
     if not (new or provider_ready(key)): return self.note(f"{p['label']} is not ready yet: it needs {p['needs']}", 'error')
     pick, r = new[-1] if new else ready_model(key), self.agent.routing
-    if pick and r._why(r.turn):
+    if pick and (why := r._why(pick)): return self.note(f"{pick} is saved, but cannot run yet: {why}", 'error')
+    if pick and needs_setup(r):
         try: self.agent.set_model(pick)
         except Exception as e: return self.note(f"{p['label']} is ready, but {pick} would not start: {agent_err(e)}", 'error')
+        r.picked.discard('turn'); r.named = False   # a stand-in, as `settle` leaves it, so config.toml can still name the turn
         self.close_guide()
+        await self.warm_up()   # the start a cold session skipped: the model, and the code index with it
         return self.note(f"{p['label']} is ready, and this session runs on {pick} · /model {pick} --save keeps it")
     return self.note(f"{p['label']} is ready" + (f' · /model {pick} to use it' if pick else ''))
 
@@ -2821,10 +2836,10 @@ def submit(self:Ui):
     if line == '/login' or line.startswith('/login '):
         self.buf.clear()
         key = line[len('/login'):].strip().lower()
-        return self.start_turn(self.login(key)) if key else self.login_list()
+        return self.login(key) if key else self.login_list()   # `on_key` starts what `submit` returns
     if line == '/config edit':
         self.buf.clear()
-        return self.start_turn(self.edit_config())
+        return self.edit_config()
     if line == '/pane' or line.startswith('/pane '):
         self.buf.clear()
         self._quick = 0

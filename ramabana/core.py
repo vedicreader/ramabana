@@ -12,26 +12,26 @@ __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', '
            'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
            'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SETUP_HINT', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
            'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'TOOL_CHANNELS', 'EFFORT_RUNTIMES', 'KEY_ENVS',
-           'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS', 'READY_ORDER', 'KEY_VARS', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO',
-           'GEMINI_BASE', 'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx',
-           'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail',
-           'runtime_available', 'azure_base', 'azure_endpoint', 'azure_key_env', 'azure_ready', 'azure_host',
-           'is_azure', 'auth_status', 'register_model', 'unregister_model', 'use_aliases', 'alias_path', 'saved_models',
-           'load_models', 'save_model', 'delete_model', 'config_models', 'sync_models', 'model_problems',
-           'remote_models', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec',
-           'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts', 'model_note',
-           'Budget', 'budget_for', 'profile_for', 'force_tags', 'forget_forced_tags', 'norm_channel', 'norm_effort',
-           'claude_native', 'tool_channel', 'effort_support', 'native_support', 'models_table', 'missing_key', 'needs',
-           'is_local', 'Routing', 'provider_ready', 'ready_model', 'ready_turn', 'job_source', 'needs_setup',
-           'setup_guide', 'welcome', 'on_wsl', 'getting_started', 'checklist', 'watch_getting_started', 'image_route',
-           'video_route']
+           'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS', 'READY_ORDER', 'CLAUDE_SIGNED_OUT', 'KEY_VARS', 'DFLT_IMAGE',
+           'NO_IMAGES', 'DFLT_VIDEO', 'GEMINI_BASE', 'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix',
+           'env', 'claude_ctx', 'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy',
+           'runtime_detail', 'runtime_available', 'azure_base', 'azure_endpoint', 'azure_key_env', 'azure_ready',
+           'azure_host', 'is_azure', 'auth_status', 'register_model', 'unregister_model', 'use_aliases', 'alias_path',
+           'saved_models', 'load_models', 'save_model', 'delete_model', 'config_models', 'sync_models',
+           'model_problems', 'remote_models', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx',
+           'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts',
+           'model_note', 'Budget', 'budget_for', 'profile_for', 'force_tags', 'forget_forced_tags', 'norm_channel',
+           'norm_effort', 'claude_native', 'tool_channel', 'effort_support', 'native_support', 'models_table',
+           'missing_key', 'needs', 'is_local', 'Routing', 'provider_ready', 'ready_model', 'ready_turn', 'job_source',
+           'needs_setup', 'setup_guide', 'welcome', 'on_wsl', 'getting_started', 'checklist', 'watch_getting_started',
+           'image_route', 'video_route']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time, warnings
 from urllib.parse import urlsplit, urlunsplit
 from fastcore.all import Path, atomic_save, first
 from shalya.host import HostError
-from .setup import CHANNELS, EFFORTS, ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES, config_path, load_keys, model_setting, setting
+from .setup import CHANNELS, EFFORTS, ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES, config_path, keys_path, load_keys, model_setting, setting
 import urai, rishi.core   # registers rishi's backends with urai
 from .models import CATALOG, claude_ids, claude_aliases, provider_models
 from dataclasses import dataclass, field, replace
@@ -234,6 +234,18 @@ def _claude_login():
         p = subprocess.run(['claude', 'auth', 'status', '--json'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=3)
         return p.returncode == 0 and bool(json.loads(p.stdout).get('loggedIn'))
     except Exception: return False
+
+def _claude_signed_out():
+    "Whether Claude Code says, in so many words, that nobody is signed in, asked at most every ten seconds."
+    return probed('claude-signed-out', _ask_claude_signed_out, ttl=10, disk=False)
+
+def _ask_claude_signed_out():
+    "`claude auth status`'s own `loggedIn: false`; a status that fails or times out says nothing."
+    if not shutil.which('claude'): return False
+    try: p = subprocess.run(['claude', 'auth', 'status', '--json'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError): return False
+    try: return json.loads(p.stdout).get('loggedIn') is False
+    except (ValueError, AttributeError): return False
 
 def _codex_login():
     "Whether a Codex sign-in is on hand: its token in the environment, or `codex login`'s auth file."
@@ -899,7 +911,7 @@ class Routing:
 
     def settled(self):
         "Where a turn nobody named for this run should go because its model cannot run here: `ready_turn()`, or '' when it stays."
-        if self.named or not self._why(self.turn) or not (alt := ready_turn()) or alt == self.turn: return ''
+        if self.named or not needs_setup(self) or not (alt := ready_turn()) or alt == self.turn or self._why(alt): return ''
         return alt
 
     def backends(self):
@@ -927,7 +939,7 @@ PROVIDERS = (
     dict(key='claude', label='Claude Code subscription', needs='Claude Code installed and `claude /login`', example='[jobs]\nturn = "claude-opus-5-5"',
          login=('claude', 'auth', 'login'), install='curl -fsSL https://claude.ai/install.sh | bash'),
     dict(key='codex', label='Codex (ChatGPT) subscription', needs='`codex login`', example='[jobs]\nsummary = "gpt-6-luna"',
-         login=('codex', 'login'), install='npm install -g @openai/codex'),
+         login=('codex', 'login'), install='npm install -g @openai/codex (with Node.js 18 or later)'),
     dict(key='openai', label='OpenAI API', needs='OPENAI_API_KEY', example='[jobs]\nturn = "gpt-5.4"', env='OPENAI_API_KEY'),
     dict(key='azure', label='Azure OpenAI', needs='AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY', example='[jobs]\nturn = "azure/<deployment>"', env='AZURE_OPENAI_API_KEY'),
     dict(key='bedrock', label='AWS Bedrock, OpenAI-compatible (Mantle) endpoint', needs='AWS_BEARER_TOKEN_BEDROCK, a Bedrock API key', env='AWS_BEARER_TOKEN_BEDROCK',
@@ -974,10 +986,13 @@ def job_source(routing, job):
     if job in routing.chosen: return 'chosen'
     return 'follows the turn' if routing.name_for(job) == routing.turn else 'default'
 
+CLAUDE_SIGNED_OUT = 'Claude Code is installed but not signed in; /login claude signs in'
+
 def needs_setup(routing=None):
-    "Why the turn's model cannot run here, a missing runtime or key, or '' when it can."
+    "Why the turn's model cannot run here, a missing runtime or key or a Claude Code nobody signed in to, or '' when it can."
     r = routing or Routing()
-    return r._why(r.turn)
+    if (why := r._why(r.turn)): return why
+    return CLAUDE_SIGNED_OUT if r._resolve(r.turn).runtime == 'claude' and _claude_signed_out() else ''
 
 def setup_guide(routing=None):
     "The providers Ramabana can use, which are set up here, and the model each job runs on and whether it can: nothing is chosen."
@@ -997,11 +1012,11 @@ def setup_guide(routing=None):
 def welcome(routing=None):
     "What a session whose turn cannot run says first: why, then the commands that fix it."
     r = routing or Routing()
-    return '\n'.join([f'Welcome to Ramabana. No model runs here yet: {r.turn} {needs_setup(r).split(";")[0]}.', '',
+    return '\n'.join([f'Welcome to Ramabana. No model runs here yet: {r.turn} cannot run ({needs_setup(r).split(";")[0]}).', '',
                       '  /login         sign in to Claude Code, Codex or Copilot, or add a key or an endpoint',
                       '  /models        what this machine can run; /model NAME picks one',
                       '  /config        show and change settings', '',
-                      'Everything runs on one model until you give a job its own.'])
+                      'A job whose own model is not set up here runs on the turn model.'])
 
 def on_wsl():
     "Whether this is Linux under Windows' WSL."
@@ -1021,24 +1036,32 @@ def getting_started(auth=None, wsl=None):
         ok = bool(auth[key]['available'])
         rows.append((ok, f'{name}: signed in' if ok else f'{name}: installed, not signed in; /login {key}' if shutil.which(prog)
                          else f"{name}: not installed{here}; {prov[key]['install']}, then /login {key}"))
-    ok = bool(auth['copilot']['available'])
-    rows.append((ok, 'GitHub Copilot: signed in' if ok else 'GitHub Copilot: not signed in; /login copilot'))
+    signed = bool(auth['copilot']['available'])
+    ok = signed and bool(ready_model('copilot'))
+    rows.append((ok, 'GitHub Copilot: signed in' if ok else 'GitHub Copilot: signed in, but its model list could not be read; /login copilot again' if signed
+                     else 'GitHub Copilot: not signed in; /login copilot'))
     keys = [k for k in KEY_VARS if os.environ.get(k)]
     rows.append((bool(keys), f"API keys: {', '.join(keys)}" if keys else
                  'API keys: none set; /login openai, anthropic or gemini keeps one in keys.env' + ('; a key set in Windows does not reach WSL' if wsl else '')))
     tm = 'sudo apt install tmux' if shutil.which('apt-get') else 'brew install tmux' if shutil.which('brew') else 'install tmux'
     rows.append((bool(os.environ.get('TMUX')), 'tmux: this session runs in it' if os.environ.get('TMUX') else f'tmux: not running here; {tm} for the side panes'))
-    m = ready_turn(auth)
+    r = Routing()
+    m = r.turn if not needs_setup(r) else ready_turn(auth)
     return rows + [(bool(m), f'Ready: a session runs on {m}' if m else 'Not ready: no model runs here yet; sign in to one of the above')]
 
 def checklist(rows):
     "`getting_started` rows as lines, each marked done or to do."
     return '\n'.join(f"{'✓' if ok else '·'} {line}" for ok, line in rows)
 
-def watch_getting_started(every=3):
-    "The Getting started pane: the checklist, drawn again every `every` seconds until a model is ready."
+def watch_getting_started(every=3, env_file=None):
+    "The Getting started pane: the checklist, drawn again every `every` seconds until a model is ready, in the environment `env_file` holds."
+    if env_file:   # a tmux split starts from the server's environment, not the session's
+        env = json.loads(Path(env_file).read_text())
+        Path(env_file).unlink()
+        os.environ.clear(); os.environ.update(env)
+    seen = None
     while True:
-        load_keys()   # a key `/login` saved in the session beside this pane
+        if (stamp := keys_path().stat().st_mtime_ns if keys_path().exists() else 0) != seen: load_keys(); seen = stamp   # a key `/login` saved beside this pane; a failing command runs once per change
         rows = getting_started()
         print('\x1b[2J\x1b[HGetting started with Ramabana\n\n' + checklist(rows) + '\n\n/login in the session beside this pane signs in, or keeps a key.', flush=True)
         if rows[-1][0]: return print('\nA model is ready. You can close this pane.', flush=True)

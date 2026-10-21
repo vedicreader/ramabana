@@ -18,6 +18,7 @@ def machine(monkeypatch):
     seen = dict(claude=False, codex=False, copilot=False)
     monkeypatch.setattr(core, '_claude_available', lambda: seen['claude'])
     monkeypatch.setattr(core, '_claude_login', lambda: seen['claude'])
+    monkeypatch.setattr(core, '_claude_signed_out', lambda: False)
     monkeypatch.setattr(core, '_codex_login', lambda: seen['codex'])
     monkeypatch.setattr(core, '_copilot_available', lambda: seen['copilot'])
     monkeypatch.setattr(core, 'copilot_catalog', lambda ttl=300: {m: {'capabilities': {'type': 'chat'}} for m in ('gpt-6-sol', 'claude-sonnet-5-5')})
@@ -45,6 +46,8 @@ def test_a_turn_nobody_named_moves_to_the_first_ready_provider(machine, monkeypa
     assert r.settled() == '', 'a turn that runs is left alone'
     machine('claude')
     assert ready_turn() == DFLT_TURN and Routing().settled() == ''
+    monkeypatch.setattr(core, '_claude_signed_out', lambda: True)
+    assert core.needs_setup(Routing()) == core.CLAUDE_SIGNED_OUT, 'Claude Code installed with nobody signed in cannot run a turn'
 
 
 def test_a_turn_someone_named_is_never_replaced(machine, monkeypatch):

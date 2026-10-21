@@ -33,7 +33,7 @@ from fastcore.docments import frontmatter
 from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
-from .core import accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
+from .core import DFLT_TURN, needs_setup, accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
 from .setup import config_path, config_reset, config_set, config_show, load_config, set_table, setting
 from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
@@ -2337,7 +2337,7 @@ def settle(self:Agent):
     "Move a turn nobody named off a model that cannot run here onto `Routing.settled()`: the line saying so, or ''."
     was = self.routing.turn
     if not (alt := self.routing.settled()): return ''
-    why = self.routing._why(was)
+    why = needs_setup(self.routing)
     self.set_model(alt)
     self.routing.picked.discard('turn'); self.routing.named = False   # a stand-in, so config.toml can still name the turn
     return f'{was} cannot run here ({why.split(";")[0]}), so this session runs on {alt}, the model ready here · /model to change it, /login to add another'
@@ -2350,7 +2350,9 @@ def apply_config(self:Agent):
         if job in r.picked or (job == 'turn' and r.named): continue
         before = r.name_for(job)
         if job == 'turn':
-            if not (want := setting('jobs.turn')) or want == before: continue
+            want = setting('jobs.turn') or (DFLT_TURN if not r._why(DFLT_TURN) else '')   # a turn config.toml no longer names goes back to the default, where it runs
+            if not want or want == before: continue
+            if (why := r._why(want)): out.append(f'turn stays on {before}: {want} {why.split(";")[0]}'); continue
             try: self.set_model(want)
             except Exception as e: out.append(f'turn stays on {before}: {agent_err(e)}'); continue
             r.picked.discard('turn'); r.named = False

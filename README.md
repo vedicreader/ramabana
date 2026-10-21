@@ -73,7 +73,7 @@ To use the terminal on its own, run `uv tool install 'ramabana[cli]'` and then `
 
 ## Point it at a model
 
-`--model` names the model that this session’s turns run on, called the turn model. Without it the turn model is `$RAMABANA_MODEL`, then `$LEELA_MODEL`, then `claude-opus-5-5` through Claude Code. A turn runs on this machine only when you name a local model.
+`--model` names the model that this session’s turns run on, called the turn model. Without it the turn model is `$RAMABANA_MODEL`, then `$LEELA_MODEL`, then `[jobs] turn` in config.toml, then `claude-opus-5-5` through Claude Code. When that model cannot run here and neither `--model` nor `$RAMABANA_MODEL` named it, a session runs on the first model that is ready (see Set up a provider). A turn runs on this machine only when you name a local model.
 
 ``` sh
 ramabana --root . --model sonnet
@@ -96,7 +96,7 @@ export RAMABANA_MODEL=sonnet    # the same choice in every session
 
 `/models` lists what this machine can reach and marks the one running. `/model NAME` changes model without ending the session. `/model` alone prints the routing summary.
 
-Not every model call needs the turn model. Ramabana sorts the smaller calls into jobs and sends each job to a cheaper or faster model. Completions and classification run on `claude-haiku-5-5`. Inline edits, summaries and other one-shot work run on `gpt-6-luna` through your Codex login. Delegated sub-agents run on `claude-sonnet-5-5`. When the turn model is local, every job without a model of its own stays on it. When a job’s model cannot run, the job moves to another cloud route. Without a Codex login, the default Luna jobs fall back to the turn model. A cloud model whose one-shot answer fails or comes back empty is set aside for five minutes, and its jobs move the same way. With no cloud route left, a job runs on `gemma-e4b` on the device, and the turn never moves. The session reports each fallback once. With nothing left at all, the error names the job, the model and the key or CLI it needs.
+Not every model call needs the turn model. Ramabana sorts the smaller calls into jobs and sends each job to a cheaper or faster model. Completions and classification run on `claude-haiku-5-5`. Inline edits, summaries and other one-shot work run on `gpt-6-luna` through your Codex login. Delegated sub-agents run on `claude-sonnet-5-5`. When the turn model is local, every job without a model of its own stays on it. When a job’s default model cannot run, the job runs on the turn model and says nothing. When a model you gave a job cannot run, the job moves to another cloud route and the session says so once. A cloud model whose one-shot answer fails or comes back empty is set aside for five minutes, and its jobs move the same way. With no cloud route left, a job runs on `gemma-e4b` on the device, and the turn never moves. The session reports each fallback once. With nothing left at all, the error names the job, the model and the key or CLI it needs.
 
 `$RAMABANA_MODEL_<JOB>` overrides one job. `<JOB>` is `ONESHOT`, `INLINE`, `COMPLETION`, `CLASSIFY`, `SUMMARY` or `SUBAGENT`. The turn model uses `$RAMABANA_MODEL` and has no `_TURN` variable. `/model JOB NAME` sets one job inside a session:
 
@@ -132,7 +132,7 @@ An entry Ramabana cannot use is reported and takes its default; nothing fails to
 
 `ramabana config set KEY VALUE` writes one key, such as `subagents.effort high`, `runtime.tool_channel text` or `model."openai/gpt-5.4".tool_channel native`. Quote a model name that holds a dot. `ramabana config models` prints the models this machine can reach, as `/models` does.
 
-Tool schemas travel on one of two channels: `native`, the model API's own tool field, or `tags` (also written `text`), in the system prompt. The channel is chosen in this order: `$RAMABANA_TOOL_CHANNEL`; `tags` for a model whose wire refused its schemas this session; `/model tools` for the turn or `/subagents tools` for sub-agents; `[model."NAME"] tool_channel`; `runtime.tool_channel`, or `subagents.tool_channel` for sub-agents; then the runtime's default. Claude Code's default is `tags`. Every other runtime's is `native`. Claude Code takes `native` through an in-process MCP server. A managed Claude Code configuration that forbids MCP servers refuses it, and the turn goes on with `tags` and a note.
+Tool schemas travel on one of two channels: `native`, the model API’s own tool field, or `tags` (also written `text`), in the system prompt. The channel is chosen in this order: `$RAMABANA_TOOL_CHANNEL`; `tags` for a model whose wire refused its schemas this session; `/model tools` for the turn or `/subagents tools` for sub-agents; `[model."NAME"] tool_channel`; `runtime.tool_channel`, or `subagents.tool_channel` for sub-agents; then the runtime’s default. Claude Code’s default is `tags`. Every other runtime’s is `native`. Claude Code takes `native` through an in-process MCP server. A managed Claude Code configuration that forbids MCP servers refuses it, and the turn goes on with `tags` and a note.
 
 ``` toml
 [subagents]
@@ -146,14 +146,39 @@ effort = "medium"          # when nothing else names a level
 
 ### Set up a provider
 
-Ramabana chooses no provider for you. When the turn’s model cannot run here, because Claude Code is missing or a key is not set, the terminal prints the providers it can use, which are set up, and the model each job runs on, then offers `ramabana setup`:
+A session opens whatever this machine has. When the turn’s model cannot run here, and neither `--model` nor `$RAMABANA_MODEL` named it, the session runs on the first provider that is ready, in this order: a Claude Code sign-in, a Codex sign-in, a GitHub Copilot sign-in, then an Anthropic, OpenAI or Gemini key. It never picks Azure, Bedrock or a custom endpoint, because each needs a name only you know. A job whose default model cannot run here runs on the turn model, so one provider is enough. A one-shot run, `ramabana 'PROMPT'` or a piped prompt, with nothing ready prints the providers and exits 1.
+
+With nothing ready, the session opens on a welcome. Inside tmux, a Getting started pane beside it lists what this machine has and what to do next, and redraws as each item is done. On WSL it says that logins, programs and variables set in Windows do not reach Linux. `ramabana --doctor` prints the same list.
+
+``` text
+/login                  the providers, and which are ready
+/login claude           Claude Code's own sign-in, in this terminal; codex and copilot work the same way
+/login openai           asks for OPENAI_API_KEY without echoing it, and keeps it in keys.env
+/login bedrock          the endpoint questions, then the key
+/config                 each setting in effect and where it came from
+/config set KEY VALUE   writes one key and applies it to this session
+/config edit            opens config.toml in $VISUAL, $EDITOR, nano or vi, and applies it on exit
+/config reset           writes the commented template, keeping the old file as config.toml.bak
+/model NAME --save      switches model and keeps it as [jobs] turn
+```
+
+A change made with `/config` applies to the running session. After editing config.toml by hand, `/config reload` applies it. A job set with `/model` in this session keeps its model.
+
+`~/.config/ramabana/keys.env` holds the keys `/login` asks for. Only you can read it. Ramabana refuses a `keys.env` that other users can read. A variable already in the environment wins over the file. A value that starts with `!` is a command, and its output is the key, so a key can stay in a password manager:
 
 ``` sh
-ramabana setup                         # pick a provider, answer its questions, name the jobs it serves
+OPENAI_API_KEY=!security find-generic-password -ws openai
+ANTHROPIC_API_KEY=!op read op://vault/anthropic/key
+```
+
+From a shell, `ramabana setup` asks the endpoint questions:
+
+``` sh
+ramabana setup                         # pick a provider and answer its questions
 ramabana setup --provider azure --model-id gpt-5.4 --endpoint https://NAME.openai.azure.com --jobs turn,summary
 ```
 
-It writes a `[model."NAME"]` table and `[jobs]` lines into config.toml. It never writes a key; export the env var it names. `ramabana config show` prints what is in effect.
+It writes a `[model."NAME"]` table into config.toml. The new model becomes `[jobs] turn` when config.toml names no turn and no provider is ready here. `--jobs` names other jobs. `ramabana setup` never writes a key. `ramabana config show` prints what is in effect.
 
 | provider | needs | name a model as |
 |----|----|----|
@@ -205,7 +230,7 @@ turn = "bedrock-gpt"
 
 Claude on Bedrock, and anything else that needs Bedrock’s native Converse API, AWS profiles or SigV4 signing, is not supported yet: fastllm, which makes the requests, implements none of them. The Mantle endpoint has no images endpoint, so `generate_image` needs another `[jobs] image`.
 
-A `[model."NAME"]` table with `model_id` defines a hosted model of any OpenAI-compatible kind under a name of your own: `model_id`, `base_url`, `api_key_env` (the env var, never the key), `api_name` (`openai` for Responses, `openai_chat` for chat completions; `openai` is the default on an Azure host), `vendor_name`, `runtime` and `ctx`. Saved model aliases live in `~/.config/ramabana/models.json` (Leela keeps its own in `~/.config/leela/models.json`). Every Ramabana process loads them, and config.toml’s definitions, on first use; a name defined in both places is config.toml’s. A scheduled job, such as Dhrona’s nightly batch, sees only the environment it was started with, so export the key there too.
+A `[model."NAME"]` table with `model_id` defines a hosted model of any OpenAI-compatible kind under a name of your own: `model_id`, `base_url`, `api_key_env` (the env var, never the key), `api_name` (`openai` for Responses, `openai_chat` for chat completions; `openai` is the default on an Azure host), `vendor_name`, `runtime` and `ctx`. Saved model aliases live in `~/.config/ramabana/models.json` (Leela keeps its own in `~/.config/leela/models.json`). Every Ramabana process loads them, and config.toml’s definitions, on first use; a name defined in both places is config.toml’s. A scheduled job, such as Dhrona’s nightly batch, sees the environment it was started with, `beat.env` and `keys.env`. A key exported only in a shell profile does not reach it.
 
 A message too large for the window still goes out. A huge paste, a screenshot too many or a giant tool result is cut to its head and its end, the whole kept in a file under the session’s run folder, and the note in its place tells the model where the file is and to read it in pieces.
 
@@ -267,14 +292,14 @@ Type `/` and press tab to complete a command. The list holds this session’s co
 | command | what it does |
 |----|----|
 | `/help`, `/guide` | the key card, then the longer tour |
-| `/model [JOB] [NAME]`, `/models [all]` | the routing summary, a switch, or what this machine can reach, with each model's tool channel and whether it takes an effort level |
-| `/model tools native\|text\|auto [--save]` | how the turn's tool schemas travel: on the wire, or as text in the prompt |
+| `/model [JOB] [NAME]`, `/models [all]` | the routing summary, a switch, or what this machine can reach, with each model’s tool channel and whether it takes an effort level |
+| `/model tools native\|text\|auto [--save]` | how the turn’s tool schemas travel: on the wire, or as text in the prompt |
 | `/sessions`, `/resume [ID\|latest]` | the saved sessions, and reopening one |
 | `/plan`, `/todo ID done\|active\|pending\|cancelled` | the checklist the agent works through |
 | `/cost`, `/compact [NOTE]` | what the session has spent, and shortening the history |
 | `/tool-budget [auto\|20..400]`, `/steps [auto\|8..80]` | the per-turn budgets, and what the last turn used |
 | `/approve [off\|ask\|edits\|auto]`, `/subagents [on\|off\|steps N\|timeout S\|nest N]` | who may write, whether delegates may, and their limits |
-| `/subagents model NAME\|default`, `effort LEVEL\|default`, `tools native\|text\|auto`, each `[--save]` | the sub-agents' model, effort level and tool channel; `--save` writes config.toml |
+| `/subagents model NAME\|default`, `effort LEVEL\|default`, `tools native\|text\|auto`, each `[--save]` | the sub-agents’ model, effort level and tool channel; `--save` writes config.toml |
 | `/commit [FOLDER] [MESSAGE]`, `/pr [FOLDER] [TITLE]` | a commit or pull request drafted from the diff of the repository holding FOLDER (default the project), behind approval |
 | `/rewind [TURN] [files\|chat\|both]`, `/branches`, `/branch NAME` | undo a turn’s files or chat, and the conversation branches. Undo restores edits, undoes git writes, and removes created files still unchanged |
 | `/watch [RUN\|monitors]`, `/unwatch`, `/tell RUN TEXT` | a tmux pane on a run’s transcript, and a message to a running sub-agent |
@@ -350,9 +375,9 @@ Writes reach those folders and nowhere else. Reads start out in the same folders
 
 A sub-agent is a second agent that the running one starts, through the [`delegate`](https://vedicreader.github.io/ramabana/tools.html#delegate) tools, to do one part of the work. Sub-agents may write, run commands and run Python by default. Every write remains behind this session’s approvals. `--no-subagent-writes` or `/subagents off` restricts them to read-only tools. A read-only session refuses `delegate_async(writes=True)`. `delegate_search` hands its sub-agents read tools only unless the model passes `writes=True`, so several questions run at once.
 
-A sub-agent runs on the `subagent` job's model, `claude-sonnet-5-5` by default. `/subagents model NAME` changes it for this session, and `/subagents model default` goes back to config.toml's. The model may also name a model per delegation: `delegate_search(questions, model=...)` takes one name for every question or a list with one per question. A named model that is unknown or not set up here fails that question with the setup message, and no other model answers in its place. Read-only questions on different cloud models run at once. Questions on the session's local engine run one after another. Writes run one at a time.
+A sub-agent runs on the `subagent` job’s model, `claude-sonnet-5-5` by default. `/subagents model NAME` changes it for this session, and `/subagents model default` goes back to config.toml’s. The model may also name a model per delegation: `delegate_search(questions, model=...)` takes one name for every question or a list with one per question. A named model that is unknown or not set up here fails that question with the setup message, and no other model answers in its place. Read-only questions on different cloud models run at once. Questions on the session’s local engine run one after another. Writes run one at a time.
 
-`effort` is `low`, `medium`, `high`, `xhigh` or `max`. A delegation's own `effort` comes first, then `/subagents effort`, then `$RAMABANA_SUBAGENT_EFFORT`, then config.toml's `[subagents] effort`, then the model's default. Claude Code takes the level as its effort. A hosted model takes it as its reasoning effort; OpenAI and Azure take `max` as `xhigh`. A local model takes no effort level: it runs at its default and the answer says so. A provider that refuses the level is asked once more without it, and the answer says so. Sub-agents do not take the turn's own reasoning level.
+`effort` is `low`, `medium`, `high`, `xhigh` or `max`. A delegation’s own `effort` comes first, then `/subagents effort`, then `$RAMABANA_SUBAGENT_EFFORT`, then config.toml’s `[subagents] effort`, then the model’s default. Claude Code takes the level as its effort. A hosted model takes it as its reasoning effort; OpenAI and Azure take `max` as `xhigh`. A local model takes no effort level: it runs at its default and the answer says so. A provider that refuses the level is asked once more without it, and the answer says so. Sub-agents do not take the turn’s own reasoning level.
 
 A sub-agent takes at most 80 steps and runs for at most 1800 seconds by default. `/subagents steps N` and `/subagents timeout S` change those limits. `timeout 0` removes the time limit. A delegation’s `max_steps` stays within the session cap and has a floor of 20 steps unless the session cap is lower. Two levels of sub-agents may delegate again by default. `/subagents nest 0` disables nesting. A nested sub-agent gets only `delegate_search`. The sub-agents under one turn share one tool-call budget the size of the turn’s own. At most four run at once.
 

@@ -619,7 +619,7 @@ def _flags(argv):
 
 def setup_cli(argv=(), ask=input, isatty=None, out=print):
     "`ramabana setup`: add a provider's model to config.toml, as the turn when no model runs here yet (`--jobs` names others). Asks only on a terminal; never writes a key."
-    from ramabana.core import AZURE_KEY_ENV, JOBS, PROVIDERS, azure_base, needs_setup, provider_ready, setup_guide
+    from ramabana.core import AZURE_KEY_ENV, JOBS, PROVIDERS, azure_base, needs_setup, provider_ready, ready_turn, setup_guide
     f = _flags(argv)
     if f is None: print(SETUP_USAGE, file=sys.stderr); return 2
     tty = (isatty or (lambda: sys.stdin.isatty() and sys.stdout.isatty()))()
@@ -650,7 +650,7 @@ def setup_cli(argv=(), ask=input, isatty=None, out=print):
         else:
             name = get('model_id', 'model name, as /models lists it')
             if not name: out('no model named; nothing written'); return 1
-        jobs = [j.strip() for j in f.get('jobs', '').split(',') if j.strip()] or (['turn'] if not setting('jobs.turn') and needs_setup() else [])   # the first model here runs every job
+        jobs = [j.strip() for j in f.get('jobs', '').split(',') if j.strip()] or (['turn'] if not setting('jobs.turn') and needs_setup() and not ready_turn() else [])   # the first model here runs every job
         if (bad := [j for j in jobs if j not in (*JOBS, 'image', 'video')]): out(f'unknown job {bad[0]!r}; nothing more written'); return 1
         if jobs: set_table('jobs', {j: name for j in jobs}); out(f'[jobs] {", ".join(jobs)} = "{name}"')
     except (EOFError, KeyboardInterrupt): return 1
