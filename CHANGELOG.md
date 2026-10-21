@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.66
+
+- `/learned` completes on Tab: its subcommands (`diff`, `accept`, `reject`, `compact`, `on`, `off`, `status`), then, after `diff`, `accept`, `reject` or `compact`, the ids Dhrona has pending. The ids are read at most once every `REF_TTL` seconds while typing.
+- A slash command that answers with a git diff, such as `/learned diff ID`, is drawn by `diff_rich`, the fastpylight diff renderer tool results use. It printed as plain text.
+
 ## 0.2.65
 
 - `Ui.kinds` maps each block's key to its kind ('tool', 'reply', 'note', 'step', ...), and `Ui.kind(blk)` reads it. `say` records the kind before teleprint's `put` runs, so an `on_change` observer such as the open transcript view sees it from the first repaint. A block put back under its key after a drop keeps its kind.

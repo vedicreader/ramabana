@@ -13,17 +13,17 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK',
            'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
            'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
-           'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'ALIVE_EVERY',
-           'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg',
-           'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
-           'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option',
-           'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table',
-           'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md',
-           'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'loop_error',
-           'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'guide_cmd', 'pane_cmd',
-           'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF',
-           'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
-           'media_note']
+           'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS',
+           'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme',
+           'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
+           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
+           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich',
+           'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode',
+           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log',
+           'pick_session', 'loop_error', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text',
+           'arg_words', 'guide_cmd', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path',
+           'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png',
+           'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, itertools, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -1510,8 +1510,9 @@ class Ui:
             if out is None and (body := self.agent.expand_command(line)) is not None: return self._turn(body)
             kind = 'plan' if name in ('/plan', '/todo', '/todos') and out is not None else (
                 'note' if out is not None else 'error')
-            self.say(Text(out) if out is not None else Text(f'unknown command: {line}'),
-                     kind, fold=None, source=out)
+            # a command that answers with a patch, as `/learned diff` does, is drawn like a tool's diff
+            body = Text(f'unknown command: {line}') if out is None else diff_rich(out) if out.startswith('diff --git') else Text(out)
+            self.say(body, kind, fold=None, source=out)
             if name in ('/plan', '/todo', '/todos'): self.show_plan = bool(self.agent.plan)
             if self.agent.session_id != was: self.show_resumed()
             return None
@@ -2659,9 +2660,13 @@ def _file_matches(self:Ui):
     return m.start(1), [ref_text(e) for e in sorted(rows, key=key) if '"' not in e][:REF_CAP], note
 
 SUB_WORDS = ('on', 'off', 'steps', 'timeout', 'nest', 'model', 'effort', 'tools')   #: what follows `/subagents `
+LEARNED_WORDS = ('diff', 'accept', 'reject', 'compact', 'on', 'off', 'status')     #: what follows `/learned `
 
-def arg_words(cmd, before, models=()):
-    "What may come next after `/cmd` and the words `before`: a subcommand, a level, a mode, a model name or `--save`."
+def arg_words(cmd, before, models=(), ids=()):
+    "What may come next after `/cmd` and the words `before`: a subcommand, a level, a mode, a model name, a pending id or `--save`."
+    if cmd == 'learned':
+        if not before: return list(LEARNED_WORDS)
+        return list(ids) if len(before) == 1 and before[0] in ('diff', 'accept', 'reject', 'compact') else []
     if cmd == 'subagents':
         if not before: return list(SUB_WORDS)
         if len(before) == 1: return {'model': ['default', *models], 'effort': ['default', *EFFORTS], 'tools': ['native', 'text', 'auto']}.get(before[0], [])
@@ -2674,14 +2679,19 @@ def arg_words(cmd, before, models=()):
 
 @patch
 def _arg_matches(self:Ui):
-    "`(start, matches)` for the argument of `/subagents` or `/model` under the cursor, or None."
-    if self.mode == 'python' or not (m := re.match(r'/(subagents|model) +(.*)$', self.buf.text[:self.buf.cursor])): return None
+    "`(start, matches)` for the argument of `/subagents`, `/model` or `/learned` under the cursor, or None."
+    if self.mode == 'python' or not (m := re.match(r'/(subagents|model|learned) +(.*)$', self.buf.text[:self.buf.cursor])): return None
     *before, cur = m.group(2).split(' ')
     def names():
         try: return [r['value'] for r in available_models()]
         except Exception: return []
     models = self._cached(('models',), names) if m.group(1) == 'model' or before[:1] == ['model'] else ()
-    return self.buf.cursor - len(cur), [w for w in arg_words(m.group(1), [b for b in before if b], models) if w.startswith(cur) and w != cur]
+    def pending_ids():
+        from .learned import learned_folder, pending
+        try: return [p['id'] for p in pending(learned_folder(self.agent.cfg))] if self.agent.cfg is not None else []
+        except Exception: return []
+    ids = self._cached(('learned',), pending_ids) if m.group(1) == 'learned' and before else ()
+    return self.buf.cursor - len(cur), [w for w in arg_words(m.group(1), [b for b in before if b], models, ids) if w.startswith(cur) and w != cur]
 
 @patch
 def _refresh_complete(self:Ui):
