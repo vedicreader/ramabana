@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.67
+
+- A sub-agent that a delegation sends to a named model now gets the tool list sized for that model. Every delegation was given the list sized for the session's default sub-agent model, so a large model named beside a default with a window under 32k got that model's trimmed list, without the memory and web tools and with tool results clipped, and a small model named beside a large default got the full list. Recorded on gpt-4.1-mini beside a 16k default, the sub-agent asked to read a page answered that it could not; with the fix it read the page and answered from it. `delegate_search` and `delegate_async` ask `get_tools_for(spec)` for the model they picked, `Agent._sub_plain` and `Agent._sub_tools` take that `spec`, and `delegate_many` takes `tools` as a callable from a backend's spec to its tools. A delegation that names no model still gets the default's list, and `get_tools` still works where `get_tools_for` is not given. A subclass that overrides `_sub_plain` must accept `spec=None` and pass it on.
+- A sub-agent's own `delegate_search` caps the answers it reads at its own model's tool-result size, through `Agent._sub_budget(spec)`. It used the session's default sub-agent model's size, so a large model's nested delegations were cut to a small default's 1,500 characters.
+
 ## 0.2.66
 
 - `/learned` completes on Tab: its subcommands (`diff`, `accept`, `reject`, `compact`, `on`, `off`, `status`), then, after `diff`, `accept`, `reject` or `compact`, the ids Dhrona has pending. The ids are read at most once every `REF_TTL` seconds while typing.

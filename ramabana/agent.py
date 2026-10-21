@@ -1723,7 +1723,8 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
         if not small and 'memory' not in self.host.provides: extra += note_tools(self.note_memory, lambda: self.learning)
         if full and not small:
             if self.subagents:
-                extra += self._delegation_tools(self._sub_tools, background=self.background, get_max=lambda: budget.tool_max)
+                extra += self._delegation_tools(self._sub_tools, background=self.background, get_max=lambda: budget.tool_max,
+                                                get_tools_for=lambda spec: self._sub_tools(spec=spec))
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
                           drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
@@ -1748,9 +1749,14 @@ def _sub_writes(self:Agent):
     return self.subagent_writes and not SUB_READ_ONLY.get()
 
 @patch
-def _sub_plain(self:Agent):
-    "The sub-agent policy view of the same catalog-building path, without `ROOT_ONLY`."
-    budget = self.subagent_budget
+def _sub_budget(self:Agent, spec=None):
+    "What a sub-agent on `spec`'s model can afford, else the sub-agent model's `subagent_budget`."
+    return self.subagent_budget if spec is None else budget_for(spec, self.tool_max_len, tool_channel(spec, scope='subagent', session=self.sub_channel))
+
+@patch
+def _sub_plain(self:Agent, spec=None):
+    "The sub-agent policy view of the same catalog-building path, without `ROOT_ONLY`; sized for `spec`'s model, else the sub-agent model."
+    budget = self._sub_budget(spec)
     same = budget == self.budget
     source = self._catalog_for(budget, full=same)
     held = self.readonly or self.plan_mode   # what the foreground withholds, sub-agents and reviewers are not given either
@@ -1766,22 +1772,25 @@ def _sub_plain(self:Agent):
 @patch
 def _delegation_tools(self:Agent, get_tools, background=None,
                       get_max=None,   # callable -> chars a delegation result may spend; the turn budget when None
+                      get_tools_for=None,   # callable spec -> the tools for a sub-agent on that model; `get_tools` when None
                       ):
-    "`subagent_tools` on this session's settings; `get_tools` alone decides what a sub-agent gets."
+    "`subagent_tools` on this session's settings; `get_tools` and `get_tools_for` alone decide what a sub-agent gets."
     return subagent_tools(lambda: self._be_or_none('subagent'), get_tools, lambda: self.skills, self._cloud_backend_or_none,
                           lambda: self.subagent_writes, lambda: self.approvals.gate if self.approvals is not None else None,
                           background=background, get_log_dir=lambda: self.runs_dir, get_pictures=lambda ps: read_pictures(self.host, ps),
                           get_steps=lambda: self.subagent_steps, get_timeout=lambda: self.subagent_timeout, slots=self.sub_slots, block=(),
                           get_max=get_max or (lambda: self.budget.tool_max),
-                          get_notes=lambda spec: MODEL_NOTES[model_family(spec)], get_sub=self._sub_backend)
+                          get_notes=lambda spec: MODEL_NOTES[model_family(spec)], get_sub=self._sub_backend, get_tools_for=get_tools_for)
 
 @patch
-def _sub_tools(self:Agent, depth=0):
-    "What a sub-agent `depth` levels below the root's own gets: `_sub_plain`, observed, and `delegate_search` while `depth < subagent_depth`."
-    tools = self._sub_plain()
+def _sub_tools(self:Agent, depth=0, spec=None):
+    "What a sub-agent `depth` levels below the root's own, on `spec`'s model, gets: `_sub_plain`, observed, and `delegate_search` while `depth < subagent_depth`."
+    tools = self._sub_plain() if spec is None else self._sub_plain(spec)
     tools = tools if self._sub_writes else [self._observe(t) for t in tools]
     if not self.subagents or depth >= self.subagent_depth: return tools
-    nest = first(t for t in self._delegation_tools(lambda: self._sub_tools(depth + 1), get_max=lambda: self.subagent_budget.tool_max) if t.__name__ == 'delegate_search')
+    # this sub-agent reads what it delegates, so its own model sets how much of an answer comes back
+    nest = first(t for t in self._delegation_tools(lambda: self._sub_tools(depth + 1), get_max=lambda: self._sub_budget(spec).tool_max,
+                                          get_tools_for=lambda s: self._sub_tools(depth + 1, s)) if t.__name__ == 'delegate_search')
     return tools + [self._observe(nest)]
 
 # %% ../nbs/03_agent.ipynb #76e57894

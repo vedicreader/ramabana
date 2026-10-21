@@ -6,13 +6,14 @@ import ramabana.core as core
 from ramabana.agent import Agent
 from ramabana.core import ModelSpec, SETUP_HINT, forget_forced_tags, force_tags
 from ramabana.runtime import RishiBackend, use_chat
-from ramabana.testing import FakeBackend, MemHost, SPEC, fake_agent
+from ramabana.testing import FakeBackend, FullHost, MemHost, SPEC, fake_agent
 from ramabana.tools import delegate_many, lanes, subagent_tools
 
 GPT = ModelSpec('gpt', 'remote', 'openai/gpt-5.4', 272_000)
 GEM = ModelSpec('gem', 'remote', 'gemini/gemini-3-pro', 1_000_000)
 CL = ModelSpec('cl', 'claude', 'claude-sonnet-5', 200_000)
 GEMMA = ModelSpec('gemma-e4b', 'litert', 'gemma-e4b', 16_384)
+TINY = ModelSpec('tiny', 'remote', 'openai/tiny', 16_000)
 
 class Slow(FakeBackend):
     "A backend whose sub-agents take `wait` seconds and log when each ran."
@@ -98,6 +99,20 @@ def test_the_effort_reaches_the_sub_agent_and_a_local_model_says_it_ran_without(
     assert kw == {} and note == 'effort xhigh is not supported on gemma-e4b (litert); it ran at its default'
     dt = {t.__name__: t for t in a._delegation_tools(lambda: [])}
     assert '[effort xhigh is not supported on gemma-e4b' in dt['delegate_search'](['q'], effort='xhigh')
+
+def test_a_delegation_is_given_tools_sized_for_the_model_it_runs_on(tmp_path):
+    a, _ = fake_agent(FullHost(), cfg=tmp_path)
+    bes, dflt = {'tiny': FakeBackend(TINY), 'gpt': FakeBackend(GPT)}, ['tiny']
+    a.spec_or_none = lambda job='turn': bes[dflt[0]].spec if job == 'subagent' else GPT
+    a._sub_backend = lambda model='', effort='': (bes[model or dflt[0]], {}, '')
+    search = {t.__name__: t for t in a.tools}['delegate_search']
+    def given(model=''):
+        search(['q'], model=model)
+        return {t.__name__ for t in bes[model or dflt[0]].spawned[-1].tools}
+    small = given()
+    assert given('gpt') > small, 'a large model named while the default is small is not held to the small list'
+    dflt[0] = 'gpt'
+    assert given('tiny') == small < given(), 'a small model named while the default is large is not given the full list'
 
 def test_a_named_model_not_set_up_gives_its_setup_message(tmp_path, monkeypatch):
     a, _ = fake_agent(cfg=tmp_path)

@@ -421,7 +421,7 @@ def lanes(backends, writes=False):
 def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS, n_workers=4,
                   skills=(), writes=False, approve=None, parent=None, images=(), block=NO_SUB, timeout=0, slots=None,
                   spawn=None):   # `spawn` options for every question, or a list with one per question
-    "Ask several questions of one sub-agent each, and return the answers in question order. `backend`, `sp` and `spawn` may be lists, one per question; see `lanes` for what runs at once."
+    "Ask several questions of one sub-agent each, and return the answers in question order. `backend`, `sp` and `spawn` may be lists, one per question, and `tools` a callable from a backend's spec to its tools; see `lanes` for what runs at once."
     qs = L(questions)
     if not qs: return L()
     per = lambda v: list(v) if isinstance(v, (list, tuple, L)) else [v] * len(qs)
@@ -433,7 +433,7 @@ def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS
     def lane(ix):
         for i in ix:
             if runs[i].cancelled: res[i] = _stopped(runs[i]); continue
-            try: res[i] = delegate(bs[i], qs[i], tools, sps[i], max_steps, skills, writes, approve, runs[i], images, block, timeout, slots, sws[i])
+            try: res[i] = delegate(bs[i], qs[i], tools(bs[i].spec) if callable(tools) else tools, sps[i], max_steps, skills, writes, approve, runs[i], images, block, timeout, slots, sws[i])
             except Exception as e: res[i] = err('delegation failed', e) + bad_json(e)
     ls = lanes(bs, writes)
     ex = concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(n_workers, len(ls))))
@@ -591,7 +591,8 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
                    get_notes=None,      # callable spec -> the briefing notes for that model's family, or ''
                    slots=None,          # a shared `Slots` bounding sub-agents at once
                    block=NO_SUB,        # names withheld from the sub-agent, when `get_tools` does not decide
-                   get_sub=None):       # callable (model, effort) -> `(backend, spawn options, note)`, raising why it cannot; None uses `get_backend` and `get_cloud_backend`
+                   get_sub=None,        # callable (model, effort) -> `(backend, spawn options, note)`, raising why it cannot; None uses `get_backend` and `get_cloud_backend`
+                   get_tools_for=None): # callable spec -> the tools for a sub-agent on that model; None gives every sub-agent `get_tools()`
     "The four delegation tools, with every argument a callable read on each call so they follow the session's current settings."
     bg = ifnone(background, Background())
     def _writes(): return bool(get_writes()) and not SUB_READ_ONLY.get() if get_writes is not None else False
@@ -603,6 +604,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         return max(min(n, cap), min(SUB_MIN_STEPS, cap)) if n > 0 else cap
     def _kw(n): return dict(max_steps=_steps(n), block=block, timeout=_timeout(), slots=slots)
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
+    def _tools(b): return get_tools_for(b.spec) if get_tools_for is not None else get_tools()
     def _max(): return int(get_max()) if get_max is not None else MAX_TOOL_CHARS
     def _brief(b, writes, n=0):
         "The sub-agent's briefing: its write half, the answer budget (`n`, else the whole cap) and its model's family notes."
@@ -723,9 +725,9 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         with slots.lend(current_run()) if slots is not None else nullcontext():
             if len(qs) == 1 and run:
                 b, kw, said = picks[0]
-                answers[0] = delegate(b, qs[0] + seen, get_tools(), sp=_brief(b, w), skills=sk, writes=w, approve=_approve(), images=pics, spawn=kw, **_kw(max_steps)) + _noted(said)
+                answers[0] = delegate(b, qs[0] + seen, _tools(b), sp=_brief(b, w), skills=sk, writes=w, approve=_approve(), images=pics, spawn=kw, **_kw(max_steps)) + _noted(said)
             elif run:
-                got = delegate_many([picks[i][0] for i in run], [qs[i] + seen for i in run], get_tools(), sp=[_brief(picks[i][0], w, share) for i in run],
+                got = delegate_many([picks[i][0] for i in run], [qs[i] + seen for i in run], get_tools_for or get_tools(), sp=[_brief(picks[i][0], w, share) for i in run],
                                     skills=sk, writes=w, approve=_approve(), images=pics, spawn=[picks[i][1] for i in run], **_kw(max_steps))
                 for i, a in zip(run, got): answers[i] = a + _noted(picks[i][2])
         if len(qs) == 1: return _fit(answers[0], mx - len(note)) + note
@@ -754,7 +756,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         (b, spawn, said), (sk, note), kw = p, named_skills(get_skills, skills), _kw(max_steps)
         rid, d = f'run_{uuid.uuid4().hex[:12]}', get_log_dir() if get_log_dir is not None else None
         child = Run(rid, 'background', str(question), b.spec.name, log=None if d is None else Path(d)/f'{rid}.log')
-        try: rid = bg.start(lambda r: delegate(b, question + seen, get_tools(), sp=_brief(b, writes), skills=sk, writes=writes,
+        try: rid = bg.start(lambda r: delegate(b, question + seen, _tools(b), sp=_brief(b, writes), skills=sk, writes=writes,
                        approve=_approve() if writes else None, run=r, images=pics, spawn=spawn, **kw) + _noted(said), child)
         except Exception as e: return err('could not start the delegation', e)
         asked = 'with write tools' if writes else 'read-only'
