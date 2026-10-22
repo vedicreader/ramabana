@@ -1205,6 +1205,7 @@ class Run:
     def __post_init__(self):
         self.children, self._lock, self._done, self.inbox, self._heard, self.notes = [], threading.RLock(), threading.Event(), [], [], []
         self.key, self.silent, self._same = uuid.uuid4().hex[:8], 0, (None, None, 0)
+        self.tree_calls = 0
         if self.parent is not None: self.parent._adopt(self)
         if self.log is None and getattr(self.parent, 'log', None) is not None: self.log = self.parent.log.parent/f'{self.id}.log'
 
@@ -1216,13 +1217,19 @@ class Run:
             old = [c for c in self.children if c.terminal][:n]
             self.children = [c for c in self.children if all(c is not o for o in old)]
 
-    def draw(self, limit):
-        "Count one tool call against this run's whole tree; False once `limit` calls are spent."
-        root = self
-        while root.parent is not None: root = root.parent
-        with root._lock:
-            root.tree_calls = getattr(root, 'tree_calls', 0) + 1
-            return limit is None or root.tree_calls <= limit
+    def branch(self):
+        "The top-level delegation this run belongs to: the turn's child it descends from, else the parentless run that is one itself."
+        r = self
+        while r.parent is not None and not (r.parent.parent is None and r.parent.kind == 'root'): r = r.parent
+        return r
+
+    def draw(self, limit, per_branch=False):
+        "Count one tool call against this run's whole tree, or with `per_branch` its top-level delegation's; False once `limit` calls are spent."
+        owner = self.branch() if per_branch else self
+        while not per_branch and owner.parent is not None: owner = owner.parent
+        with owner._lock:
+            owner.tree_calls += 1
+            return limit is None or owner.tree_calls <= limit
 
     def write(self, line):
         "Append one transcript line, when this run keeps a transcript."

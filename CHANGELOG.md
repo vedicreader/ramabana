@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.68
+
+- Under the default `auto` tool budget, each top-level delegation has its own allowance of `_TOOL_MAX` (400) tool calls, shared with the sub-agents it starts. Before, every sub-agent of a turn drew from one pool of 400, so after a few busy delegations each later delegation in that turn was refused on its first call. A `delegate_async` or monitor run counts as one delegation with its children. A numeric `max_tool_calls` still caps all of a turn's delegations together. `Run.draw` takes `per_branch`, `Run.branch` names the top-level delegation, and `Run.tree_calls` starts at 0.
+- `TREE_SPENT` reads "Tool-call budget for delegated work is exhausted", which fits both limits.
+- `AppTty.write` writes to `sys.__stdout__`. A tool's `redirect_stdout` on another thread swaps `sys.stdout` for a buffer with no file descriptor, and the next frame raised `UnsupportedOperation: fileno`.
+- Tests that checked wording, glyphs or restated constants were removed or replaced with behaviour tests.
+
 ## 0.2.67
 
 - A sub-agent that a delegation sends to a named model now gets the tool list sized for that model. Every delegation was given the list sized for the session's default sub-agent model, so a large model named beside a default with a window under 32k got that model's trimmed list, without the memory and web tools and with tool results clipped, and a small model named beside a large default got the full list. Recorded on gpt-4.1-mini beside a 16k default, the sub-agent asked to read a page answered that it could not; with the fix it read the page and answered from it. `delegate_search` and `delegate_async` ask `get_tools_for(spec)` for the model they picked, `Agent._sub_plain` and `Agent._sub_tools` take that `spec`, and `delegate_many` takes `tools` as a callable from a backend's spec to its tools. A delegation that names no model still gets the default's list, and `get_tools` still works where `get_tools_for` is not given. A subclass that overrides `_sub_plain` must accept `spec=None` and pass it on.

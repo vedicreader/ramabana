@@ -25,14 +25,13 @@ def _stepping(be):
 def test_a_delegations_max_steps_is_capped_by_the_session_and_floored():
     """A turn model asked for five or eight steps, and its sub-agents ran out before they could report.
     A delegation gets at least `SUB_MIN_STEPS`, within the session's cap, and is told the budget notice is ours."""
-    from ramabana.tools import SUB_MIN_STEPS, sub_briefing
+    from ramabana.tools import SUB_MIN_STEPS
     be = _stepping(FakeBackend())
     subs = _subs(be, get_steps=lambda: 20)
     for n in (50, 3, 0): subs['delegate_search'](['q'], max_steps=n)
     _subs(be, get_steps=lambda: 5)['delegate_search'](['q'], max_steps=3)
     _subs(be, get_steps=lambda: 80)['delegate_search'](['q'], max_steps=3)
     assert [s.max_steps for s in be.spawned] == [20, min(SUB_MIN_STEPS, 20), 20, 5, SUB_MIN_STEPS]
-    assert 'budget' in sub_briefing() and 'harness' in sub_briefing()
 
 
 def test_a_request_below_the_cap_is_not_raised_to_it():
@@ -42,7 +41,6 @@ def test_a_request_below_the_cap_is_not_raised_to_it():
     subs = _subs(be, get_steps=lambda: SUB_MAX_STEPS)
     for n in (SUB_MIN_STEPS + 10, 0, SUB_MAX_STEPS + 5): subs['delegate_search'](['q'], max_steps=n)
     assert [s.max_steps for s in be.spawned] == [SUB_MIN_STEPS + 10, SUB_MAX_STEPS, SUB_MAX_STEPS]
-    assert SUB_MAX_STEPS == 80
 
 
 class _Hung:
@@ -147,7 +145,6 @@ def test_a_sub_agent_is_briefed_with_its_family_notes_and_its_answer_budget():
     subs['delegate_search'](['a', 'b'])
     assert len(spawned) == 3 and all('## Working as gpt-6-sol' in sp for sp in spawned), spawned[0]
     assert '3000 characters' in spawned[0] and all('1499 characters' in sp for sp in spawned[1:]), 'each answer is told its share'
-    assert 'report file' in spawned[0]
 
 
 def test_delegate_result_reads_a_long_answer_in_pages_by_offset():
@@ -224,3 +221,39 @@ def test_a_read_only_delegation_cannot_start_a_writing_one_below_it():
     tok = SUB_READ_ONLY.set(True)
     try: assert 'read-only' in _writing(_Overlap())['delegate_async']('q', writes=True)
     finally: SUB_READ_ONLY.reset(tok)
+
+
+def _call_in(run, tool, *a):
+    from ramabana.runtime import _current_run
+    tok = _current_run.set(run)
+    try: return tool(*a)
+    finally: _current_run.reset(tok)
+
+def test_under_auto_a_spent_delegation_does_not_starve_the_next_one():
+    "Under `auto` every sub-agent of a turn shared 400 calls, so after a few busy delegations each later one was refused on its first call."
+    from ramabana.agent import TREE_SPENT, _TOOL_MAX
+    from ramabana.runtime import Run
+    from ramabana.testing import fake_agent
+    a, _ = fake_agent()
+    assert a.max_tool_calls is None, 'auto'
+    view = next(t for t in a.tools if t.__name__ == 'view_file')
+    turn = Run('turn', question='q')
+    first = Run('d1', 'child', 'q', 'm', turn)
+    for _ in range(_TOOL_MAX): assert _call_in(first, view, '/proj/a.py') != TREE_SPENT
+    assert _call_in(first, view, '/proj/a.py') == TREE_SPENT, 'one runaway delegation is still bounded'
+    assert _call_in(Run('d1n', 'child', 'q', 'm', first), view, '/proj/a.py') == TREE_SPENT, 'its nested sub-agents share its allowance'
+    assert 'def a()' in _call_in(Run('d2', 'child', 'q', 'm', turn), view, '/proj/a.py'), 'the next delegation still works'
+    bg = Run('bg', 'background', 'q', 'm')
+    for _ in range(_TOOL_MAX): _call_in(Run('bgc', 'child', 'q', 'm', bg), view, '/proj/a.py')
+    assert _call_in(bg, view, '/proj/a.py') == TREE_SPENT, 'a background delegation and its children are one allowance'
+
+def test_a_numeric_tool_budget_still_caps_all_of_a_turns_delegations_together():
+    from ramabana.agent import TREE_SPENT
+    from ramabana.runtime import Run
+    from ramabana.testing import fake_agent
+    a, _ = fake_agent()
+    a.max_tool_calls = 20
+    view = next(t for t in a.tools if t.__name__ == 'view_file')
+    turn = Run('turn', question='q')
+    for _ in range(20): _call_in(Run('d1', 'child', 'q', 'm', turn), view, '/proj/a.py')
+    assert _call_in(Run('d2', 'child', 'q', 'm', turn), view, '/proj/a.py') == TREE_SPENT

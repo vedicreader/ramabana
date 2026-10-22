@@ -1154,7 +1154,7 @@ ROOT_ONLY = NO_SUB | PLAN_TOOLS   #: the root turn's own tools, never handed to 
 _TOOL_MIN, _TOOL_MAX = 20, 400
 _STEP_MIN, _STEP_MAX = 8, 80
 SUB_DEPTH_MAX = 2   #: most levels of sub-agents that may delegate again
-TREE_SPENT = ('Tool-call budget for this delegation tree is exhausted. Stop calling tools and '
+TREE_SPENT = ('Tool-call budget for delegated work is exhausted. Stop calling tools and '
               'answer with the evidence you have.')
 
 def _sub_steps(n): return max(1, min(_STEP_MAX, int(n)))
@@ -1628,9 +1628,10 @@ def _observe(self:Agent, f):
 
 @patch
 def _draw(self:Agent):
-    "Count a sub-agent's call against its tree's share of the root's tool budget; False once spent."
+    "Count a sub-agent's call against the turn's tool budget, or under `auto` its own delegation's `_TOOL_MAX`; False once spent."
     run = current_run()
-    return run is None or run.draw(ifnone(self.max_tool_calls, _TOOL_MAX))
+    # under auto the turn is uncapped, so one shared pool would only starve the delegations that come later
+    return run is None or run.draw(ifnone(self.max_tool_calls, _TOOL_MAX), per_branch=self.max_tool_calls is None)
 
 @patch
 def _deny_git_shell(self:Agent, name, args):

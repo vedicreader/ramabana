@@ -2288,7 +2288,8 @@ class AppTty(RealTty):
         return out
     def write(self, data):
         if self.gone: return
-        fd, v = sys.stdout.fileno(), memoryview(data.encode() if isinstance(data, str) else data)
+        # not `sys.stdout`: a tool's `redirect_stdout` on another thread swaps it for a buffer with no fd
+        fd, v = sys.__stdout__.fileno(), memoryview(data.encode() if isinstance(data, str) else data)
         while v:   # a tty another process left non-blocking takes part of a frame, or none until it drains
             try: v = v[os.write(fd, v):]
             except BlockingIOError:
