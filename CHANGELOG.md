@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.72
+
+- Finished background work wakes an idle agent. When a background run the agent started finishes and the user is idle, the terminal starts a turn with the result, logged as **background**. `auto_turns` is `on`, `report` (the turn reports without changing files) or `off`; by default `on` under the edits and auto approval modes and `report` under ask and off. At most `auto_turns_per_hour` (6) an hour, none for a cancelled run, and none while the user is typing or a turn runs.
+- `delegate_tell(run_id, text)` lets the agent send a running sub-agent a message; it arrives with the sub-agent's next tool result.
+- `/talk RUN` sends what the user types to a sub-agent until `/talk main`; the status bar shows `→ run_x`, and the target returns to main when the run ends. It completes `main` and the running ids.
+- The `/pane` board lists `main` above the sub-agents and marks the current target. Clicking a row sets the target, and clicking a sub-agent opens its transcript to the left of the chat.
+
 ## 0.2.71
 
 - A sub-agent reply with no tool call that is under 300 characters and has no `state:` line is sent back once with `SUB_NUDGE`, asking for the missing call or a final report. Before, a stray progress line ended a delegation as if it were the answer. A second such reply in a row is accepted, and the step limit still applies.

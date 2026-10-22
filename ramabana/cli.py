@@ -53,7 +53,7 @@ from .core import EFFORTS, EXTRAS, JOBS, PII_MODES, PII_OFF, PROFILES, AgentErro
 from .core import PROVIDERS, auth_status, checklist, config_models, getting_started, provider_ready, ready_model
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
-from .pane import quit_mark, write_snapshot
+from .pane import quit_mark, talk_mark, write_snapshot
 from .tools import WRITE_TOOLS, path_write
 from . import hl, setup
 from .hl import HL_THEMES, is_diff
@@ -353,7 +353,7 @@ MAX_GROUP_ROWS = 8
 DIFF_OPEN = 20    #: diff lines a finished call shows until the reader opens it
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
-                    'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'theme', 'vars')
+                    'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'talk', 'theme', 'vars')
 
 HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · alt+up take the queued text back into the composer · enter on an empty line steers the queued one · shift+tab cycle approvals, then plan mode · tab complete /commands and @paths · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+o fold all turns · alt+1..9 drill in · ctrl+c stop, keeping what is queued and typed in the composer · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
@@ -371,6 +371,7 @@ plan    /planmode on|off withholds every tool that acts and asks for a plan · /
 setup   /login lists the providers · /login NAME signs in, or keeps a key or an endpoint · /config shows each setting and where it came from · /config set KEY VALUE · /config edit · /config reset · /config reload · /model NAME --save keeps it
 extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
 subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N|auto, timeout S, nest N · /subagents model NAME|default, effort low|medium|high|xhigh|max|default, tools native|text|auto, each with --save to keep it · tab completes them
+talk    /talk RUN aims typed lines at a running sub-agent, an id prefix being enough · /talk or /talk main aims them at the main agent again · tab completes main and the running ids
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
 
@@ -782,6 +783,7 @@ class Ui:
         self._queued_echo = []
         self._steered = []
         self._hold = False
+        self.target = None   #: the run id typed lines go to; None is the main agent
         self.pane, self._pane_at, self._alive_at, self._reopen_at = None, None, 0.0, 0.0
         self._opened_at, self._quick = None, 0
         self._now_at, self._now_busy, self._now_dirty = 0.0, False, False
@@ -906,6 +908,7 @@ class Ui:
         out.append(f" {VERSION}", style=GRUVBOX['gray'])
         out.append(f"  {s['model'] if s else self.agent.model.name}  ", style=GRUVBOX['gray'])
         out.append(f'{mark} {state.lower()}', style=color)
+        if self.target: out.append(f'  → {self.target}', style=GRUVBOX['aqua'])
         if s is None: return out
         bits = [f"{s['ntools']} tools", f"{s['nskills']} skills", f"{round(s['pct_full'] * 100)}% ctx"]
         if s.get('plan_line'): bits.append(s['plan_line'])
@@ -978,6 +981,7 @@ class Ui:
             if self.turn is not None or self._now_busy or self._now_dirty: self.write_now()
             if self.pane is not None and _now_file(self.agent) != self._pane_at: self.open_pane()
             self._revive()
+            self.poll_talk()
 
     def write_now(self, force=False):
         "Write `now.json` for the pane, at most every `PANE_EVERY` seconds unless `force`."
@@ -987,7 +991,7 @@ class Ui:
             self._now_dirty = True
             return
         self._now_at, self._now_dirty = t, False
-        try: write_snapshot(self.agent, p)
+        try: write_snapshot(self.agent, p, target=self.target or 'main', chat_pane=getattr(_tmux_pane(self.agent.host), 'id', ''))
         except Exception: return   # a snapshot that fails must never stop the animate loop
         self._now_busy = self.agent.busy
 
@@ -2683,7 +2687,8 @@ SUB_WORDS = ('on', 'off', 'steps', 'timeout', 'nest', 'model', 'effort', 'tools'
 LEARNED_WORDS = ('diff', 'accept', 'reject', 'compact', 'on', 'off', 'status')     #: what follows `/learned `
 
 def arg_words(cmd, before, models=(), ids=()):
-    "What may come next after `/cmd` and the words `before`: a subcommand, a level, a mode, a model name, a pending id or `--save`."
+    "What may come next after `/cmd` and the words `before`: a subcommand, a level, a mode, a model name, a pending or running id or `--save`."
+    if cmd == 'talk': return ['main', *ids] if not before else []
     if cmd == 'learned':
         if not before: return list(LEARNED_WORDS)
         return list(ids) if len(before) == 1 and before[0] in ('diff', 'accept', 'reject', 'compact') else []
@@ -2699,8 +2704,8 @@ def arg_words(cmd, before, models=(), ids=()):
 
 @patch
 def _arg_matches(self:Ui):
-    "`(start, matches)` for the argument of `/subagents`, `/model` or `/learned` under the cursor, or None."
-    if self.mode == 'python' or not (m := re.match(r'/(subagents|model|learned) +(.*)$', self.buf.text[:self.buf.cursor])): return None
+    "`(start, matches)` for the argument of `/subagents`, `/model`, `/learned` or `/talk` under the cursor, or None."
+    if self.mode == 'python' or not (m := re.match(r'/(subagents|model|learned|talk) +(.*)$', self.buf.text[:self.buf.cursor])): return None
     *before, cur = m.group(2).split(' ')
     def names():
         try: return [r['value'] for r in available_models()]
@@ -2710,7 +2715,10 @@ def _arg_matches(self:Ui):
         from .learned import learned_folder, pending
         try: return [p['id'] for p in pending(learned_folder(self.agent.cfg))] if self.agent.cfg is not None else []
         except Exception: return []
-    ids = self._cached(('learned',), pending_ids) if m.group(1) == 'learned' and before else ()
+    def running_ids():
+        try: return [r['id'] for r in _run_rows(self.agent.runs(active=True)) if r['kind'] != 'root' and not self.agent.run(r['id']).terminal]
+        except Exception: return []
+    ids = self._cached(('learned',), pending_ids) if m.group(1) == 'learned' and before else running_ids() if m.group(1) == 'talk' else ()
     return self.buf.cursor - len(cur), [w for w in arg_words(m.group(1), [b for b in before if b], models, ids) if w.startswith(cur) and w != cur]
 
 @patch
@@ -2960,6 +2968,53 @@ ALIVE_EVERY = 1.0    #: seconds between asks whether the viewer still draws
 REOPEN_EVERY = 10.0  #: seconds between reopenings of a viewer that died
 QUICK_DEATH = 5.0    #: a viewer that dies younger than this died at once
 REVIVE_TRIES = 3     #: quick deaths in a row before the pane is given up
+
+def _run_rows(rows):
+    for r in rows:
+        yield r
+        yield from _run_rows(r.get('children', []))
+
+@patch
+def talk(self:Ui, arg=''):
+    "`/talk RUN` aims typed lines at a running sub-agent, a unique id prefix being enough; `/talk` or `/talk main` aims them at the main agent."
+    arg = arg.strip()
+    if arg in ('', 'main'):
+        self.target = None
+        self.write_now(force=True)
+        return self.note('talking to main')
+    ids = {r['id'] for r in _run_rows(self.agent.runs(active=True)) if r['kind'] != 'root' and r['id'].startswith(arg)}
+    live = sorted(i for i in ids if not self.agent.run(i).terminal)
+    if arg in live: live = [arg]
+    if len(live) != 1: return self.note(f'no running sub-agent matches {arg!r}' if not live else f"{arg!r} matches {', '.join(live)}", 'error')
+    self.target = live[0]
+    self.write_now(force=True)
+    return self.note(f'talking to {self.target} · /talk main goes back')
+
+@patch
+def poll_talk(self:Ui):
+    "Apply the viewer's `talk_mark` as `/talk` would, and fall back to main once the target has finished."
+    if (p := _now_file(self.agent)) is not None and (m := talk_mark(p)).exists() and (arg := m.read_text()):
+        m.unlink(missing_ok=True)
+        self.talk(arg)
+    if self.target and ((r := self.agent.run(self.target)) is None or r.terminal):
+        gone, self.target = self.target, None
+        self.write_now(force=True)
+        self.note(f'{gone} finished · back to main')
+
+_submit_talk = Ui.submit
+@patch
+def submit(self:Ui):
+    "Handle `/talk`, and send other plain lines to the talk target instead of starting a turn."
+    line = self.buf.text.strip()
+    if line == '/talk' or line.startswith('/talk '):
+        self.buf.clear()
+        return self.talk(line[len('/talk'):])
+    if self.target and line and not line.startswith('/') and self.ask is None and self.mode == 'agent':
+        self.remember(line)
+        self.buf.clear()
+        said = self.agent.tell(self.target, line)
+        return self.note(f'→ {self.target}: {line}' if said.startswith('told') else said, 'note' if said.startswith('told') else 'error')
+    return _submit_talk(self)
 
 _act_now = Ui._act
 @patch

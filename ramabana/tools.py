@@ -218,7 +218,7 @@ def sub_briefing(writes=False,
     return out + (f'\n\n{notes.strip()}' if notes and notes.strip() else '')
 
 #: never handed to a sub-agent: delegation and watches
-NO_SUB = frozenset({'delegate_search', 'delegate_async', 'delegate_result', 'delegate_cancel', 'watch', 'cancel_watch'})
+NO_SUB = frozenset({'delegate_search', 'delegate_async', 'delegate_result', 'delegate_cancel', 'delegate_tell', 'watch', 'cancel_watch'})
 
 # %% ../nbs/02_tools.ipynb #9424aadf
 def _delegate_result(text):
@@ -808,7 +808,26 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         "Stop a background delegation. What it had already done is not undone."
         return bg.cancel(run_id)
 
-    return [delegate_search, delegate_async, delegate_result, delegate_cancel]
+    def _find(run_id):
+        "A background run or a run in the calling turn's tree whose id is `run_id`, else None."
+        with bg.lock: roots = list(bg.runs.values())
+        if (cur := current_run()) is not None: roots.append(cur)
+        def walk(r): return r if r.id == run_id else next((h for c in list(r.children) if (h := walk(c)) is not None), None)
+        return next((h for r in roots if (h := walk(r)) is not None), None)
+
+    @acts
+    @summary(lambda a: f'Tell sub-agent {a.get("run_id","?")}')
+    def delegate_tell(run_id: str, # the id of a running background or foreground sub-agent
+                      text: str,   # what to say; it reads it with its next tool result
+                      ) -> str:
+        "Send a message to a running sub-agent; it reads it after its next tool call."
+        if (r := _find(str(run_id))) is None: return err(f'no sub-agent named {run_id!r} was started here')
+        if r.terminal: return err(f'{run_id} finished ({r.state}); nothing is listening')
+        if not str(text).strip(): return err('nothing to say')
+        r.tell(text)
+        return f'told {run_id}'
+
+    return [delegate_search, delegate_async, delegate_result, delegate_cancel, delegate_tell]
 
 # %% ../nbs/02_tools.ipynb #ec2dc8d6
 def parse_plan_items(items):

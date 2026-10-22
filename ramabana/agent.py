@@ -60,7 +60,7 @@ _GROUP_KIND = {'code': 'search', 'file': 'view', 'notebook': 'view', 'session': 
 _KIND = {
     'edit_file': 'edit', 'replace_text': 'edit', 'create_file': 'edit', 'edit_cell': 'edit',
     'add_cell': 'edit', 'read_terminal': 'view', 'remember': 'memory',
-    'delegate_search': 'delegate', 'delegate_async': 'delegate', 'delegate_result': 'delegate', 'delegate_cancel': 'delegate',
+    'delegate_search': 'delegate', 'delegate_async': 'delegate', 'delegate_result': 'delegate', 'delegate_cancel': 'delegate', 'delegate_tell': 'delegate',
     'cart_stores': 'cart', 'cart_open': 'cart', 'cart_find': 'cart',
     'cart_add': 'cart', 'cart_show': 'cart', 'cart_remove': 'cart',
 }

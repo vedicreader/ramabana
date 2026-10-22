@@ -25,7 +25,7 @@ from .monitor import _counts, _rel
 # %% auto #0
 __all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'SHELL_LINES', 'PALETTE', 'ENTER', 'LEAVE',
            'WHEEL', 'HINT', 'now_snapshot', 'write_snapshot', 'read_snapshot', 'board', 'render', 'quit_mark',
-           'PaneTty', 'Viewer', 'main']
+           'talk_mark', 'PaneTty', 'Viewer', 'main']
 
 # %% ../nbs/18_pane.ipynb #d2a80a47
 CALLS_KEPT = 8       #: a sub-agent's latest calls in a snapshot
@@ -51,7 +51,7 @@ def _bg_runs(agent, since):
 def _sub(r, every, now):
     calls = [a for a in every if a.run_id == r.id]
     return {'id': r.id, 'question': _1(r.question, 200), 'elapsed': _secs(r, now), 'state': r.state, 'steps': len(calls),
-            'status': r.status, 'current': _current(calls),
+            'status': r.status, 'current': _current(calls), 'log': str(r.log) if r.log else '',
             'calls': [{'line': a.summary, 'ok': a.ok, 'done': a.done, 'out': clip(a.detail, OUT_CHARS)} for a in calls[-CALLS_KEPT:]],
             'answer': clip(r.answer, ANSWER_CHARS) if r.terminal else ''}
 
@@ -119,12 +119,12 @@ def now_snapshot(agent):
             'notes': [{'at': t, 'text': s} for t, s in (root.notes if root else [])]}
 
 # %% ../nbs/18_pane.ipynb #22ae7faf
-def write_snapshot(agent, path):
-    "Write `now_snapshot(agent)` to `path` atomically."
+def write_snapshot(agent, path, **extra):
+    "Write `now_snapshot(agent)` and the `extra` keys, such as the `target` and the `chat_pane`, to `path` atomically."
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(f'.{p.name}.{os.getpid()}.tmp')
-    tmp.write_text(json.dumps(now_snapshot(agent)))
+    tmp.write_text(json.dumps({**now_snapshot(agent), **extra}))
     os.replace(tmp, p)
 
 def read_snapshot(path):
@@ -226,7 +226,10 @@ def board(snap, width=40, now=None, open=(), err=''):
     def section(title, body):
         if body: rows.extend([(None, Text('')), (None, Text(title, style=f"bold {PALETTE['gray']}")), *body])
     section('Plan', [(None, _todo(t, width)) for t in snap['plan']])
-    section('Sub-agents', [r for s in snap['subs'] for r in _sub_rows(s, width, drift, ('sub', s['id']) in open)])
+    target = snap.get('target') or 'main'
+    def aimed(k, t): return _cut(Text('→ ', style=f"bold {PALETTE['green']}") + t, width) if k and k == (('main', 'main') if target == 'main' else ('sub', target)) else t
+    main = [(('main', 'main'), _row(width, Text('main', style=f"bold {PALETTE['blue']}"), ' · talk to the main agent', style=PALETTE['gray']))]
+    section('Sub-agents', [(k, aimed(k, t)) for k, t in main + [r for s in snap['subs'] for r in _sub_rows(s, width, drift, ('sub', s['id']) in open)]] if snap['subs'] else [])
     section('Files', [r for f in snap['files'] for r in _file_rows(f, width, ('file', f['path']) in open)])
     section('Background', [r for b in snap['background'] for r in _bg_rows(b, width, drift, ('bg', b['id']) in open, snap['subs'])])
     notes = snap.get('notes') or []   # newest first, and the newest starts open: toggling flips that
@@ -253,6 +256,12 @@ def quit_mark(path):
     "The file a viewer the user quit leaves beside the snapshot at `path`, so the CLI keeps it closed."
     return Path(path).with_suffix('.closed')
 
+def talk_mark(path):
+    "The file a viewer writes the run id (or `main`) in when the user picks who to talk to; the CLI reads and removes it."
+    return Path(path).with_suffix('.talk')
+
+def _tmux(*args): subprocess.Popen(['tmux', *args], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 class PaneTty(RealTty):
     "`RealTty` whose `read` returns None at the end of input, where `RealTty.read` would spin."
     def read(self, timeout=0.02):
@@ -261,12 +270,12 @@ class PaneTty(RealTty):
 
 def _leave(sig, frame): raise SystemExit(0)
 
-HINT = 'click opens · p tails a shell · q quits'   #: the board's last line, short enough for a narrow pane
+HINT = 'click talks or opens · p tails a shell · q quits'   #: the board's last line, short enough for a narrow pane
 
 class Viewer:
     "The board for the snapshot at `path`, drawn on `tty`: the last good snapshot, the open rows, the cursor and the scroll."
-    def __init__(self, path, tty):
-        self.path, self.tty, self.parser = Path(path), tty, Parser()
+    def __init__(self, path, tty, tmux=_tmux):
+        self.path, self.tty, self.parser, self.tmux, self.watching = Path(path), tty, Parser(), tmux, set()
         self.snap = self.good = self.stamp = self.cursor = self.shown = None
         self.open, self.rows, self.top, self.err, self.done, self.size = set(), [], 0, '', False, tty.size
 
@@ -288,6 +297,22 @@ class Viewer:
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
 
+    def talk(self, key):
+        "Aim the terminal at the row `key` through the `talk_mark`; a sub-agent's transcript opens left of the chat pane, once."
+        kind, rid = key
+        talk_mark(self.path).write_text(rid)
+        if kind != 'sub': return
+        s = next((s for s in (self.snap or {}).get('subs', []) if s['id'] == rid), None)
+        chat = (self.snap or {}).get('chat_pane')
+        if s is None or not s.get('log') or not chat or rid in self.watching: return
+        self.watching.add(rid)
+        self.tmux('split-window', '-h', '-b', '-t', chat, f"tail -n 200 -f {shlex.quote(s['log'])}")
+
+    def pick(self, key):
+        "A click or Enter on `key`: a main or sub-agent row aims the terminal at it, and a sub-agent row also opens."
+        if key[0] in ('main', 'sub'): self.talk(key)
+        if key[0] != 'main': self.toggle(key)
+
     def move(self, key):
         "Put the cursor on `key` and scroll just enough to show it."
         self.cursor, h = key, self.size[1] - 1   # the last line is the hint
@@ -300,7 +325,7 @@ class Viewer:
         if isinstance(ev, Mouse):
             y = ev.y + self.top
             if ev.press and ev.btn in (64, 65): self.top += WHEEL if ev.btn == 65 else -WHEEL
-            elif ev.press and ev.btn == 0 and 0 <= y < len(self.rows) and (k := self.rows[y][0]): self.cursor = k; self.toggle(k)
+            elif ev.press and ev.btn == 0 and 0 <= y < len(self.rows) and (k := self.rows[y][0]): self.cursor = k; self.pick(k)
             return
         if not isinstance(ev, Key): return
         n, i = ev.name, keys.index(self.cursor) if self.cursor in keys else -1
@@ -315,7 +340,8 @@ class Viewer:
         elif n in ('k', 'up'):
             if i > 0: self.move(keys[i - 1])
             else: self.top -= 1
-        elif n in ('enter', ' ') and i >= 0: self.toggle(self.cursor)
+        elif n == 'enter' and i >= 0: self.pick(self.cursor)
+        elif n == ' ' and i >= 0: self.toggle(self.cursor)
         elif n == 'p' and i >= 0: self.follow(self.cursor)
 
     def paint(self, now=None):

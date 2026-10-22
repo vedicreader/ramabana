@@ -132,3 +132,17 @@ def test_learned_completes_its_subcommands_then_the_pending_ids(proj, tmp_path, 
     assert _hits(ui, '/learned diff ') == ids and _hits(ui, '/learned accept 20261023') == ids[1:]
     assert _hits(ui, '/learned on ') == [], 'on, off and status take no id'
 
+
+def test_talk_completes_main_and_the_running_ids(proj):
+    "`/talk ` offers `main` and every running sub-agent, never a finished one, and `/talk` itself completes as a command."
+    from ramabana.agent import _run_store
+    from ramabana.cli import SURFACE_COMMANDS, HELP
+    from ramabana.runtime import Run
+    ui = _ui(proj)
+    live, done = Run('run_live1', 'background', 'survey'), Run('run_done1', 'background', 'old')
+    done.finish()
+    _run_store(ui.agent).update({live.id: live, done.id: done})
+    assert _hits(ui, '/talk ') == ['main', 'run_live1'] and _hits(ui, '/talk run_l') == ['run_live1']
+    assert _hits(ui, '/talk run_live1 ') == [] and _hits(ui, '/tal') == ['/talk']
+    assert 'talk' in SURFACE_COMMANDS and '/talk RUN' in HELP
+

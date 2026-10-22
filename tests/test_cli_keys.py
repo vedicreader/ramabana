@@ -183,3 +183,35 @@ def test_alt_o_folds_and_opens_every_tool_block_in_the_whole_transcript():
     finally: tty.close()
 
 
+
+def test_talk_aims_typed_lines_at_a_sub_agent_until_it_finishes(tmp_path, monkeypatch):
+    "`/talk` sets the target by id prefix, typed lines go to its inbox, a pane mark applies as `/talk` does, and a finished target falls back to main."
+    from teleprint.testing import EmuTty
+    from ramabana import cli
+    from ramabana.agent import _run_store
+    from ramabana.pane import talk_mark
+    from ramabana.runtime import Run
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    agent, _ = fake_agent()
+    kid = Run('run_kid123', 'background', 'survey')
+    _run_store(agent)[kid.id] = kid
+    now = tmp_path/'now.json'
+    monkeypatch.setattr(cli, '_now_file', lambda a: now)
+    async def go():
+        await comp.start()
+        u = cli.Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        u.buf.insert('/talk nope'); u.submit()
+        assert u.target is None
+        u.buf.insert('/talk run_k'); u.submit()
+        assert u.target == 'run_kid123' and '→ run_kid123' in u.status().plain
+        u.buf.insert('use the other file'); u.submit()
+        assert kid.drain_inbox() == ['use the other file'] and u.turn is None
+        talk_mark(now).write_text('main'); u.poll_talk()
+        assert u.target is None and not talk_mark(now).exists() and '→' not in u.status().plain
+        talk_mark(now).write_text('run_kid123'); u.poll_talk()
+        assert u.target == 'run_kid123'
+        kid.finish('cancelled'); u.poll_talk()
+        assert u.target is None
+    try: asyncio.run(go())
+    finally: tty.close()

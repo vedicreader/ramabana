@@ -212,3 +212,28 @@ def test_a_shell_row_opens_to_its_command_and_p_follows_it_in_a_pane(tmp_path, m
     v.tick(now=now)
     _feed(v, 'G', 'p')
     assert ran and ran[0][:2] == ['tmux', 'split-window'] and str(tmp_path/'cmd_1.log') in ran[0][-1], ran
+
+def _click(v, key):
+    y = next(i for i, (k, _) in enumerate(v.rows) if k == key)
+    _feed(v, f'\x1b[<0;3;{y + 1}M')
+
+
+def test_a_click_aims_the_terminal_through_the_talk_mark_and_opens_the_transcript_left_of_the_chat(tmp_path):
+    "Clicking `main` writes `main`; clicking a sub-agent writes its id and splits its log left of the chat pane, once."
+    from ramabana.pane import talk_mark
+    now, log = time.time(), tmp_path/'run_aaa.log'
+    snap = {**_board(now), 'target': 'main', 'chat_pane': '%7'}
+    snap['subs'][0]['log'] = str(log)
+    assert '→ main' in _text(snap, now=now) and '→ ▸ run_aaa' in _text({**snap, 'target': 'run_aaa'}, now=now)
+    tmux = []
+    v, p = _viewer(tmp_path, snap)
+    v.tmux = lambda *a: tmux.append(a)
+    assert next(k for k, _ in v.rows if k) == ('main', 'main'), 'main is the first row with a key'
+    _click(v, ('main', 'main'))
+    assert talk_mark(p).read_text() == 'main' and tmux == []
+    _click(v, ('sub', 'run_aaa'))
+    assert talk_mark(p).read_text() == 'run_aaa'
+    (cmd,) = tmux
+    assert cmd[:5] == ('split-window', '-h', '-b', '-t', '%7') and str(log) in cmd[5]
+    _click(v, ('sub', 'run_aaa'))
+    assert len(tmux) == 1, 'its transcript is already open'
