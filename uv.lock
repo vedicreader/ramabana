@@ -2093,7 +2093,7 @@ wheels = [
 
 [[package]]
 name = "koshas"
-version = "0.1.10"
+version = "0.1.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ast-grep-py" },
@@ -2103,9 +2103,9 @@ dependencies = [
     { name = "pyskills" },
     { name = "watchfiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/37/f2/81ca38302eb6f5faf2ae8036492813cacff08f4f552774302dd358218d75/koshas-0.1.10.tar.gz", hash = "sha256:2777a030a3872567c6bb19df54295d42af7dbafefee512043e1f953e0505aa51", size = 64158, upload-time = "2026-10-18T06:23:55.153Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/5b/5d8713679bdedf7f81804fdf5dbac52ca8ba9873beee81d4db2acf8708a1/koshas-0.1.13.tar.gz", hash = "sha256:155e091ede43a6ea97b324631b11dfc48c78efc47bcc409f93dcfbee2e4b9786", size = 67319, upload-time = "2026-10-22T07:22:55.641Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/b0/04c19f92f93ef1dfcb510749fe030037d5da902339d40f101ac060ef9730/koshas-0.1.10-py3-none-any.whl", hash = "sha256:45eca81ac516e38a324ed9047dcb4db8212fbcf2cae9eaee4d7084e530733513", size = 68620, upload-time = "2026-10-18T06:23:53.672Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/67/f8159e2c3e666343498511258906e03452540ec91b93ed90a2a2e90855ff/koshas-0.1.13-py3-none-any.whl", hash = "sha256:5c77a9c56fd0cfed695d1705fe72dba1dbb4db3065e2663c27c855f6abc28fc0", size = 71506, upload-time = "2026-10-22T07:22:54.345Z" },
 ]
 
 [[package]]
@@ -2165,7 +2165,7 @@ wheels = [
 
 [[package]]
 name = "litesearch"
-version = "0.1.35"
+version = "0.1.53"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chonkie" },
@@ -2178,9 +2178,9 @@ dependencies = [
     { name = "tokenizers" },
     { name = "usearch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/82/09/b3d227d800fdc8a8e8aa16ebc765bba8fa96cbc247fee53ab2f083a2d64c/litesearch-0.1.35.tar.gz", hash = "sha256:eb0708c662fe1a2c3d525feb98c5bad7a99f335a2789c8f27b678ad5f01f29a0", size = 68981, upload-time = "2026-09-21T10:10:24.702Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/eb/642350602a158620865d2a117d59616ad5e9dcea9d0f7e2b145ed5247d75/litesearch-0.1.53.tar.gz", hash = "sha256:992155de3c26b49f1e4448ba97ddcc124fb37d310b54c23f45bf40ef3c780636", size = 90673, upload-time = "2026-10-22T07:21:43.198Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/46/274e5a3905d73eb018652b1ff7754376eb62d4de5430972f1562233e3fbd/litesearch-0.1.35-py3-none-any.whl", hash = "sha256:d9e6b6dec62a970d385e5fa667c1380d2846f66b3c5f73f0c29a8f337fd400f6", size = 74347, upload-time = "2026-09-21T10:10:23.087Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/db/ca8ad0dbd99bc6fdc80253d412a11a1e42ef52e4778262fed6ccdb88be9f/litesearch-0.1.53-py3-none-any.whl", hash = "sha256:3a63d11b6730b76f294ab2de963ccbb0cda5ae2f7fb41494e6f6c0179d088650", size = 96559, upload-time = "2026-10-22T07:21:41.716Z" },
 ]
 
 [[package]]
@@ -3978,14 +3978,14 @@ requires-dist = [
     { name = "jupyter-client", marker = "extra == 'cli'", specifier = ">=8.10.0" },
     { name = "jupyter-client", marker = "extra == 'dev'", specifier = ">=8.10.0" },
     { name = "jupyter-client", marker = "extra == 'python'", specifier = ">=8.10.0" },
-    { name = "koshas", marker = "extra == 'all'", specifier = ">=0.1.10" },
-    { name = "koshas", marker = "extra == 'cli'", specifier = ">=0.1.10" },
-    { name = "koshas", marker = "extra == 'dev'", specifier = ">=0.1.10" },
-    { name = "koshas", marker = "extra == 'search'", specifier = ">=0.1.10" },
-    { name = "litesearch", marker = "extra == 'all'", specifier = ">=0.1.35" },
-    { name = "litesearch", marker = "extra == 'cli'", specifier = ">=0.1.35" },
-    { name = "litesearch", marker = "extra == 'dev'", specifier = ">=0.1.35" },
-    { name = "litesearch", marker = "extra == 'search'", specifier = ">=0.1.35" },
+    { name = "koshas", marker = "extra == 'all'", specifier = ">=0.1.13" },
+    { name = "koshas", marker = "extra == 'cli'", specifier = ">=0.1.13" },
+    { name = "koshas", marker = "extra == 'dev'", specifier = ">=0.1.13" },
+    { name = "koshas", marker = "extra == 'search'", specifier = ">=0.1.13" },
+    { name = "litesearch", marker = "extra == 'all'", specifier = ">=0.1.53" },
+    { name = "litesearch", marker = "extra == 'cli'", specifier = ">=0.1.53" },
+    { name = "litesearch", marker = "extra == 'dev'", specifier = ">=0.1.53" },
+    { name = "litesearch", marker = "extra == 'search'", specifier = ">=0.1.53" },
     { name = "mcp", marker = "extra == 'all'", specifier = ">=1.29.1" },
     { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.29.1" },
     { name = "mcp", marker = "extra == 'serve'", specifier = ">=1.29.1" },

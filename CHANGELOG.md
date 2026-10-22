@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.70
+
+- The `search` extra needs koshas 0.1.13 and litesearch 0.1.53, which index a project's packages from its own `.venv` and skip symlink loops.
+- More notebook tests check behaviour, not wording.
+
 ## 0.2.69
 
 - The sub-agent step setting is `auto` by default. Under `auto` a delegation's `max_steps` is honoured up to `SUB_STEP_CEILING` (400), and a delegation that names none gets 80. Before, every sub-agent was capped at 80 steps, so a request for more fell back to 80 without a word.
