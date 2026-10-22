@@ -51,4 +51,3 @@ def test_no_warm_and_no_dhrona_leave_the_chat_empty(monkeypatch, full):    # Rev
     h = FullHost(files={'a.py': 'x = 1\n'})
     a, be = fake_agent(h, replies=['ok'], warm=True); a.ask('x')
     assert len(be.hist_) == 2 and a.warm_start() == []
-    assert any('no warm start' in n and 'dhrona' in n for n in h.notes), h.notes

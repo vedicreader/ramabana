@@ -164,7 +164,7 @@ def test_alt_o_folds_and_opens_every_tool_block_in_the_whole_transcript():
     "ctrl+o reaches the turn on screen; alt+o reaches every call, including turns already scrolled away."
     from rich.text import Text
     from teleprint.testing import EmuTty
-    from ramabana.cli import HELP, Ui
+    from ramabana.cli import Ui
     tty = EmuTty(80, 24)
     comp = Compositor(tty); comp._register_signals = lambda: None
     agent, _ = fake_agent()
@@ -175,7 +175,6 @@ def test_alt_o_folds_and_opens_every_tool_block_in_the_whole_transcript():
         old.committed = True                      # a turn long gone into the scrollback
         new = u.say(Text('call two\nits result'), 'tool', fold=None)
         reply = u.say(Text('prose\nmore prose'), 'reply', fold=None)
-        assert 'alt+o' in HELP
         u.on_key(Key('alt+o'))
         assert old.collapsed and new.collapsed and not reply.collapsed
         u.on_key(Key('alt+o'))

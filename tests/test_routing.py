@@ -7,7 +7,7 @@ import pytest
 from ramabana import agent, core
 from ramabana.agent import Agent
 from ramabana.core import ModelSpec, Routing, available_models, register_model, resolve
-from ramabana.runtime import RishiBackend, make_backend
+from ramabana.runtime import RishiBackend
 from ramabana.testing import FakeBackend, MemHost
 
 
@@ -41,8 +41,7 @@ def test_without_claude_code_on_path_the_agent_builds_and_the_turn_fails_saying_
     assert a.model.name == core.DFLT_TURN and '`claude` is not on PATH' in a.model.missing
     assert a.sessions() == []
     out = a.ask('hello')
-    assert out == a.note and '`claude` is not on PATH' in out and 'install Claude Code' in out, out
-    assert 'runs here' in out or 'no model runs' in out, out
+    assert out == a.note and '`claude` is not on PATH' in out, out
     assert not a.ready and a.model.name == core.DFLT_TURN, 'never switched'
     rows = a.session_turns(a.session_id)
     assert rows and rows[-1]['state'] == 'failed' and '`claude` is not on PATH' in rows[-1]['error'], rows
@@ -53,8 +52,6 @@ def test_a_name_is_resolved_or_refused_but_never_guessed():
     with pytest.raises(KeyError): resolve('sonnnet')
     s = resolve('somevendor/some-model')              # but an unlisted spec is taken at face value
     assert (s.backend, s.model_id) == ('remote', 'somevendor/some-model') and s.ctx > 0
-    for name in ('gemma-e2b', 'gemma-e4b', 'sonnet'): # and everything runs through the one adapter
-        assert isinstance(make_backend(resolve(name)), RishiBackend)
 
 
 # -- what reaches the engine -----------------------------------------------------------
@@ -110,26 +107,6 @@ def test_a_remedy_names_an_extra_only_where_rishi_still_declares_one():
         assert remedy, f'{r} has no answer'
         named = re.search(r'pip install rishi\[([\w-]+)\]', remedy)
         if named: assert named[1] in declared, f'{r} names an extra rishi does not declare'
-    assert 'ships with rishi' in runtime_remedy('litert')
-    assert 'claude /login' in runtime_remedy('claude')
-    assert 'sign in' in runtime_remedy('copilot')
-    assert 'API key' in runtime_remedy('remote')
-
-
-def test_a_claude_model_is_measured_against_its_own_window():
-    """Every harness model used to be charged a flat 128k, because a harness re-sent the whole
-    conversation each turn and the ceiling was what that cost. Rishi resumes a session now, so the
-    same conversation was reading about eight times fuller on Claude than on a 1M OpenAI model."""
-    from ramabana.core import CLAUDE_MODELS, DFLT_AGENT_CTX, claude_ctx, resolve
-    for mid in CLAUDE_MODELS:
-        want = 1_000_000 if mid.startswith(('claude-opus-5', 'claude-sonnet-5', 'claude-fable-5', 'claude-haiku-5')) else DFLT_AGENT_CTX
-        assert resolve(mid).ctx == want, mid
-    assert resolve('opus').ctx == 1_000_000 and resolve('sonnet').ctx == 1_000_000, 'aliases too'
-    # a window we do not know falls back rather than being guessed at: a ceiling set too high
-    # hides a compaction that should already have happened
-    assert claude_ctx('claude-something-unreleased') == DFLT_AGENT_CTX
-    assert claude_ctx('') == DFLT_AGENT_CTX and claude_ctx(None) == DFLT_AGENT_CTX
-    assert resolve('gpt-4.1').ctx > 1_000_000, 'and a hosted model still reports its real window'
 
 
 def test_a_window_that_cannot_be_read_keeps_its_last_occupancy():

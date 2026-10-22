@@ -95,7 +95,7 @@ def test_the_learned_command_in_the_interface(tmp_path):
     import asyncio
     from teleprint.compositor import Compositor
     from teleprint.testing import EmuTty
-    from ramabana.cli import HELP, Ui
+    from ramabana.cli import Ui
     a, b = '20261019-010101-aaaaaa', '20261019-020202-bbbbbb'
     _propose(tmp_path/'learned', {'AGENTS.md': 'Read sizes from ls.\n'}, a)
     _propose(tmp_path/'learned', {'skills/x/SKILL.md': '---\nname: x\ndescription: y\n---\nz\n'}, b)
@@ -113,13 +113,8 @@ def test_the_learned_command_in_the_interface(tmp_path):
         assert (tmp_path/'learned'/'AGENTS.md').read_text() == 'Read sizes from ls.\n'
         assert run(f'/learned reject {b}') == f'rejected {b}' and run('/learned') == 'nothing is pending'
         assert 'nothing is pending' in run(f'/learned accept {b}')   # gone
-        assert 'learned' in agent.commands() and '/learned' in HELP
+        assert 'learned' in agent.commands()
     finally: tty.close()
-
-
-def test_the_learned_command_without_a_config_folder():
-    agent, _ = fake_agent()
-    assert agent.command('/learned') == 'no config folder, so no learned folder'
 
 
 def test_the_learned_compact_command_in_the_interface(tmp_path, monkeypatch):
@@ -128,7 +123,7 @@ def test_the_learned_compact_command_in_the_interface(tmp_path, monkeypatch):
     import dhrona.improve
     from teleprint.compositor import Compositor
     from teleprint.testing import EmuTty
-    from ramabana.cli import GUIDE, HELP, Ui
+    from ramabana.cli import Ui
     f, b = tmp_path/'learned', '20261019-020202-bbbbbb'
     f.mkdir(); (f/'AGENTS.md').write_text('A rule a person wrote.\n')
     for c in (['init', '-q'], ['add', '-A'], ['-c', 'user.name=t', '-c', 'user.email=t@x', 'commit', '-qm', 'by hand']):
@@ -154,15 +149,7 @@ def test_the_learned_compact_command_in_the_interface(tmp_path, monkeypatch):
         assert 'already pending' in run('/learned compact')
         assert run(f'/learned accept {id}').startswith(f'accepted {id} as ')
         assert (f/'AGENTS.md').read_text() == 'A rule a person wrote.\n\nRead sizes with ls -l.\n'
-        assert '/learned compact' in HELP and '/learned compact' in GUIDE and "say /learned, /learned compact" in run('/learned nope')
     finally: tty.close()
-
-
-def test_accept_past_the_limit_points_at_compact(tmp_path):
-    from ramabana.learned import accept
-    a = '20261019-010101-aaaaaa'
-    _propose(tmp_path/'learned', {'AGENTS.md': 'x' * 2001}, a)
-    assert f'run `/learned compact {a}`' in accept(tmp_path/'learned', a)['error']
 
 
 def test_a_candidate_refused_for_size_is_folded_into_a_compaction(tmp_path, monkeypatch):

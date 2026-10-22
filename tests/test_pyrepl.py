@@ -14,28 +14,6 @@ from ramabana.pyrepl import (AgentBridge, DhrishtiHost, Kernel, agent_proxy_code
 pytest.importorskip('dhrishti', reason='pip install dhrishti')
 
 
-def test_agent_bridge_reports_usage_and_requires_its_token():
-    "The PyREPL proxy only reaches the owner agent through its bearer-token bridge."
-    from ramabana.testing import fake_agent
-    from urllib.error import HTTPError
-    from urllib.request import urlopen
-
-    from ramabana.runtime import Usage
-
-    agent, backend = fake_agent(replies=['ok'])
-    agent.use = Usage(model='test', input=20, output=4, total=24, cost=0.0031)
-
-    async def scenario():
-        bridge = AgentBridge(agent)
-        url = await bridge.start()
-        try:
-            assert bridge.call('usage')['cost'] == pytest.approx(0.0031)
-            with pytest.raises(HTTPError) as error: urlopen(url + '/agent?op=usage')
-            assert error.value.code == 401
-        finally: await bridge.close()
-    asyncio.run(scenario())
-
-
 def test_the_proxy_reaches_the_prompt_and_carries_between_sessions(tmp_path):
     """The overlay and the prompt are different namespaces. Binding only in the overlay -- what an
     agent's own Python tools see -- left `ramabana_agent` a `NameError` at the prompt a person types

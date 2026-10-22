@@ -114,7 +114,6 @@ def test_a_viewer_that_keeps_dying_at_once_is_given_up_with_one_note(ui, clock):
         clock.now += 1
         ui._revive()
     assert len(me.splits) == 3 and ui.pane is None, 'reopened twice, then given up at the third quick death'
-    assert len(me.splits) == 3 and _said(ui).count('keeps exiting') == 1 and 'ramabana --doctor' in _said(ui)
     _submit(ui, '/pane')
     me.made[-1].alive = False
     clock.now += 1

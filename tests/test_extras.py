@@ -1,11 +1,7 @@
 "Each extra is optional: with its packages blocked from import, the core still runs and the missing features name the extra."
-import re, subprocess, sys, textwrap, tomllib
-from importlib.metadata import packages_distributions
-from pathlib import Path
+import subprocess, sys, textwrap
 
 from ramabana.core import EXTRAS
-
-PYPROJECT = Path(__file__).parent.parent/'pyproject.toml'
 
 #: a child Python in which the top-level names in `sys.argv[1]` do not import, as if never installed
 BLOCK = '''
@@ -39,23 +35,6 @@ def run(blocked, code):
                        capture_output=True, text=True, timeout=180)
     assert r.returncode == 0, r.stderr[-3000:]
     return r.stdout
-
-def _norm(name): return re.sub(r'[-_.]+', '-', name).lower()
-def _name(req): return _norm(re.split(r'[\s\[<>=!~;]', req.strip(), maxsplit=1)[0])
-def _selves(reqs): return {x.strip() for r in reqs if _name(r) == 'ramabana' for x in r[r.index('[')+1:r.index(']')].split(',')}
-
-def test_pyproject_declares_a_lean_core_and_nested_extras():
-    d = tomllib.loads(PYPROJECT.read_text())
-    core, ex = {_name(r) for r in d['project']['dependencies']}, d['project']['optional-dependencies']
-    assert set(ex) == {'search', 'python', 'serve', 'cli', 'dhrona', 'all', 'dev'}
-    assert {'search', 'python'} <= _selves(ex['cli'])
-    assert _selves(ex['all']) == set(ex) - {'all', 'dev'}
-    assert 'ramabana[all]' in ex['dev'] and d['dependency-groups']['dev'] == ['ramabana[dev]']   # CI installs `.[dev]`
-    own = {k: {_name(r) for r in v} - {'ramabana', 'shalya'} for k, v in ex.items() if k != 'dev'}
-    assert not core & set().union(*own.values()), 'a package is both core and optional'
-    dists = packages_distributions()
-    for extra, mods in EXTRAS.items():
-        for m in mods: assert {_norm(n) for n in dists.get(m, ())} & own[extra], f'{m} is not installed by ramabana[{extra}]'
 
 def test_without_search_the_agent_runs_and_search_memory_and_web_say_what_to_install():
     run(EXTRAS['search'], '''

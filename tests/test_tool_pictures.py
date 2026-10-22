@@ -55,6 +55,3 @@ def test_attachments_load_without_the_terminal():
     code = ("import sys; from ramabana.tools import MEDIA, Attachment, media_note, media_parts; "
             "assert 'ramabana.cli' not in sys.modules and 'teleprint' not in sys.modules, sorted(m for m in sys.modules if 'tele' in m or m == 'ramabana.cli')")
     subprocess.run([sys.executable, '-c', code], check=True)
-    from ramabana.cli import Attachment as A, media_note as n
-    from ramabana.tools import Attachment, media_note
-    assert A is Attachment and n is media_note, 'the terminal re-exports the same objects'

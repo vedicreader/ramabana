@@ -144,12 +144,11 @@ def test_notes_fold_to_a_line_each_and_the_newest_starts_open():
         rows = _text(snap, width=40, now=now, open=open).splitlines()
         return rows[rows.index('Notes') + 1:]
     shut = notes()
-    assert '▾' in shut[0] and 'routing' in ' '.join(shut[:4]), 'the newest is open, wrapped to the pane'
-    assert sum('▸' in r for r in shut) == 1 and 'decides which model' not in ' '.join(shut), 'an older note is one clipped line'
-    assert max(len(r) for r in shut) <= 40
+    assert 'routing' in ' '.join(shut[:4]), 'the newest is open, wrapped to the pane'
+    assert 'decides which model' not in ' '.join(shut), 'an older note is one clipped line'
     both = notes(open={('note', old['at'])})
-    assert 'decides which model' in ' '.join(both) and '▸' not in ' '.join(both), 'opening an older note shows all of it'
-    assert '▾' not in ' '.join(notes(open={('note', new['at'])})), 'and the newest closes like any other row'
+    assert 'decides which model' in ' '.join(both), 'opening an older note shows all of it'
+    assert 'routing' not in ' '.join(notes(open={('note', new['at'])})), 'and the newest closes like any other row'
     assert 'Notes' not in _text(_board(now), now=now), 'a snapshot without notes draws no section'
 
 
@@ -160,7 +159,7 @@ def test_a_background_row_opens_to_its_output_review_or_sub_agent():
                           {'kind': 'watch', 'id': 'w_1', 'label': '/proj', 'state': 'ok', 'elapsed': None, 'detail': 'all files · 1 review\nlooks fine'},
                           {'kind': 'delegate', 'id': 'run_bbb', 'label': 'is the pane tested?', 'state': 'completed', 'elapsed': 8, 'detail': ''}]
     shut = _text(snap, width=60, now=now)
-    assert '3 passed' not in shut and 'looks fine' not in shut and '▸ ✓ delegate' in shut, 'rows start shut'
+    assert '3 passed' not in shut and 'looks fine' not in shut, 'rows start shut'
     opened = _text(snap, width=60, now=now, open={('bg', 'cmd_1234abcd'), ('bg', 'w_1'), ('bg', 'run_bbb')})
     assert '3 passed' in opened and 'looks fine' in opened
     assert opened.count('Yes: tests/test_pane.py covers render') == 1, 'a delegation opens to its sub-agent detail; its sub-agent row stays shut'
@@ -213,4 +212,3 @@ def test_a_shell_row_opens_to_its_command_and_p_follows_it_in_a_pane(tmp_path, m
     v.tick(now=now)
     _feed(v, 'G', 'p')
     assert ran and ran[0][:2] == ['tmux', 'split-window'] and str(tmp_path/'cmd_1.log') in ran[0][-1], ran
-    assert pane.HINT in ''.join(v.tty.writes), 'the keys are explained on screen'

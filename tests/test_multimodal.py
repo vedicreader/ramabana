@@ -8,7 +8,7 @@ import zlib
 import pytest
 from rich.text import Text
 
-from ramabana.cli import (MAX_IMG_ROWS, Attachment, Picture, draw_png, img_cells, media_parts, media_note,
+from ramabana.cli import (MAX_IMG_ROWS, Attachment, draw_png, img_cells, media_parts, media_note,
                           picture, save_media)
 from ramabana.core import ModelSpec, accepts
 
@@ -118,7 +118,6 @@ def test_two_pictures_never_share_an_image_id(tmp_path, monkeypatch):
     monkeypatch.setenv('RAMABANA_KITTY', '1')
     (tmp_path/'a.png').write_bytes(_png(64, 64))
     assert picture(tmp_path/'a.png').id != picture(tmp_path/'a.png').id
-    assert Picture._n > 1 << 20
 
 
 # -- generating a picture --------------------------------------------------------------

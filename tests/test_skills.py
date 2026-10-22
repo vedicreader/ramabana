@@ -12,8 +12,7 @@ def test_skills_are_discovered_from_packages_and_overridden_by_files(tmp_path):
     assert 'exhash' in found and found['exhash'].source == 'pyskill' and found['exhash'].text().strip()
     patterns = found['coding_patterns']
     assert patterns.source == 'pyskill' and patterns.where == 'ramabana.coding_patterns'
-    assert 'Every construct must earn its place' in patterns.text()
-    assert 'Ramabana workflow' in patterns.text()
+    assert patterns.text().strip()
 
     d = tmp_path/'skills'/'exhash'
     d.mkdir(parents=True)

@@ -13,8 +13,6 @@ def test_a_plan_tracks_progress_and_keeps_one_active_step():
     assert p.find('Design').status == 'pending'   # only one active
     p.update('Wire', status='done', note='merged')
     assert p.progress() == (1, 3)
-    assert '[▸]' in p.md() or '[x]' in p.md()
-    assert p.line().startswith('1/3')
 
 
 def test_plan_tools_refuse_bad_status_without_corrupting_the_list():

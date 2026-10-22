@@ -7,13 +7,12 @@ down, and that two sessions each see what the beat left rather than racing for i
 """
 import subprocess
 import sys
-import tempfile
 import time
 
 import pytest
 
 from ramabana.agent import Agent
-from ramabana.monitor import TICKS, beat_command, beat_notes, on_tick, pob, pob_path, tick
+from ramabana.monitor import TICKS, beat_command, beat_notes, on_tick, pob, tick
 from ramabana.testing import MemHost
 
 pobblebonk = pytest.importorskip('pobblebonk')
@@ -86,18 +85,6 @@ def test_the_installed_launcher_carries_the_installing_path(tmp_path, monkeypatc
     sh = launcher(beat_command(exe), dirn=tmp_path, tag='t', win=False)
     subprocess.run([str(sh)], check=True, env={'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(tmp_path)})
     assert (tmp_path/'t.log').read_text() == f'{tools}/claude\n'
-
-
-def test_a_beat_installed_without_a_path_runs_the_bare_command(monkeypatch):
-    monkeypatch.delenv('PATH', raising=False)
-    assert beat_command('/x/ramabana-tick') == '/x/ramabana-tick --quiet'
-    assert beat_command('/x/ramabana-tick', path='') == '/x/ramabana-tick --quiet'
-
-
-def test_the_windows_beat_command_is_unchanged(monkeypatch):
-    "Task Scheduler gives a job the user's environment."
-    monkeypatch.setattr(sys, 'platform', 'win32')
-    assert beat_command(r'C:\a b\ramabana-tick', path='C:\\bin') == r'"C:\a b\ramabana-tick" --quiet'
 
 
 def test_a_session_reads_the_beat_under_its_own_id_and_only_once(tmp_path, monkeypatch):

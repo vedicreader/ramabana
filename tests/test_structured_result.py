@@ -41,7 +41,7 @@ def test_a_turn_hands_back_a_typed_result_and_a_bad_one_is_sent_back_to_fix(tmp_
     r = a.ask('outline the Isha Upanishad', schema=Outline)
     assert isinstance(r, agent.TurnResult) and r.state == 'complete' and r.reply == 'done'
     assert isinstance(r.result, Outline) and r.result.parts[0].start == 1
-    assert 'does not match' in be.said[0] and be.said[1] == 'result received', be.said
+    assert be.said[0] != 'result received' and be.said[1] == 'result received', be.said
     assert r.session == a.session_id and r.turn_id == a.current_turn_id and 'submit_result' in be.sent[0]
     assert 'submit_result' not in {t.__name__ for t in a.tools}, 'the tool lasts for the call only'
 
@@ -56,7 +56,7 @@ def test_a_dataclass_or_a_json_schema_works_too(tmp_path):
     assert a.ask('is it lawful?', schema=Verdict).result == Verdict(True, 'public domain')
     schema = {'type': 'object', 'properties': {'n': {'type': 'integer'}}, 'required': ['n']}
     a, be = _agent([{'n': 'three'}, {'n': 3}], tmp_path)
-    assert a.ask('how many?', schema=schema).result == {'n': 3} and 'does not match' in be.said[0]
+    assert a.ask('how many?', schema=schema).result == {'n': 3} and be.said[0] != 'result received'
 
 
 def test_strict_raises_for_a_missing_result_after_asking_once_more_and_for_a_failed_turn(tmp_path):

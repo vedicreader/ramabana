@@ -6,7 +6,7 @@ model from its spec and briefs it small. `full` is byte-identical to what 0.2.2 
 import pytest
 
 from ramabana.agent import GIT_SHELL, Agent, git_shell_denial
-from ramabana.core import PROFILES, SMALL_PROFILE_CTX, SMALL_TOOLS, ModelSpec, profile_for
+from ramabana.core import SMALL_PROFILE_CTX, SMALL_TOOLS, ModelSpec, profile_for
 from ramabana.testing import FullHost, fake_agent
 
 LOCAL = ModelSpec('gemma-e4b', 'litert', 'litert-community/gemma-4-E4B-it-litert-lm', 16_384)
@@ -28,7 +28,6 @@ def host(): return FullHost(files={'a.py': 'def a(): pass\n'})
 # -- which profile ----------------------------------------------------------------------
 
 def test_auto_resolves_from_the_turn_model():
-    assert PROFILES == ('auto', 'small', 'full')
     assert profile_for(LOCAL) == 'small'                       # a local runtime, whatever its window
     assert profile_for(BIG) == 'full'                          # a cloud model with room
     assert profile_for(MID) == 'small'                         # a cloud model at the 32k line

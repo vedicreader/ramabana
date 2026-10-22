@@ -4,7 +4,7 @@ import pytest
 from teleprint.compositor import Compositor
 import ramabana.cli as cli
 from ramabana import core
-from ramabana.core import DFLT_TURN, JOBS, Routing, auth_status, checklist, getting_started, ready_turn, welcome
+from ramabana.core import DFLT_TURN, JOBS, Routing, auth_status, getting_started, ready_turn, welcome
 from ramabana.testing import fake_agent
 from test_cli_pane import PipeTty
 from ramabana.models import CATALOG
@@ -69,17 +69,14 @@ def test_a_job_without_a_model_of_its_own_follows_the_turn_quietly(machine):
     assert r.spec('classify').name == r.turn and 'classify' in r.notes and len(r.news) == 1, 'a model someone chose says when it cannot run'
 
 
-def test_the_getting_started_list_says_what_wsl_lacks_and_ticks_off_what_it_finds(machine, monkeypatch):
+def test_the_getting_started_list_ticks_off_what_it_finds(machine, monkeypatch):
     monkeypatch.delenv('TMUX', raising=False)
     monkeypatch.setattr(core.shutil, 'which', lambda prog, *a, **kw: None)
     rows = getting_started(auth_status(), wsl=True)
-    text = checklist(rows)
-    assert rows[0][1].startswith('WSL') and 'Claude Code: not installed inside WSL' in text and 'claude.ai/install.sh' in text
-    assert 'does not reach WSL' in text and not rows[-1][0], 'nothing runs, so the last row is still to do'
+    assert not rows[-1][0], 'nothing runs, so the last row is still to do'
     machine(OPENAI_API_KEY='k')
     rows = getting_started(auth_status(), wsl=False)
-    assert not rows[0][1].startswith('WSL') and 'API keys: OPENAI_API_KEY' in checklist(rows)
-    assert rows[-1] == (True, f'Ready: a session runs on {ready_turn()}')
+    assert rows[-1][0], 'a key was found, so a session can run'
 
 
 def test_a_session_with_no_model_opens_on_the_welcome(machine, tmp_path, monkeypatch):

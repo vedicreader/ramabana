@@ -224,10 +224,16 @@ def test_an_ask_can_wait_for_a_page_and_a_timeout_can_allow():
     assert not strict.request('edit_file', {'path': 'd.py'})
 
 
-def test_mk_agent_passes_the_wait_policies_to_its_approvals(tmp_path):
-    a, _ = agent.mk_agent([str(tmp_path)], cfg=tmp_path, timeout=30, no_listener='wait', on_timeout='allow', extensions=False, subagents=False)
-    ap = a.approvals
-    assert (ap.timeout, ap.no_listener, ap.on_timeout) == (30, 'wait', 'allow')
+def test_an_agent_built_to_wait_parks_an_ask_until_a_page_listens(tmp_path):
+    a, _ = agent.mk_agent([str(tmp_path)], cfg=tmp_path, timeout=30, no_listener='wait', extensions=False, subagents=False)
+    assert 'run_shell' in {f.__name__ for f in a.tools} and 'run_shell' in a.approvals.tools
+    out, shown = {}, []
+    t = threading.Thread(target=lambda: out.update(r=a.approvals.request('run_shell', {'command': 'make'})), daemon=True); t.start()
+    assert _until(lambda: len(a.approvals.waiting) == 1) and 'r' not in out, 'parked, not refused'
+    a.approvals.listen(on_ask=shown.append)
+    assert [x.args['command'] for x in shown] == ['make']
+    a.approvals.answer(shown[0].id, True); t.join(2)
+    assert bool(out['r'])
     a.close()
 
 

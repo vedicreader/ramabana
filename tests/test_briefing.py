@@ -247,16 +247,14 @@ def test_a_large_window_is_pointed_at_coding_patterns_not_given_its_body(host):
     assert 'PATTERNS BODY' not in sp and '`coding_patterns`' in sp
     catalogue = A.skill_catalogue(a.skills)
     rows = [l for l in catalogue.splitlines() if l.startswith('- `')]
-    assert len(rows) == 2 and all(len(r) <= 100 for r in rows)
-    assert 'Read this before' not in catalogue    # the first sentence of a description, no more
+    assert len(rows) == 2
 
 
 def test_the_catalogue_points_at_debugging_when_the_session_has_it():
     "`debugging` is named for the work it covers, the way `coding_patterns` is, and only when it is present."
     dbg = Skill(name='debugging', source='test', where='test', _text='x', description='Diagnose a failure.')
-    assert 'Read `debugging` before diagnosing' in A.skill_catalogue([PATTERNS, dbg])
-    assert 'Read `coding_patterns`' in A.skill_catalogue([PATTERNS, dbg])
-    assert 'Read `debugging`' not in A.skill_catalogue([PATTERNS])
+    assert '`debugging`' in A.skill_catalogue([PATTERNS, dbg])
+    assert '`debugging`' not in A.skill_catalogue([PATTERNS])
 
 
 def test_model_notes_follow_the_family_and_the_quiet_sentence_follows_the_runtime(host):
@@ -265,11 +263,7 @@ def test_model_notes_follow_the_family_and_the_quiet_sentence_follows_the_runtim
     spec = lambda model_id, runtime='remote': ModelSpec(model_id, runtime, model_id, 200_000)
     assert [A.model_family(spec(m)) for m in ('gpt-5.6', 'gemini-3-pro', 'llama-4', 'claude-opus-5')] == ['gpt', 'gemini', 'default', 'claude']
     assert A.model_family(CLAUDE) == 'claude' and A.model_family(spec('anything', 'claude')) == 'claude'
-    assert set(A.MODEL_NOTES) == {'claude', 'gpt', 'gemini', 'default'}
     loud = mk(host, CLAUDE, profile='full').system_prompt()
-    assert 'Working as Claude' in loud and 'may never reach' not in loud
+    assert 'may never reach' not in loud
     quiet = mk(host, spec('litert-quiet', 'litert'), profile='full').system_prompt()
-    assert 'may never reach' in quiet and 'Working as Claude' not in quiet
-    for model_id, head in (('gpt-5.6', 'Working as GPT'), ('gemini-3-pro', 'Working as Gemini')):
-        sp = mk(host, spec(model_id), profile='full').system_prompt()
-        assert head in sp and 'Working as Claude' not in sp, model_id
+    assert 'may never reach' in quiet

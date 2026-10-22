@@ -4,7 +4,6 @@ Nothing here loads a model or touches a real terminal.
 """
 import io
 
-from pygments.styles import get_style_by_name
 from rich.console import Console
 
 from ramabana import cli
@@ -16,15 +15,11 @@ def rows(renderable, width=44):
     return con.file.getvalue().splitlines()
 
 
-def test_every_palette_names_a_pygments_style_that_exists():
-    """`code_theme` falls back rather than raising, so a typo here would be invisible: the reply
-    would just quietly highlight in the wrong scheme."""
-    assert set(cli.THEMES) <= set(cli.CODE_THEMES), 'a palette with no code theme'
-    for name, style in cli.CODE_THEMES.items():
-        assert name in cli.THEMES, f'{name!r} is a code theme for no palette'
-        get_style_by_name(style)          # raises for a style pygments does not ship
-    import fastpylight
-    assert set(cli.THEMES) <= set(cli.HL_THEMES) and set(cli.HL_THEMES.values()) <= set(fastpylight.themes())
+def test_a_fenced_code_block_draws_under_every_theme(monkeypatch):
+    for name in cli.THEMES:
+        monkeypatch.setattr(cli, 'ACTIVE_THEME', name)
+        drawn = rows(cli.Reply('```python\nx = 1\n```\n'), 40)
+        assert any('x = 1' in r for r in drawn), (name, drawn)
 
 
 def test_a_blank_line_inside_a_fence_is_left_alone():

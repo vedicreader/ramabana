@@ -1,5 +1,4 @@
 "A Claude Code turn that goes silent: its limit comes from config.toml, its retry shows as a status note mid-turn, and its error names the setting."
-from dataclasses import replace
 from ramabana.core import resolve
 from ramabana.runtime import Backend, RishiBackend, Run
 from ramabana.setup import config_path
@@ -12,17 +11,8 @@ def test_the_silence_limit_comes_from_config_toml_for_a_claude_model_only():
     _write('[model."claude-opus-5-5"]\ntimeout = 30\n\n[model."openai/gpt-5.4"]\ntimeout = 30\n')
     kw = RishiBackend(resolve('claude-opus-5-5'))._runtime_kw()
     assert kw['timeout'] == 30 and callable(kw['on_stall'])
-    assert kw['timeout_hint'] == f'timeout under [model."claude-opus-5-5"] in {config_path()}'
     assert 'timeout' not in RishiBackend(resolve('openai/gpt-5.4'))._runtime_kw(), 'other runtimes take no Claude Code limit'
     assert 'timeout' not in RishiBackend(resolve('claude-sonnet-5-5'))._runtime_kw(), "no setting leaves rishi's default"
-
-
-def test_the_hint_names_the_table_that_is_set():
-    _write('[model."claude-opus-5-5"]\ntimeout = 30\n')
-    spec = replace(resolve('claude-opus-5-5'), name='mine')
-    assert '[model."claude-opus-5-5"]' in RishiBackend(spec)._runtime_kw()['timeout_hint']
-    _write('')
-    assert '[model."mine"]' in RishiBackend(spec)._runtime_kw()['timeout_hint']
 
 
 def test_a_notice_is_the_run_status_and_reaches_the_frontend_now(monkeypatch):

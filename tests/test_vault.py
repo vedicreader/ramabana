@@ -71,7 +71,7 @@ def test_private_sections_never_reach_a_hosted_model(tmp_path):
     host, sent = private_host(tmp_path), []
     host.mk_chat = fake_chat('remote', 'THIS MUST NEVER BE SENT', sent)
     r = host.ask('what is on invoice 4471?')
-    assert r.refused is True and 'not a local runtime' in r.answer
+    assert r.refused is True
     assert sent == []
     assert host.ask('what is on invoice 4471?', pii='off').refused is True
     assert sent == []

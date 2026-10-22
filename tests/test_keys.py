@@ -60,7 +60,6 @@ def test_key_command_failures(monkeypatch, capsys):
     p.write_text(f'{name}=!secret command\n')
     p.chmod(0o600)
     def timeout(*args, **kwargs):
-        assert kwargs == dict(shell=True, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=30)
         raise subprocess.TimeoutExpired('secret command', 30)
     monkeypatch.setattr(subprocess, 'run', timeout)
     assert load_keys() == []

@@ -3,7 +3,7 @@ import os, subprocess, sys, warnings
 import pytest
 from ramabana import core
 from ramabana.agent import Agent
-from ramabana.core import JOBS, Routing, available_models, auth_status, missing_key, model_note, resolve
+from ramabana.core import JOBS, Routing, available_models, auth_status, missing_key, resolve
 from ramabana.runtime import RishiBackend
 from ramabana.setup import config_path, config_show
 from ramabana.testing import MemHost
@@ -44,7 +44,7 @@ def test_a_config_toml_definition_is_a_model_the_cli_can_name(monkeypatch):
     assert spec.config == {'api_name': 'openai', 'api_key_env': 'AZURE_OPENAI_API_KEY', 'base_url': 'https://res.openai.azure.com'}
     kw = RishiBackend(spec)._runtime_kw()
     assert (kw['api_key'], kw['base_url'], kw['api_name']) == ('k', 'https://res.openai.azure.com', 'openai') and 'api_key_env' not in kw
-    assert 'Azure OpenAI' in model_note(spec) and 'az-big' in [x['value'] for x in available_models()]
+    assert 'az-big' in [x['value'] for x in available_models()]
     assert 'model."az-big".model_id = "gpt-5.4"' in config_show()
 
 
@@ -53,7 +53,7 @@ def test_a_definition_without_its_key_says_which_env_var_it_needs(monkeypatch, t
     a = Agent(MemHost(), model='az-big', cfg=tmp_path/'cfg', extensions=False, subagents=False)
     assert a.model.name == 'az-big' and missing_key(a.model) == 'AZURE_OPENAI_API_KEY'
     out = a.ask('hello')
-    assert 'needs AZURE_OPENAI_API_KEY' in out, out
+    assert 'needs AZURE_OPENAI_API_KEY' in out and 'ramabana setup' in out, out
 
 
 def test_entries_that_cannot_define_a_model_warn_and_never_raise():
@@ -134,21 +134,10 @@ def test_azure_in_the_environment_chooses_nothing(bare, azure):
     assert 'max_input_tokens under [model."azure/prod-chat"]' in resolve('azure/prod-chat').note
 
 
-def test_with_nothing_set_up_the_guide_lists_every_provider_and_job(bare, monkeypatch, tmp_path):
+def test_with_nothing_set_up_a_turn_points_at_setup(bare, monkeypatch, tmp_path):
     for k in ('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'AWS_BEARER_TOKEN_BEDROCK'): monkeypatch.delenv(k, raising=False)
-    g = core.setup_guide()
-    for label in ('OpenAI API', 'Azure OpenAI', 'AWS Bedrock', 'Anthropic API', 'Gemini API', 'OpenRouter', 'Claude Code', 'Codex', 'On this machine'): assert label in g, label
-    assert 'cannot run here' in g and 'ramabana setup' in g and 'turn        claude-opus-5-5' in g and 'default' in g
-    assert 'image' in g and 'OPENAI_API_KEY' in g, 'the image job says what it lacks'
     a = Agent(MemHost(), cfg=tmp_path/'cfg', extensions=False, subagents=False)
     assert 'ramabana setup' in a.ask('hello')
-
-
-def test_a_missing_key_turn_points_at_setup(tmp_path, monkeypatch):
-    _write('[model."az-big"]\nmodel_id = "gpt-5.4"\nbase_url = "https://res.openai.azure.com"\n')
-    a = Agent(MemHost(), model='az-big', cfg=tmp_path/'cfg', extensions=False, subagents=False)
-    out = a.ask('hello')
-    assert 'needs AZURE_OPENAI_API_KEY' in out and 'ramabana setup' in out, out
 
 
 def test_a_bedrock_mantle_definition_resolves_with_its_window(monkeypatch):

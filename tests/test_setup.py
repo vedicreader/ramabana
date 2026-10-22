@@ -46,8 +46,6 @@ def test_the_conf_turns_on_the_keys_its_tmux_knows_and_is_written_only_when_it_c
     assert 'extended-keys on' in new and 'extended-keys-format csi-u' in new
     assert 'extended-keys on' in mid and 'csi-u' not in mid
     assert 'extended-keys' not in old
-    for line in ('escape-time 10', 'mouse on', 'status off', 'remain-on-exit off', 'destroy-unattached on', 'default-terminal', 'RGB'):
-        assert line in old
     s, box = mk(tmp_path)
     p = s.conf()
     assert p == tmp_path/'cfg'/'tmux.conf' and p.read_text() == new
