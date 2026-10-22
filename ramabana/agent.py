@@ -34,7 +34,7 @@ from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import DFLT_TURN, needs_setup, accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
-from .setup import config_path, config_reset, config_set, config_show, load_config, set_table, setting
+from .setup import PANE_LINGER, config_path, config_reset, config_set, config_show, load_config, set_table, setting
 from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
@@ -1276,7 +1276,7 @@ class Agent:
         self.on_warm = None      # callable(warm_report) once a session is seeded
         self._monitor_thread = None
         self.monitors = Monitors(host, get_backend=lambda: self._be_or_none('subagent'), get_tools=self._sub_plain, log_dir=lambda: self.runs_dir)
-        self._panes = {}
+        self._panes, self._pane_done = {}, {}
         self.lock = threading.Lock()
 
     @property
@@ -4096,7 +4096,19 @@ def watch(self:Agent, target=''):
     if target in self._panes: return f'already watching {target} in pane {self._panes[target]}'
     try: self._panes[target] = self.host.open_pane(_tail(log), title=target)
     except Exception: return f'no tmux here; in another terminal run: {_tail(log)}'
+    if (r := self.run(target)) is not None and r.terminal: self._pane_done[target] = float('inf')   # asked for after the run ended: it stays until `/unwatch`
     return f'watching {target} in pane {self._panes[target]}'
+
+@patch
+def reap_panes(self:Agent, now=None):
+    "Close the `/watch` pane of each run that ended, or left the list, `PANE_LINGER` seconds ago, unless `pane_close_done` is false; `monitors` and panes it did not open stay."
+    if not setting('pane_close_done', True): return []
+    now, closed = time.monotonic() if now is None else now, []
+    for k in list(self._panes):
+        if k == 'monitors': continue
+        if (r := self.run(k)) is not None and not r.terminal: self._pane_done.pop(k, None); continue
+        if now - self._pane_done.setdefault(k, now) >= PANE_LINGER and self.unwatch(k).startswith('closed'): closed.append(k)
+    return closed
 
 _AT_FILE = re.compile(r'(?<!\S)@(\S+)')
 _SUBST = re.compile(r'\$(\d+)|\$ARGUMENTS')
@@ -4144,6 +4156,7 @@ def unwatch(self:Agent, target='all'):
     closed = []
     for k in (list(self._panes) if target == 'all' else [target]):
         if k not in self._panes: continue
+        self._pane_done.pop(k, None)
         try: self.host.close_pane(self._panes.pop(k)); closed.append(k)
         except Exception: pass
     return f"closed {', '.join(closed)}" if closed else 'nothing was being watched'

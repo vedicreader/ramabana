@@ -21,6 +21,7 @@ from shalya.core import clip, diff_text, one_line as _1
 
 from .hl import diff_rich
 from .monitor import _counts, _rel
+from .setup import PANE_LINGER
 
 # %% auto #0
 __all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'SHELL_LINES', 'PALETTE', 'ENTER', 'LEAVE',
@@ -260,7 +261,12 @@ def talk_mark(path):
     "The file a viewer writes the run id (or `main`) in when the user picks who to talk to; the CLI reads and removes it."
     return Path(path).with_suffix('.talk')
 
-def _tmux(*args): subprocess.Popen(['tmux', *args], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def _tmux(*args):
+    "Run tmux with `args` and return what it printed; '' when tmux is missing, slow or refuses."
+    try: return subprocess.run(['tmux', *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=2).stdout.strip()
+    except (OSError, subprocess.SubprocessError): return ''
+
+_DONE = ('completed', *_STOPPED)   #: the states of a run that has ended
 
 class PaneTty(RealTty):
     "`RealTty` whose `read` returns None at the end of input, where `RealTty.read` would spin."
@@ -275,7 +281,7 @@ HINT = 'click talks or opens · p tails a shell · q quits'   #: the board's las
 class Viewer:
     "The board for the snapshot at `path`, drawn on `tty`: the last good snapshot, the open rows, the cursor and the scroll."
     def __init__(self, path, tty, tmux=_tmux):
-        self.path, self.tty, self.parser, self.tmux, self.watching = Path(path), tty, Parser(), tmux, set()
+        self.path, self.tty, self.parser, self.tmux, self.pane = Path(path), tty, Parser(), tmux, None
         self.snap = self.good = self.stamp = self.cursor = self.shown = None
         self.open, self.rows, self.top, self.err, self.done, self.size = set(), [], 0, '', False, tty.size
 
@@ -297,16 +303,45 @@ class Viewer:
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
 
+    def alive(self):
+        "Whether the transcript pane this viewer opened is still in tmux; one the user closed is forgotten."
+        if self.pane and self.pane['id'] in self.tmux('list-panes', '-a', '-F', '#{pane_id}').split(): return True
+        self.pane = None
+        return False
+
+    def show(self, s, chat):
+        "Show the transcript of the running sub-agent `s` in the one pane this viewer opened, a new split left of `chat` when it has none."
+        cmd = f"tail -n 200 -f {shlex.quote(s['log'])}"
+        if not self.alive():
+            if not chat or not (pid := self.tmux('split-window', '-h', '-b', '-P', '-F', '#{pane_id}', '-t', chat, cmd)): return
+            self.pane = {'id': pid, 'run': s['id'], 'since': None}
+        elif self.pane['run'] != s['id']:
+            self.tmux('respawn-pane', '-k', '-t', self.pane['id'], cmd)
+            self.pane.update(run=s['id'], since=None)
+
+    def close_transcript(self):
+        "Kill the transcript pane this viewer opened, if tmux still has it; never any other pane."
+        if self.alive(): self.tmux('kill-pane', '-t', self.pane['id'])
+        self.pane = None
+
+    def reap(self, now=None):
+        "Close the transcript pane `PANE_LINGER` seconds after its run ended or left the board; the snapshot's `close_done` false keeps it."
+        if self.pane is None or self.snap is None or not self.snap.get('close_done', True) or not self.alive(): return
+        s = next((s for s in self.snap.get('subs', []) if s['id'] == self.pane['run']), None)
+        if s is not None and s['state'] not in _DONE: self.pane['since'] = None; return
+        now = time.monotonic() if now is None else now
+        if self.pane['since'] is None: self.pane['since'] = now
+        if now - self.pane['since'] >= PANE_LINGER: self.close_transcript()
+
     def talk(self, key):
-        "Aim the terminal at the row `key` through the `talk_mark`; a sub-agent's transcript opens left of the chat pane, once."
+        "Aim the terminal at the row `key` through the `talk_mark`; a running sub-agent's transcript shows in one pane left of the chat, and `main` closes that pane."
         kind, rid = key
         talk_mark(self.path).write_text(rid)
+        if kind == 'main': return self.close_transcript()
         if kind != 'sub': return
         s = next((s for s in (self.snap or {}).get('subs', []) if s['id'] == rid), None)
-        chat = (self.snap or {}).get('chat_pane')
-        if s is None or not s.get('log') or not chat or rid in self.watching: return
-        self.watching.add(rid)
-        self.tmux('split-window', '-h', '-b', '-t', chat, f"tail -n 200 -f {shlex.quote(s['log'])}")
+        if s is None or not s.get('log') or s['state'] in _DONE: return
+        self.show(s, (self.snap or {}).get('chat_pane'))
 
     def pick(self, key):
         "A click or Enter on `key`: a main or sub-agent row aims the terminal at it, and a sub-agent row also opens."
@@ -371,6 +406,7 @@ class Viewer:
                 return
             for ev in self.parser.feed(data) if data else self.parser.flush(): self.on(ev)
             self.reload()
+            self.reap()
             self.paint(now)
             self.good = self.snap
         except Exception as e: self.snap, self.err = self.good, _1(f'{type(e).__name__}: {e}', 200)

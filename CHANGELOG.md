@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.73
+
+- The `/pane` board keeps one transcript pane. A click on a run shows it in that pane, a click on `main` closes it, and a click on a finished or absent run opens nothing. Before, every click opened a new pane and none closed.
+- A transcript pane closes `PANE_LINGER` (3) seconds after its run finishes or leaves the board, and a `/watch RUN` pane does the same. Only panes Ramabana opened are closed. `pane_close_done` (default on) turns the automatic close off.
+
 ## 0.2.72
 
 - Finished background work wakes an idle agent. When a background run the agent started finishes and the user is idle, the terminal starts a turn with the result, logged as **background**. `auto_turns` is `on`, `report` (the turn reports without changing files) or `off`; by default `on` under the edits and auto approval modes and `report` under ask and off. At most `auto_turns_per_hour` (6) an hour, none for a cancelled run, and none while the user is typing or a turn runs.

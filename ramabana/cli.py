@@ -57,7 +57,7 @@ from .pane import quit_mark, talk_mark, write_snapshot
 from .tools import WRITE_TOOLS, path_write
 from . import hl, setup
 from .hl import HL_THEMES, is_diff
-from .setup import PANE_MODES, SETUP_FIELDS, TMUX_MODES, Setup, config_path, config_reset, keys_path, model_setting, refusal, save_key, setup_cli
+from .setup import PANE_MODES, SETUP_FIELDS, TMUX_MODES, Setup, config_path, config_reset, keys_path, model_setting, refusal, save_key, setting, setup_cli
 import getpass, io
 from datetime import datetime
 from . import __version__
@@ -991,7 +991,8 @@ class Ui:
             self._now_dirty = True
             return
         self._now_at, self._now_dirty = t, False
-        try: write_snapshot(self.agent, p, target=self.target or 'main', chat_pane=getattr(_tmux_pane(self.agent.host), 'id', ''))
+        try: write_snapshot(self.agent, p, target=self.target or 'main', chat_pane=getattr(_tmux_pane(self.agent.host), 'id', ''),
+                                  close_done=bool(setting('pane_close_done', True)))
         except Exception: return   # a snapshot that fails must never stop the animate loop
         self._now_busy = self.agent.busy
 
@@ -2992,7 +2993,8 @@ def talk(self:Ui, arg=''):
 
 @patch
 def poll_talk(self:Ui):
-    "Apply the viewer's `talk_mark` as `/talk` would, and fall back to main once the target has finished."
+    "Apply the viewer's `talk_mark` as `/talk` would, fall back to main once the target has finished, and close the `/watch` panes of finished runs."
+    self.agent.reap_panes()
     if (p := _now_file(self.agent)) is not None and (m := talk_mark(p)).exists() and (arg := m.read_text()):
         m.unlink(missing_ok=True)
         self.talk(arg)

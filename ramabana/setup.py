@@ -15,11 +15,11 @@ from fastcore.xtras import Path
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
            'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'EFFORTS', 'CHANNELS', 'PII_OFF', 'PII_MODES', 'VALUED',
-           'EARLY', 'FLAGS', 'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'Key', 'KEYS', 'MODEL_KEYS',
-           'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE',
-           'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf',
-           'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path', 'keys_path', 'load_keys',
-           'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting', 'set_table',
+           'EARLY', 'FLAGS', 'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'PANE_LINGER', 'Key', 'KEYS',
+           'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'SETUP_FIELDS',
+           'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need', 'tmux_version',
+           'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path', 'keys_path',
+           'load_keys', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting', 'set_table',
            'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset', 'setup_cli',
            'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate', 'save_index',
            'log_index', 'last_index']
@@ -231,6 +231,7 @@ def config_path():
     return Path(os.environ.get('RAMABANA_CONFIG') or CONFIG).expanduser()
 
 KEYS_ENV = 'keys.env'   #: owner-only API keys beside config.toml
+PANE_LINGER = 3.0       #: seconds a finished run's transcript pane stays open, so its last words are seen written
 
 def keys_path():
     "This machine's owner-only key file, beside config.toml."
@@ -292,6 +293,7 @@ _JOB = 'the model the {} job runs on; empty takes the routing default'
 #: every key config.toml knows: its type, the env var (after the prefix) and the flag that beat it, what it sets, and its choices
 KEYS = {
     'learning': Key(bool, '', '--no-learned', "learning: the learned briefing and skills, lessons, start.json and Dhrona's nightly batch"),
+    'pane_close_done': Key(bool, '', '', "close a sub-agent's transcript pane a few seconds after the run ends; false leaves it open"),
     'jobs.turn': Key(str, 'MODEL', '--model', 'the model each turn runs on'),
     **{f'jobs.{j}': Key(str, f'MODEL_{j.upper()}', '', _JOB.format(j)) for j in ('oneshot', 'inline', 'completion', 'classify', 'summary', 'subagent')},
     'jobs.image': Key(str, 'MODEL_IMAGE', '', 'the OpenAI-compatible image model generate_image draws with, such as a [model."NAME"] on Azure'),
@@ -470,7 +472,7 @@ def config_defaults():
     "Every key's built-in default, read from the module that owns it."
     from ramabana.core import AZURE_KEY_ENV, DEFAULT_POLICY, DFLT_IMAGE, DFLT_TURN, DFLT_VIDEO
     from ramabana.runtime import CLAUDE_EFFORT, EST_MARGIN, IMG_TOKENS, KEEP_RECENT, RESERVE
-    d = {'learning': True, 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
+    d = {'learning': True, 'pane_close_done': True, 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
          'window.margin': EST_MARGIN, 'window.image_tokens': IMG_TOKENS, 'window.reserve': RESERVE, 'window.keep_recent': KEEP_RECENT,
          'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'summary', 'runtime.effort': CLAUDE_EFFORT,
          'runtime.tool_channel': '', 'runtime.litert_backend': '', 'subagents.effort': '', 'subagents.tool_channel': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'jobs.image': DFLT_IMAGE, 'jobs.video': DFLT_VIDEO}
