@@ -1205,7 +1205,9 @@ class Agent:
                  profile='auto',            # 'auto', 'small' or 'full'; see `profile_for`
                  warm=None,                 # seed with dhrona's examples; None: off
                  learned=True,              # brief from `<cfg>/learned`; False runs without it
-                 fresh_hint=None):          # what a turn too large for any window tells the user to do, `{session}` its id; None suits any host
+                 fresh_hint=None,           # what a turn too large for any window tells the user to do, `{session}` its id; None suits any host
+                 auto_turns=None,           # 'on', 'report' or 'off': whether finished background work starts a turn; None reads `auto_turns`, else `on` under `edits`/`auto` approvals and `report` otherwise
+                 auto_turns_per_hour=None): # most automatic turns an hour; None reads `auto_turns_per_hour`, else 6
         self.host, self.cfg, self.inline_skills, self.learned = host, cfg, inline_skills, learned
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
         if profile not in PROFILES: raise ValueError(f'profile must be one of {", ".join(PROFILES)}, not {profile!r}')
@@ -1224,6 +1226,7 @@ class Agent:
         if model: self.routing.set(model)
         self.approvals, self.tool_max_len, self.subagents, self.verify = approvals, tool_max_len, subagents, verify
         self._bg_done, self._session_started, self.last_verify = [], False, ''
+        self.auto_turns, self.auto_turns_per_hour, self._wakes = auto_turns, ifnone(auto_turns_per_hour, setting('auto_turns_per_hour', 6)), deque()
         self.on_watch = None             # callable(target, log_path), instead of a tmux pane
         self.on_background_done = None   # callable(run, answer)
         self.subagent_writes = bool(subagent_writes)
@@ -1812,6 +1815,25 @@ def background_notice(self:Agent):
     with self.background.lock: done, self._bg_done = self._bg_done, []
     if not done: return ''
     return '\n\n<background-results>\n' + '\n\n'.join(f'## {r.id} ({r.state}): {r.question}\n{a}' for r, a in done) + '\n</background-results>'
+
+@patch
+def wake_mode(self:Agent):
+    "Whether finished background work starts a turn: `on`, `report` or `off`."
+    if (m := self.auto_turns or setting('auto_turns')) in ('on', 'report', 'off'): return m
+    return 'report' if getattr(self.approvals, 'mode', 'auto') in ('off', 'ask') else 'on'
+
+@patch
+def wake_prompt(self:Agent):
+    "The prompt that continues after background work finished, or '' when there is none to act on, the mode is `off` or the hourly cap is spent; `_bg_done` is left for `background_notice`."
+    mode = self.wake_mode()
+    with self.background.lock: runs = [r for r, _ in self._bg_done if r.state != 'cancelled']
+    if mode == 'off' or not runs: return ''
+    now = time.time()
+    while self._wakes and now - self._wakes[0] > 3600: self._wakes.popleft()
+    if len(self._wakes) >= self.auto_turns_per_hour: return ''
+    self._wakes.append(now)
+    said = ', '.join(f'{r.id} ({r.state})' for r in runs)
+    return f'Background work you started finished: {said}. Its result follows. ' + ('Report the result to the user; do not change files in this turn.' if mode == 'report' else 'Continue: verify the work, then commit or report.')
 
 
 # %% ../nbs/03_agent.ipynb #d598e329

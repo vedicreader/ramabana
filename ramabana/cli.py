@@ -666,7 +666,8 @@ def close_done_shells(host):
 async def run_turn(ui, prompt):
     "One turn, streamed into the transcript."
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
-    ui.log_cell('**user**\n\n' + prompt, cell_type='markdown')
+    source, ui._source = ui._source, 'user'
+    ui.log_cell(f'**{source}**\n\n' + prompt, cell_type='markdown')
     ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
     ui._plan_blk = None
     ui._turn_at, ui._turn_from = time.monotonic(), max(ui.comp.blocks, default=0)
@@ -776,6 +777,7 @@ class Ui:
         self._typed = ''   #: what the last Enter took from the composer, for a refused turn to give back
         self._queued_typed = ''   #: what was typed for a queued command, which carries no prompt
         self._prompt = None
+        self._source, self._wake_pending = 'user', False
         self._flash = None
         self._queued_echo = []
         self._steered = []
@@ -830,6 +832,7 @@ class Ui:
         agent.activity.on_change = self.on_act
         agent.on_media = self.on_media
         agent.on_plan = self.on_plan
+        agent.on_background_done = lambda run, ans: self._post(self._maybe_wake)
         self._compact_hook = getattr(agent.compactor, 'on_compact', None)
         agent.compactor.on_compact = self._on_compact
         if agent.approvals is not None: agent.approvals.listen(self.on_ask, self.on_answer)
@@ -1134,7 +1137,7 @@ class Ui:
 
     def _turn(self, prompt):
         "A turn over `prompt`, remembered so a queued line can join it."
-        self._prompt = prompt
+        self._prompt, self._wake_pending = prompt, False
         return run_turn(self, prompt)
 
     @property
@@ -1226,7 +1229,10 @@ class Ui:
             if self._queued is not None: self._queued.close(); left += '\n\n' + self._queued_prompt
             self._queued, self._queued_prompt = run_turn(self, left), left
         # a turn that never cleared `turn` itself, such as the start, last painted while it still counted as running
-        if self._queued is None: return None if self.closed else self.paint()
+        if self._queued is None:
+            if self.closed: return None
+            self.paint()
+            return self._maybe_wake() if self._wake_pending else None
         held, hp, echo = self._queued, self._queued_prompt, self._queued_echo
         self._queued, self._queued_prompt, self._queued_echo = None, None, []
         self._replay(echo)
@@ -1236,6 +1242,19 @@ class Ui:
             self._queued, self._queued_prompt, self._queued_echo = held, hp, self._retract()
             self.note(f'the waiting message did not start: {agent_err(e)}', 'error')
         self.paint()
+
+    def _maybe_wake(self):
+        "Start a turn over finished background work, or hold it until the owner is free."
+        self._wake_pending = False
+        busy = (self.turn is not None and not self._turn_over()) or self._queued is not None or self.ask is not None or self.transcript.active
+        if self.closed or busy or self.buf.text or time.monotonic() - self._key_at < BELL_IDLE:
+            self._wake_pending = True
+            return
+        if not (p := self.agent.wake_prompt()): return
+        self.note('↻ background work finished · continuing')
+        self.ring()
+        self._source = 'background'
+        self.start_turn(run_turn(self, p), prompt=p)
 
     def take_back(self):
         "Return unread steering, the queued lines and the current draft to the composer, in the order said; False when nothing waited."
