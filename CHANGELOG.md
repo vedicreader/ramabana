@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.75
+
+- The `search` extra needs litesearch 0.1.54, which loads embedding models with laghu: the default model takes 80 MB of private memory instead of 1,373 MB, and gives model2vec 0.9's vectors whatever model2vec is installed.
+
 ## 0.2.74
 
 - `ramabana history compact` (`compact_history`) shrinks the session history in place: old prompts holding picture bytes become `[image]`, and tool results over 600 characters move to `agent-details/` as `_slim` writes them now. It holds the history lock, keeps `.pre-compact` hard links unless `--no-backup`, rebuilds the session index, and refuses while another process holds a session unless `--force`. A copy of a 224 MB history came out at 65 MB with every session hydrating identically.
