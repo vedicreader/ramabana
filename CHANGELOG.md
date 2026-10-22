@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.2.74
+
+- `ramabana history compact` (`compact_history`) shrinks the session history in place: old prompts holding picture bytes become `[image]`, and tool results over 600 characters move to `agent-details/` as `_slim` writes them now. It holds the history lock, keeps `.pre-compact` hard links unless `--no-backup`, rebuilds the session index, and refuses while another process holds a session unless `--force`. A copy of a 224 MB history came out at 65 MB with every session hydrating identically.
+- A history row still over `ROW_MAX` (1 MB) after slimming sends its prompt to the details file too; `hydrate_turns` restores it.
+- `_append_line` re-opens the history if it was replaced while waiting for the lock, so no row is lost to a replaced file.
+- Needs rishi 0.1.55 and uraiyadal 0.0.17: a stray tag no longer drops a tool call's arguments, an unread call is never run, identical calls in one reply run once, and a tag quoted in an argument splits nothing.
+- The `dhrona` extra needs dhrona 0.1.18, which reports the history's health each night.
+
 ## 0.2.73
 
 - The `/pane` board keeps one transcript pane. A click on a run shows it in that pane, a click on `main` closes it, and a click on a finished or absent run opens nothing. Before, every click opened a new pane and none closed.

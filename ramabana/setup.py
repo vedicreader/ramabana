@@ -16,13 +16,13 @@ from fastcore.xtras import Path
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
            'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'EFFORTS', 'CHANNELS', 'PII_OFF', 'PII_MODES', 'VALUED',
            'EARLY', 'FLAGS', 'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'PANE_LINGER', 'Key', 'KEYS',
-           'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'SETUP_FIELDS',
-           'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need', 'tmux_version',
-           'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path', 'keys_path',
-           'load_keys', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting', 'set_table',
-           'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset', 'setup_cli',
-           'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate', 'save_index',
-           'log_index', 'last_index']
+           'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'HISTORY_USAGE',
+           'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need',
+           'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path',
+           'keys_path', 'load_keys', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting',
+           'set_table', 'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset',
+           'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
+           'index_gate', 'save_index', 'log_index', 'last_index']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -206,6 +206,7 @@ def run_cli():
     load_keys()
     if sys.argv[1:2] == ['config']: return config_cli(sys.argv[2:])
     if sys.argv[1:2] == ['setup']: return setup_cli(sys.argv[2:])
+    if sys.argv[1:2] == ['history']: return history_cli(sys.argv[2:])
     if (msg := need('cli')): return _refuse(msg)()
     sys.argv[1:] = bare_resume(sys.argv[1:])   # both parsers, and the rerun inside tmux, see a value
     if (kw := launch_args(sys.argv[1:])) is not None:
@@ -603,6 +604,26 @@ def config_reset(path=None):
     _LOADED.pop(p, None)
     if old is not None: set_setting('learning', old, p)
     return f'wrote {p}' + (f'; the old one is {p.name}.bak' if bak else '')
+
+HISTORY_USAGE = 'usage: ramabana history compact [--cfg DIR] [--name NAME] [--force] [--no-backup]'
+
+def history_cli(argv=()):
+    "`ramabana history compact`: rewrite the turn log once, so old pictures and long tool results stop filling it."
+    a = list(argv)
+    if a[:1] != ['compact']: print(HISTORY_USAGE, file=sys.stderr); return 2
+    import argparse
+    p = argparse.ArgumentParser(prog='ramabana history compact')
+    p.add_argument('--cfg', default='~/.config/ramabana', help='the config folder holding the log')
+    p.add_argument('--name', default='agent', help='the history name')
+    p.add_argument('--force', action='store_true', help='go on although another live process holds a session')
+    p.add_argument('--no-backup', action='store_true', help='keep no .pre-compact copy of the log and index')
+    f = p.parse_args(a[1:])
+    from ramabana.agent import HistoryBusy, compact_history
+    try: got = compact_history(f.cfg, f.name, backup=not f.no_backup, force=f.force)
+    except (HistoryBusy, FileExistsError, FileNotFoundError) as e: print(e, file=sys.stderr); return 1
+    mb = lambda n: f'{n / 1e6:,.1f} MB'
+    print(f"{f.name}-history.jsonl: {mb(got['before'])} → {mb(got['after'])}; {got['rewritten']} of {got['rows']} rows rewritten, {got['images']} pictures, {got['results']} results moved to {f.name}-details/")
+    return 0
 
 
 # %% ../nbs/19_setup.ipynb #13410d75

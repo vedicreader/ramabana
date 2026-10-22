@@ -13,15 +13,16 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX',
            'TREE_SPENT', 'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE',
            'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING',
-           'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK',
-           'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS',
-           'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'Act', 'Activity', 'preview_for',
-           'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply',
-           'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context',
-           'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family',
-           'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools',
-           'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer',
-           'request_body', 'request_title', 'model_title', 'mk_host', 'mk_agent']
+           'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP',
+           'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'Act',
+           'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
+           'never', 'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt',
+           'prompt_directives', 'project_context', 'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt',
+           'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
+           'shell_denial', 'generated_denial', 'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult',
+           'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
+           'compact_history', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextvars, datetime, fnmatch, functools, hashlib, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -1991,19 +1992,22 @@ def _log_turn(line):
     except ValueError: return None
 
 def hydrate_turns(cfg, turns):
-    "Give rows that sent results to a details file those results back whole; a missing or torn file leaves the clipped ones."
+    "Give rows that sent results or a prompt to a details file those back whole; a missing or torn file leaves the clipped ones."
     files = {}
     for t in turns:
         ref = t.get('details')
         if cfg is None or not isinstance(ref, str) or Path(ref).is_absolute() or len(parts := Path(ref).parts) != 2 or '..' in parts: continue
         if ref not in files:
-            got = files[ref] = {}
+            got, prompts = files[ref] = {}, {}
             try: raw = (cfg/ref).read_bytes()
             except OSError: continue
             for d in map(_log_turn, raw.split(b'\n')):
-                if isinstance(d, dict) and isinstance(d.get('details'), dict): got.update(d['details'])
-        if got := files[ref]:
-            t['activity'] = [a | {'detail': got[a['id']]} if isinstance(a, dict) and a.get('id') in got else a for a in t.get('activity') or ()]
+                if not isinstance(d, dict): continue
+                if isinstance(d.get('details'), dict): got.update(d['details'])
+                if isinstance(d.get('prompt'), str): prompts[d.get('turn_id', '')] = d['prompt']
+        got, prompts = files[ref]
+        if got: t['activity'] = [a | {'detail': got[a['id']]} if isinstance(a, dict) and a.get('id') in got else a for a in t.get('activity') or ()]
+        if t.get('turn_id', '') in prompts: t['prompt'] = prompts[t.get('turn_id', '')]
     return turns
 
 # %% ../nbs/03_agent.ipynb #d8f9fcfe
@@ -3002,17 +3006,24 @@ def resume_session(self:Agent, selector='latest',
 # %% ../nbs/03_agent.ipynb #3fd8838b
 REPLAYED = ('complete', 'failed')
 
+def _replaced(f, p):
+    "Whether `p` is no longer the file `f` holds open: another process renamed a new one over it."
+    try: return os.fstat(f.fileno()).st_ino != os.stat(p).st_ino
+    except FileNotFoundError: return True
+
 def _append_line(p, line):
     "Append one line to `p` under an exclusive lock, so lines from two processes never interleave; returns its byte span."
     import fcntl
     data = line.encode()
-    with open(p, 'ab') as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        try:
-            f.write(data); f.flush()
-            end = f.tell()
-        finally: fcntl.flock(f, fcntl.LOCK_UN)
-    return end - len(data), end
+    while True:
+        with open(p, 'ab') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                if _replaced(f, p): continue   # queued on a file `compact_history` has since replaced
+                f.write(data); f.flush()
+                end = f.tell()
+            finally: fcntl.flock(f, fcntl.LOCK_UN)
+        return end - len(data), end
 
 EVENT_MAX = 10_000_000   #: bytes an event file reaches before it is renamed to `<name>.1` and started again
 HIST = 'hist.json'   #: in a session's run folder: the turn model's whole conversation as its last turn left it
@@ -3066,17 +3077,37 @@ def details_path(self:Agent):
     "`<cfg>/<history_name>-details/<session>.jsonl`: tool results too long for the turn log, or None without a config dir."
     return None if self.cfg is None else self.cfg/f'{self.history_name}-details'/f'{self.session_id}.jsonl'
 
+ROW_MAX = 1_000_000   #: bytes a log row may reach; a slimmed row past it sends its prompt to the details file too
+
+_CUT = re.compile(r'\n…\[\d+ more chars\]$')
+
+def _cut(detail):
+    "Whether `detail` is a result `_clip` already cut to `RESUME_DETAIL`: that length, and the marker, which is longer than the cut."
+    return (m := _CUT.search(detail)) is not None and len(detail) == RESUME_DETAIL + len(m.group())
+
+def _long_details(turn):
+    "The results in `turn`'s activity over `RESUME_DETAIL` that `_clip` has not already cut to it, by call id."
+    return {a['id']: a['detail'] for a in turn.get('activity') or () if a.get('id') and len(d := a.get('detail') or '') > RESUME_DETAIL and not _cut(d)}
+
+def _clipped(turn, long, ref):
+    "`turn` with each result in `long` cut to its start and `ref`, the details file, named."
+    acts = [a | {'detail': _clip(a['detail'], RESUME_DETAIL)} if a.get('id') in long else a for a in turn['activity']]
+    return turn | {'activity': acts, 'details': ref}
+
 @patch
 def _slim(self:Agent, turn):
-    "`turn` as the log keeps it: each result over `RESUME_DETAIL` goes whole to `details_path` first, and the row keeps its start."
-    long = {a['id']: a['detail'] for a in turn.get('activity') or () if a.get('id') and len(a.get('detail') or '') > RESUME_DETAIL}
-    if not long or (d := self.details_path) is None: return turn
+    "`turn` as the log keeps it: each result over `RESUME_DETAIL` goes whole to `details_path` first, and the row keeps its start; so does the prompt of a row still over `ROW_MAX`."
+    if (d := self.details_path) is None: return turn
+    long, ref = _long_details(turn), f'{d.parent.name}/{d.name}'
+    row = _clipped(turn, long, ref) if long else turn
+    huge = len(json.dumps(row, ensure_ascii=False)) > ROW_MAX
+    if not long and not huge: return turn
+    rec = {'turn_id': turn.get('turn_id', ''), 'details': long} | ({'prompt': str(turn.get('prompt') or '')} if huge else {})
     try:
         d.parent.mkdir(parents=True, exist_ok=True)
-        _append_line(d, json.dumps({'turn_id': turn.get('turn_id', ''), 'details': long}, ensure_ascii=False) + '\n')
+        _append_line(d, json.dumps(rec, ensure_ascii=False) + '\n')
     except Exception: return turn
-    acts = [a | {'detail': _clip(a['detail'], RESUME_DETAIL)} if a.get('id') in long else a for a in turn['activity']]
-    return turn | {'activity': acts, 'details': f'{d.parent.name}/{d.name}'}
+    return row | ({'prompt': _clip(turn.get('prompt'), RESUME_DETAIL), 'details': ref} if huge else {})
 
 @patch
 def _remember(self:Agent, prompt, text, error='', state='complete'):
@@ -4735,6 +4766,98 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
             roots = saved + [r for r in map(str, self.host.roots) if r not in saved]
             fill = ({} if meta.get('title') else {'title': request_title(prompt)}) | ({} if roots == saved else {'roots': roots})
             if fill: _set_session_meta(self, sid, **fill)
+
+class HistoryBusy(RuntimeError):
+    "The log cannot be compacted now: a writer holds it, or another live process holds a session."
+
+def _live_sessions(cfg):
+    "`{session: pid}` for each session another live process holds."
+    held = {d.parent.name: _pid_in(d) for d in (Path(cfg)/'runs').glob(f'*/{LOCK}')}
+    return {s: pid for s, pid in held.items() if pid and pid != os.getpid() and _alive(pid)}
+
+def _lock_log(f, wait):
+    "Take `f`'s exclusive lock, the one `_append_line` takes, waiting up to `wait` seconds for a writer to finish."
+    import fcntl
+    end = time.monotonic() + wait
+    while True:
+        try: return fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if time.monotonic() >= end: raise HistoryBusy(f'{f.name} is being written; try again in a moment') from None
+            time.sleep(0.05)
+
+def _details_ids(p):
+    "The call ids a details file already holds whole."
+    out = set()
+    if p.exists():
+        for d in map(_log_turn, p.read_bytes().split(b'\n')):
+            if isinstance(d, dict) and isinstance(d.get('details'), dict): out |= set(d['details'])
+    return out
+
+def _compacted(row, ref, held):
+    "`row` as `compact_history` keeps it, and the results to move to the details file `ref` (none without one): those `held` lacks."
+    new = row
+    if isinstance(row.get('prompt'), str) and (p := turn_prompt(row)) != row['prompt']: new = new | {'prompt': p}
+    long = _long_details(new) if ref else {}
+    if long: new = _clipped(new, long, ref)
+    return new, {k: v for k, v in long.items() if k not in held}
+
+def compact_history(
+    cfg,                   # the config folder holding the log
+    history_name='agent',  # names the conversation, as for `Agent`
+    backup=True,           # keep the old log and index as `<name>.pre-compact`
+    force=False,           # go on although another live process holds a session
+    wait=10.,              # seconds to wait for a writer to finish before giving up
+):
+    "Rewrite the log once: a picture's bytes become `[image]` and results over `RESUME_DETAIL` move to the session's details file. Returns the sizes and counts."
+    import fcntl
+    cfg = Path(cfg).expanduser()
+    log, index = cfg/f'{history_name}-history.jsonl', cfg/f'{history_name}-sessions.json'
+    if not log.exists(): raise FileNotFoundError(f'no history at {log}')
+    if not force and (live := _live_sessions(cfg)):
+        raise HistoryBusy('quit the Ramabana processes holding sessions, or pass --force: ' + ', '.join(f'{s} (process {pid})' for s, pid in live.items()))
+    kept = [p.with_name(p.name + '.pre-compact') for p in (log, index)]
+    if backup and (old := [p for p in kept if p.exists()]): raise FileExistsError(f'{old[0]} exists; move it away or pass --no-backup')
+    got = dict(rows=0, rewritten=0, images=0, results=0)
+    with open(log, 'ab') as lock:
+        _lock_log(lock, wait)
+        try:
+            if _replaced(lock, log): raise HistoryBusy(f'{log.name} was replaced while this waited; run it again')
+            got['before'] = log.stat().st_size
+            held = {}
+            with tempfile.NamedTemporaryFile('wb', dir=cfg, prefix=log.name + '.', suffix='.compact', delete=False) as out:
+                try:
+                    with open(log, 'rb') as src:
+                        for raw in src:
+                            got['rows'] += 1
+                            row = _log_turn(raw) if raw.endswith(b'\n') else None
+                            new, moved, sid = row, {}, ''
+                            if isinstance(row, dict):
+                                sid = row.get('session') or ''
+                                ref = f'{history_name}-details/{sid}.jsonl' if sid and Path(sid).name == sid else ''
+                                if ref and sid not in held: held[sid] = _details_ids(cfg/ref)
+                                new, moved = _compacted(row, ref, held.get(sid, ()))
+                            if new is row: out.write(raw); continue
+                            if moved:
+                                d = cfg/ref
+                                d.parent.mkdir(parents=True, exist_ok=True)
+                                _append_line(d, json.dumps({'turn_id': row.get('turn_id', ''), 'details': moved}, ensure_ascii=False) + '\n')
+                                held[sid] |= set(moved)
+                            out.write(json.dumps(new, ensure_ascii=False).encode() + b'\n')
+                            got['rewritten'] += 1; got['images'] += new.get('prompt') != row.get('prompt'); got['results'] += len(moved)
+                    out.flush(); os.fsync(out.fileno())
+                    if not got['rewritten']: Path(out.name).unlink(); return got | {'after': got['before'], 'index_rows': 0}
+                    os.chmod(out.name, log.stat().st_mode & 0o777)
+                    if backup:
+                        os.link(log, kept[0])
+                        if index.exists(): os.link(index, kept[1])
+                    os.replace(out.name, log)
+                except BaseException:
+                    Path(out.name).unlink(missing_ok=True); raise
+            got['after'] = log.stat().st_size
+            a = Agent.__new__(Agent); a.cfg, a.history_name = cfg, history_name   # the index needs paths and locks, not a model
+            got['index_rows'] = len(a.rebuild_index(force=True))
+        finally: fcntl.flock(lock, fcntl.LOCK_UN)
+    return got
 
 # %% ../nbs/03_agent.ipynb #491879ee
 @patch
