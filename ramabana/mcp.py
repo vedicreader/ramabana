@@ -45,7 +45,7 @@ def server(host=None, agent=None, name='ramabana', readonly=True, delegate=True,
     host = host if host is not None else LocalHost()
     mcp = FastMCP(name, instructions=INSTRUCTIONS, **kw)
     skills = discover(host.roots, getattr(agent, 'cfg', None)) if agent is None else agent.skills
-    # legacy shims for last release's clients, kept one release
+    # the `legacy` tools serve older clients
     every = agent.tools if agent is not None else tools_for(host, get_skills=lambda: skills, optin=('legacy',))
     catalog = ToolCatalog(every)
     if readonly: catalog = catalog.read_only()

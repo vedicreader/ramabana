@@ -94,7 +94,7 @@ class FullHost(LocalHost):
         self.pages = dict(pages or {})
         self.transcript = [x for x in str(terminal).splitlines() if x]
         self.remembered = {}      # doc_id -> (title, url, markdown)
-        self.notes = []           # everything `note` was told
+        self.notes = []
 
 
     def web_search(self, query, n=20):

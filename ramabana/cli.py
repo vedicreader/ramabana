@@ -1452,7 +1452,7 @@ class Ui:
         self._echoed = []
         self.buf.clear()
         if not line:
-            if not self._hold: self.steer_queued()   # enter on an empty line steers the queued one
+            if not self._hold: self.steer_queued()
             return None
         if line in ('/agent_proxy', '/agent-proxy'): return self.enable_agent_proxy()
         if line in ('/python', '/py'): return self.enter_python()
@@ -2383,7 +2383,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         comp = Compositor(tty)
         def reader(on):
             if on == comp._reading: return
-            if on: loop.add_reader(tty.fd, lambda: (comp.on_bytes(tty.read(timeout=0)), tty.gone and done.set()))   # a closed terminal quits
+            if on: loop.add_reader(tty.fd, lambda: (comp.on_bytes(tty.read(timeout=0)), tty.gone and done.set()))
             else: loop.remove_reader(tty.fd)
             comp._reading = on
         comp._reader_on, comp._reader_off = lambda: reader(True), lambda: reader(False)   # `borrow` lends and takes back this one
@@ -2825,7 +2825,7 @@ async def login(self:Ui, key):
         def ask():
             with contextlib.redirect_stderr(err): return setup_cli(['--provider', key])
         await self.lend(ask)
-        if err.getvalue().strip(): self.note(err.getvalue().strip(), 'error')   # the session's stderr goes to its log
+        if err.getvalue().strip(): self.note(err.getvalue().strip(), 'error')
     new = [n for n in config_models() if n not in before]
     for k in dict.fromkeys([p.get('env'), *(model_setting(n).get('api_key_env') for n in new)]):
         if not k or os.environ.get(k): continue

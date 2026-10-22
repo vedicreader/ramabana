@@ -688,7 +688,7 @@ class Backend:
         self._resume_hist=None
         self.fell_back,self._refused=[],set()   # what this backend gave up to answer, for the caller to be told; per-turn levels the model refused
         self._used,self._rewrote,self._est=0,None,0
-        self.spill,self.how=_unsaved,''   # where cut content is kept whole, and how the model reads it back
+        self.spill,self.how=_unsaved,''
         self.lock=threading.Lock()
     @property
     def ready(self): return self.chat is not None
@@ -926,11 +926,11 @@ class Backend:
         try:
             if self.chat:
                 n = self.chat.token_count
-                if self._rewrote is not None and n == self._rewrote: n = self._est   # still the count from before the rewrite
+                if self._rewrote is not None and n == self._rewrote: n = self._est
                 else: self._rewrote = None
                 if not n: n = self.window_tokens()   # a hosted chat counts 0 until its first step, whatever its briefing holds
                 self._used = n
-            elif self._resume_hist: return max(self._used,math.ceil(margin()*sum(msg_tokens(m,self.count_tokens) for m in self._resume_hist)))   # a resumed conversation not yet started
+            elif self._resume_hist: return max(self._used,math.ceil(margin()*sum(msg_tokens(m,self.count_tokens) for m in self._resume_hist)))
         except Exception: pass
         return self._used
     

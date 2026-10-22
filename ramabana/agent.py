@@ -171,7 +171,7 @@ class Activity:
 
     def __init__(self, on_change=None, max_acts=MAX_ACTS):
         self.acts, self.on_change, self.max_acts = [], on_change, max_acts
-        self.tap = None   # the agent's own listener, kept apart from `on_change`, which a frontend replaces
+        self.tap = None   # apart from `on_change`, which a frontend replaces
         self._lock = threading.Lock()
         self._mark = 0
         self.turn_id = ''
@@ -497,7 +497,7 @@ class Approvals:
 
     def answer(self, id, ok, note='', session=False, scope='auto'):
         "Answer the waiting request `id`, once; a `session` approval switches the mode to `scope`."
-        with self._lock:   # resolved under the lock `close` and a timeout take, so an ask is resolved once
+        with self._lock:   # `close` and a timeout take this lock, so an ask resolves once
             a = self._asks.pop(id, None)
             if a is None or not a.pending: return None
             if ok and session: self.mode = scope
@@ -531,7 +531,7 @@ class Approvals:
     def cancel_all(self, note='the turn was cancelled', run=None):
         "Refuse what is waiting, so a stopped turn leaves no worker parked. With `run`, an ask of a run that `run` did not start keeps waiting."
         for a in self.waiting:
-            # an ask raised off the run's thread, a parallel tool call say, names no run and may be this one's
+            # an ask raised off the run's thread names no run and may be this one's
             if run is None or a.run is None or _of_run(a.run, run): self.answer(a.id, False, note)
 
 
@@ -714,7 +714,7 @@ def project_context(host, mx=MAX_CONTEXT_FILE, cfg=None):
             'override the general guidance above where they disagree.\n\n' + '\n\n'.join(out) +
             '\n</project_context>')
 
-from .learned import LEARNED, learned_command, learned_folder, enabled as learning_enabled   # the folder under the config dir; `ramabana.learned` reviews what Dhrona proposes for it
+from .learned import LEARNED, learned_command, learned_folder, enabled as learning_enabled
 
 def learned_context(learned, mx=MAX_CONTEXT_FILE):
     "`<learned>/AGENTS.md` as a briefing block, or '' when `learned` is None or holds none."
@@ -1227,7 +1227,7 @@ class Agent:
         self.on_watch = None             # callable(target, log_path), instead of a tmux pane
         self.on_background_done = None   # callable(run, answer)
         self.subagent_writes = bool(subagent_writes)
-        self.turn_channel = self.sub_channel = self.sub_effort = ''   # the session's `/model tools`, `/subagents tools` and `/subagents effort`; '' takes config.toml's
+        self.turn_channel = self.sub_channel = self.sub_effort = ''   # '' takes config.toml's
         self._be_lock = threading.RLock()   # one backend per model, however many delegations ask for it at once
         self.subagent_steps, self.subagent_timeout, self.subagent_depth = _sub_steps(subagent_steps), _sub_timeout(subagent_timeout), _sub_depth(subagent_depth)
         self.sub_slots = Slots()   # one bound on sub-agents at once, across every delegation tree
@@ -1474,7 +1474,7 @@ def _sub_backend(self:Agent, model='', effort=''):
 # %% ../nbs/03_agent.ipynb #d69ed3f9
 GIT_SHELL = {'commit': 'git_commit', 'push': 'git_remote', 'pull': 'git_remote', 'fetch': 'git_remote',
              'stash': 'git_stash', 'switch': 'git_checkout', 'checkout': 'git_checkout'}
-_GIT_VALUED = ('-C', '-c', '--git-dir', '--work-tree', '--namespace')   # git options that take a value
+_GIT_VALUED = ('-C', '-c', '--git-dir', '--work-tree', '--namespace')
 _NAMEVAL = re.compile(r'[A-Za-z_][A-Za-z0-9_]*=.*')
 _SHELLS, _WRAPPERS = {'bash', 'sh', 'zsh', 'dash', 'ksh'}, {'env', 'xargs', 'nohup', 'time', 'command', 'exec', 'nice'}
 
@@ -1602,7 +1602,7 @@ def _open_act(self:Agent, f, name, args):
 def _close_act(self:Agent, act, out):
     "Finish `act` with `out`, and return `out`."
     self.activity.finish(act, out, ok=not failed(out))
-    if (m := tool_media(out)) and not failed(out): self._drew(m)   # a tool's pictures draw inline, like a generated one
+    if (m := tool_media(out)) and not failed(out): self._drew(m)
     if (run := current_run()) is not None: run.write(f"< {act.tool} {'ok' if not failed(out) else 'ERR'} {_1(out, 200)}")
     return out
 
@@ -1630,7 +1630,7 @@ def _observe(self:Agent, f):
 def _draw(self:Agent):
     "Count a sub-agent's call against the turn's tool budget, or under `auto` its own delegation's four calls a step up to `SUB_STEP_CEILING`; False once spent."
     run = current_run()
-    # under auto the turn is uncapped, so one shared pool would only starve the delegations that come later
+    # under auto the turn is uncapped, so one shared pool would starve later delegations
     return run is None or run.draw(ifnone(self.max_tool_calls, 4 * SUB_STEP_CEILING), per_branch=self.max_tool_calls is None)
 
 @patch
@@ -1842,7 +1842,7 @@ def tools(self:Agent):
 @patch
 def system_prompt(self:Agent):
     note = inbox_note(self.inbox_key) + (STATUS_NOTE if self._quiet else '') + (PLAN_NOTE if self.plan_mode else '')
-    note = (f'\n\n{self.extra_sp}' if self.extra_sp else '') + note   # a host's addition, after the briefing it adds to
+    note = (f'\n\n{self.extra_sp}' if self.extra_sp else '') + note
     if self._sp: return self._sp + note
     if self._tools is None: self.tools
     if self.profile == 'small': return small_system_prompt(self.host, tools=self._plain, cfg=self.cfg, learned=self.learned_dir) + note
@@ -1919,7 +1919,7 @@ def note_tools(note, learning=lambda: True):
                  confidence: str = '',  # for a lesson: low, medium or high
                  ) -> str:
         "Store a conclusion in this project's memory file (no vault here); the same `key` later replaces the line; a lesson from a mistake adds `cue`, `component` (rule, skill, extension, tool or memory), `evidence` and `confidence` (low, medium or high)."
-        if not learning(): cue = component = evidence = confidence = ''   # learning off: a plain note
+        if not learning(): cue = component = evidence = confidence = ''
         try: body = lesson_text(text, cue, component, evidence, confidence)
         except ValueError as e: return err('could not remember', e)
         if body != text: body = ' | '.join(body.splitlines())   # the memory file holds one line per note
@@ -2360,7 +2360,7 @@ def apply_config(self:Agent):
         if job in r.picked or (job == 'turn' and r.named): continue
         before = r.name_for(job)
         if job == 'turn':
-            want = setting('jobs.turn') or (DFLT_TURN if not r._why(DFLT_TURN) else '')   # a turn config.toml no longer names goes back to the default, where it runs
+            want = setting('jobs.turn') or (DFLT_TURN if not r._why(DFLT_TURN) else '')   # a turn config.toml no longer names goes back to the default
             if not want or want == before: continue
             if (why := r._why(want)): out.append(f'turn stays on {before}: {want} {why.split(";")[0]}'); continue
             try: self.set_model(want)
@@ -2685,7 +2685,7 @@ def _begin_turn(self:Agent, run=None):
     if rid and getattr(self, '_begun', None) == rid: return self.current_turn_id
     self._begun = rid
     self.turn_use = Usage()
-    self._budget_hit = ''   # why a budget stopped this turn, for its row
+    self._budget_hit = ''
     self._tool_calls_turn = 0
     self._steered = []
     self.turn_seq += 1
@@ -2834,10 +2834,10 @@ def _fit(self:Agent, outgoing, tail=0):
     limit = max(1, b.spec.ctx - min(1024, max(128, b.spec.ctx // 4)))   # `fits`'s line
     half = int((limit - margin()*b.base_tokens()) / margin() / 2)
     if not b.fits(outgoing):
-        # a paste past half the room is cut first, so a short conversation is not compacted for it; a notebook has its own cutting
+        # a paste past half the room is cut first; a notebook has its own cutting
         if not (isinstance(outgoing, str) and '<notebook' in outgoing) and b.pending_tokens(outgoing) > half:
             outgoing = fit_content(outgoing, max(64, half), b.spill, b.how, b.count_tokens, tail)
-        # so is a newest exchange past it, which compaction would otherwise summarise away
+        # a newest exchange past it is cut too, not summarised away
         if (big := sum(msg_tokens(m, b.count_tokens) for m in b.hist[-2:] if m.get('role') in ('user', 'tool'))) > half: b.shrink_recent(big - half)
     if not b.fits(outgoing): b.trim(b.projected_tokens(outgoing) - (threshold(b.spec.ctx, self.compactor.reserve) or b.spec.ctx))   # oldest tool results and pictures first
     if (self.compactor.auto and self.compactor.due(b)) or not b.fits(outgoing): self.compact()
@@ -3052,7 +3052,7 @@ def _slim(self:Agent, turn):
     try:
         d.parent.mkdir(parents=True, exist_ok=True)
         _append_line(d, json.dumps({'turn_id': turn.get('turn_id', ''), 'details': long}, ensure_ascii=False) + '\n')
-    except Exception: return turn   # the row keeps them whole instead
+    except Exception: return turn
     acts = [a | {'detail': _clip(a['detail'], RESUME_DETAIL)} if a.get('id') in long else a for a in turn['activity']]
     return turn | {'activity': acts, 'details': f'{d.parent.name}/{d.name}'}
 
@@ -3074,7 +3074,7 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
         except Exception: pass
     self._event('turn_end', turn_id=turn['turn_id'], state=state, error=error, usage=turn['usage'], reply=str(text or '')[:4000])
     self._save_hist()
-    if (d := getattr(self, 'runs_dir', None)) is not None: (d/PENDING).unlink(missing_ok=True)   # the row now holds the turn
+    if (d := getattr(self, 'runs_dir', None)) is not None: (d/PENDING).unlink(missing_ok=True)
 
 # %% ../nbs/03_agent.ipynb #728d1a4e
 @patch
@@ -3661,7 +3661,7 @@ def command(self:Agent, line):
         except (ValueError, OSError) as e: return f'{out}\nnot saved: {e}'
     if name == 'sessions':
         every = self.sessions()
-        rows = every if arg.lower() == 'all' else [s for s in every if self._from_here(s['id'])]   # this folder's, unless asked for all
+        rows = every if arg.lower() == 'all' else [s for s in every if self._from_here(s['id'])]
         if rows: return '\n'.join(f"{s['id']}  {s['turns']:>3} turns  {s['model']:<20} {s['title']}" for s in rows)
         if every: return 'no saved sessions from these folders; /sessions all lists every folder'
         where = str(self.history_path) if self.history_path is not None else '(history disabled: no cfg directory)'
@@ -4020,7 +4020,7 @@ def command(self:Agent, line):
     if name == 'learned':
         if self.cfg is None: return 'no config folder, so no learned folder'
         out = learned_command(learned_folder(self.cfg), arg)
-        if arg.strip() in ('on', 'off'): self.refresh()   # the briefing and skills follow at once
+        if arg.strip() in ('on', 'off'): self.refresh()
         return out
     return _agent_command(self, line)
 
@@ -4304,7 +4304,7 @@ def close(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #d29d008a
 _HISTORY_LOCKS, _HISTORY_LOCKS_LOCK = {}, threading.RLock()
-_SESSION_META_VERSION = 3   # 3: the index keeps each session's `first_title`, not its first prompt cut to 72 characters
+_SESSION_META_VERSION = 3
 LEGACY_GAP = 1800
 _SESSION_DEFAULTS = {'title': '', 'title_turns': 0, 'muted': False, 'manual': False, 'roots': ()}
 

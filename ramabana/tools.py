@@ -613,7 +613,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         "The sub-agent's briefing: its write half, the answer budget (`n`, else the whole cap) and its model's family notes."
         return sub_briefing(writes, n or _max(), get_notes(b.spec) if get_notes is not None else '')
 
-    spill = []   # the temp folder answers go in when the session has no log folder, made on first use
+    spill = []   # a temp folder, made on first use, when the session has no log folder
 
     def _keep(text):
         "Save `text` whole in the log folder, else a private temp folder for this session; its path, or None if it cannot be written."
@@ -723,7 +723,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         picks = [_sees(p, pics) for p in picks]
         sk, note = named_skills(get_skills, skills)
         note = clip(note, mx // 4)   # a note about names never crowds out the answers
-        share = (mx - len(note) - 2 * (len(qs) - 1)) // len(qs)   # each answer's part of the result
+        share = (mx - len(note) - 2 * (len(qs) - 1)) // len(qs)
         answers, run, w = [p if isinstance(p, str) else None for p in picks], [i for i, p in enumerate(picks) if not isinstance(p, str)], _writes()
         with slots.lend(current_run()) if slots is not None else nullcontext():
             if len(qs) == 1 and run:
