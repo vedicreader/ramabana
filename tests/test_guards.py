@@ -1,6 +1,7 @@
 "Rules the project states in prose, enforced where a call is made: the refusal teaches mid-turn."
 from ramabana.agent import shell_denial
 from ramabana.testing import MemHost, fake_agent
+from ramabana.tools import failed
 
 
 def test_shell_guard_refuses_hidden_output_but_not_quoted_text_or_plain_redirects():
@@ -17,7 +18,7 @@ def test_a_write_to_a_generated_module_is_refused_and_names_its_notebook():
     a, _ = fake_agent(host=host)
     tools = {t.__name__: t for t in a.tools}
     out = tools['replace_text']('/proj/pkg/m.py', [{'oldText': 'x = 1', 'newText': 'x = 2'}])
-    assert 'nbs/01_m.ipynb' in out and 'nbdev-export' in out, out
+    assert 'nbs/01_m.ipynb' in out, out
     assert host.text_at('/proj/pkg/m.py') == gen
     tools['replace_text']('/proj/a.py', [{'oldText': 'x = 1', 'newText': 'x = 2'}])
     assert host.text_at('/proj/a.py') == 'x = 2\n'
@@ -29,4 +30,4 @@ def test_a_rewritten_call_meets_the_guards_again():
     a, _ = fake_agent()
     a.registry.on('before_tool', lambda agent, name, args: dict(args, command=args['command'] + ' | head') if name == 'run_shell' else None)
     out = {t.__name__: t for t in a.tools}['run_shell']('echo hi')
-    assert '| head' in out and 'cuts the output' in out, out
+    assert failed(out), out

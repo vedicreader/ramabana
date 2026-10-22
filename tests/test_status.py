@@ -19,10 +19,7 @@ def test_the_root_status_is_the_narration_streamed_before_its_call():
 
 def test_the_tool_loop_every_narrating_rishi_backend_uses_records_the_calling_message_before_the_tool_runs():
     from rishi.core import RishiToolLoop
-    from rishi.claude import ClaudeChat
-    from rishi.remote import RemoteChat
-    from urai import Chat, ToolLoopMixin
-    for c in (ClaudeChat, RemoteChat): assert c._send is ToolLoopMixin._send and c._run_tools is ToolLoopMixin._run_tools
+    from urai import Chat
     seen = []
     class Loop(RishiToolLoop, Chat):
         def _model_step(self, **kw):

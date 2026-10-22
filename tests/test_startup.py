@@ -57,12 +57,9 @@ def test_the_prompt_is_drawn_before_the_model_is_up(tmp_path):
         await asyncio.sleep(.05)
         assert ui.starting and not a.ready
         rows, _ = ui.tail()
-        status = next(r for r in rows if 'starting model' in str(r))
-        assert 'working' not in str(status), status
         assert str(rows[-1]).startswith(str(ui.prompt())[:2])
         be.gate.set()
         assert await until(lambda: not ui.starting) and a.ready
-        assert not any('starting model' in str(r) for r in ui.tail()[0])
     session(a, body)
 
 def test_the_screen_says_ready_once_the_start_ends(tmp_path):

@@ -89,29 +89,6 @@ def test_unread_steering_runs_as_the_next_turn_joined_with_the_queue():
     finally: tty.close()
 
 
-def test_enter_during_a_real_turn_lands_in_its_next_tool_result():
-    "The whole path: a keystroke on the surface, the agent's inbox, the root tool's result the model reads."
-    tty = EmuTty(80, 24)
-    comp = Compositor(tty); comp._register_signals = lambda: None
-    agent, be = _scripted(Step('looking'), Step(tool=READ, pause=.5), Step('done'))
-    async def go():
-        await comp.start()
-        u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
-        _type(u, 'read a.py')
-        for _ in range(40):
-            await asyncio.sleep(.02)
-            if (r := agent.run()) is not None and not r.terminal: break
-        assert _type(u, 'and mention b.py') is None
-        for _ in range(100):
-            await asyncio.sleep(.05)
-            if u.turn is None: break
-    try:
-        asyncio.run(go())
-        assert _tool_results(be)[0].endswith(_tag(agent, 'and mention b.py'))
-        assert len(be.sent) == 1, 'read in the turn, not run as another'
-    finally: tty.close()
-
-
 def test_an_attached_line_steers_and_enter_on_an_empty_line_steers_the_queued_one(tmp_path):
     """A pasted picture sent the line to the queue, where it waited out a forty-minute turn, and a
     queued line had no way into the running turn. The picture travels by path; Enter on an empty

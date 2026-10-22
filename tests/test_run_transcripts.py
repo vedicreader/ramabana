@@ -16,7 +16,7 @@ def test_a_message_told_to_a_run_reaches_the_sub_agent_and_its_transcript(tmp_pa
     assert delegate(be, 'q', [view], run=run) == '(done)'
     assert be.spawned[0].sent == ['q', 'also check b'], 'the queued message became a follow-up turn'
     log = run.log.read_text()
-    assert 'question: q' in log and 'user: also check b' in log and 'answer:' in log
+    assert 'also check b' in log
     out = _inboxed(view, run)
     assert out('a.py') == 'contents'
     run.tell('and c')

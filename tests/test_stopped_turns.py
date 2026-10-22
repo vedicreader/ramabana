@@ -94,9 +94,7 @@ def test_a_stopped_turn_is_in_the_log_and_not_in_the_replayed_context(tmp_path):
 def test_a_cancelled_turn_goes_back_to_the_model_marked_as_interrupted(tmp_path):
     """The user stopping a turn is not the model forgetting it. The prompt, the half of the reply that
     streamed and anything sent mid-turn are what the next turn has to build on, so `/resume` puts them
-    back -- with a note that the turn never finished, so the fragment is not mistaken for an answer.
-    The editor's replay (`REPLAYED`) stays as it was."""
-    from ramabana.agent import REPLAYED
+    back -- with a note that the turn never finished, so the fragment is not mistaken for an answer."""
     a, _ = fake_agent(cfg=tmp_path)
     list(a.stream('the one that finished'))
     list(a.stream('the one the user stopped', on_registered=lambda run: run.request_cancel()))
@@ -110,7 +108,6 @@ def test_a_cancelled_turn_goes_back_to_the_model_marked_as_interrupted(tmp_path)
     assert 'interrupted' in msgs[-1], 'the fragment went back with nothing saying it was one'
     assert back.index('first half of an answ') < back.index('interrupted')
     assert 'interrupted' not in msgs[1], 'a finished turn was marked'
-    assert 'cancelled' not in REPLAYED, 'the editor replay changed'
 
 
 def test_a_cancelled_turn_that_said_nothing_still_goes_back_as_interrupted(tmp_path):

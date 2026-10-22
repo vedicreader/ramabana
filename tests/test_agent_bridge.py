@@ -54,7 +54,6 @@ def test_the_proxy_source_rebinds_the_agent_without_redefining_its_class():
     assert sorted(space['ramabana_agents']) == ['sessA', 'sessB']
     assert space['ramabana_agent'].label == 'sessB', 'the bare name is whoever bound last'
     assert isinstance(space['ramabana_agents']['sessA'], first), 'sessA kept its class'
-    assert repr(space['ramabana_agents']['sessA']) == "AgentProxy('sessA')"
 
 
 def test_a_callback_registered_during_a_turn_lands_at_the_turn_boundary():

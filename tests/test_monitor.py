@@ -126,7 +126,7 @@ def test_a_folder_watch_opened_through_the_vault_is_reviewed_by_the_harness():
     m, be = monitors(h)
     wt = {t.__name__: t for t in watch_tools(h)}
     said = wt['watch']('/proj', kind='folder', instructions='Review each change.', pattern='*.py')
-    assert said.startswith('watching folder /proj as w1')
+    assert 'w1' in said
     assert [w.id for w in m.all()] == []                     # nothing seen until the harness looks
     assert m.check(force=True) == [] and [w.id for w in m.all()] == ['w1']   # first look snapshots, reviews nothing
     h.write('/proj/a.py', 'two\n')

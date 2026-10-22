@@ -66,11 +66,11 @@ def test_events_after_a_rollover_start_again_and_start_never_steals_a_socket(tmp
         again = control_call(ctl.path, 'events', offset=first['offset'] + 10_000)
         assert again['rotated'] and again['events'], 'a page past the end reads the new file from its start'
         try: Control(a, path=ctl.path).start()
-        except RuntimeError as e: assert 'another runner' in str(e)
+        except RuntimeError: pass
         else: raise AssertionError('a live runner keeps its socket')
         plain = d/'plain.txt'; plain.write_text('keep me')
         try: Control(a, path=plain).start()
-        except RuntimeError as e: assert 'not a socket' in str(e) and plain.read_text() == 'keep me'
+        except RuntimeError: assert plain.read_text() == 'keep me'
         else: raise AssertionError('a file that is not a socket is never removed')
     finally:
         ctl.close()

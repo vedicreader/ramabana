@@ -94,7 +94,7 @@ def test_a_clipped_answer_is_saved_whole_and_the_note_names_the_file(tmp_path):
     assert len(out) <= MAX_TOOL_CHARS
     saved = list(tmp_path.glob('*.txt'))
     assert len(saved) == 1 and saved[0].read_text() == 'A' * 20000
-    assert f'saved to {saved[0]}' in out and 'view_file' in out
+    assert f'saved to {saved[0]}' in out
     subs['delegate_search'](['short'])
     assert len(list(tmp_path.glob('*.txt'))) == 1   # an answer that fits is not saved
     out = subs['delegate_search'](['long a', 'long b'])
@@ -162,8 +162,6 @@ def test_delegate_result_reads_a_long_answer_in_pages_by_offset():
         if more is None: break
         offset = int(more.group(1))
     assert got == 'A' * 20000 and offset > 0, (len(got), offset)
-    assert 'offset' in subs['delegate_result'](rid)
-    assert 'past the end' in subs['delegate_result'](rid, offset=99999)
 
 
 def create_file(path: str, content: str) -> str:

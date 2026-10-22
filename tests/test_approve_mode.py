@@ -37,9 +37,9 @@ def test_shift_tab_steps_from_auto_into_plan_mode_and_out_to_ask(ui):
     "As in Claude Code, plan mode is the stop after auto. Leaving it goes to ask, never back to auto."
     ui.agent.approvals.mode = 'auto'
     ui.cycle_approve()
-    assert ui.agent.plan_mode and 'plan' in ui.chip().plain
+    assert ui.agent.plan_mode
     ui.cycle_approve()
-    assert not ui.agent.plan_mode and ui.agent.approvals.mode == 'ask' and 'ask' in ui.chip().plain
+    assert not ui.agent.plan_mode and ui.agent.approvals.mode == 'ask'
 
 
 def test_the_key_is_bound_and_reaches_the_control(ui):

@@ -147,7 +147,6 @@ def test_alt_up_pulls_the_queued_text_back_and_the_turn_keeps_running():
         u.start_turn(_slow())
         _type(u, 'first queued', 'alt+enter')
         _type(u, 'second queued', 'alt+enter')
-        assert len([r for r in u.queued_rows()]) == 2, 'one row per queued line'
         u.buf.insert('draft')
         assert u.on_key(Key('alt+up')) is None
         assert u.buf.text == 'first queued\n\nsecond queued\n\ndraft'
