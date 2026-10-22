@@ -131,7 +131,7 @@ def test_a_folder_watch_opened_through_the_vault_is_reviewed_by_the_harness():
     assert m.check(force=True) == [] and [w.id for w in m.all()] == ['w1']   # first look snapshots, reviews nothing
     h.write('/proj/a.py', 'two\n')
     rec, = m.check(force=True)
-    assert rec['watch_id'] == 'w1' and rec['review'] == 'sub answer'
+    assert rec['watch_id'] == 'w1' and rec['review'].split('\nstate:')[0] == 'sub answer'
     assert h.notes[-1][:2] == ('folder review: proj: 1 edited', 'folder-review:w1')
     assert 'w1' in wt['list_watches']()
     assert wt['cancel_watch']('w1') == 'cancelled w1' and m.check() == [] and m.all() == []

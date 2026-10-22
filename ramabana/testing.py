@@ -234,7 +234,7 @@ class FakeBackend(Backend):
 
     def spawn(self, sp='', tools=(), **kw):
         # pass `**kw` through, as the real `spawn` does
-        s = FakeBackend(self.spec, replies=['sub answer'], sp=sp, tools=tools, shared=True, **kw)
+        s = FakeBackend(self.spec, replies=['sub answer\nstate: completed'], sp=sp, tools=tools, shared=True, **kw)
         self.spawned.append(s)
         return s
 

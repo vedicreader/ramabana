@@ -18,7 +18,7 @@ def _delegating(a, seen, ask=ASK, reads=1, after=()):
     a.activity.on_change = peek
     class Root(ScriptedBackend):
         def spawn(self, sp='', tools=(), **kw):
-            return ScriptedBackend(self.spec, steps=[Step(tool=READ)] * reads + [Step('a() is defined')], token_delay=0, tools=tools)
+            return ScriptedBackend(self.spec, steps=[Step(tool=READ)] * reads + [Step('a() is defined\nstate: completed')], token_delay=0, tools=tools)
     be = Root(steps=[Step(tool=READ), Step(tool=ask), *after, Step('done')], token_delay=0, tools=a.tools, sp=a.system_prompt())
     a._be = a._be_or_none = lambda job='turn': be
     return be

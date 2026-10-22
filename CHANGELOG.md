@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.71
+
+- A sub-agent reply with no tool call that is under 300 characters and has no `state:` line is sent back once with `SUB_NUDGE`, asking for the missing call or a final report. Before, a stray progress line ended a delegation as if it were the answer. A second such reply in a row is accepted, and the step limit still applies.
+- Under the default `auto` step setting, a sub-agent's time limit grows with its steps: 20 seconds a step, never under `SUB_TIMEOUT` (30 minutes) or over `SUB_TIMEOUT_CEILING` (3 hours). A different `/subagents timeout` still wins, and 0 still means none.
+- `ramabana.testing`'s fake sub-agents end their answer with `state: completed`.
+
 ## 0.2.70
 
 - The `search` extra needs koshas 0.1.13 and litesearch 0.1.53, which index a project's packages from its own `.venv` and skip symlink loops.

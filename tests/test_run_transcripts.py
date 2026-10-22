@@ -10,10 +10,16 @@ def view(path: str) -> str:
     return 'contents'
 
 
+class _TwoTurns(FakeBackend):
+    "A backend whose sub-agents end each of two turns with a report."
+    def spawn(self, sp='', tools=(), **kw):
+        s = super().spawn(sp, tools, **kw); s.replies = ['first\nstate: completed', 'second\nstate: completed']; return s
+
+
 def test_a_message_told_to_a_run_reaches_the_sub_agent_and_its_transcript(tmp_path):
-    be, run = FakeBackend(), Run('run_t', 'child', 'q', 'm', log=tmp_path/'run_t.log')
+    be, run = _TwoTurns(), Run('run_t', 'child', 'q', 'm', log=tmp_path/'run_t.log')
     run.tell('also check b')
-    assert delegate(be, 'q', [view], run=run) == '(done)'
+    assert delegate(be, 'q', [view], run=run) == 'second\nstate: completed'
     assert be.spawned[0].sent == ['q', 'also check b'], 'the queued message became a follow-up turn'
     log = run.log.read_text()
     assert 'also check b' in log

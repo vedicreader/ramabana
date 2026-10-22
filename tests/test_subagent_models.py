@@ -24,7 +24,7 @@ class Slow(FakeBackend):
         self.spawned.append(s); return s
     def _send(self, msg, **kw):
         t = time.monotonic(); time.sleep(self.wait); Slow.log.append((self.spec.name, t, time.monotonic()))
-        return f'{self.spec.name} answered'
+        return f'{self.spec.name} answered\nstate: completed'
 
 def _tools(backends, **kw):
     "The delegation tools over a `get_sub` that picks `backends[model]`, '' for the first."

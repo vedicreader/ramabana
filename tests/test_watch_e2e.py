@@ -37,7 +37,7 @@ def test_a_beat_reviews_a_folder_and_a_pane_shows_it(tmp_path):
         got = p.tick()
         assert [r['name'] for r in got.ran] == ['folders'] and got.ran[0]['status'] == 'ok'
         rec, = a.monitors.drain()
-        assert rec['review'] == 'sub answer'
+        assert rec['review'].split('\nstate:')[0] == 'sub answer'
         assert 'sub answer' in a.monitors.log.read_text()
         out = a.command('/watch monitors')
         assert out.startswith('watching monitors in pane'), out

@@ -94,7 +94,7 @@ def test_a_sub_agent_waiting_on_its_own_sub_agents_lends_its_slot():
 class _Answers:
     "A sub-agent that answers a question starting `long` with 20000 characters, and any other briefly."
     max_steps = 0
-    def send(self, q, run=None): return 'A' * 20000 if q.startswith('long') else f'short answer to {q}'
+    def send(self, q, run=None): return 'A' * 20000 if q.startswith('long') else f'short answer to {q}\nstate: completed'
     def close(self): pass
 
 
@@ -205,7 +205,7 @@ class _Overlap:
                 be.ctx.append(SUB_READ_ONLY.get())
                 time.sleep(.3)
                 with be.lock: be.now -= 1
-                return 'found it'
+                return 'found it\nstate: completed'
             def close(self): pass
         return Sub()
 
@@ -278,3 +278,61 @@ def test_a_numeric_tool_budget_still_caps_all_of_a_turns_delegations_together():
     turn = Run('turn', question='q')
     for _ in range(20): _call_in(Run('d1', 'child', 'q', 'm', turn), view, '/proj/a.py')
     assert _call_in(Run('d2', 'child', 'q', 'm', turn), view, '/proj/a.py') == TREE_SPENT
+
+
+class _Scripted(FakeBackend):
+    "A backend whose sub-agents give `sub_replies` in turn."
+    def __init__(self, sub_replies=(), **kw): super().__init__(**kw); self.sub_replies = list(sub_replies)
+    def spawn(self, sp='', tools=(), **kw):
+        s = super().spawn(sp, tools, **kw); s.replies = list(self.sub_replies); return s
+
+_FINAL = 'Found nothing.\nstate: completed, searched everywhere'
+
+
+def test_a_status_reply_is_sent_back_once():
+    from ramabana.tools import delegate
+    be = _Scripted(['Running the tests next.', _FINAL])
+    assert delegate(be, 'q') == _FINAL
+    sent = be.spawned[0].sent
+    assert len(sent) == 2 and 'no tool call' in sent[1] and 'state:' in sent[1], sent
+
+
+def test_a_second_status_reply_ends_the_run():
+    from ramabana.tools import delegate
+    be = _Scripted(['Running the tests next.', 'Still running them.'])
+    assert delegate(be, 'q') == 'Still running them.'
+    assert len(be.spawned[0].sent) == 2
+
+
+def test_a_final_report_is_not_sent_back():
+    from ramabana.tools import delegate
+    be = _Scripted([_FINAL])
+    assert delegate(be, 'q') == _FINAL
+    assert len(be.spawned[0].sent) == 1
+
+
+def _limits(steps_setting, session_timeout, asked):
+    "The `(max_steps, timeout)` a delegation tool passes to `delegate`."
+    import ramabana.tools as T
+    from unittest.mock import patch
+    got = {}
+    def fake(*a, **kw): got.update(kw); return 'x'
+    be = FakeBackend()
+    tools = {t.__name__: t for t in subagent_tools(lambda: be, lambda: [], get_steps=lambda: steps_setting, get_timeout=lambda: session_timeout)}
+    with patch.object(T, 'delegate', fake): tools['delegate_search'](['q'], max_steps=asked)
+    return got['max_steps'], got['timeout']
+
+
+def test_under_auto_the_default_timeout_grows_with_the_steps():
+    from ramabana.tools import SUB_TIMEOUT
+    assert _limits('auto', SUB_TIMEOUT, 80) == (80, 1800)
+    assert _limits('auto', SUB_TIMEOUT, 360) == (360, 7200)
+    assert _limits('auto', SUB_TIMEOUT, 400) == (400, 8000)
+
+
+def test_a_timeout_the_session_set_wins_over_the_steps():
+    from ramabana.tools import SUB_TIMEOUT
+    assert _limits('auto', 600, 80) == (80, 600)
+    assert _limits('auto', 600, 360) == (360, 600)
+    assert _limits('auto', 0, 360) == (360, 0)
+    assert _limits(120, SUB_TIMEOUT, 120) == (120, 1800)
