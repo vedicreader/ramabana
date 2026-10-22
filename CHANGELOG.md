@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.69
+
+- The sub-agent step setting is `auto` by default. Under `auto` a delegation's `max_steps` is honoured up to `SUB_STEP_CEILING` (400), and a delegation that names none gets 80. Before, every sub-agent was capped at 80 steps, so a request for more fell back to 80 without a word.
+- `/subagents steps N` takes 1 to 400, up from 80, and still caps every delegation; `/subagents steps auto` returns to the default.
+- Under the `auto` tool budget each delegation's allowance is four tool calls a step, 1,600 calls, so a 400-step sub-agent runs out of steps before it runs out of calls.
+- Tests across `tests/` and the notebooks check behaviour, not message wording.
+
 ## 0.2.68
 
 - Under the default `auto` tool budget, each top-level delegation has its own allowance of `_TOOL_MAX` (400) tool calls, shared with the sub-agents it starts. Before, every sub-agent of a turn drew from one pool of 400, so after a few busy delegations each later delegation in that turn was refused on its first call. A `delegate_async` or monitor run counts as one delegation with its children. A numeric `max_tool_calls` still caps all of a turn's delegations together. `Run.draw` takes `per_branch`, `Run.branch` names the top-level delegation, and `Run.tree_calls` starts at 0.

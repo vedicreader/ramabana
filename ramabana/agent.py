@@ -41,7 +41,7 @@ from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as less
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
-                            tools_for, Background, Slots, SUB_MAX_STEPS, SUB_TIMEOUT, SUB_READ_ONLY, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
+                            tools_for, Background, Slots, SUB_MAX_STEPS, SUB_STEP_CEILING, SUB_TIMEOUT, SUB_READ_ONLY, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
 from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, beat_problems, pob, pob_path, review_notice
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -1157,7 +1157,7 @@ SUB_DEPTH_MAX = 2   #: most levels of sub-agents that may delegate again
 TREE_SPENT = ('Tool-call budget for delegated work is exhausted. Stop calling tools and '
               'answer with the evidence you have.')
 
-def _sub_steps(n): return max(1, min(_STEP_MAX, int(n)))
+def _sub_steps(n): return 'auto' if str(n).strip().lower() == 'auto' else max(1, min(SUB_STEP_CEILING, int(n)))
 def _sub_timeout(s): return max(0., float(s or 0))
 def _sub_depth(n): return max(0, min(SUB_DEPTH_MAX, int(n)))
 
@@ -1182,7 +1182,7 @@ class Agent:
                  inline_skills=INLINE_SKILLS,
                  subagents=True,
                  subagent_writes=True,     # sub-agents get write tools, behind the same approvals
-                 subagent_steps=SUB_MAX_STEPS, # steps a sub-agent may take; caps a delegation's `max_steps`
+                 subagent_steps='auto',    # 'auto' lets a delegation ask for up to `SUB_STEP_CEILING` steps; a number caps every delegation's `max_steps`
                  subagent_timeout=SUB_TIMEOUT, # seconds before a delegation is stopped; 0 never
                  subagent_depth=2,          # levels of sub-agents that may delegate again, at most `SUB_DEPTH_MAX`
                  readonly=False,            # withhold every tool that acts
@@ -1628,10 +1628,10 @@ def _observe(self:Agent, f):
 
 @patch
 def _draw(self:Agent):
-    "Count a sub-agent's call against the turn's tool budget, or under `auto` its own delegation's `_TOOL_MAX`; False once spent."
+    "Count a sub-agent's call against the turn's tool budget, or under `auto` its own delegation's four calls a step up to `SUB_STEP_CEILING`; False once spent."
     run = current_run()
     # under auto the turn is uncapped, so one shared pool would only starve the delegations that come later
-    return run is None or run.draw(ifnone(self.max_tool_calls, _TOOL_MAX), per_branch=self.max_tool_calls is None)
+    return run is None or run.draw(ifnone(self.max_tool_calls, 4 * SUB_STEP_CEILING), per_branch=self.max_tool_calls is None)
 
 @patch
 def _deny_git_shell(self:Agent, name, args):
@@ -2411,7 +2411,7 @@ def _set_sub(self:Agent, attr, value, what):
 
 @patch
 def set_subagent_steps(self:Agent, n):
-    "Set the steps a sub-agent may take, which also caps a delegation's `max_steps`."
+    "Set the steps a sub-agent may take, 1 to `SUB_STEP_CEILING`, which caps a delegation's `max_steps`; `auto` caps none below the ceiling."
     return self._set_sub('subagent_steps', _sub_steps(n), 'sub-agent steps')
 
 @patch
@@ -2425,7 +2425,7 @@ def set_subagent_depth(self:Agent, n):
     return self._set_sub('subagent_depth', _sub_depth(n), 'sub-agent nesting')
 
 SHOWN_CHANNEL = {'': 'auto', 'native': 'native', 'tags': 'text'}   #: a channel as a person reads it
-SUBAGENTS_USAGE = 'say /subagents on|off, steps N, timeout S or nest N, or /subagents model NAME|default, effort LEVEL|default or tools native|text|auto, any of the last three with --save'
+SUBAGENTS_USAGE = 'say /subagents on|off, steps N|auto, timeout S or nest N, or /subagents model NAME|default, effort LEVEL|default or tools native|text|auto, any of the last three with --save'
 
 @patch(as_prop=True)
 def _sub_state(self:Agent):

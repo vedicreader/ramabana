@@ -43,6 +43,27 @@ def test_a_request_below_the_cap_is_not_raised_to_it():
     assert [s.max_steps for s in be.spawned] == [SUB_MIN_STEPS + 10, SUB_MAX_STEPS, SUB_MAX_STEPS]
 
 
+def test_under_auto_a_delegation_may_ask_for_up_to_the_ceiling():
+    "Every request was clamped to 80, so a model that asked for 250 silently got a third of it."
+    from ramabana.tools import SUB_MAX_STEPS, SUB_STEP_CEILING
+    be = _stepping(FakeBackend())
+    subs = _subs(be, get_steps=lambda: 'auto')
+    for n in (250, 1000, 0): subs['delegate_search'](['q'], max_steps=n)
+    assert SUB_STEP_CEILING == 400
+    assert [s.max_steps for s in be.spawned] == [250, SUB_STEP_CEILING, SUB_MAX_STEPS]
+
+
+def test_a_numeric_session_cap_may_pass_80_and_still_caps_every_delegation():
+    from ramabana.testing import fake_agent
+    a, _ = fake_agent()
+    assert a.subagent_steps == 'auto' and 'steps auto' in a.subagent_report
+    assert a.set_subagent_steps(150) == 150 and 'steps 150' in a.subagent_report
+    be = _stepping(FakeBackend())
+    _subs(be, get_steps=lambda: a.subagent_steps)['delegate_search'](['q'], max_steps=250)
+    assert [s.max_steps for s in be.spawned] == [150]
+    assert (a.set_subagent_steps(9999), a.set_subagent_steps(0), a.set_subagent_steps('auto')) == (400, 1, 'auto')
+
+
 class _Hung:
     "A sub-agent that never answers until it is cancelled."
     max_steps = 0
@@ -229,20 +250,22 @@ def _call_in(run, tool, *a):
 
 def test_under_auto_a_spent_delegation_does_not_starve_the_next_one():
     "Under `auto` every sub-agent of a turn shared 400 calls, so after a few busy delegations each later one was refused on its first call."
-    from ramabana.agent import TREE_SPENT, _TOOL_MAX
+    from ramabana.agent import TREE_SPENT
+    from ramabana.tools import SUB_STEP_CEILING
     from ramabana.runtime import Run
+    allowance = 4 * SUB_STEP_CEILING   # a 400-step delegation must not run out of calls before it runs out of steps
     from ramabana.testing import fake_agent
     a, _ = fake_agent()
     assert a.max_tool_calls is None, 'auto'
     view = next(t for t in a.tools if t.__name__ == 'view_file')
     turn = Run('turn', question='q')
     first = Run('d1', 'child', 'q', 'm', turn)
-    for _ in range(_TOOL_MAX): assert _call_in(first, view, '/proj/a.py') != TREE_SPENT
+    for _ in range(allowance): assert _call_in(first, view, '/proj/a.py') != TREE_SPENT
     assert _call_in(first, view, '/proj/a.py') == TREE_SPENT, 'one runaway delegation is still bounded'
     assert _call_in(Run('d1n', 'child', 'q', 'm', first), view, '/proj/a.py') == TREE_SPENT, 'its nested sub-agents share its allowance'
     assert 'def a()' in _call_in(Run('d2', 'child', 'q', 'm', turn), view, '/proj/a.py'), 'the next delegation still works'
     bg = Run('bg', 'background', 'q', 'm')
-    for _ in range(_TOOL_MAX): _call_in(Run('bgc', 'child', 'q', 'm', bg), view, '/proj/a.py')
+    for _ in range(allowance): _call_in(Run('bgc', 'child', 'q', 'm', bg), view, '/proj/a.py')
     assert _call_in(bg, view, '/proj/a.py') == TREE_SPENT, 'a background delegation and its children are one allowance'
 
 def test_a_numeric_tool_budget_still_caps_all_of_a_turns_delegations_together():
