@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.76
+
+- The `search` extra needs litesearch 0.1.56 and koshas 0.1.15. On macOS arm64 the embedding models then tokenize and pool in Rust through laghu-rs, with the same vectors; `kosha embed` fills missing package vectors and `kosha prune` drops packages no environment still has.
+
 ## 0.2.75
 
 - The `search` extra needs litesearch 0.1.54, which loads embedding models with laghu: the default model takes 80 MB of private memory instead of 1,373 MB, and gives model2vec 0.9's vectors whatever model2vec is installed.
