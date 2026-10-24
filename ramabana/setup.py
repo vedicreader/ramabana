@@ -174,7 +174,7 @@ VALUED = ('--root', '--model', '--approve', '--pii', '--theme', '--max-tool-call
 EARLY = ('-h', '--help', '--json', '--doctor', '--kernels', '--python', '--attach', '--agent-proxy')
 #: the flags `refusal` reads
 FLAGS = ('--vault', '--warm', '--no-warm')
-LAUNCHED = False   # `run_cli` has run `launch`, so `main` does not ask again
+LAUNCHED = False   # set when `run_cli` has run `launch`; `main` then skips it
 
 def launch_args(argv):
     "`Setup`'s `cfg` and `launch`'s `tmux` for an interactive command line `main` accepts, read without its parser; None leaves it to `main`."
@@ -221,7 +221,8 @@ def run_cli():
     return main(**args)
 
 # %% ../nbs/19_setup.ipynb #bc8fcf27
-import difflib, tomllib, warnings
+import difflib, tomllib, warnings, threading
+from contextlib import contextmanager
 from collections import namedtuple
 from fastcore.xtras import atomic_save
 
@@ -232,7 +233,7 @@ def config_path():
     return Path(os.environ.get('RAMABANA_CONFIG') or CONFIG).expanduser()
 
 KEYS_ENV = 'keys.env'   #: owner-only API keys beside config.toml
-PANE_LINGER = 3.0       #: seconds a finished run's transcript pane stays open, so its last words are seen written
+PANE_LINGER = 3.0       #: seconds a finished run's transcript pane stays open before the viewer closes it
 
 def keys_path():
     "This machine's owner-only key file, beside config.toml."
@@ -408,59 +409,87 @@ def env_names(key):
     "The env vars that beat `key`, most specific first: its name as given for a `plain` key, else under each prefix."
     return [key.env] if key.plain else [p+key.env for p in env_prefixes()] if key.env else []
 
-def _locked_write(p, text):
+_LOCKS = {}
+_LOCKS_GUARD = threading.Lock()
+
+@contextmanager
+def _lock(p):
+    "Hold a reentrant process lock and an outermost cross-process file lock for `p`."
     import fcntl
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p.parent/f'.{p.name}.lock', 'w') as lk:
-        fcntl.flock(lk, fcntl.LOCK_EX)
-        with atomic_save(p, 'w') as f: f.write(text)
+    p = Path(p).expanduser().resolve()
+    with _LOCKS_GUARD:
+        state = _LOCKS.setdefault(p, [threading.RLock(), 0, None])
+    with state[0]:
+        if not state[1]:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            lk = open(p.parent/f'.{p.name}.lock', 'w')
+            try: fcntl.flock(lk, fcntl.LOCK_EX)
+            except BaseException:
+                lk.close()
+                raise
+            state[2] = lk
+        state[1] += 1
+        try: yield state[2]
+        finally:
+            state[1] -= 1
+            if not state[1]:
+                state[2].close()
+                state[2] = None
+
+def _save(p, text):
+    with atomic_save(p, 'w') as f: f.write(text)
+
+def _locked_write(p, text):
+    with _lock(p): _save(p, text)
 
 def set_setting(key, value, path=None):
     "Set top-level `key` in config.toml by rewriting its one line, comments kept. A missing file starts from `config_template`; one that is not TOML is refused, never rewritten."
     p = Path(path).expanduser() if path else config_path()
-    try: text = p.read_text()
-    except FileNotFoundError: text = config_template()
-    try: tomllib.loads(text)
-    except (UnicodeError, tomllib.TOMLDecodeError) as e:
-        raise ValueError(f'{p} is not valid TOML ({e}); fix it by hand: ramabana never rewrites a file it cannot read') from None
-    m = re.search(r'^\s*\[', text, re.M)
-    head, tail = (text[:m.start()], text[m.start():]) if m else (text, '')
-    line = f'{key} = {_toml(value)}'
-    for pat in (rf'^{re.escape(key)}[ \t]*=.*$', rf'^#[ \t]*{re.escape(key)}[ \t]*=.*$'):
-        if re.search(pat, head, re.M): head = re.sub(pat, line, head, count=1, flags=re.M); break
-    else: head = f'{line}\n{head}'
-    if tomllib.loads(new := head + tail).get(key) != value: raise ValueError(f'{p}: could not set {key} without breaking the file; set it by hand')
-    _locked_write(p, new)
+    with _lock(p):
+        try: text = p.read_text()
+        except FileNotFoundError: text = config_template()
+        try: tomllib.loads(text)
+        except (UnicodeError, tomllib.TOMLDecodeError) as e:
+            raise ValueError(f'{p} is not valid TOML ({e}); fix it by hand: ramabana never rewrites a file it cannot read') from None
+        m = re.search(r'^\s*\[', text, re.M)
+        head, tail = (text[:m.start()], text[m.start():]) if m else (text, '')
+        line = f'{key} = {_toml(value)}'
+        for pat in (rf'^{re.escape(key)}[ \t]*=.*$', rf'^#[ \t]*{re.escape(key)}[ \t]*=.*$'):
+            if re.search(pat, head, re.M): head = re.sub(pat, lambda m: line, head, count=1, flags=re.M); break
+        else: head = f'{line}\n{head}'
+        if tomllib.loads(new := head + tail).get(key) != value: raise ValueError(f'{p}: could not set {key} without breaking the file; set it by hand')
+        _save(p, new)
     _LOADED.pop(p, None)
     return value
 
 def _header(table):
-    "The TOML header for `table`: one `KEYS` names, such as `jobs` or `runtime`, else a model name, quoted, under `model`."
+    "The TOML header for `table`: `table` itself when `KEYS` names it, such as `jobs` or `runtime`, else a quoted model name under `model`."
     return table if table in {k.rpartition('.')[0] for k in KEYS} - {''} or table.startswith('model.') else f'model.{json.dumps(table)}'
 
 def set_table(table, values, path=None):
     "Set `values` in config.toml's `[table]`, adding the table when it is missing, comments kept; a file that is not TOML is refused, never rewritten."
     p = Path(path).expanduser() if path else config_path()
-    try: text = p.read_text()
-    except FileNotFoundError: text = ''
-    try: tomllib.loads(text)
-    except (UnicodeError, tomllib.TOMLDecodeError) as e:
-        raise ValueError(f'{p} is not valid TOML ({e}); fix it by hand: ramabana never rewrites a file it cannot read') from None
-    h = _header(table)
-    find = lambda: re.search(rf'^\[{re.escape(h)}\][ \t]*$', text, re.M)
-    if not (m := find()): text = text.rstrip('\n') + ('\n\n' if text.strip() else '') + f'[{h}]\n'; m = find()
-    end = m.end() + n.start() if (n := re.search(r'^[ \t]*\[', text[m.end():], re.M)) else len(text)
-    block = text[m.end():end]
-    for k, v in values.items():
-        line = f'{k} = {_toml(v)}'
-        for pat in (rf'^{re.escape(k)}[ \t]*=.*$', rf'^#[ \t]*{re.escape(k)}[ \t]*=.*$'):
-            if re.search(pat, block, re.M): block = re.sub(pat, line, block, count=1, flags=re.M); break
-        else: block = f'\n{line}' + block
-    new = text[:m.end()] + block + text[end:]
-    got = tomllib.loads(new)
-    for part in (['model', table.removeprefix('model.').strip('"')] if h.startswith('model.') else [table]): got = got.get(part, {})
-    if any(got.get(k) != v for k, v in values.items()): raise ValueError(f'{p}: could not set [{h}] without breaking the file; set it by hand')
-    _locked_write(p, new if new.endswith('\n') else new + '\n')
+    with _lock(p):
+        try: text = p.read_text()
+        except FileNotFoundError: text = ''
+        try: tomllib.loads(text)
+        except (UnicodeError, tomllib.TOMLDecodeError) as e:
+            raise ValueError(f'{p} is not valid TOML ({e}); fix it by hand: ramabana never rewrites a file it cannot read') from None
+        h = _header(table)
+        find = lambda: re.search(rf'^\[{re.escape(h)}\][ \t]*$', text, re.M)
+        if not (m := find()): text = text.rstrip('\n') + ('\n\n' if text.strip() else '') + f'[{h}]\n'; m = find()
+        end = m.end() + n.start() if (n := re.search(r'^[ \t]*\[', text[m.end():], re.M)) else len(text)
+        block = text[m.end():end]
+        for k, v in values.items():
+            line = f'{k} = {_toml(v)}'
+            for pat in (rf'^{re.escape(k)}[ \t]*=.*$', rf'^#[ \t]*{re.escape(k)}[ \t]*=.*$'):
+                if re.search(pat, block, re.M): block = re.sub(pat, lambda m: line, block, count=1, flags=re.M); break
+            else: block = f'\n{line}' + block
+        new = text[:m.end()] + block + text[end:]
+        got = tomllib.loads(new)
+        for part in (['model', table.removeprefix('model.').strip('"')] if h.startswith('model.') else [table]): got = got.get(part, {})
+        if any(got.get(k) != v for k, v in values.items()): raise ValueError(f'{p}: could not set [{h}] without breaking the file; set it by hand')
+        _save(p, new if new.endswith('\n') else new + '\n')
     _LOADED.pop(p, None)
     return values
 
@@ -596,9 +625,9 @@ def config_cli(argv=()):
     return 0
 
 def config_reset(path=None):
-    "Write the commented config.toml, keeping an old one as `config.toml.bak` and its `learning` setting: the line saying so."
+    "Write the commented config.toml. Keep an existing file as `config.toml.bak` and preserve its `learning` setting. Return a status message."
     p = Path(path).expanduser() if path else config_path()
-    old, bak = setting('learning'), p.exists()
+    old, bak = load_config(p)[0].get('learning'), p.exists()
     if bak: shutil.copy2(p, p.with_name(p.name + '.bak'))
     _locked_write(p, config_template())
     _LOADED.pop(p, None)
@@ -608,7 +637,7 @@ def config_reset(path=None):
 HISTORY_USAGE = 'usage: ramabana history compact [--cfg DIR] [--name NAME] [--force] [--no-backup]'
 
 def history_cli(argv=()):
-    "`ramabana history compact`: rewrite the turn log once, so old pictures and long tool results stop filling it."
+    "`ramabana history compact`: rewrite the turn log once. Old pictures and long tool results stop filling it."
     a = list(argv)
     if a[:1] != ['compact']: print(HISTORY_USAGE, file=sys.stderr); return 2
     import argparse
@@ -759,16 +788,28 @@ def _worktree(root, out):
         h.update(p.encode()); h.update(repr(f.stat().st_mtime if f.exists() else 0).encode())
     return h.hexdigest()[:12]
 
+def _newest_mtime(root):
+    "A digest of visible file paths, sizes and nanosecond mtimes below `root`."
+    entries = []
+    for d, dirs, files in os.walk(root):
+        dirs[:] = [n for n in dirs if not n.startswith('.')]
+        for n in files:
+            if n.startswith('.'): continue
+            p = Path(d)/n
+            try: st = p.stat()
+            except OSError: continue
+            entries.append((str(p.relative_to(root)), st.st_size, st.st_mtime_ns))
+    return hashlib.sha256(json.dumps(sorted(entries)).encode()).hexdigest()
+
 def root_state(root):
-    "A root's git HEAD and working-tree digest, staged changes included; outside git, the newest mtime of its entries."
+    "A root's git HEAD and working-tree digest, staged changes included; outside git, a digest of visible files."
     try:
         r = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
         st = subprocess.run(['git', '--no-optional-locks', '-C', str(root), 'status', '--porcelain=v1', '-z'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10) if r.returncode == 0 else None
     except (OSError, subprocess.SubprocessError): r = None
     if r is not None and r.returncode == 0:
         return dict(head=r.stdout.strip(), worktree=_worktree(root, st.stdout))
-    p = Path(root)
-    return dict(mtime=max([0, *(c.lstat().st_mtime for c in p.iterdir() if c.name != '.kosha')]))
+    return dict(mtime=_newest_mtime(root))
 
 def index_state(roots, dirs=None):
     "The fingerprint of what a sync of `roots` reads."
@@ -800,7 +841,7 @@ def index_gate(cfg, roots, dirs=None):
     return state, '; '.join(w for w in (old and missing and 'index missing', index_changes(old, state)) if w)
 
 def _replace(p, text):
-    "Write `text` to `p` through a temp file and `os.replace`, so a reader never sees half of it."
+    "Write `text` to `p` through a temp file and `os.replace`. A reader never sees half of it."
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(f'.{p.name}.{os.getpid()}.tmp')
     tmp.write_text(text)

@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/monitor.html.md"""
 # %% ../nbs/17_monitor.ipynb #a361b376
 from __future__ import annotations
 
-import fnmatch, json, os, shlex, shutil, signal, subprocess, sys, threading, time, uuid
+import fnmatch, hashlib, json, os, shlex, shutil, signal, subprocess, sys, threading, time, uuid
 from collections import Counter, deque
 from contextlib import contextmanager
 from importlib.metadata import entry_points
@@ -18,22 +18,21 @@ from fastcore.script import call_parse
 
 from .core import AgentError, agent_err
 from .runtime import Run
-from .tools import MAX_TOOL_CHARS, _diff, clip, delegate, err, summary
+from .tools import MAX_TOOL_CHARS, _diff, clip, delegate, err, summary, sub_steps
 from shalya.core import one_line as _1
 
 # %% auto #0
-__all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'REVIEW_MAX_STEPS', 'PENDING_MAX', 'DFLT_SETTLE', 'REVIEW_SP',
-           'POB_READER', 'TICKS', 'POB_HOME', 'BEAT_TAG', 'TICK_GROUP', 'BEAT_TOOLS', 'LAUNCHD_PATHS', 'BEAT_LIMIT',
-           'BEAT_ENV', 'LEARNING_TICKS', 'LEARNING_OFF', 'secs', 'files_under', 'snapshot', 'changed', 'summarise',
-           'report', 'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'on_tick', 'pob_path', 'pob',
-           'beat_notes', 'beat_notice', 'beat_command', 'beat_missing', 'beat_env_path', 'load_beat_env',
-           'beat_problems', 'heartbeat', 'BeatTimeout', 'tick']
+__all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'PENDING_MAX', 'DFLT_SETTLE', 'REVIEW_SP', 'POB_READER',
+           'TICKS', 'POB_HOME', 'BEAT_TAG', 'TICK_GROUP', 'BEAT_TOOLS', 'LAUNCHD_PATHS', 'BEAT_LIMIT', 'BEAT_ENV',
+           'LEARNING_TICKS', 'LEARNING_OFF', 'secs', 'files_under', 'snapshot', 'changed', 'summarise', 'report',
+           'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'on_tick', 'pob_path', 'pob', 'beat_notes',
+           'beat_notice', 'beat_command', 'beat_missing', 'beat_env_path', 'load_beat_env', 'beat_problems',
+           'heartbeat', 'BeatTimeout', 'tick']
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
 SNAP_MAX_FILES = 2000
-SNAP_MAX_BYTES = 400_000     # per file; larger files keep only their size
-REVIEW_MAX_CHARS = 24_000    # of change report per review prompt
-REVIEW_MAX_STEPS = 12        # tool calls per review
+SNAP_MAX_BYTES = 400_000     # characters per file; a larger file keeps only its size
+REVIEW_MAX_CHARS = 24_000    # characters of change report per review prompt
 PENDING_MAX = 20             # queued reviews; the oldest is dropped
 DFLT_SETTLE = '20s'          # least time between reviews of one folder
 
@@ -57,7 +56,7 @@ def _matches(path, globs):
 
 
 def files_under(host, folder, pattern=''):
-    "Returns readable files under `folder` matching `pattern`."
+    "Sorted paths of the files under `folder` that match `pattern`, at most `SNAP_MAX_FILES`."
     root, globs = host.check(folder, must_exist=True), _globs(pattern)
     return sorted(p for p in map(Path, host.walk()) if (p == root or root in p.parents) and _matches(p, globs))[:SNAP_MAX_FILES]
 
@@ -68,7 +67,7 @@ def snapshot(host, folder, pattern=''):
     for p in files_under(host, folder, pattern):
         t = host.text_at(p)
         if t is None: continue
-        out[str(p)] = t if len(t) <= SNAP_MAX_BYTES else f'({len(t)} bytes, too large to diff)'
+        out[str(p)] = t if len(t) <= SNAP_MAX_BYTES else f'({len(t)} bytes, too large to diff, sha1 {hashlib.sha1(t.encode()).hexdigest()})'
     return out
 
 
@@ -172,12 +171,15 @@ class Monitors:
 
     def __init__(self,
                  host,
-                 get_backend=None,   # callable -> review backend, or None
-                 get_tools=None,     # callable -> the reviewer's read tools
+                 get_backend=None,   # callable returning the review backend, or `None`
+                 get_tools=None,     # callable returning the reviewer's read tools
                  on_review=None,     # callable(record) per completed review
-                 log_dir=None):      # callable -> folder for transcripts and logs
+                 log_dir=None,     # callable returning the folder for transcripts and `monitors.log`, or `None`
+                 get_steps=None    # callable returning the sub-agent step setting; `None` uses `auto`
+    ):
         self.host, self.get_backend, self.get_tools = host, get_backend, get_tools
         self.on_review, self.log_dir, self.runs = on_review, log_dir, {}
+        self.get_steps = get_steps
         self.watches, self._unwatchable = {}, set()
         self.pending = deque(maxlen=PENDING_MAX)
         self.lock = threading.Lock()  # guards `watches` and `pending`
@@ -192,7 +194,7 @@ class Monitors:
         return w
 
     def remove(self, watch_id):
-        "Stop watching one folder."
+        "Stop watching one folder; returns whether the watch existed."
         with self.lock: return self.watches.pop(str(watch_id), None) is not None
 
     def all(self):
@@ -216,7 +218,7 @@ class Monitors:
 @patch
 def check(self: Monitors,
           force=False,   # look even inside a watch's settle window
-          block=True     # wait for a running check, not return `None`
+          block=True     # wait for a running check; when False, return `None` at once
 ):
     "One record per changed folder, or `None` if another check runs and `block` is off."
     if not self.checking.acquire(blocking=block): return None
@@ -241,13 +243,13 @@ def _check(self: Monitors, w, force=False):
     after = snapshot(self.host, w.folder, w.pattern)
     chg = changed(w.snap, after)
     if not chg: return None
-    w.snap, w.reviewed = after, now
-    return self._review(w, chg)
+    try: return self._review(w, chg)
+    finally: w.snap, w.reviewed = after, now   # a review that fails is reported as an error, and its change is not retried
 
 
 @patch
 def _review(self: Monitors, w, chg):
-    "Review `w`'s changes with a read-only sub-agent."
+    "Review `w`'s changes within the current sub-agent step budget."
     text = report(chg, w.folder)
     kw = dict(changes=text, files=len(chg), summary=summarise(chg))
     b = self.get_backend() if self.get_backend is not None else None
@@ -260,8 +262,9 @@ def _review(self: Monitors, w, chg):
             self.runs[rid] = run
             for old in list(self.runs)[:-50]: self.runs.pop(old)
         answer = delegate(b, review_prompt(w.instructions, text, w.folder), tools,
-                          sp=REVIEW_SP, max_steps=REVIEW_MAX_STEPS, run=run)
-        rec = self._record(w, 'ok', review=answer, run_id=rid, **kw)
+                          sp=REVIEW_SP, max_steps=sub_steps(setting=self.get_steps() if self.get_steps is not None else "auto"), run=run)
+        rec = (self._record(w, 'ok', review=answer, run_id=rid, **kw) if run.state == 'completed'
+               else self._record(w, 'error', error=str(answer), run_id=rid, **kw))
     w.reviews += 1
     w.last_status, w.last_review = rec['status'], rec['review'] or rec['summary']
     return rec
@@ -302,14 +305,17 @@ def sync(self: Monitors):
     seen, new = set(), []
     for r in rows:
         wid = str(r['id']); seen.add(wid)
-        if wid in self.watches or wid in self._unwatchable: continue
+        if wid in self.watches: continue
         w = FolderWatch(r['target'], r.get('instructions') or '', r.get('pattern') or '', note=r.get('note') or '')
         w.id, w.vaulted = wid, True
         try: w.snap = snapshot(self.host, w.folder, w.pattern)
         except Exception as e:
-            self._unwatchable.add(wid); self.host.note(f'cannot watch {w.folder}: {agent_err(e)}'); continue
+            if wid not in self._unwatchable: self.host.note(f'cannot watch {w.folder}: {agent_err(e)}')
+            self._unwatchable.add(wid); continue
+        self._unwatchable.discard(wid)
         with self.lock: self.watches[wid] = w
         new.append(w)
+    self._unwatchable &= seen
     with self.lock:
         for wid in [k for k, w in self.watches.items() if w.vaulted and k not in seen]: del self.watches[wid]
     return new
@@ -414,7 +420,7 @@ def load_beat_env(path=None):
     return list(got)
 
 def beat_problems(hb=None, tools=BEAT_TOOLS):
-    "What is wrong with the installed beat, each with what to run; empty when none is installed, off Windows only."
+    "Problems with the installed beat, each with the fix to run; empty on Windows or when no beat is installed."
     if sys.platform == 'win32' or (hb := hb or heartbeat()) is None: return []
     fix, out = 'run `ramabana-tick --install` again from your usual shell', []
     try:

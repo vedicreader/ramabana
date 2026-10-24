@@ -569,7 +569,7 @@ def media_line(path):
 # %% ../nbs/05_cli.ipynb #2a893877
 MAX_FILE_ATTACH = 120_000  # characters
 def steer_note(atts):
-    "What a steered line says about its attachments: a tool result carries no picture, so each goes by path."
+    "What a steered line says about its attachments, listed by path because a tool result carries no picture."
     if not atts: return ''
     rows = '\n'.join(a.line() if hasattr(a, 'line') else str(a.path) for a in atts)
     return f'\n\n<attachments>\n{rows}\n</attachments>\nThese came with this message by path: read each with view_file, which shows a picture.'

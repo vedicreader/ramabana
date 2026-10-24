@@ -59,7 +59,7 @@ class VaultHost(LocalHost):
     def __init__(self,
                  roots=('.',),          # the folders the agent is confined to
                  vault=DFLT_VAULT,      # a `Vault`, a path, or None for the default
-                 shelf=None,            # shelf writes land on; None -> main store
+                 shelf=None,            # shelf this host writes to; None -> main store
                  federate=True,         # fuse vault prose into `search_code`
                  remember_reads=True,   # file what `read_url` fetches
                  warm=True,             # open the vault in the background
@@ -147,7 +147,7 @@ class VaultHost(LocalHost):
 
     def memory_tree(self, document=''):
         "Return the memory heading tree, optionally narrowed by title or document id."
-        # node titles carry section text, so gate them
+        # node titles carry section text and need the PII gate
         pii, ner = self._policy()
         toc, d = self.vault.toc(pii=pii, pii_ner=ner), str(document).strip().lower()
         if d: toc = [t for t in toc if d in str(t.get('title', '')).lower() or d == t.get('doc_id')]

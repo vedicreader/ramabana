@@ -25,7 +25,7 @@ def claude_ids():
     return tuple(m for m in CATALOG['claude'] if m.startswith('claude-'))
 
 def claude_aliases():
-    "Each Claude Code tier alias and the concrete id it tracks here: the family's last, so newest, in `CATALOG`."
+    "Each Claude Code tier alias and the concrete id it tracks: the family's last entry in `CATALOG`, the newest."
     return {a: [m for m in claude_ids() if m.startswith(f'claude-{a}-')][-1] for a in CATALOG['claude'] if not a.startswith('claude-')}
 
 # %% ../nbs/01b_models.ipynb #cb9860cd

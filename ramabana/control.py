@@ -27,13 +27,13 @@ class Control:
                  path=None):   # the socket; None puts it in the session's run folder as `CONTROL`
         self.agent, self.last = agent, None
         self.path = Path(path) if path else Path(agent.runs_dir)/CONTROL
-        if not path and len(str(self.path).encode()) > SOCKET_MAX:   # a deep config folder: a short name in the temp folder
+        if not path and len(str(self.path).encode()) > SOCKET_MAX:
             self.path = Path(tempfile.gettempdir())/f'ramabana-{agent.session_id}.sock'
         if len(str(self.path).encode()) > SOCKET_MAX: raise ValueError(f'a Unix socket path is at most {SOCKET_MAX} bytes: {self.path}')
         self._lock, self._running, self._server, self._inode = threading.Lock(), False, None, None
 
     def start(self):
-        "Listen on `path` for this user only and return self, refusing a path another runner or a non-socket holds."
+        "Listen on `path` for this user only and return `self`. Raises `RuntimeError` when another runner listens on `path` or when `path` is not a socket."
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.exists() or self.path.is_symlink():
             if not stat.S_ISSOCK(self.path.lstat().st_mode): raise RuntimeError(f'{self.path} is not a socket; nothing was removed')
@@ -58,7 +58,7 @@ class Control:
         return self
 
     def close(self):
-        "Stop listening, and remove the socket while it is still this one's."
+        "Stop listening and remove the socket, unless another runner has replaced it."
         if self._server is not None: self._server.shutdown(); self._server.server_close(); self._server = None
         try:
             if self._inode is not None and self.path.stat().st_ino == self._inode: self.path.unlink()
@@ -73,7 +73,7 @@ class Control:
         except Exception as e: return {'id': rid, 'error': {'message': agent_err(e)}}
 
     def _work(self, text):
-        "Run `text`, then each prompt queued meanwhile; under the lock, the last check and the end of running are one step."
+        "Run `text`, then each prompt queued meanwhile. The last queue check and the end of running happen under one lock."
         try:
             while text is not None:
                 try: self.last = self.agent.ask(text, result=True)

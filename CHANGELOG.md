@@ -2,32 +2,57 @@
 
 <!-- do not remove -->
 
+## 0.2.77
+
+- Needs shalya 0.1.21, uraiyadal 0.0.19 and rishi 0.1.56. The background code index writes in a child process. A crash in that child, such as the SIGBUS seen in SQLite, no longer stops Ramabana. A tool call that lacks a required argument returns a tool error and does not run.
+- The `search` extra needs litesearch 0.1.59, koshas 0.1.17, vishalakshi 0.1.34 and fossick 0.1.21. Index writes commit in batches of 1,000 rows, and the WAL is truncated after each sync. The vault privacy gate fails closed on query errors. The `python` extra needs dhrishti 0.1.11. The base install needs gheasy 0.0.15.
+- Default change: Folder reviews use the session's sub-agent step setting. Under `auto`, each review gets 80 steps. A numeric setting applies to the next review, up to 400. Before, folder reviews used the separate `REVIEW_MAX_STEPS` constant (12) instead of the session setting. The constant is removed. It was not a configuration key. Urai counts each approved tool call as one step. Quiet backends get twice the backend step budget for status calls. A separate read-tool allowance permits four calls per requested step.
+- A turn stays active through verification, checkpointing and end-of-turn hooks. Before, Ramabana marked the turn finished before this work completed.
+- A checkpoint write that raises `OSError` adds a warning to the answer. The answer keeps its result. Before, a checkpoint disk error replaced a successful answer with a failure note.
+- A checkpoint pruning failure reports that the new checkpoint was saved but old checkpoints could not be removed. Before, an `OSError` during pruning reported that the new checkpoint was not saved.
+- History compaction summarises only messages outside the recent history it keeps. It leaves the history unchanged when every message is recent. Before, it could summarise the whole history and then keep every original message too.
+- Configuration updates preserve non-ASCII values in existing settings and table entries. Before, `set_setting` and `set_table` treated escaped values as regular-expression replacements and raised a bad-escape error.
+- Configuration updates hold the file lock through the full read-modify-write operation. The lock allows nested acquisition by the same thread for the same resolved path. Before, the lock covered only the final write. Concurrent updates could lose settings.
+- Compaction retries never use a larger input budget than the first attempt. Before, `halvings(128)` returned `[128, 256, 256]`. It now returns `[128, 128, 128]`.
+- `config_reset(path)` preserves the `learning` setting from the file it resets. Before, it read that setting from the default configuration file instead.
+- The code-index fingerprint for a non-git folder includes each visible file's relative path, size and nanosecond modification time throughout the folder tree. It skips hidden files and folders. Before, it used the maximum modification time of top-level entries and missed nested edits or edits below that maximum.
+- Folder watches retry a failed initial snapshot on later syncs. They report the failure once until the watch recovers or is removed. Before, one snapshot failure excluded the watch from every later sync.
+- Folder reviews record a delegation that does not complete as an error. Before, a failed delegation could appear as a successful review.
+- Folder watches detect same-length edits to files too large to diff by including a content hash in the snapshot. Before, the snapshot kept only the file length for those files and missed same-length edits.
+- The pane board retries a failed background-command status query after `SHELL_EVERY` (1 second). Before, it cached the failure as a final empty state and never asked again.
+- Transcript panes remain tracked when tmux returns no pane list. Automatic closing waits for `PANE_LINGER` (3 seconds) before checking pane liveness. Failed checks retry at most once per second. Before, an empty pane list discarded the tracked pane. Automatic closing queried tmux on every tick.
+
 ## 0.2.76
 
-- The `search` extra needs litesearch 0.1.56 and koshas 0.1.15. On macOS arm64 the embedding models then tokenize and pool in Rust through laghu-rs, with the same vectors; `kosha embed` fills missing package vectors and `kosha prune` drops packages no environment still has.
+- The `search` extra needs litesearch 0.1.56 and koshas 0.1.15. On macOS arm64 the embedding models tokenize and pool in Rust through laghu-rs and give the same vectors.
+- `kosha embed` fills missing package vectors. `kosha prune` drops packages that no environment still has.
 
 ## 0.2.75
 
-- The `search` extra needs litesearch 0.1.54, which loads embedding models with laghu: the default model takes 80 MB of private memory instead of 1,373 MB, and gives model2vec 0.9's vectors whatever model2vec is installed.
+- The `search` extra needs litesearch 0.1.54, which loads embedding models with laghu. The default model takes 80 MB of private memory instead of 1,373 MB. It gives model2vec 0.9's vectors whatever model2vec version is installed.
 
 ## 0.2.74
 
-- `ramabana history compact` (`compact_history`) shrinks the session history in place: old prompts holding picture bytes become `[image]`, and tool results over 600 characters move to `agent-details/` as `_slim` writes them now. It holds the history lock, keeps `.pre-compact` hard links unless `--no-backup`, rebuilds the session index, and refuses while another process holds a session unless `--force`. A copy of a 224 MB history came out at 65 MB with every session hydrating identically.
+- `ramabana history compact` (`compact_history`) shrinks the session history in place. Old prompts that hold picture bytes become `[image]`. Tool results over 600 characters move to `agent-details/`, as `_slim` now writes them. The command holds the history lock, keeps `.pre-compact` hard links unless you pass `--no-backup`, and rebuilds the session index. It refuses while another process holds a session, unless you pass `--force`. A copy of a 224 MB history came out at 65 MB, and every session hydrated identically.
 - A history row still over `ROW_MAX` (1 MB) after slimming sends its prompt to the details file too; `hydrate_turns` restores it.
-- `_append_line` re-opens the history if it was replaced while waiting for the lock, so no row is lost to a replaced file.
-- Needs rishi 0.1.55 and uraiyadal 0.0.17: a stray tag no longer drops a tool call's arguments, an unread call is never run, identical calls in one reply run once, and a tag quoted in an argument splits nothing.
+- `_append_line` re-opens the history if it was replaced while waiting for the lock. No row is lost to a replaced file.
+- Needs rishi 0.1.55 and uraiyadal 0.0.17.
+- A stray tag no longer drops a tool call's arguments.
+- An unread call is never run.
+- Identical calls in one reply run once.
+- A tag quoted in an argument splits nothing.
 - The `dhrona` extra needs dhrona 0.1.18, which reports the history's health each night.
 
 ## 0.2.73
 
 - The `/pane` board keeps one transcript pane. A click on a run shows it in that pane, a click on `main` closes it, and a click on a finished or absent run opens nothing. Before, every click opened a new pane and none closed.
-- A transcript pane closes `PANE_LINGER` (3) seconds after its run finishes or leaves the board, and a `/watch RUN` pane does the same. Only panes Ramabana opened are closed. `pane_close_done` (default on) turns the automatic close off.
+- A transcript pane closes `PANE_LINGER` (3) seconds after its run finishes or leaves the board, and a `/watch RUN` pane does the same. Only panes Ramabana opened are closed. Set `pane_close_done` (default on) to false to turn the automatic close off.
 
 ## 0.2.72
 
-- Finished background work wakes an idle agent. When a background run the agent started finishes and the user is idle, the terminal starts a turn with the result, logged as **background**. `auto_turns` is `on`, `report` (the turn reports without changing files) or `off`; by default `on` under the edits and auto approval modes and `report` under ask and off. At most `auto_turns_per_hour` (6) an hour, none for a cancelled run, and none while the user is typing or a turn runs.
-- `delegate_tell(run_id, text)` lets the agent send a running sub-agent a message; it arrives with the sub-agent's next tool result.
-- `/talk RUN` sends what the user types to a sub-agent until `/talk main`; the status bar shows `→ run_x`, and the target returns to main when the run ends. It completes `main` and the running ids.
+- Finished background work wakes an idle agent. When a background run that the agent started finishes and the user is idle, the terminal starts a turn with the result, logged as **background**. `auto_turns` is `on`, `report` (the turn reports without changing files) or `off`. The default is `on` under the edits and auto approval modes, and `report` under ask and off. The terminal starts at most `auto_turns_per_hour` (6) such turns an hour. It starts none for a cancelled run, and none while the user is typing or a turn runs.
+- `delegate_tell(run_id, text)` sends a running sub-agent a message. The message arrives with the sub-agent's next tool result.
+- `/talk RUN` sends what the user types to a sub-agent until `/talk main`. The status bar shows `→ run_x`. The target returns to main when the run ends. `/talk` completes `main` and the running ids.
 - The `/pane` board lists `main` above the sub-agents and marks the current target. Clicking a row sets the target, and clicking a sub-agent opens its transcript to the left of the chat.
 
 ## 0.2.71
@@ -43,22 +68,22 @@
 
 ## 0.2.69
 
-- The sub-agent step setting is `auto` by default. Under `auto` a delegation's `max_steps` is honoured up to `SUB_STEP_CEILING` (400), and a delegation that names none gets 80. Before, every sub-agent was capped at 80 steps, so a request for more fell back to 80 without a word.
-- `/subagents steps N` takes 1 to 400, up from 80, and still caps every delegation; `/subagents steps auto` returns to the default.
-- Under the `auto` tool budget each delegation's allowance is four tool calls a step, 1,600 calls, so a 400-step sub-agent runs out of steps before it runs out of calls.
+- The sub-agent step setting is `auto` by default. Under `auto` a delegation's `max_steps` is honoured up to `SUB_STEP_CEILING` (400), and a delegation that names none gets 80. Before, every sub-agent was capped at 80 steps. A request for more fell back to 80 without a word.
+- `/subagents steps N` takes 1 to 400, up from 80. It still caps every delegation. `/subagents steps auto` returns to the default.
+- Under the `auto` tool budget each delegation's allowance is four tool calls a step, 1,600 calls in all. A 400-step sub-agent runs out of steps before it runs out of calls.
 - Tests across `tests/` and the notebooks check behaviour, not message wording.
 
 ## 0.2.68
 
-- Under the default `auto` tool budget, each top-level delegation has its own allowance of `_TOOL_MAX` (400) tool calls, shared with the sub-agents it starts. Before, every sub-agent of a turn drew from one pool of 400, so after a few busy delegations each later delegation in that turn was refused on its first call. A `delegate_async` or monitor run counts as one delegation with its children. A numeric `max_tool_calls` still caps all of a turn's delegations together. `Run.draw` takes `per_branch`, `Run.branch` names the top-level delegation, and `Run.tree_calls` starts at 0.
+- Under the default `auto` tool budget, each top-level delegation has its own allowance of `_TOOL_MAX` (400) tool calls, shared with the sub-agents it starts. Before, every sub-agent of a turn drew from one pool of 400. After a few busy delegations, each later delegation in that turn was refused on its first call. A `delegate_async` or monitor run counts as one delegation with its children. A numeric `max_tool_calls` still caps all of a turn's delegations together. `Run.draw` takes `per_branch`, `Run.branch` names the top-level delegation, and `Run.tree_calls` starts at 0.
 - `TREE_SPENT` reads "Tool-call budget for delegated work is exhausted", which fits both limits.
 - `AppTty.write` writes to `sys.__stdout__`. A tool's `redirect_stdout` on another thread swaps `sys.stdout` for a buffer with no file descriptor, and the next frame raised `UnsupportedOperation: fileno`.
 - Tests that checked wording, glyphs or restated constants were removed or replaced with behaviour tests.
 
 ## 0.2.67
 
-- A sub-agent that a delegation sends to a named model now gets the tool list sized for that model. Every delegation was given the list sized for the session's default sub-agent model, so a large model named beside a default with a window under 32k got that model's trimmed list, without the memory and web tools and with tool results clipped, and a small model named beside a large default got the full list. Recorded on gpt-4.1-mini beside a 16k default, the sub-agent asked to read a page answered that it could not; with the fix it read the page and answered from it. `delegate_search` and `delegate_async` ask `get_tools_for(spec)` for the model they picked, `Agent._sub_plain` and `Agent._sub_tools` take that `spec`, and `delegate_many` takes `tools` as a callable from a backend's spec to its tools. A delegation that names no model still gets the default's list, and `get_tools` still works where `get_tools_for` is not given. A subclass that overrides `_sub_plain` must accept `spec=None` and pass it on.
-- A sub-agent's own `delegate_search` caps the answers it reads at its own model's tool-result size, through `Agent._sub_budget(spec)`. It used the session's default sub-agent model's size, so a large model's nested delegations were cut to a small default's 1,500 characters.
+- A sub-agent that a delegation sends to a named model now gets the tool list sized for that model. Every delegation was given the list sized for the session's default sub-agent model. A large model named beside a default with a window under 32k got that default's trimmed list, without the memory and web tools and with tool results clipped. A small model named beside a large default got the full list. Recorded on gpt-4.1-mini beside a 16k default, the sub-agent asked to read a page answered that it could not; with the fix it read the page and answered from it. `delegate_search` and `delegate_async` ask `get_tools_for(spec)` for the model they picked, `Agent._sub_plain` and `Agent._sub_tools` take that `spec`, and `delegate_many` takes `tools` as a callable from a backend's spec to its tools. A delegation that names no model still gets the default's list, and `get_tools` still works where `get_tools_for` is not given. A subclass that overrides `_sub_plain` must accept `spec=None` and pass it on.
+- A sub-agent's own `delegate_search` caps the answers it reads at its own model's tool-result size, through `Agent._sub_budget(spec)`. It used the session's default sub-agent model's size. A large model's nested delegations were cut to a small default's 1,500 characters.
 
 ## 0.2.66
 
@@ -81,7 +106,7 @@
 - A turn on Claude Code counts as unable to run when `claude auth status` reports `loggedIn: false`. It used to count as ready when the binary and SDK were installed, and the first turn then failed.
 - A job whose default model cannot run here runs on the turn model and posts no note. A job someone gave a model of its own, directly or through `oneshot` (`Routing.chose`), keeps the old fallback order and says so once.
 - An interactive session with no model that runs no longer exits. It opens on `welcome()`, warms no model, and in tmux opens a Getting started pane beside it: `getting_started()` as a checklist that redraws until a model is ready. On WSL the checklist says that Windows sign-ins, programs and variables do not reach Linux, and gives each missing tool's install line. A one-shot or piped run with nothing ready still prints `setup_guide()` and exits 1. `ramabana --doctor` prints the same checklist.
-- `/login` lists the providers and which are ready. `/login NAME` runs the provider's own sign-in in this terminal (`claude auth login`, `codex login`, rishi's Copilot login), asks the endpoint questions for Azure, Bedrock and a custom endpoint, and asks for a missing key without echoing it. A turn that cannot run moves to the new provider, and a cold session then starts its model and code index. A turn that runs is left alone; `/model` switches it.
+- `/login` lists the providers and which are ready. `/login NAME` runs the provider's own sign-in in this terminal (`claude auth login`, `codex login`, rishi's Copilot login), asks the endpoint questions for Azure, Bedrock and a custom endpoint, and asks for a missing key without echoing it. A turn that cannot run moves to the new provider, and a cold session then starts its model and code index. A turn that runs is left alone. `/model` switches it.
 - Keys typed into `/login` go to `~/.config/ramabana/keys.env`, mode 0600, through `save_key`. `load_keys` reads it at startup for names the environment lacks, and refuses a file other users can read. A value written by hand as `!command` is a command whose output is the key, such as `!security find-generic-password -ws openai`. A typed value that starts with `!` is stored as text. The beat loads `keys.env` after `beat.env`.
 - `/config` shows each setting and where it came from. `/config set KEY VALUE`, `/config reset` (the commented template, keeping `config.toml.bak`), `/config edit` (`$VISUAL`, `$EDITOR`, nano or vi in this terminal) and `/config reload` apply `[jobs]` to the running session through `Agent.apply_config`. A job this session set with `/model` keeps its model. A turn moves only to a model that runs here.
 - `/model [JOB] NAME --save` switches and writes `[jobs]`.
@@ -113,13 +138,13 @@
 ## 0.2.59
 
 - Requires rishi 0.1.52. A Gemini model routed as `gemini/<model>` no longer gets 404, and a Claude Code session that fails while connecting is tried once more, with a note in the session.
-- Requires shalya 0.1.19. A command the agent runs gets `/dev/null` as standard input. It used to inherit the terminal, so it could read keystrokes or set the terminal non-blocking, which froze the session before 0.2.58. `claude auth status`, the clipboard reader and the tmux log pane get `/dev/null` too.
-- The turn log no longer keeps long tool results. A result over `RESUME_DETAIL` (600 characters) goes whole to `<history_name>-details/<session>.jsonl` in the config folder, and the row keeps its first 600 characters and a `details` reference. A resume replays only those 600 characters, so it reads the row alone; `session_turns` restores the whole results for a transcript or a branch editor. Results were about a quarter of a long-used `agent-history.jsonl`. Rows written before this keep their results inline and read as before; nothing rewrites the log.
+- Requires shalya 0.1.19. A command the agent runs gets `/dev/null` as standard input. It used to inherit the terminal. It could read keystrokes or set the terminal non-blocking, which froze the session before 0.2.58. `claude auth status`, the clipboard reader and the tmux log pane get `/dev/null` too.
+- The turn log no longer keeps long tool results. A result over `RESUME_DETAIL` (600 characters) goes whole to `<history_name>-details/<session>.jsonl` in the config folder, and the row keeps its first 600 characters and a `details` reference. A resume replays only those 600 characters and reads the row alone. `session_turns` restores the whole results for a transcript or a branch editor. Results were about a quarter of a long-used `agent-history.jsonl`. Rows written before this keep their results inline and read as before. Nothing rewrites the log.
 - The session index lists each session's byte ranges as `spans`, and `session_turns` reads only those. It used to read everything from a session's first turn to its last, which for a session resumed weeks later is most of the log. Index rows written before this, or past `MAX_SPANS` ranges, keep the first-to-last read.
 
 ## 0.2.58
 
-- A session no longer freezes and then quits on the next key when its terminal was left non-blocking. A process that shares the terminal can set it non-blocking; a large frame then went out in part and the next write failed with `EAGAIN`. `AppTty` counted that as a hangup, dropped every later write, and the next keypress ended the session with status 0, which closed the tmux session. Since 0.2.17. `AppTty.write` now writes the whole frame and waits up to `WRITE_WAIT` (5 seconds) for a full terminal to drain. Past that it drops the rest of the frame and the next tick repaints the screen. Only an error other than `EAGAIN` marks the terminal gone. `amain` sets the terminal blocking when it starts and again before it hands the terminal back.
+- A session no longer freezes and then quits on the next key when its terminal was left non-blocking. A process that shares the terminal can set it non-blocking. A large frame then went out in part, and the next write failed with `EAGAIN`. `AppTty` counted that as a hangup, dropped every later write, and the next keypress ended the session with status 0, which closed the tmux session. Since 0.2.17. `AppTty.write` now writes the whole frame and waits up to `WRITE_WAIT` (5 seconds) for a full terminal to drain. Past that it drops the rest of the frame and the next tick repaints the screen. Only an error other than `EAGAIN` marks the terminal gone. `amain` sets the terminal blocking when it starts and again before it hands the terminal back.
 - An exception in a key handler, or in a notice posted from another thread, shows as an error in the session, which carries on. asyncio's report still goes to `stderr.log`.
 
 ## 0.2.57
@@ -129,7 +154,7 @@
 - Read-only questions on different cloud models run at once, across providers. Questions on the session's local engine run one after another in one worker. Writes run one at a time.
 - Effort levels are `low`, `medium`, `high`, `xhigh` and `max`. A sub-agent's level comes from the delegation, then `/subagents effort`, then `$RAMABANA_SUBAGENT_EFFORT`, then `[subagents] effort`, then the model's default. A local model runs without one and its answer says so. A level the provider refuses is retried once without it, with a note.
 - A turn's `reasoning_effort` reaches a Claude Code chat as its `effort`, per call. Nothing is left on the chat, so a turn without one runs at the session's level. `xhigh` and `max` are accepted.
-- The tool channel is chosen in this order: `$RAMABANA_TOOL_CHANNEL`, a refusal this session, `/model tools` or `/subagents tools`, `[model."NAME"] tool_channel`, `runtime.tool_channel` or `subagents.tool_channel`, then the runtime's default. Claude Code's default stays `tags`; `native` sends its tools through rishi's in-process MCP server. `text` is accepted for `tags`. An MCP refusal moves the model to `tags` with one note.
+- The tool channel is chosen in this order: `$RAMABANA_TOOL_CHANNEL`, a refusal this session, `/model tools` or `/subagents tools`, `[model."NAME"] tool_channel`, `runtime.tool_channel` or `subagents.tool_channel`, then the runtime's default. Claude Code's default stays `tags`. `native` sends its tools through rishi's in-process MCP server. `text` is accepted for `tags`. An MCP refusal moves the model to `tags` with one note.
 - `/subagents model NAME|default`, `effort LEVEL|default` and `tools native|text|auto`, each with `--save` to write config.toml. Bare `/subagents` shows all of them. `/model tools native|text|auto [--save]` sets the turn's channel and keeps the conversation. Tab completes their arguments.
 - `Agent.subagent_settings(model, effort, tools, save)` returns `{ok, model, effort, tools, note, unavailable, error}`. `/subagents` and `subagents_command` return the same dict, so a web route can send it unchanged.
 - `/models` and `ramabana config models` show each model's tool channel and whether it takes an effort level.
@@ -147,7 +172,7 @@
 - Recorded chats replay again. Since 0.2.53 a Claude chat is built with `on_stall`, a bound method whose repr holds a memory address, and `timeout_hint`, which names this machine's config path, and both went into the recording's key, so no key matched twice. `recorded()` now builds a `Recorder`, a `CachedChat` that leaves out of the key every option that is not plain data and the `UNKEYED` options (`timeout_hint`, `api_key`), and hands them to the live chat only. A test checks that two runs in two home folders give one key.
 - The `03_agent` replays read a temporary config.toml and no `$RAMABANA_*` or `$LEELA_*` variable. Since 0.2.45 the effort a Claude turn asks for came from config.toml's `runtime.effort`, so a machine whose config set `effort = "medium"` keyed every turn differently from the recording.
 - `delegate_search` is read-only by default, so several questions run at once. `writes=True` hands its sub-agents the session's write tools when the session allows them, and those run one after another. A read-only delegation's own sub-agents stay read-only.
-- A sub-agent takes at most 80 steps by default, up from 60. A delegation that asks for fewer gets at least `SUB_MIN_STEPS` (20), not the session cap: the floor was `SUB_MAX_STEPS`, so every smaller request ran to the cap. The time limit stays 1800 seconds.
+- A sub-agent takes at most 80 steps by default, up from 60. A delegation that asks for fewer gets at least `SUB_MIN_STEPS` (20), not the session cap. The floor was `SUB_MAX_STEPS`, and every smaller request ran to the cap. The time limit stays 1800 seconds.
 - The sub-agent briefing says a tool result that contradicts what the sub-agent just saw is likely a harness fault, to be confirmed once another way and named in its answer.
 - The briefing's skill list points at `debugging` for diagnosing a failure or a tool that misbehaves, as it points at `coding_patterns` for code. The replayed `03_agent` turns list `debugging` too.
 - Usage counts a Claude Code turn's thinking tokens under `reasoning`. It recorded 0. Requires rishi 0.1.50.
@@ -159,8 +184,8 @@
 - `ramabana-tick --install` warns when its `PATH` is launchd's default or cannot find `claude`, `git`, `git-lfs` (with the `node` a `#!/usr/bin/env node` claude needs) or the `ramabana-tick` it schedules, and names what is missing. It still installs.
 - `beat_problems` reads the installed launcher and reports one written before the `PATH` was carried, a tool this shell finds that the launcher's `PATH` does not, a `ramabana-tick` that is gone, and a `beat.env` others can read, each with the command to run. A session's first beat note carries these lines, and `ramabana-tick --check` prints them and exits 1.
 - Each beat loads keys from `~/.config/ramabana/beat.env` (python-dotenv), beside `config.toml`, for names its environment lacks. A file others can read is refused. Keys never go in the launcher.
-- A beat stops itself after `--limit` seconds, six hours by default: SIGALRM, or the SIGTERM launchd sends, raises `BeatTimeout` in the running fire, which pobblebonk records as that fire's failure, and the beat claims no further fire. A watchdog ends the process a minute later if no signal reaches the fire. `--install --limit N` writes the limit into the launcher.
-- The `03_agent` tests read a temporary beat database, never `~/.pobblebonk/pob.db`, so a real beat note no longer changes a recorded prompt.
+- A beat stops itself after `--limit` seconds, six hours by default. SIGALRM, or the SIGTERM that launchd sends, raises `BeatTimeout` in the running fire. pobblebonk records it as that fire's failure, and the beat claims no further fire. A watchdog ends the process a minute later if no signal reaches the fire. `--install --limit N` writes the limit into the launcher.
+- The `03_agent` tests read a temporary beat database, never `~/.pobblebonk/pob.db`. A real beat note no longer changes a recorded prompt.
 - Requires pobblebonk 0.0.5 (`retry_after`) and python-dotenv.
 
 ## 0.2.54
@@ -170,13 +195,13 @@
 
 ## 0.2.53
 
-- A Claude Code turn that sends nothing for 240 seconds is ended and tried once more, and the terminal shows a note saying so. Before, it waited 600 seconds in silence and then failed. Set the limit per model on this machine with `timeout` under `[model."NAME"]` in `~/.config/ramabana/config.toml`. If the retry goes silent too, the turn fails with an error that names the limit and that setting. Text already streamed is not repeated: the retry asks Claude Code to finish the reply. `Backend.notice` puts a status note on the run and passes it to `Backend.on_notice`, which the terminal sets. Requires rishi 0.1.49.
+- A Claude Code turn that sends nothing for 240 seconds is ended and tried once more, and the terminal shows a note saying so. Before, it waited 600 seconds in silence and then failed. Set the limit per model on this machine with `timeout` under `[model."NAME"]` in `~/.config/ramabana/config.toml`. If the retry goes silent too, the turn fails with an error that names the limit and that setting. Text already streamed is not repeated. The retry asks Claude Code to finish the reply. `Backend.notice` puts a status note on the run and passes it to `Backend.on_notice`, which the terminal sets. Requires rishi 0.1.49.
 - `tab` after `@` completes files and folders. It searches the open folders through the host's own file walk, which respects `.gitignore`. A folder completes to `@dir/`, and further typing narrows inside it. A path starting `~/`, `/` or `../` lists from there when the host lets reads go outside the open folders. When it does not, the terminal says so instead of showing nothing. A path with spaces is quoted as `@"my notes/plan.md"`, and `file_refs` and `attach_refs` read the quoted form. In Python mode `@` stays a decorator.
 - An `@folder` in a prompt attaches the folder's one-level listing, which reaches the model inside `<attached-files>`. Before, a folder was refused, and every `@path` failure was dropped silently. Attached files still go by path. A file outside the open folders attaches when the host's read policy allows it, and a credential path such as `.env` is never attached or offered. The terminal says what each `@path` attached or why it could not.
 
 ## 0.2.52
 
-- The beat that `ramabana-tick --install` schedules runs on the `PATH` of the shell that installed it, and `--install` prints that `PATH`. launchd and cron start a job on `/usr/bin:/bin`, so Dhrona's nightly batch found neither `claude` in `~/.local/bin` nor Homebrew's `git-lfs`: a round whose turn model runs on Claude Code could not start, and a replay of a repository that uses Git LFS could not check it out. Run `ramabana-tick --install` again to rewrite an installed launcher. Only `PATH` is carried; a key exported in a shell profile still does not reach the beat. Windows is unchanged.
+- The beat that `ramabana-tick --install` schedules runs on the `PATH` of the shell that installed it, and `--install` prints that `PATH`. launchd and cron start a job on `/usr/bin:/bin`. Dhrona's nightly batch found neither `claude` in `~/.local/bin` nor Homebrew's `git-lfs`. A round whose turn model runs on Claude Code could not start, and a replay of a repository that uses Git LFS could not check it out. Run `ramabana-tick --install` again to rewrite an installed launcher. Only `PATH` is carried. A key exported in a shell profile still does not reach the beat. Windows is unchanged.
 
 ## 0.2.51
 
@@ -184,14 +209,14 @@
 
 ## 0.2.50
 
-- A line sent into a running turn reaches the model when the tool result it rides on is already as long as a result may be. The line was appended after the result, and the backend cut every result to `tool_max_len` from the end, so a wide `delegate_search` or a clipped file view dropped it unread. `_inboxed(mx=)` now shortens the body instead, saving the whole to a file the note names, and a line longer than half the cap arrives with its rest in a file too. Sub-agents get the same cap from their own backend.
-- `delegate_search(writes=False)` hands its sub-agents read tools only, and several questions then run at once. Sub-agents may write by default, and sub-agents that may write run one after another, so every delegation of several questions ran them in turn: four read-only questions took four times as long. A read-only delegation's own sub-agents are read-only too, and `delegate_async(writes=True)` below one is refused.
-- `ask(schema=)` works under the small profile. The small profile keeps only registry tools marked with `small_tool`, and `submit_result` was not marked, so a typed result could never be handed back.
+- A line sent into a running turn reaches the model when the tool result it rides on is already as long as a result may be. The line was appended after the result, and the backend cut every result to `tool_max_len` from the end. A wide `delegate_search` or a clipped file view dropped the line unread. `_inboxed(mx=)` now shortens the body instead, saving the whole to a file the note names, and a line longer than half the cap arrives with its rest in a file too. Sub-agents get the same cap from their own backend.
+- `delegate_search(writes=False)` hands its sub-agents read tools only, and several questions then run at once. Sub-agents may write by default, and sub-agents that may write run one after another. Every delegation of several questions therefore ran them in turn. Four read-only questions took four times as long. A read-only delegation's own sub-agents are read-only too, and `delegate_async(writes=True)` below one is refused.
+- `ask(schema=)` works under the small profile. The small profile keeps only registry tools marked with `small_tool`, and `submit_result` was not marked. A typed result could never be handed back.
 - Requires shalya 0.1.17, whose `grep` finds a folder named in `path_filter`, and rishi 0.1.47 with uraiyadal 0.0.14, whose tool schemas spell a `Literal` as an `enum` and read a pydantic model's fields.
 
 ## 0.2.49
 
-- `generate_image` with no session folder saves under `media/` in the host's first open folder, not the process's working directory (shalya 0.1.16). In a desktop app the working directory is its data folder, so pictures used to land there rather than in the project.
+- `generate_image` with no session folder saves under `media/` in the host's first open folder, not the process's working directory (shalya 0.1.16). In a desktop app the working directory is its data folder. Pictures used to be saved there instead of in the project.
 - The terminal UI saves pictures the model returns itself under the agent's host folder when there is no session folder. It used to save them under the working directory.
 
 ## 0.2.48
@@ -204,7 +229,7 @@
 - Nothing is chosen for you. 0.2.46 moved every job onto Azure deployments, or another configured hosted model, when Claude Code and Codex were absent; that is gone, with `AZURE_OPENAI_DEPLOYMENTS` and `[azure] deployments` (config.toml now says what to do instead) and the `azure/...` rows `available_models` listed from them. A job falls back exactly as in 0.2.45. A deployment is used only where you name it: `azure/<deployment>`, or a `[model."NAME"]` table.
 - When the turn's model cannot run here, the terminal prints `setup_guide()`: the providers Ramabana can use (`PROVIDERS`: OpenAI, Azure OpenAI, AWS Bedrock, Anthropic, Gemini, OpenRouter, Claude Code, Codex, Copilot, any OpenAI-compatible server, this machine), which are set up (`provider_ready`), and each job's model, where it was chosen (`job_source`) and whether it runs. A one-shot run prints it and exits 1; a session offers `ramabana setup`. `needs_setup(routing)` says why the turn cannot run. `Agent.start`'s note for a missing key or runtime ends with `SETUP_HINT`, as `reachable_hint` does.
 - `ramabana setup` adds a provider: it asks which, writes a `[model."NAME"]` table for Azure, Bedrock or an OpenAI-compatible server, and the `[jobs]` it serves. Flags answer without a terminal. It never writes a key. `set_table` edits or adds one config.toml table and keeps every comment.
-- AWS Bedrock works through its OpenAI-compatible Mantle endpoint, `https://bedrock-mantle.<region>.api.aws/v1`, with a Bedrock API key in `AWS_BEARER_TOKEN_BEDROCK`; windows come from fastllm's `bedrock_mantle` table. Claude on Bedrock and Bedrock's native Converse API are not supported, since fastllm has no SigV4 signing, AWS profiles or Converse format.
+- AWS Bedrock works through its OpenAI-compatible Mantle endpoint, `https://bedrock-mantle.<region>.api.aws/v1`, with a Bedrock API key in `AWS_BEARER_TOKEN_BEDROCK`; windows come from fastllm's `bedrock_mantle` table. Claude on Bedrock and Bedrock's native Converse API are not supported. fastllm has no SigV4 signing, AWS profiles or Converse format.
 - `generate_image` draws with the `image` job: `[jobs] image`, `$RAMABANA_MODEL_IMAGE`, or `openai/gpt-image-1` by default (`image_route`). An Azure deployment of `gpt-image-1` works through a `[model."NAME"]` table, and nothing goes to api.openai.com by name. Without an image model the tool is left out, and `setup_guide` says what it lacks. A turn on a custom endpoint no longer tries to draw itself through OpenAI. Requires shalya 0.1.15.
 - `openrouter/<vendor>/<model>` checks `OPENROUTER_API_KEY`.
 
@@ -233,9 +258,9 @@
 
 ## 0.2.44
 
-- A turn after a compaction no longer fails with "input is too large". A hosted chat's `token_count` is the window its last step reported, and rewriting the history never changed it. When a turn's steps ended past the window, the next turn compacted, `fits` still read the old count, and the turn raised; every retry compacted again and raised again. After `replace_hist` or `restore_hist`, `used_tokens` now gives `window_tokens`, an estimate of the briefing, the tool schemas and every message, until the chat reports a new count. The guard is unchanged since 0.2.35. The window exposed the fault: fastllm 0.0.65 gives `codex/gpt-6.1-sol` 371,000 tokens where fastllm 0.0.45 gave 922,000, so a conversation of about 370,000 tokens now reaches the line.
+- A turn after a compaction no longer fails with "input is too large". A hosted chat's `token_count` is the window its last step reported, and rewriting the history never changed it. When a turn's steps ended past the window, the next turn compacted, `fits` still read the old count, and the turn raised. Every retry compacted again and raised again. After `replace_hist` or `restore_hist`, `used_tokens` now gives `window_tokens`, an estimate of the briefing, the tool schemas and every message, until the chat reports a new count. The guard is unchanged since 0.2.35. The window exposed the fault: fastllm 0.0.65 gives `codex/gpt-6.1-sol` 371,000 tokens where fastllm 0.0.45 gave 922,000, and a conversation of about 370,000 tokens now reaches the line.
 - A resumed conversation is counted before its first turn goes out. It used to count as 0 until a step reported, so a long one was sent whole without compaction.
-- A prompt with a pasted picture is logged as text, with `[image]` where the picture was. The log used to keep the repr of the picture's bytes, about 560,000 characters for one screenshot, and a resume replayed it to the model as text, about 300,000 tokens on every step. `turn_prompt` reads such rows from older logs as text, so those sessions resume small. `prompt_text` gives the text form.
+- A prompt with a pasted picture is logged as text, with `[image]` where the picture was. The log used to keep the repr of the picture's bytes, about 560,000 characters for one screenshot, and a resume replayed it to the model as text, about 300,000 tokens on every step. `turn_prompt` reads such rows from older logs as text. Those sessions resume small. `prompt_text` gives the text form.
 - A turn that does not fit first trims the oldest tool results and then the oldest pictures, then compacts. One that still does not fit fails with a message that gives the sizes and the model's window and says how to start fresh or resume later, not a `ValueError`. `ContextFull` is that failure.
 - A picture is charged 1,600 tokens (`IMG_TOKENS`, was 1,024), and the pending message 15% over its estimate (`EST_MARGIN`).
 - Learning has one persistent switch per config folder, `learning` in `<cfg>/settings.json`. `/learned on|off|status`, `ramabana-learned on|off|status`, and `ramabana.learned.enabled(cfg)` and `set_enabled(cfg, on)` read and set it. Off leaves the learned `AGENTS.md` and learned skills out of the briefing, drops the rule to record lessons, keeps `remember` to plain notes, returns no lessons from `Agent.lessons()`, writes no `start.json`, and makes Dhrona's nightly schedule return "learning is off" without touching the learned folder. It is on by default. `Agent.learning` says whether it is on.
@@ -249,18 +274,18 @@
 
 ## 0.2.42
 
-- The `dhrona` extra requires dhrona 0.1.13. Under 0.1.12, about one compaction in ten that folded in a candidate lost the candidate's id to scrubbing, so accepting the compaction left that candidate pending.
+- The `dhrona` extra requires dhrona 0.1.13. Under 0.1.12, about one compaction in ten that folded in a candidate lost the candidate's id to scrubbing. Accepting the compaction then left that candidate pending.
 
 ## 0.2.41
 
 - An accept refused for size returns the would-be `length` and names `/learned compact ID`. `compact(folder, id)` and `/learned compact ID` fold that candidate into the compaction, and accepting the compaction accepts the candidate and drops its branch.
-- After an accept moves HEAD, `restack` moves every other pending candidate onto it where it picks cleanly. `accept` returns `moved` and `stale` ids, and `/learned accept` names them. `pending` gives each candidate a `stale` reason, or None, and `/learned` shows it, so a candidate that no longer applies is visible before anyone tries it. `accept` of such a candidate returns the same reason (`STALE`).
-- `pending` sorts by when Dhrona proposed a candidate, and `at` is that time, so moving a candidate keeps its place.
+- After an accept moves HEAD, `restack` moves every other pending candidate onto it where it picks cleanly. `accept` returns `moved` and `stale` ids, and `/learned accept` names them. `pending` gives each candidate a `stale` reason, or None, and `/learned` shows it. A candidate that no longer applies is visible before anyone tries it. `accept` of such a candidate returns the same reason (`STALE`).
+- `pending` sorts by when Dhrona proposed a candidate, and `at` is that time. Moving a candidate keeps its place.
 - The `dhrona` extra requires dhrona 0.1.12, which has `compact_learned(onto=)`.
 
 ## 0.2.40
 
-- `ramabana.learned.compact(folder)` asks Dhrona for a shorter learned `AGENTS.md` and returns `{ok, id, before, after}`, where `before` and `after` are character counts, or `{ok: False, error}`. Dhrona's editor model merges and shortens the paragraphs Dhrona proposed and keeps every paragraph a person wrote byte for byte. The result waits as one more pending candidate, so `diff`, `accept` and `reject` act on it. Without Dhrona it returns an error naming the `dhrona` extra.
+- `ramabana.learned.compact(folder)` asks Dhrona for a shorter learned `AGENTS.md` and returns `{ok, id, before, after}`, where `before` and `after` are character counts, or `{ok: False, error}`. Dhrona's editor model merges and shortens the paragraphs Dhrona proposed and keeps every paragraph a person wrote byte for byte. The result waits as one more pending candidate. `diff`, `accept` and `reject` act on it. Without Dhrona it returns an error naming the `dhrona` extra.
 - `/learned compact` in a session and `ramabana-learned compact` from a shell run it. The help and the guide name it.
 - An accept refused past the 2,000 characters Dhrona allows now says to reject the candidate, run `/learned compact`, or trim `AGENTS.md` and commit that first.
 - The `dhrona` extra requires dhrona 0.1.11, which has `compact_learned`.
@@ -273,7 +298,7 @@
 
 ## 0.2.38
 
-- `ramabana.learned` is the review queue for `<cfg>/learned`. Dhrona 0.1.10 commits each candidate on a `pending/<id>` branch and leaves the folder's files, which the briefing and skill discovery read, alone. `pending(folder)` lists the candidates, and `diff`, `accept` and `reject` act on one and return `{ok, id, ...}`, with `error` when `ok` is False. `accept` picks the candidate in a throwaway worktree, so a conflict never reaches the files a session briefs from. All three refuse while a Dhrona batch holds the folder's lock. `learned_folder(cfg)` names the folder.
+- `ramabana.learned` is the review queue for `<cfg>/learned`. Dhrona 0.1.10 commits each candidate on a `pending/<id>` branch and leaves the folder's files, which the briefing and skill discovery read, alone. `pending(folder)` lists the candidates, and `diff`, `accept` and `reject` act on one and return `{ok, id, ...}`, with `error` when `ok` is False. `accept` picks the candidate in a throwaway worktree. A conflict never reaches the files a session briefs from. `accept` and `reject` refuse while a Dhrona batch holds the folder's lock. `diff` takes no lock. `learned_folder(cfg)` names the folder.
 - `ramabana-learned` runs the same from a terminal: `ramabana-learned` lists, and `ramabana-learned diff|accept|reject ID` acts on one.
 - `Agent.lessons()` returns this project's lessons as dicts of `lesson`, `cue`, `component`, `evidence` and `confidence`, read with shalya's `lessons` from the vault or the memory file alike. Requires shalya 0.1.14.
 
@@ -298,7 +323,7 @@
 
 ## 0.2.34
 
-- `ramabana-tick --install` quotes the tick's path in the launcher it writes. uv installs tools under `~/Library/Application Support` on macOS, and the unquoted path split at the space, so an installed beat never ran. Run `ramabana-tick --install` again to rewrite an existing launcher.
+- `ramabana-tick --install` quotes the tick's path in the launcher it writes. uv installs tools under `~/Library/Application Support` on macOS, and the unquoted path split at the space. An installed beat never ran. Run `ramabana-tick --install` again to rewrite an existing launcher.
 - The `Agent.beat` example checks a machine with no beat against an empty beat home. It read the real `~/.pobblebonk/pob.db` before, and failed on a machine with a beat installed.
 
 ## 0.2.33
@@ -388,7 +413,7 @@ What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-em
 ## 0.2.23
 
 - A turn cut off by a crash can be resumed. The turn in flight is kept in `runs/<session>/turn.json` until its row is written. Listing sessions turns one whose process died into an `interrupted` row with its prompt, and `/resume` replays it with a note. A session that crashed in its first turn now appears in `/sessions`.
-- A session in use is never resumed by another process. A session is held through `runs/<session>/owner.lock`. `--resume latest` skips a session another live process holds and prefers sessions from the current folders. `/resume ID` on a held session is refused and names the process holding it. Two processes no longer share one run folder, so the side pane no longer flickers between them.
+- A session in use is never resumed by another process. A session is held through `runs/<session>/owner.lock`. `--resume latest` skips a session another live process holds and prefers sessions from the current folders. `/resume ID` on a held session is refused and names the process holding it. Two processes no longer share one run folder. The side pane no longer flickers between them.
 - Each session's stderr goes to `stderr.log` in its own run folder, appended rather than truncated, and `faulthandler` writes a hard crash's stack there.
 - When the same call returns the same result three times in a row, the result carries a note to use it, change the arguments or answer.
 - The status bar says `ready` once startup finishes. It kept a frozen `working` and a `thinking` line until a key arrived.
@@ -424,7 +449,7 @@ What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-em
 
 ## 0.2.20
 
-- No local model loads unless one is chosen. With a vault open, rebuilding its entity graph used vishalakshi's default chat, a local Gemma 4 on LiteRT, so a session on cloud models loaded it mid-turn. The graph is built only when `graph_chat` is given or `$VISHALAKSHI_MODEL` names a model; topic nodes need no model and still update.
+- No local model loads unless one is chosen. With a vault open, rebuilding its entity graph used vishalakshi's default chat, a local Gemma 4 on LiteRT. A session on cloud models loaded it mid-turn. The graph is built only when `graph_chat` is given or `$VISHALAKSHI_MODEL` names a model. Topic nodes need no model and still update.
 
 ## 0.2.19
 
@@ -435,13 +460,13 @@ What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-em
 
 ## 0.2.18
 
-- A line with attachments steers the running turn instead of waiting in the queue; each attachment goes by path for the model to read with `view_file`, since a tool result carries no picture.
+- A line with attachments steers the running turn instead of waiting in the queue. Each attachment goes by path for the model to read with `view_file`. A tool result carries no picture.
 - Enter on an empty line hands the queued line to the running turn. The queued row says so.
 
 ## 0.2.17
 
-- A session whose terminal closed exits cleanly. `RealTty.read` spun at 100% CPU on a hung-up terminal, and teleprint's TERM/HUP handler raised while restoring a dead terminal, so the process ignored a polite stop. The CLI's `AppTty` stops reading at the end of input, a closed terminal or TERM/HUP quits through the teardown, and the teardown stops background shells and kernels.
-- Background commands no longer open tmux panes. `run_shell_bg` logs to a file with its input detached from the terminal; several at once used to stack panes under the chat until it disappeared.
+- A session whose terminal closed exits cleanly. `RealTty.read` spun at 100% CPU on a hung-up terminal, and teleprint's TERM/HUP handler raised while restoring a dead terminal. The process ignored a polite stop. The CLI's `AppTty` stops reading at the end of input, a closed terminal or TERM/HUP quits through the teardown, and the teardown stops background shells and kernels.
+- Background commands no longer open tmux panes. `run_shell_bg` logs to a file with its input detached from the terminal. Several at once used to stack panes under the chat until it disappeared.
 - In the side pane, a background shell opens to its full command and its last lines, or "(no output yet)". `p` on one opens a tmux pane following its log (`less +F`, closed with `q`). The pane's last line lists the keys.
 
 ## 0.2.16
@@ -449,7 +474,7 @@ What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-em
 - Sub-agents report back. Three causes, fixed together:
   - A delegation gets at least `SUB_MAX_STEPS`, within the session's cap. A turn model asking for five or eight steps left its sub-agent out of budget before it could report.
   - The sub-agent briefing says the budget notice and the request to answer come from the harness. A Claude sub-agent took them for injected text, refused them, and ended with nothing.
-  - Requires rishi 0.1.41 and uraiyadal 0.0.12. A Claude sub-agent that wrote its calls in its own `<invoke>` dialect had them dropped and returned only its opening line; those are read now, and a call nothing can read is asked for again.
+  - Requires rishi 0.1.41 and uraiyadal 0.0.12. A Claude sub-agent that wrote its calls in its own `<invoke>` dialect had them dropped and returned only its opening line. Those are read now, and a call nothing can read is asked for again.
 
 ## 0.2.15
 
@@ -457,7 +482,7 @@ What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-em
 
 ## 0.2.14
 
-- One message is one note, however many calls it makes. Each of a batch's calls starts through `Run.on_call`, and the later ones fell back to the same message, so the pane showed it once per call.
+- One message is one note, however many calls it makes. Each of a batch's calls starts through `Run.on_call`, and the later ones fell back to the same message. The pane showed it once per call.
 
 ## 0.2.13
 
@@ -466,7 +491,7 @@ What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-em
 
 ## 0.2.12
 
-- A turn's whole answer reaches the terminal. `run_turn` stopped reading once the run finished and dropped what was still queued; on the Claude backend, which hands over a step's text in one chunk, that was the entire answer.
+- A turn's whole answer reaches the terminal. `run_turn` stopped reading once the run finished and dropped what was still queued. On the Claude backend, which hands over a step's text in one chunk, that was the entire answer.
 - Narration stays on screen: what a model writes before a call is kept as a `┆` step above the call instead of being removed. Ctrl-O and alt+1..9 still fold only the calls, and `/copy` copies the answer.
 - No keyword routing. The model picks its tools, including when to search the web, and only a tool named with `/tool` is put ahead of the turn. `tool_plan` is gone, and with it the `<tool-plan>` nudge on every turn and the preflight that web-searched a pasted document whole.
 - The briefing is written for current models: one short -ing line before a call instead of an eight-word cap and a plan-first opener, no output contract re-sent every turn, memory searched when prior context could change the work, and Claude's notes state goals with their reasons.
@@ -474,7 +499,7 @@ What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-em
 - The Claude 5 series runs with a 1M window: Claude Code is asked for `<id>[1m]`, which it needs to serve more than 200k, and compaction follows that window.
 - `sonnet` and `haiku` resolve to `claude-sonnet-5-5` and `claude-haiku-5-5`, and sub-agents default to `claude-sonnet-5-5`.
 - Open folders holding more text than `SHELL_SNAPSHOT` are measured once: `run_shell` no longer re-reads them before every command only to give up.
-- Usage on the Claude backend accumulates across calls, so a turn smaller than the one before no longer records 0.
+- Usage on the Claude backend accumulates across calls. A turn smaller than the one before no longer records 0.
 - dhrona's example rounds are off by default; `--warm` turns them on.
 - Requires uraiyadal 0.0.11, whose tag protocol asks for independent calls together.
 
@@ -522,15 +547,15 @@ What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-em
 
 ## 0.2.5
 
-- Enter mid-turn steers the running turn; shift+enter queues; shift+tab cycles approvals, with the mode always on screen. Kitty and modifyOtherKeys keys decoded.
-- The now pane: status lines per agent and sub-agent, the plan, a sub-agent accordion, files touched and background jobs. Opens beside the chat in tmux; `/pane`, `--pane auto|on|off`.
+- Enter mid-turn steers the running turn. Shift+enter queues. Shift+tab cycles approvals, with the mode always on screen. Kitty and modifyOtherKeys keys decode.
+- The now pane: status lines per agent and sub-agent, the plan, a sub-agent accordion, files touched and background jobs. It opens beside the chat in tmux. `/pane` and `--pane auto|on|off` control it.
 - Sub-agent calls show on the activity, stamped with their run; read-only ones are shown, not governed.
-- First run starts ramabana in its own tmux server, one per launch; asks once to install tmux; `ramabana --doctor` checks the setup; `--tmux off` opts out.
+- The first run starts ramabana in its own tmux server, one per launch. It asks once to install tmux. `ramabana --doctor` checks the setup. `--tmux off` opts out.
 - Edits and `git_diff` finish open on a highlighted diff, capped at `DIFF_OPEN`; changed files show as a table.
 - Reply code fences highlight through fastpylight.
 - Startup: the prompt draws in about 0.3–0.6 s while the model starts on a thread; the search stack loads lazily.
 - `sync_index` runs kosha only when a package or root changed, and logs run or skip to `kosha.log`.
-- Routing: Claude Opus takes the turn, gpt-4.1 the small jobs, Sonnet the sub-agents; no local engine on a default route. A local turn keeps side jobs local; without `OPENAI_API_KEY`, gpt-4.1 jobs fall back to Sonnet.
+- Routing: Claude Opus takes the turn, gpt-4.1 the small jobs, Sonnet the sub-agents. No local engine sits on a default route. A local turn keeps side jobs local. Without `OPENAI_API_KEY`, gpt-4.1 jobs fall back to Sonnet.
 - Extras: `search`, `python`, `serve`, `cli`, `dhrona`, `all`. A missing extra drops its tools and its commands name the extra to install. The core includes what shalya needs.
 - Dependency floors raised to current releases.
 - Lean prose pass: one-line docstrings, fewer comments. The `03_agent` chats were re-recorded.
@@ -571,15 +596,20 @@ What a long-running host needs to embed an agent, from `docs/plans/2026-10-12-em
 
 Needs shalya 0.0.11.
 
-- Seams for a frontend that is not the terminal: `Approvals.decide` answers what needs no person and `Approvals.set_mode` switches and settles; `Agent.expand_command` turns `/name ARGS` into its prompt; `Agent.on_watch` and the `watch` event replace the tmux pane; `Agent.on_background_done` and the `background_done` event fire when a delegation finishes; `Agent.last_verify` keeps the verify text, which `stream` now yields as its last chunk.
+- Seams for a frontend that is not the terminal:
+  - `Approvals.decide` answers what needs no person, and `Approvals.set_mode` switches and settles.
+  - `Agent.expand_command` turns `/name ARGS` into its prompt.
+  - `Agent.on_watch` and the `watch` event replace the tmux pane.
+  - `Agent.on_background_done` and the `background_done` event fire when a delegation finishes.
+  - `Agent.last_verify` keeps the verify text, which `stream` now yields as its last chunk.
 - `APPROVE_MODES` lives in `ramabana.agent`; the CLI calls the agent for `/approve`, the tightening key and slash-command expansion.
 
 ## 0.1.37
-- A `before_tool` hook that rewrites a write tool's arguments no longer raises: the re-approval read a field `Ask` does not have.
+- A `before_tool` hook that rewrites a write tool's arguments no longer raises. The re-approval read a field `Ask` does not have.
 
 ## 0.1.36
 
-Needs rishi 0.1.38: Claude transcripts are refiled as tags text, so a resumed session keeps using tools.
+Needs rishi 0.1.38. Claude transcripts are refiled as tags text. A resumed session keeps using tools.
 
 ## 0.1.35
 
@@ -623,7 +653,7 @@ Built against the local shalya checkout so both can be tested together before re
 
 ### New
 
-- `probed`: single memo for machine-probe answers — serves last answer, refreshes stale ones on a background thread, persists to disk. Replaces `_oai_cache` and `_copilot_cat`; `_openai_models` and `copilot_catalog` now go through `probed(..., disk=False)`. `probe_path` and `forget_probes` included.
+- `probed`: single memo for machine-probe answers. It serves the last answer, refreshes stale ones on a background thread and persists to disk. Replaces `_oai_cache` and `_copilot_cat`; `_openai_models` and `copilot_catalog` now go through `probed(..., disk=False)`. `probe_path` and `forget_probes` included.
 - `runtime_detail`: explains why a harness runtime is unreachable. `runtime_remedy` already said what to do; now `runtime_detail` says why. `HARNESS` lists both harnesses and their requirements.
 - Persistent model aliases: `save_model`, `load_models`, `delete_model`, `saved_models`, `alias_path`, `MODEL_ALIASES`. `register_model` remains the in-process form. Defaults to `~/.config/ramabana/models.json`.
 - `Agent.memory_context(surface, max_chars)`: seam for applications with a vault. Previously the completer looked for `self.a.ws.agent_memory_context(...)`, which nothing in Ramabana set, so pinned notes never reached completions.
@@ -631,21 +661,21 @@ Built against the local shalya checkout so both can be tested together before re
 
 ### Fixed
 
-- `sub_briefing` matched sub-agent read-only sentences by text; 0.1.32 reworded them, breaking the match. Now assembled from `SUB_SP_HEAD` + `SUB_READ_SP` / `SUB_WRITE_SP` — no text matching.
+- `sub_briefing` matched sub-agent read-only sentences by text; 0.1.32 reworded them, breaking the match. Now assembled from `SUB_SP_HEAD` + `SUB_READ_SP` / `SUB_WRITE_SP`. No text matching.
 - `cart_add` / `cart_remove` were in `WRITE_TOOLS` but lacked `@writes`, so `read_only` missed them. Read-only agents could modify carts.
 - Image group captured the model at tool-build time; `set_model` only rebuilt when the budget changed. Switching to a non-drawing model left it drawing as the old one.
-- `tests/test_vault.py` opened an indexed vault via `mk_host`, triggering concurrent downloads of a native SQLite extension from unjoined daemon threads — segfaulting the interpreter.
+- `tests/test_vault.py` opened an indexed vault via `mk_host`, triggering concurrent downloads of a native SQLite extension from unjoined daemon threads. This segfaulted the interpreter.
 - Three string assertions broken by 0.1.32 rewording (reviewer briefing, compaction reminder, summary-update prompt). Now assert the full value, not a substring.
 - `--agent-proxy` flag test asserted the underscored spelling that fastcore no longer generates.
 ## 0.1.32
 
-The toolset moved to [shalya](https://github.com/vedicreader/shalya), and git plumbing moved to [gheasy](https://github.com/vedicreader/gheasy). `ramabana.tools` and `ramabana.git` re-export the moved names, so existing imports still work.
+The toolset moved to [shalya](https://github.com/vedicreader/shalya), and git plumbing moved to [gheasy](https://github.com/vedicreader/gheasy). `ramabana.tools` and `ramabana.git` re-export the moved names. Existing imports still work.
 
 - `/python` now assigns a kernel backend instead of replacing the host, preserving all fifteen tools in `ramabana --vault --spec`.
 - `Host.capabilities` is now `Host.provides`. Hosts declare capability groups by inheritance; incomplete declarations fail to build. `_declared`, `_probe`, `_supports`, `_has`, and `_takes_reading` were removed.
 - `public_api` is available only to hosts with a code index.
 - `mk_host` uses the declared `VaultSpecHost` instead of creating a class per session.
-- `AgentError` aliases `shalya.core.HostError`, so existing `except AgentError` handlers still work.
+- `AgentError` aliases `shalya.core.HostError`. Existing `except AgentError` handlers still work.
 - `ramabana.git` re-exports `_run`, `_conflict_blocks`, and all three git tool sets from `shalya.core`.
 - The local `[tool.uv.sources]` overrides for `shalya` and `uraiyadal` were removed; both now install from PyPI.
 - `--pii off|redact|refuse` and `--pii-ner` now reach terminal, MCP, ACP, and vault hosts. `off` remains the default. Using `--pii` without `--vault` exits with status 2.
@@ -788,231 +818,91 @@ slopometer fixes
 
 ## 0.1.2
 
-Half the sandbox, a row of options, and the terminal app's hands back -- plus a pass over
-everything the harness was leaving on the table in the four libraries underneath it.
+Adds a Python prompt, `ask_memory`, a read-outside mode, attachments and clipboard paste. Fixes bugs in the host, the code index and the terminal.
 
 ### New
 
-- `ramabana --python`: a Python prompt whose namespace is yours, with the agent reading it through
-  Dhrishti's sandboxed overlay and unable to rebind anything it did not create. It is a mode of the
-  one terminal rather than a second program -- `/python` starts the kernel and takes the line,
-  `/agent` hands it back, and everything else about the surface is unchanged. `--attach` locks into
-  a kernel that is already serving, which is how it runs inside leela.
+- `ramabana --python`: a Python prompt whose namespace is yours. The agent reads the namespace through Dhrishti's sandboxed overlay and cannot rebind anything it did not create. It is a mode of the one terminal, not a second program. `/python` starts the kernel and takes the line, and `/agent` hands it back. `--attach` locks into a kernel that is already serving, which is how it runs inside leela.
 
 ### Added
 
-- **`ask_memory`**, and `Host.ask` behind it -- ask remembered research a question and get a
-  short cited answer rather than the sections. The same trade `delegate_search` makes: reading
-  the material yourself costs every section of every candidate document in your context.
-  It appears only for a host that implements `Host.ask`.
-- **Private material is answered on this machine.** When the sections a question retrieved hold
-  personal information -- decided arithmetically by `vishalakshi.pii`, never by asking a model to
-  read it first -- the answer is computed by a local model under a briefing that forbids it
-  repeating any personal detail to the caller. It says what it is holding and what instruction
-  would let it answer usefully; the caller sends that back as `instruction` and it gets another
-  turn on the same sections. The runtime is checked on the chat object before a character is
-  sent, so a lent hosted chat is refused rather than trusted, and `pii='off'` is deliberately
-  not reachable from the far end of a tool call.
-- `Agent.lend_model`'s factory honours the model it is asked for (`Agent._spec_for`), which is
-  what makes "the local one" mean it.
-- **`Host.capabilities`** -- a host declares which tool groups it supports, and `tools_for`
-  asks before it probes. The probe is the first thing to touch a host, so a capability whose
-  answer sits behind a model load is one the probe waits through: `VaultHost` opens its vault
-  in the background precisely so the tool list does not wait, and `memory_tree('')` then
-  blocked on the lock that thread holds. 3.0s against a stub, a whole embedding model against
-  a real one, on the first `Agent.tools` access.
-- **`Agent.poll_watches`** and `Agent(poll_every=)` -- the tick the watch feature was built
-  around and nothing ever called. A turn is the tick, in a daemon thread; whatever fires files
-  itself into memory. `VaultHost.connect` is the same move for the entity graph, which
-  `research` used to rebuild inline on the one path where the user is definitely waiting.
-- **`Host.grep`** -- a host with a fast exact matcher answers it, and `LocalHost` does through
-  ripgrep, covering exactly the files `walk` yields. The tool read every file through
-  `host.read`, and therefore `check`, and therefore a `resolve` per file.
-- **`Agent.snapshot_tree`** and `SHELL_SNAPSHOT` -- `changes()` keyed on a tool argument named
-  `path`, and `run_shell` has none, so a command that rewrote twenty files reported `{}`.
-- **`LocalHost(rerank=, rerank_model=)`** -- Kosha's cross-encoder, wired through to both
-  context calls. It falls back once and stops asking if flashrank cannot fetch its model.
-- **`LocalHost.indexed`** -- per-folder index readiness, so a small repo goes semantic while a
-  large one is still syncing. `index_ready` is now "all of them".
-- **An `oneshot` routing job**, and `Routing.spec` falling back when a job's model is not
-  installed here. `inline`, `completion`, `classify` and `summary` take it unless singled out.
-- **`Agent.lend_model`** and `VaultHost(mk_chat=)` -- vishalakshi builds a chat per `ask`, which
-  on a local model is a second copy of an engine already in memory, answering on a different
-  model from the one being talked to.
-- **`core.claude_tags`** and `$RAMABANA_CLAUDE_TAG_TOOLS` -- Claude Code declares tools as an
-  in-process MCP server and an enterprise-managed configuration forbids every dynamic MCP
-  server, so the tools were stripped and the model ran blind. They travel in the system prompt
-  instead, through Rishi's `tool_mode='tags'`.
-- **`LocalHost(read_outside=True)`** -- the sandbox has two halves and only one of them is
-  usually the point. Confining *writes* stops an agent damaging something nobody opened;
-  confining *reads* stops it answering a question whose answer is in a sibling checkout or a
-  library outside the venv. With this on, a read may name any path on the machine and a write
-  may not. Enumeration is unchanged either way -- `walk`, and therefore `grep` and
-  `list_files`, never leave the open folders -- so a read outside is always a path the model
-  already knew, never one it found by looking. `DENY` is the short list of credential paths
-  refused regardless, because opening the sandbox is a decision about source and not about
-  the user's keys. `--read_outside` on both `ramabana` and `ramabana-mcp`.
-- `Host.check` takes `reading=`, and the read-only tools resolve through the new
-  `tools.readable`, which checks the signature first -- so the flag is a host capability
-  rather than a tool assumption and a host written before it sees the call it always saw.
-- **`cli.Option` / `options_for` / a reworked `ChoiceMenu`** -- the two-choice refactor prompt
-  became a component. A prompt whose *reading* matters gets a titled row of options above the
-  input line, each with the instruction it appends; arrows, digits or the option's own letter
-  pick one, and cancelling hands the typed line back to the composer instead of dropping it.
-- `cli.mk_host`, and `--vault` on both frontends: durable memory through `VaultHost` was
-  reachable only by writing Python, so neither frontend could use vishalakshi at all.
-- **Attachments** in `ramabana.cli` -- `MEDIA`, `Attachment`, `media_path`, `media_paths`,
-  `attach_refs`, `media_parts`, `media_note`, and `Ui.attach`/`detach`/`attach_row`. A prompt
-  now carries up to `MAX_ATTACH` files, images *and* audio, named the way a terminal already
-  hands files over: dropped on the window, pasted as a path, or written `@path` in the
-  sentence. Every shape a terminal delivers a drop in resolves to the same attachment --
-  quoted, bracketed, a `file://` URI, spaces backslash-escaped, several at once -- where
-  before only a bare unquoted path did, which is why dropping a picture on the prompt
-  usually just typed its path. Pictures go out as content parts; *every* attachment is also
-  named by absolute path, so a runtime with no ear for audio can still reach a `.wav`
-  through the file tools. Chips above the prompt say what the next message will carry, and
-  the turn that named them is the only one that carries them.
-- **`Ui.attach_clipboard` and `clipboard_png`**, on `ctrl+v` and `/paste`. Bracketed paste
-  carries text and only text, so a copied *image* never arrived as input at all; the picture
-  has to be asked of the platform (`pngpaste`, `wl-paste`, `xclip`), and a missing helper is
-  a plain sentence rather than a silent no-op.
-- **`Ui.copy_last`, on `/copy`** -- the newest reply to the system clipboard over OSC 52,
-  without leaving the prompt for the transcript view to get it.
+- `ask_memory`, and `Host.ask` behind it, ask remembered research a question and return a short cited answer instead of the sections. `delegate_search` makes the same trade. `ask_memory` appears only for a host that implements `Host.ask`.
+- Private material is answered on this machine. `vishalakshi.pii` decides arithmetically, without asking a model to read the material first, whether the sections that a question retrieved hold personal information. When they do, a local model computes the answer under a briefing that forbids it to repeat any personal detail to the caller. The answer says what the model is holding and what instruction would let it answer usefully. The caller sends that back as `instruction`, and the model gets another turn on the same sections. The runtime is checked on the chat object before any character is sent. A lent hosted chat is refused. `pii='off'` is not reachable from the far end of a tool call.
+- `Agent.lend_model`'s factory honours the model it is asked for (`Agent._spec_for`). A request for the local model gets the local model.
+- `Host.capabilities`: a host declares which tool groups it supports, and `tools_for` asks before it probes. The probe is the first thing to touch a host. A capability whose answer sits behind a model load made the probe wait. `VaultHost` opens its vault in the background so the tool list does not wait, and `memory_tree('')` then blocked on the lock that thread holds. On the first `Agent.tools` access this took 3.0 s against a stub, and it waited for a whole embedding model against a real vault.
+- `Agent.poll_watches` and `Agent(poll_every=)` are the tick that the watch feature was built around and nothing ever called. A turn is the tick, run in a daemon thread. Whatever fires files itself into memory. `VaultHost.connect` does the same for the entity graph, which `research` used to rebuild inline on the one path where the user is waiting.
+- `Host.grep`: a host with a fast exact matcher answers it. `LocalHost` does through ripgrep, over exactly the files `walk` yields. The tool used to read every file through `host.read`, and therefore `check`, and therefore a `resolve` per file.
+- `Agent.snapshot_tree` and `SHELL_SNAPSHOT`: `changes()` keyed on a tool argument named `path`, and `run_shell` has none. A command that rewrote twenty files reported `{}`.
+- `LocalHost(rerank=, rerank_model=)` wires Kosha's cross-encoder through to both context calls. It falls back once and stops asking if flashrank cannot fetch its model.
+- `LocalHost.indexed` gives per-folder index readiness. A small repo goes semantic while a large one is still syncing. `index_ready` now means all of them.
+- An `oneshot` routing job. `Routing.spec` falls back when a job's model is not installed here. `inline`, `completion`, `classify` and `summary` take it unless singled out.
+- `Agent.lend_model` and `VaultHost(mk_chat=)`. vishalakshi builds a chat per `ask`. On a local model that is a second copy of an engine already in memory, and it answers on a different model from the one being talked to.
+- `core.claude_tags` and `$RAMABANA_CLAUDE_TAG_TOOLS`. Claude Code declares tools as an in-process MCP server, and an enterprise-managed configuration forbids every dynamic MCP server. The tools were stripped and the model ran blind. With the new option the tools travel in the system prompt through Rishi's `tool_mode='tags'`.
+- `LocalHost(read_outside=True)`: a read may name any path on the machine, and a write may not. Confining writes stops an agent from damaging something nobody opened. Confining reads stops it from answering a question whose answer is in a sibling checkout or a library outside the venv. Enumeration is unchanged either way: `walk`, and therefore `grep` and `list_files`, never leave the open folders. A read outside is always a path the model already knew, never one it found by looking. `DENY` is the short list of credential paths refused regardless. `--read_outside` works on both `ramabana` and `ramabana-mcp`.
+- `Host.check` takes `reading=`, and the read-only tools resolve through the new `tools.readable`, which checks the signature first. The flag is a host capability, and a host written before it sees the call it always saw.
+- `cli.Option`, `options_for` and a reworked `ChoiceMenu`: the two-choice refactor prompt became a component. A prompt whose reading matters gets a titled row of options above the input line, each with the instruction it appends. Arrows, digits or the option's own letter pick one. Cancelling hands the typed line back to the composer instead of dropping it.
+- `cli.mk_host`, and `--vault` on both frontends. Durable memory through `VaultHost` was reachable only by writing Python, and neither frontend could use vishalakshi.
+- Attachments in `ramabana.cli`: `MEDIA`, `Attachment`, `media_path`, `media_paths`, `attach_refs`, `media_parts`, `media_note`, and `Ui.attach`, `detach` and `attach_row`. A prompt carries up to `MAX_ATTACH` files, images and audio, named the way a terminal hands files over: dropped on the window, pasted as a path, or written `@path` in the sentence. Every shape that a terminal delivers a drop in resolves to the same attachment: quoted, bracketed, a `file://` URI, spaces backslash-escaped, several at once. Before, only a bare unquoted path did, and dropping a picture on the prompt usually typed its path. Pictures go out as content parts. Every attachment is also named by absolute path, so a runtime with no ear for audio can still reach a `.wav` through the file tools. Chips above the prompt say what the next message carries. Only the turn that named the attachments carries them.
+- `Ui.attach_clipboard` and `clipboard_png`, on `ctrl+v` and `/paste`. Bracketed paste carries text only, and a copied image never arrived as input. The picture is asked of the platform (`pngpaste`, `wl-paste`, `xclip`). A missing helper gives a plain sentence instead of a silent no-op.
+- `Ui.copy_last`, on `/copy`, copies the newest reply to the system clipboard over OSC 52 without leaving the prompt for the transcript view.
 - `Ui.note`, `Ui.touch`, and `Ui.enter_transcript`/`leave_transcript`.
 
 ### Fixed
 
-- **`Agent.changes()` was blind to `run_shell`.** It keyed on a tool argument called `path`,
-  and a command names no files: `black .`, a codemod, a `git checkout` can rewrite twenty
-  files and mention none of them, and the answer came back `{}` -- worse than a gap, because
-  the README points at `changes()` as the thing that knows what moved.
-- **`_named` dropped the positional half of a mixed call.** `args = kw if kw else _named(f, a)`,
-  so `edit_file('a.py', commands=...)` was recorded with no path -- an unreadable activity line,
-  and a file that was never snapshotted, because the path `changes()` looks for is that one.
-- **`LocalHost.search` tried its legs in order instead of fusing them**, so a rename whose query
-  happened to embed well lost its own call sites. Both run and `fossick.rrf` merges them.
-- **`read_url` promised "(or GitHub file, arxiv paper)" and plain-fetched both.** It routes to
-  fossick's own readers now, and escalates through `fetch(auto=True)` -- plain, heavy, stealthy,
-  logged-in Chrome -- rather than jumping hand-rolled from plain to a stealth browser.
-- **Kosha was told to sync serially** (`in_parallel=False`, overriding its own default, for no
-  reason anyone wrote down), which is why `index_ready` took minutes and every search until
-  then was literal.
-- **`resolve` checked `runtime_available` for a `vendor/model` name and not for a short one**, so
-  `resolve('qwen-4b')` succeeded on a machine with no MLX; the job built a backend, `start()`
-  failed, and `Agent.oneshot` returned `''`. The cheap jobs did not error -- they stopped
-  happening.
-- **`LocalHost(roots=())` raised `IndexError` out of `check`.** It is a legal host; it refuses
-  paths with an `AgentError` that says why.
-- **`ramabana.core` wrote into `sys.modules` at import time**, rearranging `toolslm` for every
-  other consumer in the interpreter because somebody imported this library to read a constant.
-  The shim is installed at the two points that need it.
-- **`scale_numeric` is gone** -- a pandas min-max scaler in the permanent tool list of a general
-  coding harness, which is what `coding_patterns` says not to do.
-- **`RishiBackend` reached into five Rishi privates** (`_oneshot`, `_sys_pre`, `toolspecs`, `ns`,
-  `_recreate_conv`). Rishi grew `Chat.oneshot` and `Chat.reconfigure`; `think=False` now applies
-  on every runtime rather than only MLX.
+- `Agent.changes()` was blind to `run_shell`. It keyed on a tool argument called `path`, and a command names no files. `black .`, a codemod or a `git checkout` can rewrite twenty files and mention none of them, and the answer came back `{}`. The README points at `changes()` as the thing that knows what moved.
+- `_named` dropped the positional half of a mixed call. The code was `args = kw if kw else _named(f, a)`. `edit_file('a.py', commands=...)` was recorded with no path. That gave an unreadable activity line and a file that was never snapshotted, because the path `changes()` looks for is that one.
+- `LocalHost.search` tried its legs in order instead of fusing them. A rename whose query happened to embed well lost its own call sites. Both legs run now, and `fossick.rrf` merges them.
+- `read_url` promised "(or GitHub file, arxiv paper)" and plain-fetched both. It routes to fossick's own readers now. It escalates through `fetch(auto=True)`: plain, heavy, stealthy, logged-in Chrome. Before, it jumped from plain to a stealth browser.
+- Kosha was told to sync serially (`in_parallel=False`, overriding its own default). `index_ready` took minutes, and every search until then was literal.
+- `resolve` checked `runtime_available` for a `vendor/model` name and not for a short one. `resolve('qwen-4b')` succeeded on a machine with no MLX. The job built a backend, `start()` failed, and `Agent.oneshot` returned `''`. The cheap jobs did not error. They stopped happening.
+- `LocalHost(roots=())` raised `IndexError` out of `check`. It is a legal host. It refuses paths with an `AgentError` that says why.
+- `ramabana.core` wrote into `sys.modules` at import time and rearranged `toolslm` for every other consumer in the interpreter. The shim is installed at the two points that need it.
+- `scale_numeric` is gone. It was a pandas min-max scaler in the permanent tool list of a general coding harness.
+- `RishiBackend` reached into five Rishi privates (`_oneshot`, `_sys_pre`, `toolspecs`, `ns`, `_recreate_conv`). Rishi grew `Chat.oneshot` and `Chat.reconfigure`. `think=False` now applies on every runtime, not only MLX.
 - `LlamaBackend` and `FastllmBackend` warn as deprecated aliases for `RishiBackend`.
 - `pyproject` refused to install below 3.12 while its classifiers claimed only "Python 3".
-- **An attached image shredded the rest of the message.** `compose` returns a list of content
-  parts when there is an image, and `_prepare` then did `list += str` -- which extends a list
-  one character at a time. Every multimodal turn reached the model as the image followed by
-  several hundred single-character parts, with the tool plan and every preflight result
-  scattered among them.
-- `Approvals` refusals that nobody could be asked about (`mode='off'`, or no listener
-  registered) never reached `on_answer`, so the reason existed only in the model's context
-  and the user saw an unexplained tool failure.
-- `Agent.checkpoints` grew for the life of a session, holding a deep copy of a whole
-  conversation per turn. Capped at `MAX_CHECKPOINTS`.
-- `/skill NAME` was `return self.oneshot and clip(...)` -- a bound method used as a truth
-  value, left over from an earlier shape.
-- The briefing and `tool_plan` still named leela, telling a model working on any other
-  project about an editor that is not there.
-- `captured` read `$LEELA_NO_NATIVE_CAPTURE` directly, so the switch was unreachable under
-  the prefix `use_env_prefix` exists to set. It goes through `env` now, and the old name
-  still works as the fallback.
-- The activity feed had no summary or icon for `run_shell`, `grep`, `ls`, `replace_text`,
-  `create_skill` or any of the memory, watch and cart tools -- the shell call, which is the
-  one a person most wants to read back, rendered as `run_shell(command='…')` under a wrench.
-- `Ui.submit` tested for a refactor question *before* recognising a slash command, so
-  `/model refactor-thing` opened a menu instead of running.
+- An attached image shredded the rest of the message. `compose` returns a list of content parts when there is an image, and `_prepare` then did `list += str`, which extends a list one character at a time. Every multimodal turn reached the model as the image followed by several hundred single-character parts, with the tool plan and every preflight result scattered among them.
+- `Approvals` refusals that nobody could be asked about (`mode='off'`, or no listener registered) never reached `on_answer`. The reason existed only in the model's context, and the user saw an unexplained tool failure.
+- `Agent.checkpoints` grew for the life of a session and held a deep copy of a whole conversation per turn. It is capped at `MAX_CHECKPOINTS`.
+- `/skill NAME` was `return self.oneshot and clip(...)`, a bound method used as a truth value, left over from an earlier version.
+- The briefing and `tool_plan` still named leela, and told a model working on any other project about an editor that is not there.
+- `captured` read `$LEELA_NO_NATIVE_CAPTURE` directly. The switch was unreachable under the prefix that `use_env_prefix` sets. It goes through `env` now, and the old name still works as the fallback.
+- The activity feed had no summary or icon for `run_shell`, `grep`, `ls`, `replace_text`, `create_skill` or any of the memory, watch and cart tools. The shell call, which a person most wants to read back, rendered as `run_shell(command='…')` under a wrench.
+- `Ui.submit` tested for a refactor question before it recognised a slash command. `/model refactor-thing` opened a menu instead of running.
 - `_supports` was written as a general capability probe and hard-coded `run_cmd` in its body.
-- With an agent, the MCP server now mounts the agent's own recorded tools, which is what its
-  documentation already claimed: a client's call lands in the same activity feed and the same
-  `changes()` as a call the model made for itself.
-- **The code index never built the call graph it searches through.** `sync_index` passed
-  `sync_graph=force` -- kosha's *deprecated* name for `graph`, and `force` is `False` -- so
-  every ordinary sync ran with `graph=False`, while `_semantic` went on asking
-  `Kosha.context` for graph expansion over a graph that was not there.
-- `LocalHost.web_search` sliced fossick's results to `n` instead of asking for `n`, and
-  fossick's own default is 10 -- so a request for twenty results returned ten.
-- `LocalHost.research` stringified the whole `{query, sources, digest, dropped}` record
-  fossick returns. `digest` *is* the cited markdown and `sources` is the same markdown again
-  per page, so the model was handed both copies wrapped in Python dict syntax.
-- Four tests asserted against `fastllm.chat` privates (`_alite_call_func`, `AsyncChat.tcdict`)
-  for a shim this package no longer installs, and had been failing since that library changed
-  shape. Replaced with tests of the approval behaviour they were really protecting.
-- **Copying a reply returned the screen, not the reply.** No block passed Teleprint a
-  `source`, and `set_body` clears it unless given one, so `y` and search fell back to
-  scraping the rendering: prose re-wrapped to the terminal's width, code indented by the
-  gutter and stripped of the fences that made it paste-able. Every block now states its own
-  text, and a plain string or `Text` states it for free.
-- **The transcript view froze during a turn.** It is entered pinned to the tail (`less +F`)
-  but nothing ever called `TranscriptView.notify`, and `set_tail` goes model-only while the
-  alt screen owns the tty -- so a streaming reply, arriving tool calls, and the status bar
-  itself all stopped until the next keystroke. `Ui.touch` and `Ui.paint` now drive it, rate
-  limited by `NOTIFY_EVERY` because a rebuild re-renders every block in the model.
-- **Mouse reporting was on everywhere, which took drag-select away from the terminal** --
-  the ordinary way anyone copies out of a scrollback -- and in the main screen spent it on
-  nothing but accidental fold toggles. It is now switched on only while the transcript view
-  is up, which is Teleprint's own division: the main screen belongs to the terminal.
-- `/help` described keys the app does not have: `↑`/`↓` enter the transcript rather than
-  walking prompt history (that is `ctrl+p`/`ctrl+n`), and `ctrl+y` yanks.
-- The attachment hint overwrote the roots hint permanently and outlived the turn it
-  described, so the status line went on claiming an image was attached after it was sent.
-- Cancelling the refactor menu with `esc` discarded the prompt that opened it; it now
-  returns to the composer.
+- With an agent, the MCP server now mounts the agent's own recorded tools, as its documentation already claimed. A client's call appears in the same activity feed and the same `changes()` as a call the model made for itself.
+- The code index never built the call graph it searches through. `sync_index` passed `sync_graph=force`, kosha's deprecated name for `graph`, and `force` is `False`. Every ordinary sync ran with `graph=False`, while `_semantic` went on asking `Kosha.context` for graph expansion over a graph that was not there.
+- `LocalHost.web_search` sliced fossick's results to `n` instead of asking for `n`. fossick's own default is 10. A request for twenty results returned ten.
+- `LocalHost.research` stringified the whole `{query, sources, digest, dropped}` record that fossick returns. `digest` is the cited markdown, and `sources` is the same markdown again per page. The model was handed both copies wrapped in Python dict syntax.
+- Four tests asserted against `fastllm.chat` privates (`_alite_call_func`, `AsyncChat.tcdict`) for a shim this package no longer installs. They had been failing since that library changed its internals. They are replaced with tests of the approval behaviour they were protecting.
+- Copying a reply returned the screen, not the reply. No block passed Teleprint a `source`, and `set_body` clears it unless given one. `y` and search fell back to scraping the rendering: prose re-wrapped to the terminal's width, and code indented by the gutter and stripped of the fences that made it paste-able. Every block now states its own text, and a plain string or `Text` states it for free.
+- The transcript view froze during a turn. It is entered pinned to the tail (`less +F`), but nothing ever called `TranscriptView.notify`, and `set_tail` goes model-only while the alt screen owns the tty. A streaming reply, arriving tool calls and the status bar all stopped until the next keystroke. `Ui.touch` and `Ui.paint` now drive it, rate limited by `NOTIFY_EVERY` because a rebuild re-renders every block in the model.
+- Mouse reporting was on everywhere. That took drag-select away from the terminal, the ordinary way anyone copies out of a scrollback, and in the main screen it was used for nothing but accidental fold toggles. It is now switched on only while the transcript view is up. This is Teleprint's own division: the main screen belongs to the terminal.
+- `/help` described keys the app does not have. `↑`/`↓` enter the transcript and do not walk prompt history, which is `ctrl+p`/`ctrl+n`. `ctrl+y` yanks.
+- The attachment hint overwrote the roots hint permanently and outlived the turn it described. The status line went on claiming an image was attached after it was sent.
+- Cancelling the refactor menu with `esc` discarded the prompt that opened it. It now returns to the composer.
 
 ## 0.1.1
-Memory that outlives the process, and the first extension that spends money.
+Adds `VaultHost` memory, standing watches and a shopping cart extension.
 
 ### Added
 
-- `ramabana.vault.VaultHost` -- `LocalHost` with a
-  [vishalakshi](https://github.com/vedicreader/vishalakshi) vault behind it. Three things
-  follow from one SQLite file: the five `memory_*` tools finally have something to answer
-  from, so `tools_for` stops dropping them; `search_code` fuses the vault's prose with
-  kosha's identifiers and ripgrep's literals by RRF rather than by distance, since the legs
-  share no vector space; and `read_url`/`research` file what they fetch, so what the model
-  reads and what the next session can recall are the same text. A vault that will not open
-  degrades to exactly what `LocalHost` already did.
-- **Standing interests on `Host`** -- `remember`, `watch`, `watches`, `unwatch` and `poll`,
-  with `watch_tools` behind the same capability probe every other group uses. A reminder is
-  a watch whose action files its own text back into memory when it comes due, so "what am I
-  supposed to be doing" and "what do I know" are one query and neither needs a notification
-  channel the harness does not own. One failing watch is recorded on its row, not raised.
-- `ramabana.shop` -- `Cart`, `FossickCart` (a real logged-in Chrome via `fossick.shop`),
-  `FakeCart`, and `cart_tools`. Registered as an extension rather than added to `Host`: an
-  agent editing a repo has no business holding a trolley. `cart_add` reports whether the
-  cart actually moved rather than whether the click worked.
-- `08_shop.ipynb` runs the whole thing end to end -- a reminder set once, polled a week
-  later, and acted on across two stores -- with only the model's decisions and the trolley
-  mocked.
+- `ramabana.vault.VaultHost` is `LocalHost` with a [vishalakshi](https://github.com/vedicreader/vishalakshi) vault behind it. One SQLite file provides three things. The five `memory_*` tools have something to answer from, and `tools_for` stops dropping them. `search_code` fuses the vault's prose with kosha's identifiers and ripgrep's literals by RRF, not by distance, because the legs share no vector space. `read_url` and `research` file what they fetch. What the model reads and what the next session can recall are the same text. A vault that will not open degrades to exactly what `LocalHost` did.
+- Standing interests on `Host`: `remember`, `watch`, `watches`, `unwatch` and `poll`, with `watch_tools` behind the same capability probe that every other group uses. A reminder is a watch whose action files its own text back into memory when it comes due. "What am I supposed to be doing" and "what do I know" are one query, and neither needs a notification channel that the harness does not own. One failing watch is recorded on its row and not raised.
+- `ramabana.shop`: `Cart`, `FossickCart` (a real logged-in Chrome via `fossick.shop`), `FakeCart` and `cart_tools`. It registers as an extension and is not part of `Host`. `cart_add` reports whether the cart moved, not whether the click worked.
+- `08_shop.ipynb` runs the whole flow end to end: a reminder set once, polled a week later and acted on across two stores. Only the model's decisions and the trolley are mocked.
 
 ### Changed
 
-- `WRITE_TOOLS` gains `cancel_watch`, `cart_add` and `cart_remove`. The line an `Approvals`
-  policy draws is no longer only around the filesystem: deleting someone's standing reminder
-  and spending their money both belong in front of a person.
+- `WRITE_TOOLS` gains `cancel_watch`, `cart_add` and `cart_remove`. An `Approvals` policy now draws its line around more than the filesystem. Deleting someone's standing reminder and spending their money both go in front of a person.
 
 ## 0.1.0
 
-The nbdev source became honest again, and the harness grew two frontends of its own.
+The notebooks and modules now match one to one. Adds a terminal app and an MCP server.
 
 ### Breaking
 
-- **Modules consolidated to match the documentation pages.** Each notebook is now exactly
-  one module, which is the only shape `nbdev-export` can produce idempotently. Old imports
-  map as follows; the names exported from `ramabana` itself are unchanged.
+- Modules consolidated to match the documentation pages. Each notebook is now exactly one module, which is the only layout from which `nbdev-export` produces the same output on every run. Old imports map as follows. The names exported from `ramabana` itself are unchanged.
 
   | was | now |
   |---|---|
@@ -1023,76 +913,28 @@ The nbdev source became honest again, and the harness grew two frontends of its 
 
 ### Added
 
-- `ramabana.tools.LocalHost` -- a `Host` over real folders and a live namespace in-process:
-  sandboxed path resolution (`..` and symlinks resolved *before* the check), automatic
-  `Kosha.sync` in a daemon thread, repo-first semantic + keyword search across the open
-  repository and installed packages, `ast`-based symbols and peers, notebook cells, and a
-  persistent exec namespace. The reference implementation, and what both frontends run on.
-- `ramabana.cli` -- a terminal app on [teleprint](https://github.com/answerdotai/teleprint).
-  Transcript of foldable blocks, live status bar, streaming replies, tool calls as blocks,
-  and the approval gate on the input line. `ramabana` and `ramabana -p 'one question'`.
-- `ramabana.mcp` -- the same tools served over MCP, read-only by default, plus an `ask` tool
-  that runs a whole Ramabana turn when a model is configured. `ramabana-mcp`.
-- `ramabana.testing.FullHost` -- a host with *every* capability present over a throwaway
-  folder, including a research-memory index and a web that returns the pages it was given,
-  so the whole tool surface has somewhere to be tested. Its release check loads a real MLX
-  model through rishi and verifies all 28 tool functions and all 28 compiled tool schemas.
-- `ramabana.runtime.answer_only` -- strips a reasoning model's thinking from a one-shot reply.
-- `ramabana.runtime.prefills_think` / `ThinkFilter` -- the streaming half of the same problem.
-  `prefills_think` asks a model's own chat template whether it opens a `<think>` block and
-  leaves the model to close it; `ThinkFilter` drops that block out of a streamed turn, and
-  re-arms at every tool call because such a template opens a fresh thought per step.
-- `ramabana.tools.ld_json` -- a page's `schema.org` JSON-LD blocks, which is where a product
-  page actually states its price. `LocalHost.read_url` now prepends them to the prose.
-- `mini-coder-4b` (`mlx-community/mini-coder-4b-OptiQ-4bit`) joins the MLX table and becomes
-  the default for inline `completion`: a 4B trained on code finishes a line better, and
-  faster, than a general 9B. Every other cheap job stays on the default local model.
+- `ramabana.tools.LocalHost` is a `Host` over real folders and a live namespace in-process. It has sandboxed path resolution (`..` and symlinks are resolved before the check), automatic `Kosha.sync` in a daemon thread, repo-first semantic and keyword search across the open repository and installed packages, `ast`-based symbols and peers, notebook cells, and a persistent exec namespace. It is the reference implementation, and both frontends run on it.
+- `ramabana.cli` is a terminal app on [teleprint](https://github.com/answerdotai/teleprint). It has a transcript of foldable blocks, a live status bar, streaming replies, tool calls as blocks, and the approval gate on the input line. Run `ramabana` or `ramabana -p 'one question'`.
+- `ramabana.mcp` serves the same tools over MCP, read-only by default, plus an `ask` tool that runs a whole Ramabana turn when a model is configured. The command is `ramabana-mcp`.
+- `ramabana.testing.FullHost` is a host with every capability present over a throwaway folder, including a research-memory index and a web that returns the pages it was given. The whole tool surface can be tested against it. Its release check loads a real MLX model through rishi and verifies all 28 tool functions and all 28 compiled tool schemas.
+- `ramabana.runtime.answer_only` strips a reasoning model's thinking from a one-shot reply.
+- `ramabana.runtime.prefills_think` and `ThinkFilter` are the streaming half of the same problem. `prefills_think` asks a model's own chat template whether it opens a `<think>` block and leaves the model to close it. `ThinkFilter` drops that block out of a streamed turn and re-arms at every tool call, because such a template opens a fresh thought per step.
+- `ramabana.tools.ld_json` returns a page's `schema.org` JSON-LD blocks, which is where a product page states its price. `LocalHost.read_url` now prepends them to the prose.
+- `mini-coder-4b` (`mlx-community/mini-coder-4b-OptiQ-4bit`) joins the MLX table and becomes the default for inline `completion`. A 4B model trained on code finishes a line better and faster than a general 9B. Every other cheap job stays on the default local model.
 
 ### Fixed
 
-- **Reasoning models broke every cheap job.** `classify`, `summarise`, `Completer` and
-  compaction all read a one-shot reply as data, and all four returned the model's `<think>`
-  block instead of its answer. `Backend.oneshot` now strips it, including the unpaired
-  closing tag that is what actually arrives when the chat template opens the block in the
-  prompt.
-- **Inline completion could insert prose into your file.** A small model asked for bare code
-  explains itself first and then opens a fence the token cap cuts off before it closes;
-  `_clean` took the whole reply. It now keeps only what follows an unterminated fence, and
-  suggests nothing when there is nothing but prose.
-- `nbdev-export` works again (it raised `TypeError` in `nbdev/maker.py`), is idempotent, and
-  the custom `tools/export.py` that had replaced it is gone. `nbdev-clean` is a no-op,
-  `nbdev-test` executes every notebook, and generated modules carry the `AUTOGENERATED`
-  header, real `__all__` lists, module docstrings and doclinks again.
+- Reasoning models broke every cheap job. `classify`, `summarise`, `Completer` and compaction all read a one-shot reply as data, and all four returned the model's `<think>` block instead of its answer. `Backend.oneshot` now strips the block, including the unpaired closing tag that arrives when the chat template opens the block in the prompt.
+- Inline completion could insert prose into your file. A small model asked for bare code explains itself first and then opens a fence that the token cap cuts off before it closes. `_clean` took the whole reply. It now keeps only what follows an unterminated fence, and suggests nothing when there is nothing but prose.
+- `nbdev-export` works again (it raised `TypeError` in `nbdev/maker.py`) and is idempotent. The custom `tools/export.py` that had replaced it is gone. `nbdev-clean` is a no-op, and `nbdev-test` executes every notebook. Generated modules carry the `AUTOGENERATED` header, real `__all__` lists, module docstrings and doclinks again.
 - Relative imports in exported cells (`from .core import ...`), which `nbdev-export` refuses.
-- **A streamed turn leaked the model's thinking into the reply.** Rishi's splitter waits for an
-  opening `<think>` to know it is inside a thought, so a model whose chat template writes that
-  tag into the generation prompt -- Ornith-1.0-9B, among others -- never emits one, and its
-  deliberation arrived as ordinary reply text with a stray `</think>` in the middle of it.
-  `_stream` now filters the structured chunk stream and renders what is left with Rishi's own
-  formatter. This was the release's one *Known* limitation, and it is gone.
-- **A cheap job could not answer at all inside its own budget.** `classify` allows thirty-two
-  output tokens; a reasoning model spends all thirty-two thinking, so there was no answer left
-  for `answer_only` to uncover. The one-shot conversation is now built with `think=False`,
-  which closes the template's thinking block in the *prompt* -- the model answers immediately.
-- **The first cheap job capped every one after it.** `_oneshot_chat` is reused across jobs and
-  was constructed with the first caller's `max_output_tokens`, so a 32-token `classify` left a
-  32-token ceiling behind and the next `summarise` came back cut off mid-sentence. Each call
-  now passes its own cap explicitly.
-- **`read_url` could not read a page that renders in the browser.** A site that turns away
-  scrapers answers `200 OK` with an empty shell rather than an error, so escalating on the
-  status code never fires. `LocalHost.read_url` judges the extracted *text* instead and
-  escalates to a real browser only when there is too little of it to be a page.
-- `local_ctx('ornith-9b')` silently returned the fallback window: the table keyed it
-  `ornith_9b`, with an underscore, while the model alias has a hyphen.
+- A streamed turn leaked the model's thinking into the reply. Rishi's splitter waits for an opening `<think>` to know it is inside a thought. A model whose chat template writes that tag into the generation prompt, such as Ornith-1.0-9B, never emits one. Its deliberation arrived as ordinary reply text with a stray `</think>` in the middle. `_stream` now filters the structured chunk stream and renders what is left with Rishi's own formatter. This was the release's one Known limitation, and it is gone.
+- A cheap job could not answer at all inside its own budget. `classify` allows thirty-two output tokens, and a reasoning model spends all thirty-two thinking. No answer was left for `answer_only` to uncover. The one-shot conversation is now built with `think=False`, which closes the template's thinking block in the prompt. The model answers immediately.
+- The first cheap job capped every one after it. `_oneshot_chat` is reused across jobs and was constructed with the first caller's `max_output_tokens`. A 32-token `classify` left a 32-token ceiling behind, and the next `summarise` came back cut off mid-sentence. Each call now passes its own cap explicitly.
+- `read_url` could not read a page that renders in the browser. A site that turns away scrapers answers `200 OK` with an empty shell and no error, so escalating on the status code never fires. `LocalHost.read_url` judges the extracted text instead. It escalates to a real browser only when there is too little text to be a page.
+- `local_ctx('ornith-9b')` silently returned the fallback window. The table keyed it `ornith_9b`, with an underscore, while the model alias has a hyphen.
 
 ### Docs
 
-- Every notebook is a literate page: sections with exported summaries that assemble into the
-  module docstring, and executable examples that double as the tests -- including the terminal
-  UI, asserted against a headless terminal emulator, and the MCP server, asserted through
-  real `list_tools`/`call_tool` round trips.
-- `nbs/index.ipynb` ends on one real problem solved end to end: a routed agent over this
-  repository and the live web, finding a constant with the code index and a supermarket price
-  through a browser, and closing on arithmetic that needs both. The turn runs on a hosted
-  model, every cheap job on a local MLX one. Those cells are `eval: false` with their real
-  outputs stored, so neither CI nor the docs build needs a GPU or a network.
+- Every notebook is a literate page. Sections have exported summaries that assemble into the module docstring, and executable examples double as the tests. This includes the terminal UI, asserted against a headless terminal emulator, and the MCP server, asserted through real `list_tools` and `call_tool` round trips.
+- `nbs/index.ipynb` ends with one real problem solved end to end: a routed agent over this repository and the live web. It finds a constant with the code index, finds a supermarket price through a browser, and closes with arithmetic that needs both. The turn runs on a hosted model, and every cheap job runs on a local MLX one. Those cells are `eval: false` with their real outputs stored, so neither CI nor the docs build needs a GPU or a network.

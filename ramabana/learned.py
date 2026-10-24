@@ -32,7 +32,7 @@ def _legacy(cfg):
     return None if v is None else v != 'off'
 
 def enabled(cfg='~/.config/ramabana'):
-    "Whether learning is on: `learning` in this machine's config.toml, which a value only `<cfg>/settings.json` holds moves into the first time it is read. On unless set off."
+    "Whether learning is on. Reads `learning` in this machine's config.toml. When only `<cfg>/settings.json` holds a value, the first read moves it into config.toml. On unless set off."
     if (v := setting('learning')) is not None: return v
     if (old := _legacy(cfg)) is None: return True
     try: set_setting('learning', old)
@@ -40,7 +40,7 @@ def enabled(cfg='~/.config/ramabana'):
     return old
 
 def set_enabled(cfg='~/.config/ramabana', on=True):
-    "Turn learning on or off in this machine's config.toml, its comments kept; `cfg`'s settings.json is never written. Raises `ValueError` for a config.toml that is not TOML."
+    "Turn learning on or off in this machine's config.toml and keep its comments. `cfg` is ignored, and `cfg`'s settings.json is never written. Raises `ValueError` for a config.toml that is not TOML."
     return set_setting('learning', bool(on))
 
 def learned_folder(cfg='~/.config/ramabana'):
@@ -110,14 +110,14 @@ def diff(folder, id):
     return dict(ok=True, id=id, diff=_git(folder, 'diff', f'{PENDING}{id}^', f'{PENDING}{id}').stdout)
 
 def accept(folder, id):
-    "Move pending candidate `id` onto HEAD, which the next briefing reads, then the other candidates onto it: `{ok, id, commit, moved, stale}`."
+    "Move pending candidate `id` onto HEAD, then restack the other candidates onto it. The next briefing reads HEAD. Returns `{ok, id, commit, moved, stale}`."
     folder = Path(folder)
     if (e := _problem(folder, id)): return dict(ok=False, id=id, error=e)
     with _locked(folder) as held:
         if not held: return dict(ok=False, id=id, error='a Dhrona batch is running on the learned folder; accept it when the batch ends')
         if _git(folder, 'status', '--porcelain').stdout.strip():
             return dict(ok=False, id=id, error=f'{folder} has uncommitted changes; commit or discard them first')
-        wt = Path(tempfile.mkdtemp())/'wt'   # picked aside, so a conflict never reaches the files a session briefs from
+        wt = Path(tempfile.mkdtemp())/'wt'   # pick here first; a conflict never reaches the files a session briefs from
         try:
             _git(folder, 'worktree', 'add', '-q', '--detach', str(wt), 'HEAD')
             r = _git(wt, *_AS, 'cherry-pick', f'{PENDING}{id}', check=False)
@@ -129,7 +129,7 @@ def accept(folder, id):
             if sha: _git(folder, 'merge', '-q', '--ff-only', sha)
         finally: _git(folder, 'worktree', 'remove', '--force', str(wt), check=False)
         body = _git(folder, 'log', '-1', '--format=%B', f'{PENDING}{id}').stdout
-        folded = [l.removeprefix(INCLUDES).strip() for l in body.splitlines() if l.startswith(INCLUDES)]   # a compaction that folded a candidate in
+        folded = [l.removeprefix(INCLUDES).strip() for l in body.splitlines() if l.startswith(INCLUDES)]
         for f in [id, *folded]: _git(folder, 'branch', '-D', f'{PENDING}{f}', check=False)
         moved, stale = restack(folder)
         return dict(ok=True, id=id, commit=sha[:7] if sha else None, moved=moved, stale=stale)   # commit None: HEAD already held the change

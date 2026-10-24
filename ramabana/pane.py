@@ -36,7 +36,7 @@ DIFF_LINES = 80      #: lines kept of each file's diff
 SHELL_EVERY = 1.0    #: seconds between asks about a live background shell
 
 class _Seen:
-    "What earlier snapshots of one agent computed that is dear to compute again: its files, and each shell's state."
+    "What earlier snapshots of one agent computed and the next snapshot reuses: its files, and each shell's state."
     def __init__(self): self.key, self.files, self.shells = None, [], {}
 
 _SEEN = weakref.WeakKeyDictionary()
@@ -74,13 +74,14 @@ _STARTED = re.compile(r'started (cmd_\w+)')
 SHELL_LINES = 20   #: output lines a background shell's row opens to
 
 def _shell_state(agent, seen, rid, now):
-    "`rid`'s state and last `SHELL_LINES` lines, asked of the host at most every `SHELL_EVERY` while it runs and never again once it has ended; state '' when unknown."
-    state, out, at = seen.shells.get(rid, (None, '', 0))
+    "`rid`'s state and last `SHELL_LINES` lines, asked of the host at most every `SHELL_EVERY` while it runs and never again once it has ended; state '' when unknown. A failed ask is unknown and asked again after `SHELL_EVERY`."
+    state, out, at = seen.shells.get(rid, (None, '', None))
     if state is not None and (state != 'running' or now - at < SHELL_EVERY): return state, out
+    if state is None and at is not None and now - at < SHELL_EVERY: return '', ''
     try: state, out = agent.host.cmd_output(rid, SHELL_LINES)
-    except Exception: state, out = '', ''   # a host that runs no background commands, or has forgotten this one
+    except Exception: state, out = None, ''   # a host that runs no background commands, has forgotten this one, or failed this once
     seen.shells[rid] = state, out, now
-    return state, out
+    return state or '', out
 
 def _shells(agent, seen, every, since, now):
     "`run_shell_bg` commands the host still knows: live ones, and those started since `since`."
@@ -282,6 +283,7 @@ class Viewer:
     "The board for the snapshot at `path`, drawn on `tty`: the last good snapshot, the open rows, the cursor and the scroll."
     def __init__(self, path, tty, tmux=_tmux):
         self.path, self.tty, self.parser, self.tmux, self.pane = Path(path), tty, Parser(), tmux, None
+        self.retry = 0   # earliest time a close that could not ask tmux is tried again
         self.snap = self.good = self.stamp = self.cursor = self.shown = None
         self.open, self.rows, self.top, self.err, self.done, self.size = set(), [], 0, '', False, tty.size
 
@@ -304,15 +306,17 @@ class Viewer:
         return True
 
     def alive(self):
-        "Whether the transcript pane this viewer opened is still in tmux; one the user closed is forgotten."
-        if self.pane and self.pane['id'] in self.tmux('list-panes', '-a', '-F', '#{pane_id}').split(): return True
+        "Whether the transcript pane this viewer opened is still in tmux; one the user closed is forgotten. None when tmux could not be asked, and the pane is kept."
+        if self.pane is None: return False
+        if not (panes := self.tmux('list-panes', '-a', '-F', '#{pane_id}').split()): return None
+        if self.pane['id'] in panes: return True
         self.pane = None
         return False
 
     def show(self, s, chat):
         "Show the transcript of the running sub-agent `s` in the one pane this viewer opened, a new split left of `chat` when it has none."
         cmd = f"tail -n 200 -f {shlex.quote(s['log'])}"
-        if not self.alive():
+        if self.alive() is False:
             if not chat or not (pid := self.tmux('split-window', '-h', '-b', '-P', '-F', '#{pane_id}', '-t', chat, cmd)): return
             self.pane = {'id': pid, 'run': s['id'], 'since': None}
         elif self.pane['run'] != s['id']:
@@ -321,17 +325,19 @@ class Viewer:
 
     def close_transcript(self):
         "Kill the transcript pane this viewer opened, if tmux still has it; never any other pane."
-        if self.alive(): self.tmux('kill-pane', '-t', self.pane['id'])
-        self.pane = None
+        if (up := self.alive()): self.tmux('kill-pane', '-t', self.pane['id'])
+        if up is not None: self.pane = None
 
     def reap(self, now=None):
         "Close the transcript pane `PANE_LINGER` seconds after its run ended or left the board; the snapshot's `close_done` false keeps it."
-        if self.pane is None or self.snap is None or not self.snap.get('close_done', True) or not self.alive(): return
+        if self.pane is None or self.snap is None or not self.snap.get('close_done', True): return
         s = next((s for s in self.snap.get('subs', []) if s['id'] == self.pane['run']), None)
         if s is not None and s['state'] not in _DONE: self.pane['since'] = None; return
         now = time.monotonic() if now is None else now
         if self.pane['since'] is None: self.pane['since'] = now
-        if now - self.pane['since'] >= PANE_LINGER: self.close_transcript()
+        if now - self.pane['since'] >= PANE_LINGER and now >= self.retry:
+            self.close_transcript()
+            if self.pane is not None: self.retry = now + 1
 
     def talk(self, key):
         "Aim the terminal at the row `key` through the `talk_mark`; a running sub-agent's transcript shows in one pane left of the chat, and `main` closes that pane."

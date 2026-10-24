@@ -40,11 +40,11 @@ from dataclasses import dataclass, field, replace
 ENV_PREFIX, ENV_FALLBACK = ENV_DEFAULT
 
 AgentError = HostError
-class BranchChanged(AgentError): "A branch moved while a person decided on it, so nothing was written."
-class ContextFull(AgentError): "A turn that does not fit the model's window after compaction and trimming; its message is the whole report."
+class BranchChanged(AgentError): "A git branch moved while a person decided on a write to it. Nothing was written."
+class ContextFull(AgentError): "A turn does not fit the model's window after compaction and trimming. Its message is the whole report."
 
 def agent_err(e):
-    "Render a caught exception for a user-facing surface, keeping its type; a `ContextFull` is its message alone."
+    "Render a caught exception with its type name in front. A `ContextFull` renders as its message alone."
     return str(e) if isinstance(e, ContextFull) else f'{type(e).__name__}: {e}'
 
 def use_env_prefix(prefix, fallback=None):
@@ -236,11 +236,11 @@ def _claude_login():
     except Exception: return False
 
 def _claude_signed_out():
-    "Whether Claude Code says, in so many words, that nobody is signed in, asked at most every ten seconds."
+    "Whether `claude auth status` reports that nobody is signed in. Asked at most every ten seconds."
     return probed('claude-signed-out', _ask_claude_signed_out, ttl=10, disk=False)
 
 def _ask_claude_signed_out():
-    "`claude auth status`'s own `loggedIn: false`; a status that fails or times out says nothing."
+    "Whether `claude auth status` reports `loggedIn: false`. A status that fails or times out returns False."
     if not shutil.which('claude'): return False
     try: p = subprocess.run(['claude', 'auth', 'status', '--json'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError): return False
@@ -248,7 +248,7 @@ def _ask_claude_signed_out():
     except (ValueError, AttributeError): return False
 
 def _codex_login():
-    "Whether a Codex sign-in is on hand: its token in the environment, or `codex login`'s auth file."
+    "Whether a Codex sign-in exists: its token in the environment, or the auth file `codex login` writes."
     return bool(os.getenv('CODEX_AUTH_TOKEN') or _json_has(os.getenv('CODEX_AUTH_PATH', '~/.codex/auth.json'), 'tokens', 'access_token'))
 
 AZURE_KEY_ENV = 'AZURE_OPENAI_API_KEY'
@@ -298,7 +298,7 @@ def auth_status():
 
 # %% ../nbs/00_core.ipynb #3e2adbad
 def register_model(name, model_id, runtime=None, ctx=128_000, note='custom model', **config):
-    "Add a model name that lasts until this process exits; `save_model` keeps one on disk."
+    "Add a model name until this process exits. `save_model` keeps a name on disk."
     name, model_id = (name or '').strip(), (model_id or '').strip()
     if model_id.startswith(('https://huggingface.co/', 'http://huggingface.co/')): 
         model_id = model_id.split('huggingface.co/', 1)[1].strip('/').split('/tree/', 1)[0]
@@ -323,7 +323,7 @@ API_KEYS = ('base_url', 'api_key_env', 'vendor_name', 'api_name')
 MODEL_ALIASES = Path('~/.config/ramabana/models.json')
 
 def use_aliases(path):
-    "Point every alias call that names no file at an application's own, as `use_env_prefix` does for env vars."
+    "Set the alias file that calls naming no `path` use, as `use_env_prefix` does for env vars."
     global MODEL_ALIASES
     MODEL_ALIASES = Path(path)
     return MODEL_ALIASES
@@ -397,7 +397,7 @@ def _define(name, o):
     return register_model(name, o['model_id'], rt, o.get('ctx') or o.get('max_input_tokens') or DFLT_AGENT_CTX, 'config.toml', **cfg)
 
 def sync_models():
-    "Register the saved aliases, then config.toml's definitions, again whenever either changes; config.toml wins a name both define. The names registered."
+    "Register the saved aliases, then config.toml's definitions, and register them again whenever either changes. config.toml wins a name that both define. Returns the registered names."
     p, tables = alias_path(), setting('model') or {}
     try: st = p.stat(); stamp = (st.st_mtime_ns, st.st_size)
     except OSError: stamp = None
@@ -424,7 +424,7 @@ def model_problems():
     return list(_SYNC['bad'])
 
 def remote_models():
-    "Hosted models defined here, in config.toml or as saved aliases, whose credentials are set: config.toml's first."
+    "Hosted models defined in config.toml or as saved aliases whose credentials are set, config.toml's first."
     names = sync_models()
     cfg = [n for n in config_models() if n in names]
     out = []
@@ -446,7 +446,7 @@ def copilot_catalog(ttl=300):
     return probed('copilot-catalog', _copilot_catalog, ttl=ttl, disk=False)
 
 def _copilot_chat_models():
-    "Chat ids this Copilot plan can reach, queried rather than tabled."
+    "Chat ids this Copilot plan can reach, from the live catalog."
     return [i for i, m in copilot_catalog().items() if (m.get('capabilities') or {}).get('type') == 'chat']
 
 def available_models(include_legacy=False):
@@ -576,7 +576,7 @@ def missing_runtime(spec):
     return f"{rt} runtime is unavailable{f' ({why})' if why else ''}; {runtime_remedy(rt)}"
 
 def reachable_hint():
-    "Which model to try instead, from `available_models`. A suggestion: nothing is switched."
+    "Which model to try instead, from `available_models`. It suggests a model and switches nothing."
     try: alt = next((r['value'] for r in available_models()), None)
     except Exception: alt = None
     hint = f'{alt} runs here; choose it with `/model {alt}` or the model picker' if alt else 'no model runs on this machine yet'
@@ -710,7 +710,7 @@ def force_tags(model_id, why=''):
     return why
 
 def forget_forced_tags():
-    "Forget which models were forced onto tags, so the wire is tried again."
+    "Forget which models were forced onto tags. The next call tries the wire again."
     _forced_tags.clear()
 
 EFFORT_RUNTIMES = ('claude', 'remote', 'copilot')   #: the runtimes whose models take an effort level
@@ -805,7 +805,7 @@ class Routing:
 
     def __post_init__(self):
         sync_models()
-        self.named = bool(self.turn or env('MODEL'))   # named for this run, so `settle` leaves it
+        self.named = bool(self.turn or env('MODEL'))   # `settle` leaves a turn named for this run
         if not self.turn: self.turn = env('MODEL') or setting('jobs.turn') or DFLT_TURN
         self.chosen = set()
         for job in JOBS:   # an env var beats config.toml's `[jobs]`
@@ -847,7 +847,7 @@ class Routing:
         return spec
 
     def alternatives(self, job):
-        "Where `job` goes when its own model cannot run here, best first: the turn for a job with no model of its own, else Sonnet for `DFLT_SMALL`; then the other cloud routes, then `DFLT_FALLBACK` on the machine; nowhere for a job on a local turn."
+        "Where `job` goes when its own model cannot run here, best first. The turn comes first for a job with no model of its own, and Sonnet for a job on `DFLT_SMALL`. The other cloud routes follow, then `DFLT_FALLBACK` on the machine. A job on a local turn has none."
         if self.follows_turn(job): return []
         seen, out, n = {self.name_for(job)}, [], self.name_for(job)
         lead = (self.turn,) if not self.chose(job) else (DFLT_SUBAGENT if n == DFLT_SMALL else None,)
@@ -863,7 +863,7 @@ class Routing:
         except Exception as e: return str(e) if isinstance(e, AgentError) else f'unavailable ({agent_err(e)})'
 
     def fell(self, n, alt, why):
-        "Queue one chat note in `news` each time a model's jobs land somewhere new, however many jobs fell with it."
+        "Queue one chat note in `news` the first time a model's jobs move to a given route, however many jobs moved with it."
         if (n, alt) in self.said: return
         self.said.add((n, alt))
         k = missing_key(self._cache[n]) if n in self._cache else ''
@@ -881,7 +881,7 @@ class Routing:
                 try: spec = self._usable(alt)
                 except Exception: continue
                 if spec.local and alt != DFLT_FALLBACK: continue
-                if self.chose(job) or alt != self.turn:   # a default landing on the turn is the plan, not news
+                if self.chose(job) or alt != self.turn:   # a default job moving to the turn is the plan, not news
                     self.notes[job] = f'{n} {why}; using {alt}'
                     self.fell(n, alt, why)
                 return spec
@@ -954,7 +954,7 @@ PROVIDERS = (
     dict(key='local', label='On this machine', needs='a local runtime: LiteRT ships with rishi; mlx, llama.cpp or ollama', example='[jobs]\nturn = "gemma-e4b"'))
 
 def provider_ready(key, auth=None):
-    "Whether provider `key`'s credential or runtime is on this machine; nothing is chosen by it."
+    "Whether provider `key`'s credential or runtime is on this machine. Chooses nothing."
     if key == 'bedrock': return bool(os.environ.get('AWS_BEARER_TOKEN_BEDROCK'))
     if key == 'openrouter': return bool(os.environ.get('OPENROUTER_API_KEY'))
     if key == 'local': return any(runtime_available(r) for r in LOCAL_RUNTIMES)
@@ -995,7 +995,7 @@ def needs_setup(routing=None):
     return CLAUDE_SIGNED_OUT if r._resolve(r.turn).runtime == 'claude' and _claude_signed_out() else ''
 
 def setup_guide(routing=None):
-    "The providers Ramabana can use, which are set up here, and the model each job runs on and whether it can: nothing is chosen."
+    "The providers Ramabana can use, which are set up here, and the model each job runs on and whether it can. Chooses nothing."
     r, auth = routing or Routing(), auth_status()
     out = [f'The turn model, {r.turn}, cannot run here: {why}' if (why := needs_setup(r)) else f'The turn runs on {r.turn}.', '', 'Providers:']
     out += [f"  {p['label']:50} {'ready' if provider_ready(p['key'], auth) else 'needs ' + p['needs']}" for p in PROVIDERS]

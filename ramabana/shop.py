@@ -29,7 +29,7 @@ class Cart:
     "One shopping session: find things, put them in, read the trolley back."
 
     def open(self, url):
-        "Point the session at a store and return the url it landed on."
+        "Open `url` in the session and return the resulting url."
         raise NotImplementedError
 
     def find(self, query, limit=MAX_PRODUCTS):

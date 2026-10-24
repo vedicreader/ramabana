@@ -29,7 +29,7 @@ SCRIPTED = ModelSpec('scripted', 'scripted', 'scripted/model', ctx=8000)
 # %% ../nbs/04_testing.ipynb #2ce479ad
 @implemented
 class MemHost(NullHost, CodeHost, ShellHost):
-    "A host whose folders live in a dict, so the file tools never touch disk."
+    "A host whose folders live in a dict. The file tools never touch disk."
 
     writes = True    # `write` really writes
 

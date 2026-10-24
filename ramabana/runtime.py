@@ -28,13 +28,13 @@ from .setup import config_path, setting
 from .core import EFFORT_RUNTIMES, EFFORTS, accepts, agent_err, claude_wire, env, force_tags, local_ctx, local_window, model_setting, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
-MAX_KEEP = 8_000        # bytes of tail kept per call
+MAX_KEEP = 8_000        # bytes kept per descriptor, from the end of the output
 _NOISE = ('created tensorflow lite', 'xnnpack delegate', 'metal delegate', 'tflite','loading model', 'initialized', 'gpu delegate', 'w0000', 'i0000')
 _SIGNAL = ('error', 'fail', 'exceed', 'exceeds', 'too long', 'out of memory', 'oom','invalid', 'refus', 'cannot', 'unsupported', 'abort')
 
 # %% ../nbs/01_runtime.ipynb #a4f0dada
 def interesting(text, limit=4):
-    "The lines of captured output a person should see: complaints, not chatter."
+    "The error lines in captured output, without routine startup messages."
     from fastcore.basics import uniqueify
     out = []
     for ln in (text or '').splitlines():
@@ -70,7 +70,7 @@ class _Tee:
             except OSError: pass
     def stop(self):
         if self.saved is not None:
-            try: os.dup2(self.saved, self.fd)                 # drops the last write end, so the pump reads EOF
+            try: os.dup2(self.saved, self.fd)                 # drops the last write end; the pump then reads EOF
             except OSError: pass
         if self.thread is not None: self.thread.join(timeout=1.0)   # before the close, or the bytes still in the pipe go
         if self.r is not None:
@@ -151,7 +151,7 @@ def estimate_tokens(text, count=None):
 def halvings(budget, tries=3, floor=256):
     "A budget and its halvings, to retry a prompt whose fit was only estimated."
     if not budget: return [budget]
-    return [budget] + [max(floor, budget >> i) for i in range(1, tries)]
+    return [budget] + [min(budget, max(floor, budget >> i)) for i in range(1, tries)]
 
 def threshold(ctx, reserve=None):
     "The token count at which a conversation should be compacted, or None when there is no window. `reserve` is config.toml's `window.reserve`, else `RESERVE`."
@@ -401,10 +401,10 @@ class Compactor:
     def __init__(self,
                  reserve=None,               # None reads config.toml's `window.reserve`, else `RESERVE`, each time
                  keep_recent=None,           # None reads `window.keep_recent`, else `KEEP_RECENT`
-                 auto=True,                  # compact on crossing the threshold
-                 kernel_alive=True,          # what the reorientation note may promise
-                 on_compact=None,            # called with each new checkpoint
-                 strategy='summary'):         # 'summary' or deterministic 'surgical'
+                 auto=True,                  # the agent compacts on crossing the threshold only when true; `Compactor` itself ignores it
+                 kernel_alive=True,          # whether the kernel survived; passed to `reorient`
+                 on_compact=None,            # called with each new summary
+                 strategy='summary'):         # 'summary' or 'surgical'; 'surgical' calls no model
         self._reserve, self._keep_recent, self.auto = reserve, keep_recent, auto
         self.strategy = strategy
         self.kernel_alive, self.on_compact = kernel_alive, on_compact
@@ -459,7 +459,7 @@ class Compactor:
         oh = self.overhead(backend, msgs, count)
         oh, sizes = oh if isinstance(oh, tuple) else (oh, None)
         keep = self._keep(msgs, count, getattr(backend.spec, 'ctx', 0), oh, sizes)
-        older = msgs[:len(msgs) - len(keep)] if len(keep) < len(msgs) else msgs
+        older = msgs[:len(msgs) - len(keep)]
         if not older:
             self.note = 'everything is recent; nothing to compact'
             return ''
@@ -480,7 +480,7 @@ class Compactor:
         if summary_ctx:
             sp_tokens = estimate_tokens(SUMMARISE_SP, summary_count)
             input_budget = max(128, summary_ctx - summary_output - sp_tokens - 64)
-        # an estimated budget can still overflow, so retry on halvings
+        # an estimated budget can still overflow; retry on halvings
         text, err = '', None
         for b in halvings(input_budget):
             try:
@@ -568,7 +568,7 @@ class Usage:
 
 # %% ../nbs/01_runtime.ipynb #af66f277
 IMG_TOKENS = 1600   # what one picture can cost a hosted model, whatever its bytes
-EST_MARGIN = 1.15   # a count from characters runs short on code and escapes, so an estimate is charged this much more
+EST_MARGIN = 1.15   # a count from characters runs short on code and escapes; an estimate is charged this much more
 TRIMMED = '[trimmed to fit the context window]'
 
 def margin(): return setting('window.margin', EST_MARGIN)
@@ -588,7 +588,7 @@ def _parts(msg):
     return '\n'.join(txt), n
 
 def msg_tokens(m, count=None):
-    "One history message's tokens: its text, its tool calls' arguments, and `IMG_TOKENS` a picture."
+    "One history message's tokens: its text, its tool calls' arguments, and `img_tokens()` for each picture."
     count = count or estimate_tokens
     c = m.get('content') if isinstance(m, dict) else m
     text, media = _parts(c if isinstance(c, list) else [c or ''])
@@ -922,7 +922,7 @@ class Backend:
     
     @property
     def used_tokens(self):
-        "Tokens in use, from the rishi chat when there is one; before it reports any, or after a rewrite of `hist` until it reports again, `window_tokens`; before it starts, an estimate of a resumed conversation."
+        "Tokens in use. The rishi chat reports them. Before the chat reports any, and after `hist` is rewritten until it reports again, this is `window_tokens`. Before the model starts, this estimates the resumed conversation."
         try:
             if self.chat:
                 n = self.chat.token_count
@@ -968,7 +968,7 @@ def use_chat(f):
     try: yield f
     finally: _MK_CHAT = old
 
-QUIET_RUNTIMES = frozenset({'litert'})   #: they run the tool loop inside the engine, so the text before a call never reaches us
+QUIET_RUNTIMES = frozenset({'litert'})   #: they run the tool loop inside the engine; the text before a call never reaches us
 
 CLAUDE_EFFORT = 'high'   #: what a Claude turn asks for; Claude Code otherwise runs the model's default, medium on Opus 5.5
 
@@ -992,7 +992,7 @@ class RishiBackend(Backend):
         "The channel this backend's tool schemas travel on: `tool_mode` given to it is the session's choice."
         return tool_channel(self.spec,session=self.kw.get('tool_mode',''))
     def _runtime_kw(self):
-        "The chat's options. `tool_mode` and `effort` go only where they differ from the runtime's default, so a recording's key holds."
+        "The chat's options. `tool_mode` and `effort` go only where they differ from the runtime's default. This keeps the key of a recorded answer unchanged."
         kw={**getattr(self.spec, 'config', {}), **self.kw}
         if key_env := kw.pop('api_key_env', None): kw['api_key'] = os.environ.get(key_env)
         rt,ch,eff=self.spec.runtime,self.tool_channel,kw.pop('effort',None)

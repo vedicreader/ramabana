@@ -12,11 +12,11 @@ __all__ = ['WRITE_TOOLS', 'SUB_MAX_STEPS', 'SUB_STEP_CEILING', 'SUB_MIN_STEPS', 
            'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'small_tool', 'ToolEntry', 'ToolCatalog',
            'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'keep_media', 'path_write', 'write_targets',
            'status_tool', 'Slots', 'delegate', 'lanes', 'delegate_many', 'Background', 'named_skills', 'picture_mime',
-           'read_pictures', 'renamed', 'subagent_tools', 'parse_plan_items', 'mod_doc', 'media_path', 'is_media',
-           'media_paths', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
-           'media_note', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS',
-           'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL',
-           'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
+           'read_pictures', 'renamed', 'sub_steps', 'subagent_tools', 'parse_plan_items', 'mod_doc', 'media_path',
+           'is_media', 'media_paths', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES',
+           'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API',
+           'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
            'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX',
            'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools',
            'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err',
@@ -116,7 +116,7 @@ def image_tools(host, mx=MAX_TOOL_CHARS, session='', get_spec=None, on_media=Non
 # %% ../nbs/02_tools.ipynb #de2cd1e8
 def tools_for(host, get_skills=None, extra=(), mx=MAX_TOOL_CHARS, drop=(), get_spec=None, on_media=None, optin=()):
     "The tools for `host`: a group per capability it declares, plus skills, images and extensions, less `drop` and plus `optin`."
-    # `generate_image` saves files, so it needs a writable host
+    # `generate_image` saves files and needs a writable host
     image = (image_tools(host, mx, get_spec=get_spec, on_media=on_media)
              if not isinstance(image_route(), str) and host.writes and 'image' not in set(drop or ()) else None)
     tools = _tools_for(host, get_skills=get_skills, extra=extra, mx=mx, drop=drop, image=image, optin=optin)
@@ -171,10 +171,10 @@ class ToolCatalog:
 # %% ../nbs/02_tools.ipynb #e3b29ea1
 SUB_MAX_STEPS = 80   #: steps a delegation gets when it names none
 SUB_STEP_CEILING = 400   #: most steps a delegation may ask for under `auto`, and the most a numeric session cap may be
-SUB_MIN_STEPS = 20   #: fewest steps a delegation that asks for fewer gets: a starved sub-agent ends before it reports
+SUB_MIN_STEPS = 20   #: fewest steps a delegation that asks for fewer gets; a starved sub-agent ends before it reports
 SUB_TIMEOUT = 1800   #: seconds a delegation may run before it is stopped; 0 never stops it
-SUB_STEP_SECONDS = 20   #: seconds each step adds to the default limit under `auto` steps, once that exceeds `SUB_TIMEOUT`
-SUB_TIMEOUT_CEILING = 10800   #: most seconds the default limit grows to
+SUB_STEP_SECONDS = 20   #: under `auto` steps, the default limit becomes steps times this many seconds when that exceeds `SUB_TIMEOUT`
+SUB_TIMEOUT_CEILING = 10800   #: most seconds the step-based default limit can reach
 SUB_UNFINISHED = 300   #: a reply with no tool call and no `state:` line, shorter than this many characters, is a progress line and not a report
 SUB_NUDGE = 'Your last reply had no tool call and no final report. Continue: call the tool you meant to call, or give your final report ending with a `state:` line.'
 SUB_READ_ONLY = contextvars.ContextVar('sub_read_only', default=False)   #: set while `delegate_search(writes=False)` runs; nested delegations inherit it
@@ -294,9 +294,7 @@ def path_write(name, args):
     "Whether this call writes where it names: an acting tool from `PATH_WRITES` given a `path`."
     return name in PATH_WRITES and bool((args or {}).get('path'))
 
-try: from shalya.tools import image_targets
-except ImportError:   # shalya 0.1.0 has no `image_targets`; drop this once 0.1.1 is the floor
-    def image_targets(path, n=1): return [str(Path(path) if i == 0 else Path(path).with_stem(f'{Path(path).stem}-{i+1}')) for i in range(max(1, int(n)))]
+from shalya.tools import image_targets
 
 def write_targets(name, args):
     "Paths a call writes where it names them: saved pictures for `PATH_WRITES`, none for a git write, else `path`."
@@ -593,10 +591,19 @@ def renamed(**old):
         return call
     return deco
 
+def sub_steps(n=0, setting="auto"):
+    "Resolve a delegation step request against the session setting."
+    s = setting
+    auto = str(s).lower() == 'auto'
+    cap = SUB_STEP_CEILING if auto else max(1, min(SUB_STEP_CEILING, int(s)))
+    try: n = int(n or 0)
+    except (TypeError, ValueError): n = 0
+    return max(min(n, cap), min(SUB_MIN_STEPS, cap)) if n > 0 else SUB_MAX_STEPS if auto else cap
+
 def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=None,
                    get_writes=None,     # the session's sub-agent write toggle, read per call
                    get_approve=None,    # the gate those writes answer to
-                   background=None,     # async delegation register; made if None
+                   background=None,     # the `Background` for async delegations; made if None
                    get_log_dir=None,    # callable -> the folder run transcripts go in, or None
                    get_pictures=None,   # callable paths -> `(bytes, err)`; see `read_pictures`
                    get_steps=None,      # callable -> the step budget, which also caps a call's `max_steps`
@@ -607,7 +614,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
                    block=NO_SUB,        # names withheld from the sub-agent, when `get_tools` does not decide
                    get_sub=None,        # callable (model, effort) -> `(backend, spawn options, note)`, raising why it cannot; None uses `get_backend` and `get_cloud_backend`
                    get_tools_for=None): # callable spec -> the tools for a sub-agent on that model; None gives every sub-agent `get_tools()`
-    "The four delegation tools, with every argument a callable read on each call so they follow the session's current settings."
+    "The five delegation tools. The callable arguments are read on each call. The tools follow the session's current settings."
     bg = ifnone(background, Background())
     def _writes(): return bool(get_writes()) and not SUB_READ_ONLY.get() if get_writes is not None else False
     def _timeout(steps):
@@ -615,13 +622,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
         t = float(get_timeout() or 0) if get_timeout is not None else 0
         auto = get_steps is not None and str(get_steps()).lower() == 'auto'
         return min(max(t, steps * SUB_STEP_SECONDS), SUB_TIMEOUT_CEILING) if auto and t == SUB_TIMEOUT else t
-    def _steps(n):
-        s = get_steps() if get_steps is not None else SUB_MAX_STEPS
-        auto = str(s).lower() == 'auto'
-        cap = SUB_STEP_CEILING if auto else max(1, min(SUB_STEP_CEILING, int(s)))
-        try: n = int(n or 0)
-        except (TypeError, ValueError): n = 0
-        return max(min(n, cap), min(SUB_MIN_STEPS, cap)) if n > 0 else SUB_MAX_STEPS if auto else cap
+    def _steps(n): return sub_steps(n, get_steps() if get_steps is not None else SUB_MAX_STEPS)
     def _kw(n): return dict(max_steps=(s := _steps(n)), block=block, timeout=_timeout(s), slots=slots)
     def _approve(): return get_approve() if (get_approve is not None and _writes()) else None
     def _tools(b): return get_tools_for(b.spec) if get_tools_for is not None else get_tools()
