@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.78
+- `/rewind` puts a notebook back byte for byte. Before, it wrote the notebook's joined cell text over its JSON, which destroyed a notebook that a turn had edited with `edit_cell`.
+- Shell writes are recorded when the open folders hold more than 32 MB of text. Before a command, Ramabana snapshots only the repositories that the command can touch. Before, it stopped watching shell commands above that size, so the Files pane and `/rewind` did not see files that a script or `nbdev-readme` wrote.
+- The Files pane lists every file edited in the session, not only in the current turn. `/rewind` still undoes one turn.
+- The `search` extra needs litesearch 0.1.61, koshas 0.1.18 and vishalakshi 0.1.35. litesearch 0.1.61 loads adhara, a native SQLite extension, and sets `ORT_DISABLE_TELEMETRY=1`. koshas 0.1.18 indexes the `lang:` filter.
+- Needs shalya 0.1.22, whose `memory_search` tool says what `limit` counts.
+
 ## 0.2.77
 
 - Needs shalya 0.1.21, uraiyadal 0.0.19 and rishi 0.1.56. The background code index writes in a child process. A crash in that child, such as the SIGBUS seen in SQLite, no longer stops Ramabana. A tool call that lacks a required argument returns a tool error and does not run.

@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "shalya>=0.1.21",   # 0.1.21 index writes run in a child process; 0.1.20 panes open beside $TMUX_PANE; 0.1.19 commands get /dev/null as stdin; 0.1.18 docments on every tool parameter; 0.1.17 grep path_filter finds folders
+    "shalya>=0.1.22",   # 0.1.22 memory_search says what limit counts; 0.1.21 index writes run in a child process; 0.1.20 panes open beside $TMUX_PANE; 0.1.19 commands get /dev/null as stdin; 0.1.18 docments on every tool parameter; 0.1.17 grep path_filter finds folders
     "uraiyadal>=0.0.19",
     "gheasy>=0.0.15",   # 0.0.15 merges never reset away conflicts; 0.0.14 git gets /dev/null as stdin
     "exhash>=0.4.11",
@@ -31,8 +31,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-search = ["vishalakshi>=0.1.34",   # note(key=), folder watches, age/stale
-          "litesearch>=0.1.61", "koshas>=0.1.17",
+search = ["vishalakshi>=0.1.35",   # note(key=), folder watches, age/stale; 0.1.35 litesearch 0.1.61
+          "litesearch>=0.1.61", "koshas>=0.1.18",   # koshas 0.1.18 indexes the lang filter
           "rgapi>=0.1.23", "fossick>=0.1.21"]   # 0.1.21 cart actions add the requested variant once; 0.1.20 Chrome and gh_clone git get /dev/null as stdin
 python = ["dhrishti>=0.1.11", "jupyter-client>=8.10.0", "rich>=15.0.0"]
 serve = ["mcp>=1.29.1", "agent-client-protocol>=0.12.1"]
