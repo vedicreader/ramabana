@@ -1,6 +1,8 @@
 "Pytest fixtures for the plain-python suite; one file per feature block, and nothing loads a model."
 
-import pytest
+import os, tempfile, pytest
+# a scratch home before ramabana is imported: the suite read the real ~/.config, skills and vault, and failed as they grew
+os.environ['HOME'] = tempfile.mkdtemp(prefix='ramabana-home-'); os.environ.pop('RAMABANA_CONFIG', None)
 from ramabana.testing import SPEC
 
 @pytest.fixture(scope='session', autouse=True)
