@@ -25,7 +25,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'compact_history', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
-import ast, contextvars, datetime, fnmatch, functools, hashlib, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
+import ast, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
 from glob import escape as glob_escape
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -1552,12 +1552,13 @@ def _record(self:Agent, f):
                 return ('Tool-call budget exhausted for this turn. Stop calling tools and '
                         'summarise the evidence and unfinished work now.')
         elif not self._draw(): return TREE_SPENT
+        if (bad := _arg_problem(f, args)): return self._close_act(self._open_act(f, name, args), err(bad))
         denied, rewritten = None, False
         for r in (self._guard(name, args, is_write(f) or path_write(name, args)), *self.registry.fire('before_tool', self, name, args)):
             if isinstance(r, str): denied = denied or r
             elif isinstance(r, dict): a, kw, args, rewritten = (), dict(r), _named(f, (), dict(r)), True
         writing = is_write(f) or path_write(name, args)
-        if rewritten: denied = denied or self._guard(name, args, writing)   # the call that runs is the rewritten one
+        if rewritten: denied = denied or self._guard(name, args, writing) or _arg_problem(f, args)   # the call that runs is the rewritten one
         if rewritten and writing and not denied and self.approvals is not None and not (ask := self.approvals.request(name, args)).answer:
             return err(ask.reply())   # the gate's recorder already logged it
         self.calls.append((name, args))
@@ -1622,7 +1623,9 @@ def _observe(self:Agent, f):
     @functools.wraps(f)
     def wrapper(*a, **kw):
         if not self._draw(): return TREE_SPENT
-        act = self._open_act(f, name, _named(f, a, kw))
+        args = _named(f, a, kw)
+        if (bad := _arg_problem(f, args)): return self._close_act(self._open_act(f, name, args), err(bad))
+        act = self._open_act(f, name, args)
         if (nested := name in DELEGATE_TOOLS): token = self._nested.set(self._delegating + (act.id,))
         try: out = f(*a, **kw)
         except Exception as e:
@@ -2058,10 +2061,21 @@ def _named(f, a, kw=None):
     "Every argument as a dict, positional ones matched to their parameter names."
     kw = dict(kw or {})
     if not a: return kw
-    try:
-        import inspect
-        return {**dict(zip(list(inspect.signature(f).parameters), a)), **kw}
+    try: return {**dict(zip(list(inspect.signature(f).parameters), a)), **kw}
     except Exception: return {**{'args': a}, **kw}
+
+
+def _arg_problem(f, args):
+    "Why `args` do not fit the signature of tool `f`, as a message that names what to fix, or ''."
+    try: sig = inspect.signature(f)
+    except (TypeError, ValueError): return ''   # a callable with no readable signature runs as before
+    ps = sig.parameters.values()
+    missing = [p.name for p in ps if p.default is p.empty and p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY) and p.name not in args]
+    unknown = [] if any(p.kind is p.VAR_KEYWORD for p in ps) else [k for k in args if k not in sig.parameters]
+    if not (missing or unknown): return ''
+    said = [f'missing required argument {", ".join(map(repr, missing))}' if missing else '',
+            f'unknown argument {", ".join(map(repr, unknown))}' if unknown else '']
+    return f'{f.__name__} was not run: {"; ".join(s for s in said if s)}. Expected parameters: {sig}. Call it again with the right arguments'
 
 
 def _append(prompt, text):
