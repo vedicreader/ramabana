@@ -61,3 +61,20 @@ def test_a_binary_pre_image_is_reported_as_unrestorable_rather_than_emptied(tmp_
     a._finish('done')
     a.command('/rewind files')
     assert (host.root/'img.bin').read_text() == 'text now\n' and (host.root/'a.py').read_text() == 'x = 1\n'
+
+
+def test_rewind_puts_a_notebook_back_byte_for_byte(tmp_path):
+    "`text_at` shows a notebook as its cell text, so a pre-image taken from it would replace the JSON with plain text."
+    from fastcore.nbio import mk_cell, new_nb, read_nb, write_nb
+    a, host, tools = _full_agent(tmp_path, {})
+    nb = host.root/'n.ipynb'
+    write_nb(new_nb([mk_cell('x = 1', id='c1'), mk_cell('y = 2', id='c2')]), nb)
+    original = nb.read_bytes()
+    a._prepare('edit the notebook')
+    tools['edit_cell']('n.ipynb', 'c1', [{'oldText': 'x = 1', 'newText': 'x = 5'}])
+    tools['add_cell']('n.ipynb', 'z = 3')
+    assert a.changes()['n.ipynb'] == ('x = 1\n\ny = 2', 'x = 5\n\ny = 2\n\nz = 3'), 'the pane diffs cell text'
+    a._finish('done')
+    a.command('/rewind files')
+    assert nb.read_bytes() == original
+    assert [c.source for c in read_nb(nb).cells] == ['x = 1', 'y = 2']

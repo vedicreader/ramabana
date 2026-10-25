@@ -5,7 +5,7 @@ from rich.console import Console
 
 from ramabana.pane import Viewer, now_snapshot, render
 from ramabana.runtime import current_run
-from ramabana.testing import ScriptedBackend, Step, fake_agent
+from ramabana.testing import MemHost, ScriptedBackend, Step, fake_agent
 
 READ = ('view_file', {'path': '/proj/a.py'})
 ASK = ('delegate_search', {'questions': ['what does a.py define?']})
@@ -237,3 +237,14 @@ def test_a_click_aims_the_terminal_through_the_talk_mark_and_opens_the_transcrip
     assert cmd[:5] == ('split-window', '-h', '-b', '-P', '-F') and cmd[-2] == '%7' and str(log) in cmd[-1]
     _click(v, ('sub', 'run_aaa'))
     assert len(tmux.ran('split-window')) == 1, 'its transcript is already open'
+
+def test_the_files_section_lists_every_file_written_this_session():
+    a, _ = fake_agent(MemHost({'/proj/a.py': 'a = 1\n', '/proj/b.py': 'b = 1\n'}))
+    tools = {t.__name__: t for t in a.tools}
+    a._prepare('first')
+    tools['create_file']('/proj/a.py', 'a = 2\n')
+    assert [f['path'] for f in now_snapshot(a)['files']] == ['a.py']
+    a._prepare('second')
+    tools['create_file']('/proj/b.py', 'b = 2\n')
+    assert a.changes().keys() == {'/proj/b.py'}, 'a turn still owns only its own writes'
+    assert sorted(f['path'] for f in now_snapshot(a)['files']) == ['a.py', 'b.py']

@@ -110,3 +110,18 @@ def test_a_tool_call_written_as_prose_earns_one_reminder():
     b2 = Always(spec, tools=[lambda: None])
     ''.join(b2.stream('again'))
     assert len(sent) == 2, f'{len(sent)} turns; the reminder repeated'
+
+
+def test_a_command_in_a_repository_under_a_too_big_root_is_still_watched(tmp_path, monkeypatch):
+    "Over the cap the snapshot shrinks to the command's repository, so `nbdev-export` and scripts still reach `changes()`; a write beside it is not claimed."
+    import subprocess
+    from ramabana import agent as A
+    from ramabana.testing import FullHost
+    monkeypatch.setattr(A, 'SHELL_SNAPSHOT', 200)
+    host = FullHost(files={'big/blob.txt': 'b' * 500, 'big/other.txt': 'o = 1\n', 'repo/a.py': 'a = 1\n'})
+    subprocess.run(['git', 'init', '-q', str(host.root/'repo')], check=True)
+    a, _ = fake_agent(host)
+    shell = next(t for t in a.tools if t.__name__ == 'run_shell')
+    shell('echo "a = 2" > a.py && echo "n = 1" > new.py && echo "o = 2" > ../big/other.txt', cwd='repo')
+    assert {p.rpartition('/')[2] for p in a.changes()} == {'a.py', 'new.py'}, list(a.changes())
+    assert a.new == {str(host.root/'repo'/'new.py')}

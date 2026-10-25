@@ -57,11 +57,11 @@ def _sub(r, every, now):
             'answer': clip(r.answer, ANSWER_CHARS) if r.terminal else ''}
 
 def _files(agent, seen, turn):
-    "This turn's writes: path under the first root, lines added and removed, and the diff cut to `DIFF_LINES`. Recomputed only after a call finishes."
-    key = (agent.current_turn_id, len(agent.before), sum(a.done for a in turn), turn[-1].id if turn else '')
+    "Every file written this session: path under the first root, lines added and removed, and the diff cut to `DIFF_LINES`. Recomputed only after a call finishes."
+    key = (agent.current_turn_id, len(agent.session_before), len(agent.before), sum(a.done for a in turn), turn[-1].id if turn else '')
     if key == seen.key: return seen.files
     root, out = first(agent.host.roots or ()), []
-    for p, (was, now) in agent.changes().items():
+    for p, (was, now) in agent.session_changes().items():
         d = diff_text(was, now, rel := _rel(p, root))
         (added, removed), ls = _counts(d), d.splitlines()
         more = [f'… {len(ls) - DIFF_LINES} more lines'] if len(ls) > DIFF_LINES else []

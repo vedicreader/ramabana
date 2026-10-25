@@ -31,6 +31,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from fastcore.basics import first, ifnone, patch
 from fastcore.docments import frontmatter
+from fastcore.nbio import dict2nb
 from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
@@ -1255,12 +1256,15 @@ class Agent:
         self.history = []
         self._load_history()
         self._load_plan()
-        self.before = {}         # path -> text before this turn's first write
+        self.before = {}         # path -> file text before this turn's first write: a notebook's JSON, not its cell text
+        self.session_before = {} # the same for the whole session: each path's earliest text, folded in at each turn's start
         self.new = set()         # paths this turn created
         self.binary = set()      # paths whose pre-image would not decode
         self._walked = False
         self._tree = {}
         self._too_big = ()       # the roots whose text is over `SHELL_SNAPSHOT`; commands do not re-read them
+        self._scoped = None      # the folders the live snapshot covers, or None for every root
+        self._scope_big = set()  # scopes whose text is over `SHELL_SNAPSHOT`, which commands do not re-read
         self._tool_calls_turn = 0
         self.max_tool_calls = 80
         self.use = Usage()       # session total, across every model
@@ -1566,11 +1570,11 @@ def _record(self:Agent, f):
             if (ps := write_targets(name, args)):
                 for p in ps:
                     if p in self.before: continue
-                    fresh.append(p); was = self.host.text_at(p)
+                    fresh.append(p); was = self._raw_at(p)
                     self.before[p] = was or ''
                     if not self.host.exists(p): self.new.add(p)
                     elif was is None: self.binary.add(p)
-            elif name == 'run_shell' or name in GIT_WRITE_TOOLS: self.snapshot_tree()
+            elif name == 'run_shell' or name in GIT_WRITE_TOOLS: self.snapshot_tree(args.get('cwd') or args.get('path') or '', args.get('command') or '')
         nested = name in DELEGATE_TOOLS
         if nested: token = self._nested.set(self._delegating + (act.id,))
         shelled = (name == 'run_shell' or name in GIT_WRITE_TOOLS) and self._walked
@@ -2218,26 +2222,67 @@ def _action_meta(self:Agent, name, args):
             'run_id': r.id if (r := current_run()) is not None else ''}
 
 # %% ../nbs/03_agent.ipynb #d0d8ed90
+def _shown(path, raw):
+    "`raw` file text as `text_at` shows it: a notebook as its cell sources joined by blank lines, any other file whole."
+    if not raw or Path(path).suffix != '.ipynb': return raw
+    return '\n\n'.join(''.join(c.source) for c in dict2nb(json.loads(raw)).cells)
+
+def _within(paths, folders):
+    "The `paths` under any of `folders`, or all of them when `folders` is None."
+    if folders is None: return paths
+    return [p for p in paths if any(p == f or p.startswith(f + os.sep) for f in folders)]
+
+def _repo_of(path):
+    "The git repository holding `path`, which may not exist yet, or None."
+    from gheasy.repo import repo_root
+    p = Path(path)
+    while not p.exists(): p = p.parent
+    return repo_root(p)
+
 @patch
-def snapshot_tree(self:Agent):
-    "Read the open folders before a command runs. `settle_tree` then tells what the command moved. Returns True when a snapshot exists."
+def _raw_at(self:Agent, path):
+    "The exact text of `path` for `/rewind` to put back, `''` when it is not there, None when it is not text. `text_at` shows a notebook as its cell text, which is not the file."
+    text = self.host.text_at(path)
+    return self.host.read(path) if text is not None and str(path).endswith('.ipynb') and self.host.exists(path) else text
+
+@patch
+def _scope(self:Agent, cwd='', command=''):
+    "The folders a command can change when the open folders are too big to read whole, as spelled under the open roots: the repository of its `cwd` (the `cwd` itself outside one), the repository of each path written this session, and the repository of each absolute path in the `command`."
+    roots = [(Path(r), Path(r).resolve()) for r in self.host.roots]
+    def under(q):
+        for r, rr in roots:
+            if q.is_relative_to(rr): return str(r/q.relative_to(rr))
+            if rr.is_relative_to(q): return str(r)   # a repository above the open folder: only the folder is read
+    here = Path(cwd) if Path(cwd).is_absolute() else roots[0][0]/cwd
+    folders = {under((_repo_of(here) or here).resolve())}
+    named = {Path(p).resolve().parent for p in (*self.before, *self.session_before)}
+    named |= {Path(m).resolve() for m in re.findall(r'/[^\s\'"`;|&<>()=:,]+', command or '')}
+    folders |= {under(r) for q in named if any(q.is_relative_to(rr) for _, rr in roots) and (r := _repo_of(q))}
+    return tuple(sorted(folders - {None}))
+
+@patch
+def snapshot_tree(self:Agent, cwd='', command=''):
+    "Read the open folders before a command runs. `settle_tree` then tells what the command moved. Once the open folders hold over `SHELL_SNAPSHOT` of text, only the folders `_scope` names for this `cwd` and `command` are read. Returns True when a snapshot exists."
     if self._walked: return True
-    if self._too_big == tuple(self.host.roots): return False
-    try: paths = [str(p) for p in self.host.walk()]
+    whole = tuple(self.host.roots)
+    scope = self._scope(cwd, command) if self._too_big == whole else None
+    if scope is not None and scope in self._scope_big: return False
+    try: paths = _within([str(p) for p in self.host.walk()], scope)
     except Exception as e:
         self.host.note(f'cannot watch what commands change: {agent_err(e)}')
         return False
     tree, n = {}, 0
     for p in paths:
-        if (text := self.host.text_at(p)) is None: continue
+        if (text := self._raw_at(p)) is None: continue
         n += len(text)
         if n > SHELL_SNAPSHOT:
-            self._too_big = tuple(self.host.roots)
-            self.host.note(f'not watching what commands change: the open folders hold over '
+            if scope is not None: self._scope_big.add(scope)
+            else: self._too_big = whole
+            self.host.note(f'not watching what commands change: {"the open folders" if scope is None else ", ".join(scope)} hold over '
                            f'{SHELL_SNAPSHOT // 1_000_000}MB of text')
-            return False
+            return False if scope is not None else self.snapshot_tree(cwd, command)
         tree[p] = text
-    self._tree, self._walked = tree, True
+    self._tree, self._walked, self._scoped = tree, True, scope
     return True
 
 # %% ../nbs/03_agent.ipynb #84d53054
@@ -2245,11 +2290,11 @@ def snapshot_tree(self:Agent):
 def settle_tree(self:Agent):
     "Find what the command moved, when the command finishes and not when the turn ends."
     if not self._walked: return
-    tree, self._tree, self._walked = self._tree, {}, False
+    tree, scope, self._tree, self._walked, self._scoped = self._tree, self._scoped, {}, False, None
     for p, was in tree.items():
-        now = self.host.text_at(p)
+        now = self._raw_at(p)
         if now is not None and now != was: self.before.setdefault(p, was)
-    try: paths = [str(p) for p in self.host.walk()]
+    try: paths = _within([str(p) for p in self.host.walk()], scope)
     except Exception: paths = []
     for p in paths:
         if p in tree or p in self.before: continue
@@ -2257,13 +2302,23 @@ def settle_tree(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #f47f136e
 @patch
+def _moved(self:Agent, before):
+    "`{path: (before, after)}` as cell text for the files in `before`, a path to its file text, that differ now."
+    out = {}
+    for p, was in dict(before).items():   # the tool thread adds to `before` while a pane reads it
+        now = self.host.text_at(p)
+        if now is not None and (was := _shown(p, was)) != now: out[p] = (was, now)
+    return out
+
+@patch
 def changes(self:Agent):
     "`{path: (before, after)}` for every file this turn's write tools actually moved."
-    out = {}
-    for p, was in dict(self.before).items():   # the tool thread adds to `before` while a pane reads it
-        now = self.host.text_at(p)
-        if now is not None and now != was: out[p] = (was, now)
-    return out
+    return self._moved(self.before)
+
+@patch
+def session_changes(self:Agent):
+    "`{path: (before, after)}` for every file written this session, this turn's included. `before` is the file as it stood at its first write."
+    return self._moved({**self.before, **self.session_before})
 
 # %% ../nbs/03_agent.ipynb #d6948ac4
 @patch
@@ -2799,6 +2854,7 @@ def _from_here(self:Agent, sid):
 @patch
 def _prepare(self:Agent, prompt):
     "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
+    for p, was in self.before.items(): self.session_before.setdefault(p, was)
     self.before.clear(); self.new.clear(); self.binary.clear()
     self._drawn = []
     self._walked, self._tree = False, {}
@@ -3193,7 +3249,9 @@ def _restore(self:Agent, turn_id, snap, delete, kept, binary):
         if p in kept or p in binary: continue
         try:
             if p in delete: self.host.delete(p); gone += 1
-            else: self.host.write(p, text); restored += 1
+            else:
+                if text and Path(p).suffix == '.ipynb' and not text.startswith('{'): raise ValueError('the checkpoint holds the notebook as cell text, and writing it would replace the notebook with plain text')
+                self.host.write(p, text); restored += 1
         except Exception as e: bad.append(f"could not {'remove' if p in delete else 'restore'} {p} ({agent_err(e)})")
     return (f'restored {restored} file(s) to before {turn_id}' + (f'; removed {gone} file(s) created that turn' if gone else '')
             + ''.join(f'; kept {p}: changed after the turn' for p in kept)
