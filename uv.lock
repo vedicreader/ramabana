@@ -12,6 +12,18 @@ resolution-markers = [
 overrides = [{ name = "python-fastllm", specifier = ">=0.0.45" }]
 
 [[package]]
+name = "adhara"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/2f/84e19b15cb8d5f91c9f915d865d379f0ffe617b6d72050799d6e79580d30/adhara-0.1.1.tar.gz", hash = "sha256:2797ff3bd072efa425019a65b51c5e89897ba503139dcfcbadd5f0319dcb2d5c", size = 222448, upload-time = "2026-10-25T05:31:17.516Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cf/82/4cfb85c8d829165d507a3b03ab1dbac8384f9ba12dd2298b569a213f9ae1/adhara-0.1.1-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:5678214071c55888c11d3906cdb370818e20de60da7bca034b342f86815f9edf", size = 1390802, upload-time = "2026-10-25T05:31:10.979Z" },
+    { url = "https://files.pythonhosted.org/packages/01/b7/7bd8b3e67421444ce3d388b3e9d817eef01ad1f4b8c28f8fc5726440daa4/adhara-0.1.1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:79517dab5b1dbe98f156471b1a0abaf87c8655ed0b6ae8f2e9928ac2f737025c", size = 1197511, upload-time = "2026-10-25T05:31:12.865Z" },
+    { url = "https://files.pythonhosted.org/packages/de/f8/40003f7339f1002e77b7294e5cc8db4ffd513ec80989eb8697c4de1099c3/adhara-0.1.1-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:42a3425fd743e32b80c6eb602ba34c172a77ec0e37981d6224e6e24249ee62fc", size = 1569191, upload-time = "2026-10-25T05:31:14.364Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/74/0fda86545dbd6809f5171ee730016dc9e08eb0f417a3e2e0fc8d0d91674f/adhara-0.1.1-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:f4333496863cc04a092b7c2b076e69ea54d8a42ac1431d08152f2d2e4c4076d0", size = 2259388, upload-time = "2026-10-25T05:31:16.012Z" },
+]
+
+[[package]]
 name = "agent-client-protocol"
 version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2174,9 +2186,10 @@ wheels = [
 
 [[package]]
 name = "litesearch"
-version = "0.1.59"
+version = "0.1.61"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "adhara", marker = "sys_platform != 'win32'" },
     { name = "chonkie" },
     { name = "codesigs" },
     { name = "fastlite" },
@@ -2188,9 +2201,9 @@ dependencies = [
     { name = "tokenizers" },
     { name = "usearch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/c7/c70e3932bb598c393c26489279d73b556f3d7791e1253f8fd650fb8d48cd/litesearch-0.1.59.tar.gz", hash = "sha256:bf3f35577919b712f2b97c99473fb85e126d63b2f87195cf6992a39a16b9ece0", size = 90907, upload-time = "2026-10-24T21:41:52.206Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/b3/36ad0ddc931231d0c290770a2fa4fadc5a56c88159d2854e14ca9f5220a7/litesearch-0.1.61.tar.gz", hash = "sha256:4cec536dd2ab46c6b87ad59bff9267b3e8da0d40777dc4f31be0d2266f21270a", size = 91424, upload-time = "2026-10-25T05:41:52.633Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/48/4a36853aad5ff76fd377a1a625423b30577798c22654ea6436286b2c40e1/litesearch-0.1.59-py3-none-any.whl", hash = "sha256:6bbfc2fcce03bbf8c354802b04f163a2ead5aa3f1baa4bfa31eab46d558515c2", size = 96806, upload-time = "2026-10-24T21:41:50.693Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/57/422dcbc04542b8d38c1e84fe53a0dcc6fdab0b99e59e2302a84bc81c9122/litesearch-0.1.61-py3-none-any.whl", hash = "sha256:d3144d40b16fd53602c93dc0fe8c2b1bb457ee4548b904764da4b2387b42d3d8", size = 97311, upload-time = "2026-10-25T05:41:49.347Z" },
 ]
 
 [[package]]
@@ -4028,10 +4041,10 @@ requires-dist = [
     { name = "koshas", marker = "extra == 'cli'", specifier = ">=0.1.17" },
     { name = "koshas", marker = "extra == 'dev'", specifier = ">=0.1.17" },
     { name = "koshas", marker = "extra == 'search'", specifier = ">=0.1.17" },
-    { name = "litesearch", marker = "extra == 'all'", specifier = ">=0.1.59" },
-    { name = "litesearch", marker = "extra == 'cli'", specifier = ">=0.1.59" },
-    { name = "litesearch", marker = "extra == 'dev'", specifier = ">=0.1.59" },
-    { name = "litesearch", marker = "extra == 'search'", specifier = ">=0.1.59" },
+    { name = "litesearch", marker = "extra == 'all'", specifier = ">=0.1.61" },
+    { name = "litesearch", marker = "extra == 'cli'", specifier = ">=0.1.61" },
+    { name = "litesearch", marker = "extra == 'dev'", specifier = ">=0.1.61" },
+    { name = "litesearch", marker = "extra == 'search'", specifier = ">=0.1.61" },
     { name = "mcp", marker = "extra == 'all'", specifier = ">=1.29.1" },
     { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.29.1" },
     { name = "mcp", marker = "extra == 'serve'", specifier = ">=1.29.1" },
