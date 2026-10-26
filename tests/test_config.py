@@ -49,6 +49,17 @@ def test_run_cli_hands_config_to_its_own_command_before_parsing_a_prompt(monkeyp
     assert setup.run_cli() == 0 and 'window.margin' in capsys.readouterr().out
 
 
+def test_calm_is_a_boolean_key_that_is_off_until_the_file_turns_it_on():
+    assert setting('calm', False) is False and setup.config_defaults()['calm'] is False
+    assert '# calm = false' in setup.config_template()
+    _write('calm = true\n')
+    assert setting('calm', False) is True
+    _write('calm = "yes"\n')
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter('always')
+        assert setting('calm', False) is False and len(w) == 1
+
+
 def test_a_per_model_window_reaches_the_guard():
     name = 'openai/gpt-5.4'
     upstream = resolve(name)

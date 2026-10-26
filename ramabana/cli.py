@@ -7,23 +7,23 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 # %% auto #0
 __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', 'KEYS_OFF', 'EXT_NAMES', 'EXT_CTRL',
            'KEYS_PATCHED', 'MODES_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEMES', 'CODE_THEMES', 'KAKU', 'GRUVBOX',
-           'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP',
-           'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON',
-           'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV', 'KITTY_TERM',
-           'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK',
-           'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
+           'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'STRETCH_ENDS', 'FOLD_RUNNING',
+           'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS',
+           'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV',
+           'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
+           'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
            'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
            'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS',
            'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme',
            'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
            'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
            'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich',
-           'changed_table', 'opens', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode',
-           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log',
-           'pick_session', 'loop_error', 'amain', 'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text',
-           'arg_words', 'guide_cmd', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path',
-           'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png',
-           'Attachment', 'sendable', 'media_parts', 'media_note']
+           'changed_table', 'opens', 'plural', 'stretch_summary', 'Row', 'Stretch', 'OpenDiff', 'Ui', 'parse_answer',
+           'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop',
+           'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'loop_error', 'amain', 'headless_prompt', 'ask_once',
+           'host_kw', 'main', 'ref_text', 'arg_words', 'guide_cmd', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA',
+           'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs',
+           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, itertools, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -54,7 +54,7 @@ from .core import PROVIDERS, auth_status, checklist, config_models, getting_star
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
 from .pane import quit_mark, talk_mark, write_snapshot
-from .tools import WRITE_TOOLS, path_write
+from .tools import WRITE_TOOLS, path_write, write_targets
 from . import hl, setup
 from .hl import HL_THEMES, is_diff
 from .setup import PANE_MODES, SETUP_FIELDS, TMUX_MODES, Setup, config_path, config_reset, keys_path, model_setting, refusal, save_key, setting, setup_cli
@@ -331,6 +331,7 @@ def _theme_parts(palette):
         'user': (Text('▌ ', style=f"bold {palette['blue']}"), Text('  ')),
         'reply': (Text('  '), Text('  ')), 'media': (Text('  '), Text('  ')),
         'tool': (Text('│ ', style=palette['blue']), Text('  ')),
+        'work': (Text('│ ', style=palette['gray']), Text('  ')),
         'ask': (Text('◆ ', style=f"bold {palette['yellow']}"), Text('  ')),
         'plan': (Text('▸ ', style=f"bold {palette['yellow']}"), Text('  ')),
         'note': (Text('· ', style=palette['gray']), Text('  ')),
@@ -341,6 +342,7 @@ def _theme_parts(palette):
 
 MARKDOWN_THEME, GUTTERS = _theme_parts(GRUVBOX)
 FOLD, FOLD_TOOL = 12, 1
+STRETCH_ENDS = ('user', 'step', 'reply', 'error', 'ask', 'media')   #: block kinds that end a calm-mode stretch: what a reader reads, and what must stay outside a `work` block
 
 FOLD_RUNNING = True
 ACT_EVERY = 0.05
@@ -352,7 +354,7 @@ FLASH_FOR = 2.0   # seconds a flash stays up
 MAX_GROUP_ROWS = 8
 DIFF_OPEN = 20    #: diff lines a finished call shows until the reader opens it
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
-SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'copy', 'detach', 'exit', 'guide', 'help',
+SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'calm', 'copy', 'detach', 'exit', 'guide', 'help',
                     'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'talk', 'theme', 'vars')
 
 HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · alt+up take the queued text back into the composer · enter on an empty line steers the queued one · shift+tab cycle approvals, then plan mode · tab complete /commands and @paths · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+o fold all turns · alt+1..9 drill in · ctrl+c stop, keeping what is queued and typed in the composer · ctrl+d quit
@@ -369,7 +371,7 @@ shell   !COMMAND runs it in the first open folder, in agent mode · ctrl+c inter
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /planmode on|off withholds every tool that acts and asks for a plan · /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
 setup   /login lists the providers · /login NAME signs in, or keeps a key or an endpoint · /config shows each setting and where it came from · /config set KEY VALUE · /config edit · /config reset · /config reload · /model NAME --save keeps it
-extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
+extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /calm [on|off] folds each stretch of tool calls into one row · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
 subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N|auto, timeout S, nest N · /subagents model NAME|default, effort low|medium|high|xhigh|max|default, tools native|text|auto, each with --save to keep it · tab completes them
 talk    /talk RUN aims typed lines at a running sub-agent, an id prefix being enough · /talk or /talk main aims them at the main agent again · tab completes main and the running ids
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
@@ -670,7 +672,7 @@ async def run_turn(ui, prompt):
     source, ui._source = ui._source, 'user'
     ui.log_cell(f'**{source}**\n\n' + prompt, cell_type='markdown')
     ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
-    ui._plan_blk = None
+    ui._plan_blk, ui._plan_row, ui._stretch = None, None, None
     ui._turn_at, ui._turn_from = time.monotonic(), max(ui.comp.blocks, default=0)
     atts, ui.attachments = list(ui.attachments), []
     ui.drawn = 0
@@ -715,7 +717,9 @@ async def run_turn(ui, prompt):
         ui.show_media(ui.agent.resp_media)
         for p in ui.agent.problems: ui.say(Text(p), 'error')
         ui.agent.clear_problems()
-        if (rows := ui.agent.changed_rows()): ui.say(changed_table(rows), 'note', fold=None, source=ui.agent.changed_line(rows))
+        if (rows := ui.agent.changed_rows()):
+            table, line = changed_table(rows), ui.agent.changed_line(rows)
+            if not ui.calm or ui._stretch_row(table, line, 'changed files') is None: ui.say(table, 'note', fold=None, source=line)
         ui.ring()
         ui.touch(now=True)
         ui.paint()
@@ -746,6 +750,32 @@ def changed_table(rows, cap=12):
 def opens(act):
     "Whether a finished call stays open: a write other than a shell or python run, or any unified diff."
     return (act.tool in WRITE_TOOLS or path_write(act.tool, act.args)) and act.kind != 'run' or is_diff(act.detail)
+
+def plural(n, noun):
+    "`n` of `noun`, with an s unless there is one."
+    return f'{n} {noun}' + ('' if n == 1 else 's')
+
+def stretch_summary(acts):
+    "What a stretch of calls amounts to, such as `7 tool calls · 2 files changed · 1 sub-agent`; a part that is zero is left out."
+    calls = [a for a in acts if not a.parent_action_id]
+    files = {p for a in acts if a.done and a.ok and (a.tool in WRITE_TOOLS or path_write(a.tool, a.args)) for p in write_targets(a.tool, a.args)}
+    subs = {a.parent_action_id for a in acts if a.parent_action_id}
+    failed = [a for a in acts if a.done and not a.ok]
+    parts = [(calls, plural(len(calls), 'tool call')), (files, f"{plural(len(files), 'file')} changed"),
+             (subs, plural(len(subs), 'sub-agent')), (failed, f'{len(failed)} failed')]
+    return ' · '.join(text for found, text in parts if found)
+
+@dataclass
+class Row:
+    "A row of a stretch that is not a call: the plan, a note or the changed-files table."
+    body: object
+    source: str
+    label: str
+    st: object
+
+class Stretch:
+    "The activity between two text blocks in calm mode: the `work` block that shows it, and its calls and rows in the order they came."
+    def __init__(self, blk): self.blk, self.items = blk, []
 
 class OpenDiff:
     "A result shown `DIFF_OPEN` lines deep, with a hint, until the reader opens it."
@@ -827,6 +857,8 @@ class Ui:
         self.complete = None
         self.show_plan = bool(agent.plan)
         self.mouse = False
+        self.calm = bool(setting('calm', False))   #: `/calm` flips it for the session; `calm = true` in config.toml starts it on
+        self._stretch, self._owner, self._plan_row = None, {}, None   #: the open `work` block's `Stretch`, act id -> its `Stretch`, the plan's `Row`
         self.bell, self._key_at = True, time.monotonic()
         self._stop_at, self._stop_count, self._stop_run = 0., 0, ''
         self.transcript = TranscriptView(comp, self.tail)
@@ -927,7 +959,7 @@ class Ui:
     def drillable(self):
         "The turn's foldable entries, newest first: what alt+1..9 reaches."
         return [b for b in reversed(self.turn_blocks())
-                if self.kind(b) == 'tool' and b.height > 1][:9]
+                if self.kind(b) in ('tool', 'work') and b.height > 1][:9]
 
     def drill(self, n):
         "Toggle the `n`th newest foldable entry; False if there is none."
@@ -951,6 +983,11 @@ class Ui:
         "The working footer while a turn runs: the last few calls and a totals line."
         if self.starting or (self.turn is None and not self.agent.busy): return []
         acts = self.agent.activity.since()
+        mine = [a for a in acts if not a.parent_action_id or a.parent_action_id not in self.acts]
+        if self.calm:
+            bits = ['working', plural(len(mine), 'tool call') if mine else 'thinking']
+            if self._turn_at: bits.append(f'{time.monotonic() - self._turn_at:.0f}s')
+            return [Text('  ' + ' · '.join(bits), style=GRUVBOX['gray'])]
         nums = {b.key: i + 1 for i, b in enumerate(self.drillable())}
         rows = []
         for a in acts[-ACT_TAIL:]:
@@ -961,7 +998,6 @@ class Ui:
             t = Text(f'{n} ' if n else '  ', style=GRUVBOX['blue'] if n else GRUVBOX['gray'])
             t.append(('  ' if parent is not None else '') + a.line(), style=style)
             rows.append(t)
-        mine = [a for a in acts if not a.parent_action_id or a.parent_action_id not in self.acts]
         bits = [f'step {len(mine)}' if mine else 'thinking']
         if self._turn_at: bits.append(f'{time.monotonic() - self._turn_at:.0f}s')
         if (sub := len(acts) - len(mine)): bits.append(f'{sub} delegated')
@@ -1049,6 +1085,7 @@ class Ui:
             if isinstance(body, str): source = body
             elif isinstance(body, Text): source = body.plain
         body = Text(body) if isinstance(body, str) else body
+        if kind in STRETCH_ENDS: self._stretch = None   # unguarded: a stretch left open by `/calm off` must end too
         after = first = None
         if kind != 'reply' and (reply := self._seg_blk) is not None and not reply.committed:   # goes above the reply still streaming
             keys = list(self.comp.blocks)
@@ -1069,6 +1106,7 @@ class Ui:
 
     def note(self, text, kind='note'):
         "Print one unfolded `kind` block; returns None."
+        if kind == 'note' and self.calm and self.turn is not None and self._stretch_row(Text(text), text, 'notes') is not None: return None
         self.say(Text(text), kind, fold=None)
         return None
 
@@ -1076,7 +1114,7 @@ class Ui:
         "Open or shut tool blocks in this turn or the whole transcript; True when shut."
         self.flush_stream()
         blocks = self.comp.blocks.values() if all_turns else self.turn_blocks()
-        work = [b for b in blocks if self.kind(b) == 'tool' and b.height > 1]
+        work = [b for b in blocks if self.kind(b) in ('tool', 'work') and b.height > 1]
         if not work: return False
         shut = not all(b.collapsed or self._capped(b) for b in work)
         for b in work:   # one frame for all: a frame per block would ink rows of blocks still to change
@@ -1098,6 +1136,7 @@ class Ui:
     def _folded(self, act, blk):
         "Whether a call folds to its summary row."
         if blk.key in self._held: return blk.collapsed
+        if self.kind(blk) == 'work': return blk.height > 1
         if blk.height <= FOLD_TOOL: return False
         if not act.done: return FOLD_RUNNING and act.id not in self.kids
         return act.ok and (act.id in self.kids or not opens(act))
@@ -1301,14 +1340,23 @@ class Ui:
         "Fold a sub-agent's call into the delegate that asked for it."
         kids = self.kids.setdefault(act.parent_action_id, [])
         if not any(k.id == act.id for k in kids): kids.append(act)
-        self._paint_group(act.parent_action_id)
+        if (st := self._owner.get(act.parent_action_id)) is None: self._paint_group(act.parent_action_id)
+        elif act.done or time.monotonic() - self._acted_at >= ACT_EVERY:
+            self._acted_at = time.monotonic()
+            self._paint_stretch(st)
         self.touch()
         return self.paint()
 
     def _paint_group(self, pid):
         "Redraw a delegate and its sub-agent's calls as one foldable block."
         if pid not in self.by_id: return
-        act, blk, kids = self.by_id[pid], self.acts[pid], self.kids.get(pid, [])
+        act = self.by_id[pid]
+        body, src = self._group_rows(act)
+        self._refold(act, self.acts[pid], *body, source=src)
+
+    def _group_rows(self, act):
+        "A delegate and its sub-agent's calls as rows, with the text the transcript keeps for them."
+        kids = self.kids.get(act.id, [])
         head = Text(act.line(), style=self._act_style(act))
         if kids: head.append(f'  · {len(kids)} call{"" if len(kids) == 1 else "s"}', style=GRUVBOX['gray'])
         shown, body = kids[-MAX_GROUP_ROWS:], [head]
@@ -1317,7 +1365,41 @@ class Ui:
         body += [Text('   ' + k.line(), style=self._act_style(k)) for k in shown]
         if act.detail: body.append(diff_rich(act.detail))
         src = '\n'.join([act.line()] + ['   ' + k.line() for k in kids] + ([act.detail] if act.detail else []))
-        self._refold(act, blk, *body, source=src)
+        return body, src
+
+    def _call_rows(self, act, blk):
+        "A call as rows, with the text the transcript keeps for it: its line, then its result."
+        line = Text(act.line(), style=self._act_style(act))
+        if not act.detail: return [line], act.line()
+        return [line, self._detail(act, blk)], f'{act.line()}\n{act.detail}'
+
+    def _open_stretch(self):
+        "The stretch calm mode is filling, opened as an empty `work` block after the last text block."
+        if self._stretch is None: self._stretch = Stretch(self.say(Text(''), 'work', fold=None))
+        return self._stretch
+
+    def _paint_stretch(self, st):
+        "Redraw a stretch: a summary row, then each call, delegate and row as its own block would draw them."
+        top = [i for i in st.items if not isinstance(i, Row)]
+        acts = [*top, *(k for a in top for k in self.kids.get(a.id, []))]
+        text = stretch_summary(acts) or ' · '.join(dict.fromkeys(i.label for i in st.items))
+        if any(not a.done for a in acts): text = f'working · {text}'
+        body, src = [Text(text, style=GRUVBOX['gray'])], [text]
+        for i in st.items:
+            rows, s = (([i.body], i.source) if isinstance(i, Row) else self._group_rows(i) if i.id in self.kids else self._call_rows(i, st.blk))
+            body += rows; src.append(s)
+        self._refold(None, st.blk, *body, source='\n'.join(src))
+
+    def _stretch_row(self, body, source, label, row=None):
+        "Put a plan, note or table into the stretch as a row, or rewrite `row`; None while a reply is streaming, which has no place for it."
+        if row is None:
+            if self._seg_blk is not None: return None
+            st = self._open_stretch()
+            row = Row(body, source, label, st)
+            st.items.append(row)
+        else: row.body, row.source = body, source
+        self._paint_stretch(row.st)
+        return row
 
 
     def on_ask(self, ask):
@@ -1443,6 +1525,10 @@ class Ui:
         "Keep one plan block for the turn and rewrite it."
         if not plan: return
         md = plan.md()
+        if self._plan_blk is None and (self.calm or self._plan_row is not None):   # a row already in a stretch keeps being rewritten there
+            if (row := self._stretch_row(plan_text(md), md, 'plan', self._plan_row)) is not None:
+                self._plan_row = row
+                return self.paint()
         if (blk := self._plan_blk) is None:
             self._plan_blk = self.say(plan_text(md), 'plan', fold=None, source=md)
             return
@@ -1525,6 +1611,9 @@ class Ui:
         if name == '/paste': return self.note(self.attach_clipboard())
         if name == '/copy': return self.note(self.copy_last(arg))
         if name == '/mouse': return self.note(self.set_mouse(arg))
+        if name == '/calm':
+            self.say(Text(self.set_calm(arg)), 'note', fold=None)   # said, not noted: mid-turn a note would fold into the stretch
+            return None
         if name == '/approve': return self.note(self.approve_mode(arg))
         if name == '#note': return self.note(self.note_memory(arg))
         if line.startswith('/') and self.starting: return self.note(f'{name} waits for the model · try again once it is ready')
@@ -1908,6 +1997,15 @@ def set_mouse(self:Ui, want=''):
             if self.mouse else 'mouse off: selection belongs to the terminal again')
 
 @patch
+def set_calm(self:Ui, want=''):
+    "Switch calm mode for this session; off by default, so `calm = true` in config.toml is what keeps it on."
+    want = (want or '').strip().lower()
+    if want not in ('', 'on', 'off', 'toggle', 'yes', 'no'): return 'usage: /calm [on|off]'
+    self.calm = not self.calm if want in ('', 'toggle') else want in ('on', 'yes')
+    return ('calm on: each stretch of tool calls folds into one row, from the next call'
+            if self.calm else 'calm off: each tool call is its own block again, from the next stretch')
+
+@patch
 def on_mouse(self:Ui, ev):
     "Route a mouse event to the browsing view, or here when `/mouse` is on."
     if self.transcript.active: return self.transcript.on_mouse(ev)
@@ -2201,8 +2299,25 @@ def _close_seg(self:Ui):
     self._put(blk, self.reply(text), source=text, gutter=GUTTERS['step'], collapse_at=None)
 
 @patch
+def _act_calm(self:Ui, act, st):
+    "Draw a call into its stretch; the first call after a text block opens the stretch's `work` block."
+    new = st is None
+    if new:
+        self._close_seg()
+        st = self._open_stretch()
+        st.items.append(act)
+        self._owner[act.id], self.acts[act.id] = st, st.blk
+    self.touch()
+    now = time.monotonic()
+    if new or act.done or now - self._acted_at >= ACT_EVERY:
+        self._acted_at = now
+        self._paint_stretch(st)
+        self.paint()
+
+@patch
 def _act(self:Ui, act):
     if act.parent_action_id and act.parent_action_id in self.acts: return self._nest(act)
+    if (st := self._owner.get(act.id)) is not None or (self.calm and act.id not in self.acts): return self._act_calm(act, st)
     self.by_id[act.id] = act
     blk = self.acts.get(act.id)
     if blk is None:
