@@ -241,8 +241,9 @@ class FakeBackend(Backend):
 # %% ../nbs/04_testing.ipynb #10360a7c
 def fake_agent(host=None, replies=(), **kw):
     "Build an `Agent` whose every job runs on one `FakeBackend`, and return `(agent, backend)`."
-    # `auto` would brief the 1k `SPEC` small
-    a = Agent(host or MemHost({'/proj/a.py': 'def a(): pass\n'}), extensions=False, **{'profile': 'full', **kw})
+    # `auto` would brief the 1k `SPEC` small; `~/.agents/skills` would add whatever this machine's user has installed
+    a = Agent(host or MemHost({'/proj/a.py': 'def a(): pass\n'}), extensions=False, **{'profile': 'full', 'global_skills': False, **kw})
+    a._beat = None   # no beat: its notes would join the first prompt, and draining them writes to `~/.pobblebonk`
     be = FakeBackend(SPEC, replies=replies)
     if 'model' not in kw and 'routing' not in kw:
         a.routing.turn, a.routing.policy = SPEC.name, {}   # every job, not only `turn`
