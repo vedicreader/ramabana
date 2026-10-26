@@ -1,8 +1,13 @@
 "Pytest fixtures for the plain-python suite; one file per feature block, and nothing loads a model."
 
 import os, tempfile, pytest
-# a scratch home before ramabana is imported: the suite read the real ~/.config, skills and vault, and failed as they grew
-os.environ['HOME'] = tempfile.mkdtemp(prefix='ramabana-home-'); os.environ.pop('RAMABANA_CONFIG', None)
+from pathlib import Path
+# a scratch home before ramabana is imported: the suite read the real ~/.config, skills and vault, and failed as they grew.
+# macOS finds the login keychain under $HOME/Library/Keychains; without it a tool that saves a login raised a 'keychain not found' dialog
+_real, _home = Path.home(), Path(tempfile.mkdtemp(prefix='ramabana-home-'))
+if (_real/'Library'/'Keychains').is_dir():
+    (_home/'Library').mkdir(); (_home/'Library'/'Keychains').symlink_to(_real/'Library'/'Keychains')
+os.environ['HOME'] = str(_home); os.environ.pop('RAMABANA_CONFIG', None)
 from ramabana.testing import SPEC
 
 @pytest.fixture(scope='session', autouse=True)
