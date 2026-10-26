@@ -982,7 +982,7 @@ wheels = [
 
 [[package]]
 name = "dhrona"
-version = "0.1.18"
+version = "0.1.19"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
@@ -993,9 +993,9 @@ dependencies = [
     { name = "shalya" },
     { name = "uraiyadal" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/14/18/e9e597a6b24b0a22dbdc3f6d873c17c221c6c2ce904e9f534533d670ee2e/dhrona-0.1.18.tar.gz", hash = "sha256:55172b4f936898bac6e273647152797c7c24460c635c61cdf7b0cb53df2aadf6", size = 48698, upload-time = "2026-10-22T21:41:13.52Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/44/da/392d597f7c7344e8ec2355fdfc485e9a1b059924b1a80efd8aaa6b6ff3cb/dhrona-0.1.19.tar.gz", hash = "sha256:a30eacc5eed17803d342715b283efd4d7018a101d95f401a8d642f72238f9a1d", size = 51482, upload-time = "2026-10-26T02:41:49.441Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/c8/d832fa258d3db8a7e62a3ce69872f00f9d849c2923220161fb2443983988/dhrona-0.1.18-py3-none-any.whl", hash = "sha256:c4e357bd7f8c29fbf2c936afde0f6a6bae13eebd467ab33f3945329cb555ed7d", size = 54465, upload-time = "2026-10-22T21:41:12.229Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/8c/cbb3cd5432c99a973f1a1922afdb8c89fcfde56aefc9a759a3744941ebdb/dhrona-0.1.19-py3-none-any.whl", hash = "sha256:240a1198532c7a50fe0f3b467c5094b7ae6086098c5d8917dae18477f81cbba3", size = 57291, upload-time = "2026-10-26T02:41:47.932Z" },
 ]
 
 [[package]]
@@ -4019,9 +4019,9 @@ requires-dist = [
     { name = "dhrishti", marker = "extra == 'cli'", specifier = ">=0.1.11" },
     { name = "dhrishti", marker = "extra == 'dev'", specifier = ">=0.1.11" },
     { name = "dhrishti", marker = "extra == 'python'", specifier = ">=0.1.11" },
-    { name = "dhrona", marker = "extra == 'all'", specifier = ">=0.1.18" },
-    { name = "dhrona", marker = "extra == 'dev'", specifier = ">=0.1.18" },
-    { name = "dhrona", marker = "extra == 'dhrona'", specifier = ">=0.1.18" },
+    { name = "dhrona", marker = "extra == 'all'", specifier = ">=0.1.19" },
+    { name = "dhrona", marker = "extra == 'dev'", specifier = ">=0.1.19" },
+    { name = "dhrona", marker = "extra == 'dhrona'", specifier = ">=0.1.19" },
     { name = "exhash", specifier = ">=0.4.11" },
     { name = "fastcore", specifier = ">=2.2.19" },
     { name = "fastpylight", marker = "extra == 'all'", specifier = ">=0.1.18" },

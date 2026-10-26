@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.2.79
+- A tool call with a missing or unknown argument returns an error that names the tool, the argument and the expected parameters, so the model can call it again. Before, the tool raised `TypeError`; Dhrona counted 160 of these in 14 days.
+- Calm mode for the terminal: each stretch of tool calls between two text blocks folds into one collapsed line, such as "3 tool calls · 1 file changed". Errors, approvals and questions stay visible. Turn it on with `calm = true` in `config.toml`, or for a session with `/calm`, `/calm on` and `/calm off`.
+- Sessions load Dhrona's dated lessons (`dhrona-*.md`) after `AGENTS.md`, newest first, within 4,000 characters (2,000 for small models).
+- `/learned accept` refuses only when an uncommitted change touches a file the lesson changes. An unrelated `AGENTS.md` edit no longer blocks it.
+- When two lessons are kept on one day, only the newer pending branch is listed, and accepting it retires the older one.
+- The `dhrona` extra needs dhrona 0.1.19.
+- The test suite runs under a scratch home folder, so the machine's own configuration cannot fail it.
+
 ## 0.2.78
 - `/rewind` puts a notebook back byte for byte. Before, it wrote the notebook's joined cell text over its JSON, which destroyed a notebook that a turn had edited with `edit_cell`.
 - Shell writes are recorded when the open folders hold more than 32 MB of text. Before a command, Ramabana snapshots only the repositories that the command can touch. Before, it stopped watching shell commands above that size, so the Files pane and `/rewind` did not see files that a script or `nbdev-readme` wrote.
