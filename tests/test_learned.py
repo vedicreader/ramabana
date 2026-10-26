@@ -230,3 +230,65 @@ def test_the_nightly_learning_tick_does_nothing_while_learning_is_off(tmp_path):
     class On(EP):
         def load(self): return lambda fire: 'ran'
     assert _fire(On(), {'cfg': str(tmp_path)}) == 'ran'
+
+
+def _git(d, *a):
+    import subprocess
+    return subprocess.run(['git', '-C', str(d), *a], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def _learned_repo(folder, files):
+    "A learned folder that is its own repository, holding `files` in its first commit."
+    folder.mkdir(parents=True)
+    for rel, text in files.items(): (folder/rel).write_text(text)
+    _git(folder, 'init', '-q'); _git(folder, 'add', '-A')
+    _git(folder, '-c', 'user.name=t', '-c', 'user.email=t@x', 'commit', '-qm', 'by hand')
+
+
+def test_dated_lessons_follow_agents_md_newest_first_and_stop_at_their_budget(tmp_path):
+    d = tmp_path/'learned'; d.mkdir()
+    (d/'AGENTS.md').write_text('RULE-A\n')
+    (d/'dhrona-2026-10-20.md').write_text('# 20th\nOLDEST-LESSON\n')
+    (d/'dhrona-2026-10-22.md').write_text('# 22nd\nNEWEST-LESSON\n')
+    (d/'dhrona-2026-10-21.md').write_text('# 21st\nMIDDLE-LESSON ' + 'x' * 4000)
+    a, _ = fake_agent(cfg=tmp_path)
+    sp = a.system_prompt()
+    assert sp.index('RULE-A') < sp.index('NEWEST-LESSON')
+    assert 'MIDDLE-LESSON' not in sp and 'OLDEST-LESSON' not in sp   # the first file past the budget ends the list
+    (d/'dhrona-2026-10-21.md').unlink()
+    sp = a.system_prompt()
+    assert sp.index('NEWEST-LESSON') < sp.index('OLDEST-LESSON')
+
+
+def test_accept_ignores_uncommitted_changes_the_candidate_does_not_touch(tmp_path):
+    from ramabana.learned import accept
+    f, day = tmp_path/'learned', 'dhrona-2026-10-19.md'
+    a, b = '20261019-010101-aaaaaa', '20261019-020202-bbbbbb'
+    _learned_repo(f, {'AGENTS.md': 'A rule a person wrote.\n'})
+    _propose(f, {day: '# day\n\n## one\n'}, a)
+    (f/'AGENTS.md').write_text('an uncommitted edit\n')
+    r = accept(f, a)
+    assert r['ok'], r
+    assert (f/day).exists() and (f/'AGENTS.md').read_text() == 'an uncommitted edit\n'
+    assert _git(f, 'status', '--porcelain') == 'M AGENTS.md'   # still unstaged
+    _propose(f, {day: '# day\n\n## one\n\n## two\n'}, b)
+    (f/day).write_text('edited by hand\n')
+    r = accept(f, b)
+    assert not r['ok'] and day in r['error'], r
+    assert (f/day).read_text() == 'edited by hand\n'
+
+
+def test_same_day_candidates_list_as_the_newest_and_accepting_it_drops_the_older(tmp_path):
+    from ramabana.learned import accept, pending, reject
+    f, day = tmp_path/'learned', 'dhrona-2026-10-19.md'
+    a, b = '20261019-010101-aaaaaa', '20261019-020202-bbbbbb'
+    one, two = '# day\n\n## one\n', '# day\n\n## one\n\n## two\n'
+    _learned_repo(f, {'AGENTS.md': 'A rule a person wrote.\n'})
+    _propose(f, {day: one}, a)
+    _propose(f, {day: two}, b)
+    rows = pending(f)
+    assert [p['id'] for p in rows] == [b] and rows[0]['includes'] == [a], rows
+    assert reject(f, b)['ok'] and [p['id'] for p in pending(f)] == [a]   # the older one is listed again
+    _propose(f, {day: two}, b)
+    assert accept(f, b)['ok']
+    assert _git(f, 'branch', '--list', 'pending/*') == '' and (f/day).read_text() == two

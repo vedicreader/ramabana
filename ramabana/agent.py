@@ -8,21 +8,21 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT', 'INLINE_SKILLS',
-           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'PICTURE_RULE', 'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS',
-           'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES',
-           'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX',
-           'TREE_SPENT', 'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE',
-           'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING',
-           'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP',
-           'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'DATED_CONTEXT', 'PICTURE_RULE', 'RULES', 'SMALL_RULES',
+           'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE',
+           'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY',
+           'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS',
+           'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK',
+           'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP',
+           'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
            'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'Act',
            'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
            'never', 'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt',
-           'prompt_directives', 'project_context', 'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt',
-           'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
-           'shell_denial', 'generated_denial', 'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult',
-           'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
-           'compact_history', 'mk_host', 'mk_agent']
+           'prompt_directives', 'project_context', 'dated_lessons', 'learned_context', 'work_rules', 'skill_catalogue',
+           'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent',
+           'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools', 'hydrate_turns', 'repo_state',
+           'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title',
+           'model_title', 'HistoryBusy', 'compact_history', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -716,17 +716,33 @@ def project_context(host, mx=MAX_CONTEXT_FILE, cfg=None):
             'override the general guidance above where they disagree.\n\n' + '\n\n'.join(out) +
             '\n</project_context>')
 
-from .learned import LEARNED, learned_command, learned_folder, enabled as learning_enabled
+from .learned import LEARNED, DATED, learned_command, learned_folder, enabled as learning_enabled
 
-def learned_context(learned, mx=MAX_CONTEXT_FILE):
-    "`<learned>/AGENTS.md` as a briefing block, or '' when `learned` is None or holds none."
-    p = None if learned is None else Path(learned)/'AGENTS.md'
-    body = p.read_text().strip() if p is not None and p.exists() else ''
-    if not body: return ''
-    if len(body) > mx: body = body[:mx] + f'\n…[truncated; read {p} in full if you need the rest]'
-    return (f'\n\n<learned path="{p}">\nLessons a tool kept from earlier sessions. They override the general guidance\n'
-            'above where they disagree. Project instructions and every note after them override these.\n\n'
-            f'{body}\n</learned>')
+DATED_CONTEXT = 4000   # chars of dated lessons together
+
+def dated_lessons(learned, mx=DATED_CONTEXT):
+    "The `dhrona-<date>.md` files in `learned`, newest first, each whole; the list ends at the first file that would pass `mx`."
+    out, used = [], 0
+    for p in sorted((p for p in Path(learned).iterdir() if DATED.fullmatch(p.name)), reverse=True):
+        body = p.read_text().strip()
+        if used + len(body) > mx: break
+        if body: out.append(body); used += len(body)
+    return '\n\n'.join(out)
+
+def learned_context(learned, mx=MAX_CONTEXT_FILE, dated=DATED_CONTEXT):
+    "`<learned>/AGENTS.md`, then its dated lessons, as briefing blocks, or '' when `learned` is None or holds none."
+    if learned is None: return ''
+    p = Path(learned)/'AGENTS.md'
+    body = p.read_text().strip() if p.exists() else ''
+    out = ''
+    if body:
+        if len(body) > mx: body = body[:mx] + f'\n…[truncated; read {p} in full if you need the rest]'
+        out = (f'\n\n<learned path="{p}">\nLessons a tool kept from earlier sessions. They override the general guidance\n'
+               'above where they disagree. Project instructions and every note after them override these.\n\n'
+               f'{body}\n</learned>')
+    if Path(learned).is_dir() and (notes := dated_lessons(learned, dated)):
+        out += f'\n\n<learned_dated path="{learned}">\nDated lessons from earlier sessions, newest first. They carry the same weight as the lessons above.\n\n{notes}\n</learned_dated>'
+    return out
 
 #: the screenshot rule, keyed on whether the turn model sees a picture a tool returns
 PICTURE_RULE = {
@@ -912,7 +928,7 @@ def small_system_prompt(host, tools=(), cfg=None, learned=None):
     line = env.splitlines()[0].split('; inspect_python')[0] if env else ''   # `inspect_python` is not offered here
     machine = f"\n\nOn this machine:\n{line}" if line else ''
     return (f"You are Ramabana, a coding agent. Follow the user's latest explicit request. You are working in these folders:\n"
-            f"{roots}{machine}\n\nHow to work:\n{work_rules(names, SMALL_RULES)}" + learned_context(learned, SMALL_CONTEXT_FILE)
+            f"{roots}{machine}\n\nHow to work:\n{work_rules(names, SMALL_RULES)}" + learned_context(learned, SMALL_CONTEXT_FILE, SMALL_CONTEXT_FILE)
             + project_context(host, mx=SMALL_CONTEXT_FILE, cfg=cfg))
 
 
