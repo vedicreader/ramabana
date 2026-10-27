@@ -1488,16 +1488,28 @@ class Ui:
             return None
         return Text(' \u2713 ' + self._flash[0], style=GRUVBOX['green'])
 
-    def queued_rows(self):
-        "One row per message waiting for this turn to end; a queued command is one row of its own."
-        if self._queued is None: return []
-        lines = self._queued_text or ['']
-        return [self.queued_row(line, i == len(lines) - 1) for i, line in enumerate(lines)]
+    def unread_steered(self):
+        "The steered lines still in the run's inbox, oldest first; the agent takes them in with its next tool result."
+        run = self.agent.run()
+        if run is None or not self._steered: return []
+        with run._lock: unread = list(run.inbox)
+        out = []
+        for text, blk in self._steered:
+            if text in unread:
+                unread.remove(text)
+                out.append((blk.source or '').removeprefix('\u21aa '))
+        return out
 
-    def queued_row(self, line, last=True):
+    def queued_rows(self):
+        "One row per message waiting: steered lines the agent has not read, then those queued for the turn's end; a queued command is one row of its own."
+        waiting = [(line, True) for line in self.unread_steered()]
+        if self._queued is not None: waiting += [(line, False) for line in self._queued_text or ['']]
+        return [self.queued_row(line, i == len(waiting) - 1, unread) for i, (line, unread) in enumerate(waiting)]
+
+    def queued_row(self, line, last=True, unread=False):
         "The row for one waiting message; the last one carries the keys."
         what = ' '.join(line.split()) or 'a command'
-        row = Text(' \u23f3 queued  ', style=GRUVBOX['yellow'])
+        row = Text(' \u21aa unread  ' if unread else ' \u23f3 queued  ', style=GRUVBOX['yellow'])
         row.append(what[:79] + '\u2026' if len(what) > 80 else what, style=GRUVBOX['fg0'])
         if last: row.append('   enter steers it into this turn · alt+up takes it back · ctrl+c stops', style=GRUVBOX['gray'])
         return row

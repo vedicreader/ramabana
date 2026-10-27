@@ -132,6 +132,48 @@ def test_stop_returns_unread_steering_queued_lines_and_the_draft_to_the_composer
     _scene(body)
 
 
+def _steer_scene(body):
+    "Like `_scene`, but `body(ui, agent, tty)` also gets the emulated terminal, to read the painted rows."
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    agent, _ = fake_agent()
+    async def go():
+        await comp.start()
+        u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        await body(u, agent, tty)
+    try: asyncio.run(go())
+    finally: tty.close()
+
+
+def test_a_steered_line_waits_in_the_rows_until_the_agent_reads_it():
+    "Steering showed only as a transcript echo; the unread line is also a row, and leaves it when the inbox is drained."
+    async def body(u, agent, tty):
+        u.start_turn(_slow())
+        run = agent._new_run('q')
+        _type(u, 'two')
+        _type(u, 'later', 'alt+enter')
+        u.paint()
+        screen = tty.term.text()
+        rows = [r.plain for r in u.queued_rows()]
+        assert len(rows) == 2 and 'two' in rows[0] and 'unread' in rows[0] and 'later' in rows[1] and 'queued' in rows[1]
+        assert 'unread' in screen and 'two' in screen
+        assert run.drain_inbox() == ['two']                # what the root tool result does
+        assert [r.plain for r in u.queued_rows()] == [rows[1]], 'read: no longer waiting, the queued line stays'
+        u.paint()
+        assert 'unread' not in tty.term.text()
+    _steer_scene(body)
+
+
+def test_take_back_returns_an_unread_steered_line_to_the_composer():
+    async def body(u, agent, tty):
+        u.start_turn(_slow())
+        agent._new_run('q')
+        _type(u, 'two')
+        assert u.on_key(Key('alt+up')) is None
+        assert u.buf.text == 'two' and u.queued_rows() == [] and agent.leftovers() == []
+    _steer_scene(body)
+
+
 def test_ctrl_c_keeps_the_draft_in_the_composer():
     async def body(u, agent):
         u.start_turn(_slow())
