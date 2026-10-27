@@ -12,18 +12,19 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV',
            'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
            'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
-           'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE',
-           'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS',
-           'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme',
-           'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
-           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
-           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich',
-           'changed_table', 'opens', 'plural', 'stretch_summary', 'Row', 'Stretch', 'OpenDiff', 'Ui', 'parse_answer',
-           'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop',
-           'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'loop_error', 'amain', 'headless_prompt', 'ask_once',
-           'host_kw', 'main', 'ref_text', 'arg_words', 'guide_cmd', 'pane_cmd', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA',
-           'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs',
-           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note']
+           'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'HINTS', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES',
+           'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS',
+           'LEARNED_WORDS', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok',
+           'code_theme', 'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics',
+           'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs',
+           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn',
+           'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural', 'stretch_summary', 'Row', 'Stretch', 'OpenDiff',
+           'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index',
+           'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'loop_error', 'amain',
+           'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'guide_cmd', 'pane_cmd',
+           'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF',
+           'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
+           'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, itertools, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -821,7 +822,8 @@ class Ui:
         self.acts = {}
         self.by_id = {}
         self.kids = {}
-        self.hint = ''
+        self.hint = ''   #: the session's folders, shown after the keys on an empty composer
+        self.hints = bool(setting('cli.hints', True))   #: `hints = false` under [cli] in config.toml, or --no-hints, hides the hint row
         self.mode = 'agent'
         self.kernel = None
         self.shell_proc = None   #: the running `!` command
@@ -1511,7 +1513,8 @@ class Ui:
         what = ' '.join(line.split()) or 'a command'
         row = Text(' \u21aa unread  ' if unread else ' \u23f3 queued  ', style=GRUVBOX['yellow'])
         row.append(what[:79] + '\u2026' if len(what) > 80 else what, style=GRUVBOX['fg0'])
-        if last: row.append('   enter steers it into this turn · alt+up takes it back · ctrl+c stops', style=GRUVBOX['gray'])
+        keys = 'alt+up takes it back · ctrl+c stops' if unread else 'enter steers it into this turn · alt+up takes it back · ctrl+c stops'
+        if last: row.append('   ' + keys, style=GRUVBOX['gray'])
         return row
 
     def copy_last(self, tag='reply'):
@@ -1567,6 +1570,10 @@ class Ui:
         "The `/guide` text; subclasses extend it."
         return GUIDE
 
+    def show_keys(self):
+        "Print the `HELP` key card, as `/help` and `?` on an empty composer do."
+        self.say(key_card(HELP), 'note', fold=None, source=HELP)
+
     def submit(self):
         "Handle the typed line. Returns a coroutine for a turn, `'quit'`, or None when handled here."
         src, line = self.buf.text, self.buf.text.strip()
@@ -1609,7 +1616,7 @@ class Ui:
                 self.note(sessions())
                 return self.note('usage: /join NAME-or-URL')
             return self._join(bits[1])
-        if line in ('/help', '/?'): self.say(key_card(HELP), 'note', fold=None, source=HELP); return None
+        if line in ('/help', '/?'): return self.show_keys()
         if line == '/guide':
             self.say(guide_text(g := self.guide()), 'note', fold=None, source=g)
             return None
@@ -1942,11 +1949,31 @@ def _plan_rows(self:Ui, rows):
     room = self.comp.rows - used - PLAN_RESERVE
     return [Tooltip(self.agent.plan.md(), max_lines=min(PLAN_ROWS, room - 1)).renderable()] if room >= 2 else []
 
+#: the hint row for each state; every key here reaches ramabana in tmux and in Leela's xterm.js, which never sends shift+enter
+HINTS = dict(
+    idle='? keys · / commands · @ files · ctrl+r transcript',
+    typing='enter sends · tab completes /commands and @paths · ctrl+u cuts the line',
+    python='enter runs what compiles, else adds a line · tab completes · /agent goes back',
+    running='enter steers · alt+enter queues · ctrl+c stops · ctrl+o folds the working',
+    waiting='alt+up takes them back · \u21aa is read after this call · \u23f3 runs after the turn',
+    approval='y approve · n refuse · n: REASON \u23ce says why · a approve all · A always allow')
+
+@patch
+def footer_hint(self:Ui):
+    "The hint row for what the surface is doing now, from `HINTS`; empty with `cli.hints` off."
+    if not self.hints: return ''
+    if self.ask is not None: return HINTS['approval']
+    if self._queued is not None or self.unread_steered(): return HINTS['waiting']
+    if self.turn is not None and not self._turn_over(): return HINTS['running']
+    if self.mode == 'python': return HINTS['python']
+    if self.buf.text: return HINTS['typing']
+    return HINTS['idle'] + (f' · {self.hint}' if self.hint else '')
+
 @patch
 def tail(self:Ui):
     "The live-tail description shared with Teleprint's transcript view. The plan checklist heads it rather than covering the transcript."
     rows = [self.status(), self.model_row()]
-    if self.hint: rows.append(Text(' ' + self.hint, style=GRUVBOX['gray']))
+    if (hint := self.footer_hint()): rows.append(Text(' ' + hint, style=GRUVBOX['gray'], no_wrap=True, overflow='ellipsis'))
     chips = self.attach_row()
     if chips is not None: rows.append(chips)
     rows += self.working()
@@ -2524,7 +2551,8 @@ def show_resumed(self:Ui, n=RESUME_SHOWN):
 async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto',
                 resumed=False,   # draw the resumed session's turns before the first prompt
                 first='',   # what the session says before anything else: the welcome, or the model it moved to
-                cold=False):   # no model runs here, so none is warmed
+                cold=False,   # no model runs here, so none is warmed
+                hints=True):   # the hint row under the status bar
     "The tty loop: one terminal, one event loop, one keyboard owner."
     tty = AppTty()
     os.set_blocking(sys.stdout.fileno(), True)   # a process that shared this terminal may have left it non-blocking
@@ -2543,7 +2571,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         comp._fatal = lambda sig: done.set()   # TERM or HUP quits through the teardown, which stops the background shells
         ui = Ui(comp, agent, loop=asyncio.get_running_loop())
         ui.bell = bell
-        ui.hint = hint
+        ui.hint, ui.hints = hint, hints
         comp.on_task_error = lambda e, t: ui.say(Text(f'{t.get_name()} failed: {e!r}'), 'error')
         asyncio.get_running_loop().set_exception_handler(loop_error(ui))   # a key handler or a posted notice that raises
         comp.spawn(ui.animate(), name='spinner')
@@ -2642,6 +2670,7 @@ def main(
     kernels: bool = False,               # list live sessions and exit
     json: bool = False,                  # with a prompt: print the full result as JSON
     bell: bool = True,                   # --no-bell silences turn-end and approval bells
+    hints: bool = True,                  # --no-hints hides the row of keys under the status bar
     tmux: str = 'auto',                  # auto | on | off: read and run in tmux panes
     pane: str = 'auto',                  # auto | on | off: the `now` pane; auto in tmux
     doctor: bool = False,                # check tmux and the now pane, offer to install tmux, and exit
@@ -2716,11 +2745,11 @@ def main(
         if moved: print(moved, file=sys.stderr)
         start_agent(agent)
         return sys.exit(ask_once(agent, prompt, as_json=json))
-    hint = f"{', '.join(host.roots)} · /python · /help"
+    hint = ', '.join(host.roots)
     if setup.CLI_FROM_CONFIG: hint += f" · from config.toml: {', '.join(setup.CLI_FROM_CONFIG)}"
     log = stderr_log(agent)
     try:
-        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane, resumed=bool(resume),
+        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, hints=hints, pane=pane, resumed=bool(resume),
                                                first=welcome(agent.routing) if cold else moved, cold=cold))
     except KeyboardInterrupt: pass
     if log.exists() and log.stat().st_size: print(f'library output from the session is in {log}', file=sys.stderr)
@@ -3071,7 +3100,11 @@ _ui_on_key = Ui.on_key
 
 @patch
 def on_key(self:Ui, k):
-    "Ctrl-C stops without wiping the composer; alt+up pulls queued text back into it."
+    "Ctrl-C stops without wiping the composer; alt+up pulls queued text back into it; `?` on an empty composer prints the key card."
+    if (k.name == '?' and not self.buf.text and self.mode != 'python' and self.menu is None
+            and self.ask is None and not self.transcript.active):
+        self.show_keys()
+        return self.paint()
     if k.name == 'alt+up' and self.ask is None and not self.transcript.active:
         if not self.take_back(): self.flash('nothing queued to take back')
         self.paint()

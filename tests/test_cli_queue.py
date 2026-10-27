@@ -164,6 +164,17 @@ def test_a_steered_line_waits_in_the_rows_until_the_agent_reads_it():
     _steer_scene(body)
 
 
+def test_an_unread_row_does_not_offer_to_steer_a_line_already_steered():
+    "The last row carried 'enter steers it into this turn' even when it was a steered line, which Enter cannot send again."
+    async def body(u, agent, tty):
+        u.start_turn(_slow())
+        agent._new_run('q')
+        _type(u, 'two')
+        [row] = [r.plain for r in u.queued_rows()]
+        assert 'unread' in row and 'enter steers' not in row and 'alt+up' in row, row
+    _steer_scene(body)
+
+
 def test_take_back_returns_an_unread_steered_line_to_the_composer():
     async def body(u, agent, tty):
         u.start_turn(_slow())

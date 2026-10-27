@@ -215,3 +215,74 @@ def test_talk_aims_typed_lines_at_a_sub_agent_until_it_finishes(tmp_path, monkey
         assert u.target is None
     try: asyncio.run(go())
     finally: tty.close()
+
+
+def _keys_scene(body):
+    "Run `await body(ui, agent, tty)` on a live loop over an emulated 80x24 terminal."
+    from teleprint.testing import EmuTty
+    from ramabana.agent import Approvals
+    from ramabana.cli import Ui
+    from ramabana.tools import WRITE_TOOLS
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    agent, _ = fake_agent()
+    agent.approvals = Approvals(tools=WRITE_TOOLS, host=agent.host)
+    async def go():
+        await comp.start()
+        u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        await body(u, agent, tty)
+    try: asyncio.run(go())
+    finally: tty.close()
+
+
+async def _slow(): await asyncio.sleep(.5)
+
+
+def _screen(u, tty):
+    u.paint()
+    return tty.term.text()
+
+
+def test_the_hint_row_follows_the_composer_the_turn_and_an_approval():
+    "The row under the status bar was set once at start. Each state now names its own keys, and none that xterm.js never sends."
+    async def body(u, agent, tty):
+        idle = _screen(u, tty)
+        u.buf.insert('fix the'); typing = _screen(u, tty)
+        u.buf.clear(); u.start_turn(_slow()); running = _screen(u, tty)
+        u.buf.insert('later'); u.start_turn(u.on_key(Key('alt+enter'))); waiting = _screen(u, tty)
+        threading.Thread(target=lambda: agent.approvals.request('create_file', {'path': '/proj/a.md', 'text': 'x'}), daemon=True).start()
+        for _ in range(40):
+            await asyncio.sleep(.02)
+            if u.ask is not None: break
+        asking = _screen(u, tty)
+        u.on_key(Key('ctrl+c'))
+        assert '? keys' in idle and 'enter sends' not in idle and 'ctrl+c stops' not in idle
+        assert 'enter sends' in typing and '? keys' not in typing
+        assert 'ctrl+c stops' in running and 'alt+enter queues' in running and '? keys' not in running
+        assert 'alt+up takes them back' in waiting
+        assert 'y approve' in asking and 'alt+up takes them back' not in asking
+        assert all('shift+enter' not in s for s in (idle, typing, running, waiting, asking)), 'Leela never sends shift+enter'
+    _keys_scene(body)
+
+
+def test_a_question_mark_on_an_empty_composer_shows_the_keys_and_after_text_types_itself():
+    from ramabana.cli import HELP
+    async def body(u, agent, tty):
+        assert u.on_key(Key('?', '?')) is None
+        screen = _screen(u, tty)
+        assert u.buf.text == '' and list(u.comp.blocks.values())[-1].source == HELP and 'api_call' in screen
+        u.buf.insert('why'); u.on_key(Key('?', '?'))
+        assert u.buf.text == 'why?'
+    _keys_scene(body)
+
+
+def test_cli_hints_false_hides_the_hint_row(tmp_path, monkeypatch):
+    cfg = tmp_path/'config.toml'
+    cfg.write_text('[cli]\nhints = false\n')
+    monkeypatch.setenv('RAMABANA_CONFIG', str(cfg))
+    async def body(u, agent, tty):
+        u.hint = 'THE FOLDERS'
+        idle = _screen(u, tty)
+        u.start_turn(_slow()); running = _screen(u, tty)
+        assert 'THE FOLDERS' not in idle and '? keys' not in idle and 'ctrl+c stops' not in running
+    _keys_scene(body)
