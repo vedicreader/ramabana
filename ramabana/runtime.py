@@ -13,9 +13,9 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SUMMARY_PRE
            'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact', 'serialise',
            'split_previous', 'summarise_prompt', 'transcript_runs', 'fold_summary', 'truncate_middle',
            'surgical_history', 'reorient', 'prompt_notices', 'notices_block', 'compact_notebook_context', 'Compactor',
-           'answer_only', 'prefills_think', 'ThinkFilter', 'Usage', 'margin', 'img_tokens', 'msg_tokens', 'trim_hist',
-           'omitted', 'excerpt', 'fit_content', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'status_line',
-           'said_before_call', 'Run', 'current_run', 'run_context', 'TokenLogger']
+           'answer_only', 'prefills_think', 'ThinkFilter', 'oneshot_tokens', 'Usage', 'margin', 'img_tokens',
+           'msg_tokens', 'trim_hist', 'omitted', 'excerpt', 'fit_content', 'Backend', 'use_chat', 'RishiBackend',
+           'make_backend', 'status_line', 'said_before_call', 'Run', 'current_run', 'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import base64, contextvars, copy, json, math, mimetypes, os, re, sys, threading, time, uuid
@@ -449,7 +449,7 @@ class Compactor:
         while kept and kept[0].get('role') != 'user': kept.pop(0)
         return kept
 
-    def compact(self, backend, summariser, extra='', summary_ctx=0, summary_output=1024, summary_count=None):
+    def compact(self, backend, summariser, extra='', summary_ctx=0, summary_output=4096, summary_count=None):
         "Summarise `backend`'s history with `summariser(prompt, sp)`, replace it, return the summary."
         msgs = list(backend.hist or [])
         if not msgs:
@@ -538,9 +538,13 @@ class ThinkFilter:
 
 # %% ../nbs/01_runtime.ipynb #e4819aa1
 MAX_STEPS = 40
-ONESHOT_TOKENS = 1024
+ONESHOT_TOKENS = 8192
 ONESHOT_HEADROOM = 64     # tokens a chat template adds
 ONESHOT_CUT = '[earlier text omitted]\n'
+
+def oneshot_tokens(ctx):
+    "The default reply budget for a one-shot call in a window of `ctx` tokens."
+    return min(ONESHOT_TOKENS, max(1024, ctx//4))
 
 @dataclass
 class Usage:
@@ -831,7 +835,7 @@ class Backend:
         "Cut `prompt` to the window left after `sp` and the reply."
         ctx=self.spec.ctx
         if not ctx:return prompt
-        room=ctx-self.count_tokens(sp)-(max_tokens or ONESHOT_TOKENS)-ONESHOT_HEADROOM
+        room=ctx-self.count_tokens(sp)-(oneshot_tokens(ctx) if max_tokens is None else max_tokens)-ONESHOT_HEADROOM
         if room<=0 or self.count_tokens(prompt)<=room:return prompt
         body=prompt
         for _ in range(6):
@@ -1123,18 +1127,19 @@ class RishiBackend(Backend):
             self.problem(f'{self.spec.name} spent the whole turn thinking ({f.thought} characters) '
                          'and never answered; route `turn` to a larger model, or raise its output cap')
     def _oneshot(self,prompt,sp,max_tokens):
+        if max_tokens is None: max_tokens=oneshot_tokens(self.spec.ctx)
         if self.spec.runtime!='mlx':
-            return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
+            return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens)
         if getattr(self,'_oneshot_chat',None) is None:
             if not hasattr(self.chat,'engine'):   # a replayed chat has no engine
-                return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens or ONESHOT_TOKENS)
+                return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens)
             from rishi import Chat
             self._oneshot_chat=Chat(self.spec.model_id,runtime='mlx',engine=self.chat.engine,think=False,
-                                    sp=sp,ctx_limit=self.spec.ctx,max_output_tokens=ONESHOT_TOKENS)
+                                    sp=sp,ctx_limit=self.spec.ctx,max_output_tokens=oneshot_tokens(self.spec.ctx))
         c=self._oneshot_chat
         c.sp=sp
         c.hist[:]=[c.mk_msg(prompt)]
-        return resp_text(c._model_step(max_tokens or ONESHOT_TOKENS))
+        return resp_text(c._model_step(max_output_tokens=max_tokens))
     def _replace_hist(self,summary,keep):
         if not hasattr(self.chat,'_recreate_conv'):
             raise RuntimeError(f'{type(self.chat).__name__} cannot have its history replaced')

@@ -4,8 +4,11 @@ The fault this pins: a hosted chat's `token_count` is the window its last step r
 never changed it. So after compaction `fits` still saw the old count, raised, and every retry compacted again
 and raised again. A resumed conversation had the opposite blind spot: no step had reported yet, so it counted 0.
 """
-import json, re
+import json, re, pytest
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+import ramabana.runtime as runtime
 from rishi.remote import RemoteChat
 from urai import Resp
 from ramabana.agent import FRESH_HINT, Agent, prompt_text, turn_prompt
@@ -69,6 +72,73 @@ def test_a_resumed_conversation_is_counted_before_it_is_sent():
         assert be.used_tokens >= be.window_tokens() > CTX
         assert a.ask('carry on') == 'ok'
         assert a.compactor.count == 1 and max(Reported.sent) <= CTX
+
+
+@pytest.mark.parametrize('ctx,cap', [(16384, 4096), (32768, 8192), (200000, 8192), (2048, 1024)])
+def test_oneshot_output_scales_with_the_window(ctx, cap):
+    assert runtime.oneshot_tokens(ctx) == cap
+
+
+@pytest.mark.parametrize('rt,engine', [('remote', False), ('mlx', False), ('mlx', True)])
+@pytest.mark.parametrize('ctx,requested,cap', [(200000, None, 8192), (16384, None, 4096), (16384, 123, 123)])
+def test_oneshot_sends_the_window_cap_unless_the_caller_overrides_it(monkeypatch, rt, engine, ctx, requested, cap):
+    sent, configured = [], []
+    class Recording:
+        def __init__(self, *a, **kw):
+            self.hist = []
+            if 'max_output_tokens' in kw: configured.append(kw['max_output_tokens'])
+        def oneshot(self, prompt, sp, **kw): sent.append(kw['max_tokens']); return 'ok'
+        def mk_msg(self, prompt): return {'role': 'user', 'content': prompt}
+        def _model_step(self, **kw): sent.append(kw['max_output_tokens']); return Resp({'role': 'assistant', 'content': 'ok'})
+    monkeypatch.setattr('rishi.Chat', Recording)
+    be = RishiBackend(ModelSpec('recording', rt, 'recording/model', ctx=ctx))
+    be.chat = Recording()
+    if engine: be.chat.engine = object()
+    assert be._oneshot('question', 'brief', requested) == 'ok'
+    assert sent == [cap]
+    if engine:
+        assert configured == [runtime.oneshot_tokens(ctx)]
+        assert be._oneshot('another question', 'brief', 321) == 'ok'
+        assert sent == [cap, 321]
+
+
+@pytest.mark.parametrize('ctx,requested,cap', [(200000, None, 8192), (16384, None, 4096), (16384, 123, 123)])
+def test_oneshot_prompt_room_reserves_the_same_output_cap(ctx, requested, cap):
+    be = RishiBackend(replace(SPEC, ctx=ctx))
+    be.chat = SimpleNamespace(count_tokens=len)
+    sp = 'brief'
+    room = ctx - len(sp) - cap - runtime.ONESHOT_HEADROOM
+    prompt = 'x' * room
+    assert be._fit_oneshot(prompt, sp, requested) == prompt
+    cut = be._fit_oneshot(prompt + 'tail', sp, requested)
+    assert cut.startswith(runtime.ONESHOT_CUT) and cut.endswith('tail') and len(cut) <= room
+
+
+@pytest.mark.parametrize('ctx,cap', [(200000, 4096), (8192, 2048)])
+def test_compaction_summary_output_scales_with_the_window(tmp_path, monkeypatch, ctx, cap):
+    sent = []
+    def summary(self, prompt, sp='', think=None, max_tokens=None): sent.append(max_tokens); return 'the summary'
+    monkeypatch.setattr(Reported, '_oneshot', summary)
+    a, be = _agent(tmp_path)
+    be.spec = replace(SPEC, ctx=ctx)
+    with use_chat(_chat):
+        be.start()
+        be.chat.hist[:] = be.chat.mk_msgs([m['content'] for m in _big(6)])
+        assert a.compact() == 'the summary'
+    assert sent and set(sent) == {cap}
+    assert ctx - threshold(ctx) >= cap
+
+
+def test_compactor_default_budget_leaves_room_for_a_4096_token_summary(tmp_path, monkeypatch):
+    budgets = []
+    def fold(msgs, summariser, extra, budget, count): budgets.append(budget); return 'the summary'
+    monkeypatch.setattr(runtime, 'fold_summary', fold)
+    a, be = _agent(tmp_path)
+    with use_chat(_chat):
+        be.start()
+        be.chat.hist[:] = be.chat.mk_msgs([m['content'] for m in _big(6)])
+        assert a.compactor.compact(be, lambda *a: 'the summary', summary_ctx=16384, summary_count=len) == 'the summary'
+    assert budgets == [16384 - 4096 - len(runtime.SUMMARISE_SP) - 64]
 
 
 def test_fit_at_the_boundary():

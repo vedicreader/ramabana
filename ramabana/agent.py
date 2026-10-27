@@ -3642,7 +3642,7 @@ def compact(self:Agent, extra=''):
         return ''
     sub = self._be_or_none('summary')
     summary_backend = sub if sub is not None else b
-    summary_output = min(1024, max(256, summary_backend.spec.ctx // 4))
+    summary_output = min(4096, max(256, summary_backend.spec.ctx // 4))
     routes = {summary_backend.spec.name, *self.routing.alternatives('summary')}
     def summary_of(p, sp):
         "The summary job's routes in turn, as `oneshot` takes them, each only while its window holds `p` whole."
