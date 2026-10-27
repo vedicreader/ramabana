@@ -55,6 +55,41 @@ def test_the_message_typed_during_a_turn_actually_runs_when_it_ends():
     finally: tty.close()
 
 
+@pytest.mark.parametrize('at_handoff', [False, True])
+def test_finished_queue_does_not_absorb_the_next_message(at_handoff):
+    tty, comp, cli, (agent, backend) = _surface(['first answer', 'a answer', 'b answer'])
+
+    async def scenario():
+        await comp.start()
+        u = cli.Ui(comp, agent, loop=asyncio.get_running_loop())
+        _type(u, 'first')
+        _type(u, 'a', 'alt+enter')
+        if at_handoff:
+            # A ready key event can run before the completed task's done callback.
+            paint = u.paint
+            def at_completion():
+                paint()
+                if agent.run() is not None and agent.run().terminal:
+                    u.paint = paint
+                    asyncio.get_running_loop().call_soon(_type, u, 'b', 'alt+enter')
+            u.paint = at_completion
+        for _ in range(100):
+            await asyncio.sleep(.01)
+            if u.turn is None and u._queued is None: break
+        assert u._queued is None and u.queued_rows() == []
+        if not at_handoff:
+            assert [msg.removeprefix('<user-request>\n').removesuffix('\n</user-request>') for msg in backend.sent] == ['first', 'a']
+            _type(u, 'b', 'alt+enter')
+            for _ in range(100):
+                await asyncio.sleep(.01)
+                if u.turn is None and u._queued is None: break
+        assert [msg.removeprefix('<user-request>\n').removesuffix('\n</user-request>') for msg in backend.sent] == ['first', 'a', 'b']
+        assert u.queued_rows() == []
+        assert [blk.source for blk in comp.blocks.values() if u.kind(blk) == 'user'] == ['first', 'a', 'b']
+    try: asyncio.run(scenario())
+    finally: tty.close()
+
+
 def test_this_surfaces_own_work_cannot_evict_a_waiting_message(ui):
     """A `/python` or `/promote` typed during a turn used to take the slot the message was in, run
     itself when the turn ended, and leave the line gone with nothing saying so."""
@@ -204,6 +239,61 @@ def test_alt_up_pulls_the_queued_text_back_and_the_turn_keeps_running():
         assert u.on_key(Key('alt+up')) is None
         assert u.buf.text == 'first queued\n\nsecond queued\n\ndraft'
         assert u._queued is None and u.queued_rows() == [] and u.turn is not None
+    _scene(body)
+
+
+def test_up_recalls_one_queued_line_newest_first_and_clearing_cancels():
+    async def body(u, agent):
+        u.start_turn(_slow())
+        _type(u, 'a', 'alt+enter')
+        _type(u, 'b', 'alt+enter')
+        u.on_key(Key('up'))
+        assert u.buf.text == 'b' and u._queued_prompt == 'a'
+        assert '↑' in u.footer_hint()
+        assert not u.transcript.active
+        assert len(u.queued_rows()) == 1
+        u.on_key(Key('ctrl+u'))
+        u.on_key(Key('up'))
+        assert u.buf.text == 'a' and u._queued is None
+        u.on_key(Key('ctrl+u'))
+        await asyncio.sleep(.15)
+        assert agent._be().sent == []
+        assert u.queued_rows() == []
+    _scene(body)
+
+
+def test_up_recalls_newest_unread_atomically_and_edit_sends_once():
+    async def body(u, agent, tty):
+        u.start_turn(_slow())
+        run = agent._new_run('q')
+        _type(u, 'older queued', 'alt+enter')
+        _type(u, 'newer unread')
+        _type(u, 'newest queued', 'alt+enter')
+        u.on_key(Key('up'))
+        assert u.buf.text == 'newest queued' and u._queued_prompt == 'older queued'
+        u.on_key(Key('ctrl+u'))
+        u.on_key(Key('up'))
+        assert u.buf.text == 'newer unread' and not u.transcript.active
+        assert run.drain_inbox() == []
+        assert u._queued_prompt == 'older queued'
+        u.on_key(Key('ctrl+u'))
+        _type(u, 'edited')
+        assert run.drain_inbox() == ['edited']
+        assert run.drain_inbox() == []
+        u.on_key(Key('alt+up'))
+        u.on_key(Key('ctrl+u'))
+        await asyncio.sleep(.15)
+    _steer_scene(body)
+
+
+def test_up_with_a_draft_does_not_recall_waiting_text():
+    async def body(u, agent):
+        u.start_turn(_slow())
+        _type(u, 'waiting', 'alt+enter')
+        u.buf.insert('draft')
+        u.on_key(Key('up'))
+        assert u.buf.text == 'draft' and u._queued_prompt == 'waiting'
+        u.take_back()
     _scene(body)
 
 

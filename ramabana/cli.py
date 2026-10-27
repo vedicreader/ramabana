@@ -744,7 +744,6 @@ async def run_turn(ui, prompt):
     finally:
         stopped.set()
         ui.mark_read(final=True)
-        ui.turn = None
         close_done_shells(ui.agent.host)
         ui.write_now(force=True)
         ui.flush_stream()
@@ -847,6 +846,7 @@ class Ui:
         self._flash = None
         self._queued_echo = []
         self._steered = []
+        self._steer_drafts = {}
         self._hold = False
         self.target = None   #: the run id typed lines go to; None is the main agent
         self.pane, self._pane_at, self._alive_at, self._reopen_at = None, None, 0.0, 0.0
@@ -1232,7 +1232,10 @@ class Ui:
         "Spawn a turn, or queue it behind the running one; True if it started."
         prompt, self._prompt = (self._prompt if prompt is None else prompt), None
         typed, self._typed = self._typed, ''
-        if self._turn_over(): self.turn = None
+        if self._turn_over():
+            echo = self._retract()
+            self._next_queued()
+            self._replay(echo)
         if self.turn is not None:
             if self._queued is not None:
                 if prompt is None or self._queued_prompt is None:
@@ -1260,11 +1263,13 @@ class Ui:
         "Send `line` into the running turn, what is attached named by path for the model to read; False if no turn listens."
         sent = line + steer_note(self.attachments)
         if self.turn is None or not self.agent.steer(sent): return False
-        names, self.attachments = ', '.join(a.name for a in self.attachments), []
+        atts, self.attachments = self.attachments, []
+        names = ', '.join(a.name for a in atts)
         self._retract()
         text = '↪ ' + line + (f'  [{names}]' if names else '')
         blk = self._echo(Text(text), 'user', pad=True, source=text)
         self._steered.append((sent, blk))
+        self._steer_drafts[blk.key] = (line, atts)
         self._echoed = []
         self.flash('sent · read after the current call')
         return True
@@ -1284,6 +1289,7 @@ class Ui:
                 source = (blk.source or '') + ' ✓'
                 self._put(blk, Text(source), source=source)
         self._steered = list(reversed(waiting))
+        self._steer_drafts = {blk.key: self._steer_drafts[blk.key] for _, blk in waiting if blk.key in self._steer_drafts}
 
     def steer_queued(self):
         "Hand the queued line to the running turn now; False when nothing waits or no turn listens."
@@ -1335,6 +1341,38 @@ class Ui:
         self.ring()
         self._source = 'background'
         self.start_turn(run_turn(self, p), prompt=p)
+
+    def take_back_one(self):
+        "Return the newest waiting message to an empty composer, atomically with the agent's inbox drain."
+        if self.buf.text: return False
+        queued_key = max((blk.key for blk, *_ in self._queued_echo), default=0) if self._queued is not None else -1
+        run = self.agent.run()
+        text = None
+        if run is not None:
+            with run._lock:
+                for sent, blk in reversed(self._steered):
+                    if blk.key <= queued_key: break
+                    if sent not in run.inbox: continue
+                    i = len(run.inbox) - 1 - run.inbox[::-1].index(sent)
+                    text = run.inbox.pop(i)
+                    self._steered.remove((sent, blk))
+                    break
+        if text is not None:
+            text, atts = self._steer_drafts.pop(blk.key, (text, []))
+            self.attachments.extend(atts)
+            self.comp.drop(blk.key)
+        if text is None:
+            if self._queued is None: return False
+            text = self._queued_text.pop() if self._queued_text else self._queued_typed
+            self._queued.close()
+            if self._queued_text:
+                self._queued = run_turn(self, self._queued_prompt)
+                if self._queued_echo: self._queued_echo.pop()
+            else:
+                self._queued, self._queued_echo, self._queued_typed = None, [], ''
+        self.buf.text, self.buf.cursor = text, len(text)
+        self.flash('waiting message recalled · clear it to cancel')
+        return True
 
     def take_back(self):
         "Return unread steering, the queued lines and the current draft to the composer, in the order said; False when nothing waited."
@@ -1989,7 +2027,7 @@ HINTS = dict(
     typing='enter sends · tab completes /commands and @paths · ctrl+u cuts the line',
     python='enter runs what compiles, else adds a line · tab completes · /agent goes back',
     running='enter steers · alt+enter queues · ctrl+c stops · ctrl+o folds the working',
-    waiting='alt+up takes them back · \u21aa is read after this call · \u23f3 runs after the turn',
+    waiting='↑ edits newest waiting · alt+up takes them back · \u21aa after this call · \u23f3 after the turn',
     approval='y approve · n refuse · n: REASON \u23ce says why · a approve all · A always allow')
 
 @patch
@@ -2106,6 +2144,8 @@ def on_key(self:Ui, k):
         out = _core_on_key(self, k)
         view.rebuild(bottom=view.follow)
         return out
+    if k.name == 'up' and not self.buf.text and self.ask is None and self.menu is None and self.complete is None:
+        if self.take_back_one(): return self.paint()
     if (k.name == 'ctrl+r' or (k.name in ('up', 'down') and not self.buf.text)) and self.ask is None:
         self.enter_transcript()
         if k.name in ('up', 'down'): view.on_key(k)
