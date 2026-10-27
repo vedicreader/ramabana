@@ -40,6 +40,27 @@ def test_the_cli_takes_its_defaults_from_the_file_and_a_flag_still_wins(monkeypa
     assert launch_args(['--tmux', 'on'])['tmux'] == 'on', 'the flag wins'
 
 
+def test_every_palette_is_a_cli_theme_and_an_unknown_name_warns_and_takes_auto(monkeypatch):
+    from ramabana.cli import THEMES
+    assert set(setup.KEYS['cli.theme'].choices) == {'auto', *THEMES}
+    seen = {}
+    def fake(prompt: str = '', approve: str = 'ask', theme: str = 'auto'): pass
+    class Main:
+        __wrapped__ = staticmethod(fake)
+        def __call__(self, **kw): seen.update(kw); return 0
+    import ramabana.cli
+    monkeypatch.setattr(ramabana.cli, 'main', Main())
+    monkeypatch.setattr(sys, 'argv', ['ramabana', 'hi'])
+    _write('[cli]\ntheme = "gruvbox"\napprove = "auto"\n')
+    assert setup.run_cli() == 0 and seen == dict(prompt='hi', approve='auto', theme='gruvbox'), seen
+    _write('[cli]\ntheme = "no-such"\napprove = "auto"\n')
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter('always')
+        assert setup.run_cli() == 0
+    assert seen == dict(prompt='hi', approve='auto', theme='auto'), 'the other cli defaults stay'
+    assert [str(x.message) for x in w if 'cli.theme' in str(x.message)] and len(w) == 1, [str(x.message) for x in w]
+
+
 def test_run_cli_hands_config_to_its_own_command_before_parsing_a_prompt(monkeypatch, capsys):
     monkeypatch.setattr(sys, 'argv', ['ramabana', 'config', 'path'])
     assert setup.run_cli() == 0 and capsys.readouterr().out.strip() == str(config_path())

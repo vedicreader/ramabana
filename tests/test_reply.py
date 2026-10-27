@@ -16,6 +16,7 @@ def rows(renderable, width=44):
 
 
 def test_a_fenced_code_block_draws_under_every_theme(monkeypatch):
+    assert set(cli.THEMES) == set(cli.CODE_THEMES) == set(cli.HL_THEMES), 'each palette names its own code styles'
     for name in cli.THEMES:
         monkeypatch.setattr(cli, 'ACTIVE_THEME', name)
         drawn = rows(cli.Reply('```python\nx = 1\n```\n'), 40)

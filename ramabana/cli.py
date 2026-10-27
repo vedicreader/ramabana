@@ -7,20 +7,22 @@ Docs: https://vedicreader.github.io/ramabana/cli.html.md"""
 # %% auto #0
 __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', 'KEYS_OFF', 'EXT_NAMES', 'EXT_CTRL',
            'KEYS_PATCHED', 'MODES_PATCHED', 'DARK', 'LIGHT', 'GITHUB_DARK', 'THEMES', 'CODE_THEMES', 'KAKU', 'GRUVBOX',
-           'ACTIVE_THEME', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD', 'FOLD_TOOL', 'STRETCH_ENDS', 'FOLD_RUNNING',
-           'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL', 'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS',
-           'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS', 'HELP', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV',
-           'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
-           'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER',
-           'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'HINTS', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES',
-           'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS',
-           'LEARNED_WORDS', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok',
-           'code_theme', 'hl_theme', 'code_bg', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics',
-           'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs',
-           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'close_done_shells', 'run_turn',
-           'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural', 'stretch_summary', 'Row', 'Stretch', 'OpenDiff',
-           'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index',
-           'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log', 'pick_session', 'loop_error', 'amain',
+           'ACTIVE_THEME', 'OSC11', 'OSC11_END', 'OSC11_RGB', 'TERM_BG', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD',
+           'FOLD_TOOL', 'STRETCH_ENDS', 'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL',
+           'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS',
+           'HELP', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS',
+           'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR',
+           'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE',
+           'HINTS', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN',
+           'BG_WAIT', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE',
+           'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme',
+           'hl_theme', 'code_bg', 'light_rgb', 'is_light', 'reply_light', 'fgbg_light', 'auto_theme', 'set_theme',
+           'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture',
+           'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
+           'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural',
+           'stretch_summary', 'Row', 'Stretch', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang',
+           'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to',
+           'stderr_log', 'pick_session', 'loop_error', 'query_background', 'can_ask_background', 'amain',
            'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'guide_cmd', 'pane_cmd',
            'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF',
            'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
@@ -306,11 +308,43 @@ def code_bg(palette=None):
     "The code block background: the palette's `bg1`."
     return (palette or GRUVBOX)['bg1']
 
-def set_theme(name='github-dark'):
-    "Select the active palette; `auto` means the default."
+def light_rgb(r, g, b):
+    "Whether a colour of channel levels 0 to 1 is light: its relative luminance is over a half."
+    return 0.2126*r + 0.7152*g + 0.0722*b > 0.5
+
+def is_light(name):
+    "Whether the named palette draws on a light background."
+    bg = THEMES[name]['bg0']
+    return light_rgb(*(int(bg[i:i+2], 16)/255 for i in (1, 3, 5)))
+
+OSC11 = '\x1b]11;?\x1b\\'   #: asks the terminal for its background colour
+OSC11_END = rb'\]11;[^\x07\x1b]*(\x07|\x1b\\)'   #: a whole reply to `OSC11`, ended by BEL or ST
+OSC11_RGB = re.compile(rb'rgba?:([0-9a-f]{1,4})/([0-9a-f]{1,4})/([0-9a-f]{1,4})', re.I)
+
+def reply_light(reply):
+    "Whether an `OSC11` reply such as `rgb:ffff/ffff/ffff` names a light background; None when it names no colour."
+    if isinstance(reply, str): reply = reply.encode()
+    if not (m := OSC11_RGB.search(reply or b'')): return None
+    return light_rgb(*(int(h, 16)/(16**len(h) - 1) for h in m.groups()))
+
+def fgbg_light(v):
+    "Whether `$COLORFGBG` (`fg;bg`, or `fg;default;bg`) names a light background: 7, or 9 to 15; None when it names none."
+    bg = v.rpartition(';')[2] if v and ';' in v else ''
+    return int(bg) in (7, *range(9, 16)) if bg.isdigit() else None
+
+TERM_BG = b''   #: the terminal's `OSC11` reply at startup, which a later `/theme auto` reads again
+
+def auto_theme(reply=None):
+    "`auto`'s palette: light or github-dark by the terminal's `OSC11` reply (default `TERM_BG`), else `$COLORFGBG`, else github-dark."
+    light = ifnone(reply_light(ifnone(reply, TERM_BG)), fgbg_light(os.environ.get('COLORFGBG')))
+    return 'light' if light else 'github-dark'
+
+def set_theme(name='github-dark',
+              reply=None):   # the terminal's answer to `OSC11`, which `auto` reads first
+    "Select the active palette; `auto` picks a light or dark one by the terminal's background."
     global ACTIVE_THEME, GRUVBOX, MARKDOWN_THEME, GUTTERS
     name = str(name or 'github-dark').lower()
-    if name == 'auto': name = 'github-dark'
+    if name == 'auto': name = auto_theme(reply)
     if name not in THEMES:
         raise ValueError(f"unknown theme {name!r}; choose auto or one of {', '.join(THEMES)}")
     GRUVBOX = THEMES[name]
@@ -372,7 +406,7 @@ shell   !COMMAND runs it in the first open folder, in agent mode · ctrl+c inter
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /planmode on|off withholds every tool that acts and asks for a plan · /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
 setup   /login lists the providers · /login NAME signs in, or keeps a key or an endpoint · /config shows each setting and where it came from · /config set KEY VALUE · /config edit · /config reset · /config reload · /model NAME --save keeps it
-extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme · /mouse clicks blocks on the main screen · /calm [on|off] folds each stretch of tool calls into one row · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
+extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme lists the palettes · /theme NAME [--save] · /mouse clicks blocks on the main screen · /calm [on|off] folds each stretch of tool calls into one row · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
 subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N|auto, timeout S, nest N · /subagents model NAME|default, effort low|medium|high|xhigh|max|default, tools native|text|auto, each with --save to keep it · tab completes them
 talk    /talk RUN aims typed lines at a running sub-agent, an id prefix being enough · /talk or /talk main aims them at the main agent again · tab completes main and the running ids
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
@@ -409,7 +443,7 @@ GUIDE = """START
   ramabana ["question"]   interactive session or one turn
   --python                    start a protected Python prompt
   --attach NAME  --kernels     join or list live dhrishti sessions
-  --theme auto|dark|light      choose the terminal palette
+  --theme auto|NAME            the palette; auto follows the terminal
   --tmux auto|on|off           read and run commands in tmux panes
   --pane auto|on|off           the now pane; auto opens it in tmux
   --doctor                     check tmux and the now pane
@@ -2548,12 +2582,24 @@ def show_resumed(self:Ui, n=RESUME_SHOWN):
         if why: self.note(f'this turn {why}')
         elif t.get('error'): self.note(str(t['error']), 'error')
 
+BG_WAIT = 0.2   #: seconds `auto` waits for the terminal to report its background
+
+async def query_background(comp, timeout=BG_WAIT):
+    "The terminal's reply to `OSC11`, read through `comp`'s parser; b'' when nothing answers within `timeout` seconds."
+    return await comp.query(OSC11, OSC11_END, timeout)
+
+def can_ask_background():
+    "Whether to ask the terminal for its background: stdin and stdout are a terminal, and not under tmux, whose answer need not be the outer terminal's."
+    return sys.stdin.isatty() and sys.stdout.isatty() and not os.environ.get('TMUX')
+
 async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto',
                 resumed=False,   # draw the resumed session's turns before the first prompt
                 first='',   # what the session says before anything else: the welcome, or the model it moved to
                 cold=False,   # no model runs here, so none is warmed
-                hints=True):   # the hint row under the status bar
+                hints=True,   # the hint row under the status bar
+                theme='auto'):   # `auto` asks the terminal for its background before the first frame
     "The tty loop: one terminal, one event loop, one keyboard owner."
+    global TERM_BG
     tty = AppTty()
     os.set_blocking(sys.stdout.fileno(), True)   # a process that shared this terminal may have left it non-blocking
     done, loop = asyncio.Event(), asyncio.get_running_loop()
@@ -2568,6 +2614,9 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         comp._reader_on, comp._reader_off = lambda: reader(True), lambda: reader(False)   # `borrow` lends and takes back this one
         await comp.start()
         comp._reader_off()   # keys wait in the terminal until the session is set up
+        if theme.lower() == 'auto' and can_ask_background():
+            TERM_BG = await query_background(comp)
+            set_theme('auto')
         comp._fatal = lambda sig: done.set()   # TERM or HUP quits through the teardown, which stops the background shells
         ui = Ui(comp, agent, loop=asyncio.get_running_loop())
         ui.bell = bell
@@ -2657,7 +2706,7 @@ def main(
     pii: str = PII_OFF,                  # off | redact | refuse PII from the vault
     pii_ner: bool = False,               # --pii also gates titled names
     spec: bool = False,                  # enable OpenAPI, Azure and Google Discovery tools
-    theme: str = 'auto',                 # auto | dark | light terminal palette
+    theme: str = 'auto',                 # auto follows the terminal's background; /theme lists the palettes
     max_tool_calls: str = 'auto',        # auto | 20..400 tool calls per turn
     max_steps: str = 'auto',             # auto | 8..80 model/tool-loop steps per turn
     max_cost: float = None,              # stop the turn once it has cost this many dollars
@@ -2749,7 +2798,7 @@ def main(
     if setup.CLI_FROM_CONFIG: hint += f" · from config.toml: {', '.join(setup.CLI_FROM_CONFIG)}"
     log = stderr_log(agent)
     try:
-        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, hints=hints, pane=pane, resumed=bool(resume),
+        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, hints=hints, pane=pane, resumed=bool(resume), theme=theme,
                                                first=welcome(agent.routing) if cold else moved, cold=cold))
     except KeyboardInterrupt: pass
     if log.exists() and log.stat().st_size: print(f'library output from the session is in {log}', file=sys.stderr)
@@ -2928,15 +2977,28 @@ async def run_turn(ui, prompt):
 
 
 # %% ../nbs/05_cli.ipynb #79efe696
+THEME_USAGE = 'usage: /theme [NAME] [--save]'
+
 @patch
-def apply_theme(self:Ui, name=''):
+def apply_theme(self:Ui, name='',
+                save=False):   # also keep it as `theme` under [cli] in config.toml
     "Apply a terminal palette and repaint this UI."
     try: active = set_theme(name or ACTIVE_THEME)
     except ValueError as e: return self.note(str(e), 'error')
     self.theme = active
     self.comp.console.push_theme(MARKDOWN_THEME)
     self.paint()
-    return self.note(f'theme: {active}')
+    if not save: return self.note(f'theme: {active}')
+    try: setup.set_table('cli', {'theme': name.lower()})
+    except ValueError as e: return self.note(str(e), 'error')
+    return self.note(f'theme: {active} · saved in {config_path()}')
+
+@patch
+def list_themes(self:Ui):
+    "`/theme` alone: every palette, light or dark, with the active one marked."
+    rows = [f"{'▸' if n == ACTIVE_THEME else ' '} {n:16} {'light' if is_light(n) else 'dark'}" for n in THEMES]
+    return self.note('\n'.join(['/theme NAME applies one for this session · --save keeps it in config.toml',
+                                "  auto             follows the terminal's background", *rows]))
 
 
 @patch
@@ -3055,8 +3117,10 @@ def submit(self:Ui):
         return self.open_root(line[len('/root'):].strip())
     if line == '/theme' or line.startswith('/theme '):
         self.buf.clear()
-        bits = line.split()
-        return self.apply_theme(bits[1] if len(bits) == 2 else '') if len(bits) <= 2 else self.note('usage: /theme [auto|dark|light]', 'error')
+        bits = line.split()[1:]
+        names = [b for b in bits if b != '--save']
+        if not bits: return self.list_themes()
+        return self.apply_theme(names[0], save='--save' in bits) if len(names) == 1 else self.note(THEME_USAGE, 'error')
     return _submit_theme(self)
 
 # %% ../nbs/05_cli.ipynb #1ddde063

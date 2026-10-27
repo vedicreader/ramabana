@@ -15,14 +15,15 @@ from fastcore.xtras import Path
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
            'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'EFFORTS', 'CHANNELS', 'PII_OFF', 'PII_MODES', 'VALUED',
-           'EARLY', 'FLAGS', 'LAUNCHED', 'CLI_FROM_CONFIG', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'PANE_LINGER', 'Key',
-           'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE',
-           'HISTORY_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes',
-           'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume',
-           'run_cli', 'config_path', 'keys_path', 'load_keys', 'save_key', 'load_config', 'setting', 'model_setting',
-           'env_names', 'set_setting', 'set_table', 'config_defaults', 'config_template', 'config_show', 'config_set',
-           'config_cli', 'config_reset', 'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state',
-           'index_state', 'index_changes', 'index_gate', 'save_index', 'log_index', 'last_index']
+           'EARLY', 'FLAGS', 'LAUNCHED', 'CLI_FROM_CONFIG', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'PANE_LINGER',
+           'THEME_NAMES', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE',
+           'SETUP_USAGE', 'HISTORY_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP',
+           'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args',
+           'bare_resume', 'run_cli', 'config_path', 'keys_path', 'load_keys', 'save_key', 'load_config', 'setting',
+           'model_setting', 'env_names', 'set_setting', 'set_table', 'config_defaults', 'config_template',
+           'config_show', 'config_set', 'config_cli', 'config_reset', 'history_cli', 'setup_cli', 'kosha_env_db',
+           'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate', 'save_index', 'log_index',
+           'last_index']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -300,6 +301,9 @@ def save_key(name, value, path=None):
     os.environ[name] = value
     return p
 
+#: the palettes `cli.THEMES` defines, named here so reading config.toml needs no terminal extra
+THEME_NAMES = ('github-dark', 'dark', 'light', 'gruvbox', 'gruvbox-light', 'nord', 'tokyonight', 'catppuccin', 'latte',
+               'everforest', 'dracula', 'kanagawa', 'solarized', 'solarized-light')
 Key = namedtuple('Key', 'type env flag doc choices plain', defaults=('', '', '', (), False))   # `plain`: the env var is read as named, with no prefix
 _JOB = 'the model the {} job runs on; empty takes the routing default'
 #: every key config.toml knows: its type, the env var (after the prefix) and the flag that beat it, what it sets, and its choices
@@ -326,7 +330,7 @@ KEYS = {
     'azure.endpoint': Key(str, 'AZURE_OPENAI_ENDPOINT', '', 'the Azure OpenAI resource, such as https://NAME.openai.azure.com; a model named azure/DEPLOYMENT goes to its v1 API', plain=True),
     'azure.api_key_env': Key(str, '', '', 'the env var holding the Azure OpenAI key; the key never goes in this file'),
     'cli.approve': Key(str, '', '--approve', 'which actions the terminal session asks about', ('ask', 'edits', 'auto', 'off', 'none')),
-    'cli.theme': Key(str, '', '--theme', 'the terminal palette', ('auto', 'dark', 'light')),
+    'cli.theme': Key(str, '', '--theme', "the terminal palette; auto follows the terminal's background", ('auto', *THEME_NAMES)),
     'cli.read_outside': Key(bool, '', '--no-read-outside', 'allow reads outside the opened folders; writes stay inside them'),
     'cli.vault': Key(bool, '', '--no-vault', 'use the vishalakshi vault for reads; ignored in Python, attach and agent-proxy sessions'),
     'cli.tmux': Key(str, '', '--tmux', 'whether the terminal session runs in tmux panes', ('auto', 'on', 'off')),
