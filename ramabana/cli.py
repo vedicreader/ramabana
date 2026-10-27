@@ -24,9 +24,9 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to',
            'stderr_log', 'pick_session', 'loop_error', 'query_background', 'can_ask_background', 'amain',
            'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'guide_cmd', 'pane_cmd',
-           'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths', 'ATTACH_REF',
-           'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts',
-           'media_note']
+           'UiControl', 'start_control', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media',
+           'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment',
+           'sendable', 'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, itertools, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -57,6 +57,7 @@ from .core import PROVIDERS, auth_status, checklist, config_models, getting_star
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
 from .pane import quit_mark, talk_mark, write_snapshot
+from .control import EVENT_FILE, Control, ago, control_call, find_peer, peer_label, peer_lines, peer_tools, peers_of, pick_row
 from .tools import WRITE_TOOLS, path_write, write_targets
 from . import hl, setup
 from .hl import HL_THEMES, is_diff
@@ -390,7 +391,7 @@ MAX_GROUP_ROWS = 8
 DIFF_OPEN = 20    #: diff lines a finished call shows until the reader opens it
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'calm', 'copy', 'detach', 'exit', 'guide', 'help',
-                    'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'promote', 'python', 'quit', 'root', 'talk', 'theme', 'vars')
+                    'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'peers', 'promote', 'python', 'quit', 'root', 'talk', 'tell', 'theme', 'vars')
 
 HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · alt+up take the queued text back into the composer · enter on an empty line steers the queued one · shift+tab cycle approvals, then plan mode · tab complete /commands and @paths · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+o fold all turns · alt+1..9 drill in · ctrl+c stop, keeping what is queued and typed in the composer · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
@@ -409,6 +410,7 @@ setup   /login lists the providers · /login NAME signs in, or keeps a key or an
 extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme lists the palettes · /theme NAME [--save] · /mouse clicks blocks on the main screen · /calm [on|off] folds each stretch of tool calls into one row · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
 subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N|auto, timeout S, nest N · /subagents model NAME|default, effort low|medium|high|xhigh|max|default, tools native|text|auto, each with --save to keep it · tab completes them
 talk    /talk RUN aims typed lines at a running sub-agent, an id prefix being enough · /talk or /talk main aims them at the main agent again · tab completes main and the running ids
+peers   /peers lists the other live sessions, numbered, most recently active first · /tell N TEXT steers session N · /tell N --prompt TEXT starts or queues a turn there · /tell N aims typed lines at it · /tell or /tell main aims them back here
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
 
 
@@ -849,6 +851,7 @@ class Ui:
         self._steer_drafts = {}
         self._hold = False
         self.target = None   #: the run id typed lines go to; None is the main agent
+        self.peer, self.peer_list = None, []   #: the live session `/tell N` aimed typed lines at, and the last `/peers` list
         self.pane, self._pane_at, self._alive_at, self._reopen_at = None, None, 0.0, 0.0
         self._opened_at, self._quick = None, 0
         self._now_at, self._now_busy, self._now_dirty = 0.0, False, False
@@ -919,10 +922,14 @@ class Ui:
         if self.loop is None: return work()
         held = concurrent.futures.Future()
         def run():
+            if not held.set_running_or_notify_cancel(): return   # the caller gave up; work it was told failed must not run
             try: held.set_result(work())
             except Exception as e: held.set_exception(e)
         self.loop.call_soon_threadsafe(run)
-        return held.result(timeout)
+        try: return held.result(timeout)
+        except concurrent.futures.TimeoutError:
+            if held.cancel(): raise TimeoutError(f'the session did not get to it within {timeout} s') from None
+            return held.result()
 
     def _usage_line(self, text):
         "The `TokenLogger` sink, posted from the turn thread."
@@ -976,7 +983,7 @@ class Ui:
         out.append(f" {VERSION}", style=GRUVBOX['gray'])
         out.append(f"  {s['model'] if s else self.agent.model.name}  ", style=GRUVBOX['gray'])
         out.append(f'{mark} {state.lower()}', style=color)
-        if self.target: out.append(f'  → {self.target}', style=GRUVBOX['aqua'])
+        if (to := self.target or (self.peer and peer_label(self.peer))): out.append(f'  → {to}', style=GRUVBOX['aqua'])
         if s is None: return out
         bits = [f"{s['ntools']} tools", f"{s['nskills']} skills", f"{round(s['pct_full'] * 100)}% ctx"]
         if s.get('plan_line'): bits.append(s['plan_line'])
@@ -2570,11 +2577,6 @@ def stderr_log(agent):
     "Where a session's stderr goes: its own run folder, so the next start cannot overwrite a crash's trace."
     return (agent.runs_dir or Path(agent.cfg or tempfile.gettempdir()))/'stderr.log'
 
-def _ago(t):
-    "How long ago `t` was: `5m`, `3h` or `2d`."
-    s = max(0, time.time() - (t or 0))
-    return f'{int(s // 60)}m' if s < 3600 else f'{int(s // 3600)}h' if s < 86400 else f'{int(s // 86400)}d'
-
 def pick_session(agent,
                  all_folders=False,   # list every folder's sessions, not only those that ran in these folders
                  ask=input, out=print, n=20):
@@ -2586,15 +2588,14 @@ def pick_session(agent,
         return ''
     for i, s in enumerate(rows, 1):
         held = '  (in use)' if agent.session_owner(s['id']) else ''
-        out(f"{i:>2}  {_ago(s['at']):>4} ago  {s['turns']:>3} turns  {s['title'] or s['id']}{held}")
+        out(f"{i:>2}  {ago(s['at']):>4} ago  {s['turns']:>3} turns  {s['title'] or s['id']}{held}")
     while True:
         try: a = ask(f'resume which? 1-{len(rows)}, enter for 1, n for a new session: ').strip().lower()
         except (EOFError, KeyboardInterrupt): return ''
         if a in ('n', 'new'): return ''
-        if not (a == '' or (a.isdigit() and 1 <= int(a) <= len(rows))):
+        if (s := pick_row(rows, a or '1')) is None:
             out(f'not a choice: {a!r}')
             continue
-        s = rows[int(a or 1) - 1]
         if (o := agent.session_owner(s['id'])) is None: return s['id']
         out(f"that session is in use by process {o['pid']}; pick another")
 
@@ -2644,7 +2645,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
     tty = AppTty()
     os.set_blocking(sys.stdout.fileno(), True)   # a process that shared this terminal may have left it non-blocking
     done, loop = asyncio.Event(), asyncio.get_running_loop()
-    ui = None
+    ui = ctl = None
     try:
         comp = Compositor(tty)
         def reader(on):
@@ -2664,6 +2665,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         ui.hint, ui.hints = hint, hints
         comp.on_task_error = lambda e, t: ui.say(Text(f'{t.get_name()} failed: {e!r}'), 'error')
         asyncio.get_running_loop().set_exception_handler(loop_error(ui))   # a key handler or a posted notice that raises
+        ctl = start_control(ui)
         comp.spawn(ui.animate(), name='spinner')
         def on_key(k):
             out = ui.on_key(k)
@@ -2698,6 +2700,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
                 if tty.dropped: tty.dropped = False; comp._invalidate(); ui.paint()   # repaint the rows a dropped frame never drew
         finally: comp.stop()
     finally:
+        if ctl is not None: ctl.close()
         if ui is not None: ui.close_pane(); ui.close_guide()
         with contextlib.suppress(OSError): os.set_blocking(sys.stdout.fileno(), True)   # the shell gets the terminal back blocking
         tty.write('\x1b[?2004l' + MOUSE_OFF + (KEYS_OFF if ext_keys_ok(tty) else '') + '\r\n')   # `stop` never ran if setup raised
@@ -3346,3 +3349,143 @@ def _revive(self:Ui):
 def start_pane(self:Ui, mode='auto'):
     "Open the first pane: `on` always tries, `auto` only in tmux with a runs dir."
     if mode == 'on' or (mode == 'auto' and _now_file(self.agent) and _tmux_pane(self.agent.host)): self.open_pane()
+
+# %% ../nbs/05_cli.ipynb #9aba5adf
+class UiControl(Control):
+    "A `Control` for a terminal session: a peer's prompt and stop go through the `Ui`, as a typed line and ctrl+c do, so no turn runs beside the one it shows."
+    def __init__(self, ui,
+                 path=None):   # the socket; None puts it in the session's run folder
+        super().__init__(ui.agent, path)
+        self.ui = ui
+    def do_prompt(self, text):
+        "Hand `text` to the event loop, which starts it or queues it as a typed line."
+        return self.ui._as_owner(lambda: self.ui.peer_prompt(text))
+    def do_cancel(self):
+        "Stop the turn the way ctrl+c does, on the event loop."
+        return self.ui._as_owner(self.ui.peer_cancel)
+    def busy(self):
+        "Whether the `Ui`'s turn runs, and how many lines wait in its queue."
+        u = self.ui
+        return u.turn is not None and not u._turn_over(), len(u._queued_text)
+    def active_at(self):
+        "Now while a turn runs, else the later of the last key and the last turn's start."
+        if self.busy()[0]: return time.time()
+        return time.time() - (time.monotonic() - max(self.ui._key_at, self.ui._turn_at))
+
+def start_control(ui):
+    "Let peers reach `ui`'s session: write its events to `EVENT_FILE` in its run folder when nothing else does, give its agent `peer_tools`, and return its started `UiControl`. None without a run folder, or when the socket cannot start, which a note says."
+    a = ui.agent
+    if a.runs_dir is None: return None
+    if not a.__dict__.get('_event_files'): a.events_to(a.runs_dir/EVENT_FILE)
+    for t in peer_tools(a): a.add_tool(t)
+    try: return UiControl(ui).start()
+    except (OSError, RuntimeError, ValueError) as e: ui.note(f'peers cannot reach this session: {agent_err(e)}', 'error')
+
+@patch
+def peer_prompt(self:Ui, text):
+    "Start `text` from a peer as a turn, or hold it behind the running one as a queued line is held, shown as from a peer. Returns what `Control.do_prompt` returns."
+    if self.closed: raise RuntimeError('the session is closing')
+    if self.turn is None: self._source = 'peer'
+    self._echo(Text(f'⇠ from a peer: {text}'), 'user', pad=True, source=text)
+    was = len(self._queued_text)
+    if self.start_turn(self._turn(text)): out = {'started': True}
+    elif len(self._queued_text) > was: out = {'queued': len(self._queued_text)}
+    else: raise RuntimeError('something else is waiting in this session; send it again once this turn ends')
+    self.paint()
+    return out
+
+@patch
+def peer_cancel(self:Ui):
+    "A peer's `cancel`: `stop`, as ctrl+c does, so the waiting lines go back to the composer. Returns the run it stopped and how many lines went back."
+    run, dropped = self.agent.run(), len(self._queued_text)
+    if run is None or run.terminal or self.shell_proc is not None: return {'id': None, 'state': 'idle', 'dropped': 0}   # a `!` command is the user's, not the agent's
+    self._stop_at, self._stop_count = 0., 0   # a peer's cancel never escalates to terminate or quit, and leaves the user's own presses uncounted
+    self.stop()
+    self._stop_count, self._stop_run = 0, ''
+    return {'id': run.id, 'state': 'cancelling', 'dropped': dropped}
+
+@patch
+def peers_cmd(self:Ui):
+    "`/peers`: list the other live sessions off the loop, numbered as `/tell N` picks them."
+    async def go():
+        try: self.peer_list = await off_loop(lambda: peers_of(self.agent))
+        except Exception as e: return self.note(f'/peers failed: {agent_err(e)}', 'error')
+        self.note(f'{peer_lines(self.peer_list)}\n/tell N TEXT steers one · /tell N --prompt TEXT starts a turn there · /tell N talks to it'
+                  if self.peer_list else 'no other session is running')
+        self.paint()
+    self.comp.spawn(go(), name='peers')
+
+@patch
+def talk_peer(self:Ui, row):
+    "Aim typed lines at the session `row`, as `/talk` aims them at a sub-agent."
+    self.peer, self.target = row, None
+    self.write_now(force=True)
+    return self.note(f'talking to {peer_label(row)} · /tell main goes back')
+
+@patch
+async def send_peer(self:Ui, row, text, how='steer'):
+    "Send `text` to the session `row` off the loop, as a steer or a prompt, and say whether it arrived; True when it did."
+    name, ok = peer_label(row), False
+    try: out = await off_loop(lambda: control_call(row['path'], how, text=text))
+    except Exception as e: self.note(f'{name} did not take it: {agent_err(e)}', 'error')
+    else:
+        if how == 'steer' and not out.get('told'): self.note(f'{name} is idle, so nothing read it · /tell N --prompt TEXT starts a turn there', 'error')
+        else:
+            self.note(f'→ {name}: {text}')
+            ok = True
+    self.paint()
+    return ok
+
+@patch
+async def send_typed(self:Ui, row, line):
+    "Steer the `/tell N` target `row` with a typed line, and give the line back to an empty composer when nothing read it."
+    if not await self.send_peer(row, line) and not self.buf.text:
+        self.buf.text, self.buf.cursor = line, len(line)
+        self.paint()
+
+@patch
+def tell_peer(self:Ui, arg):
+    "`/tell N TEXT` steers session N of the last `/peers` list, or with `--prompt` before TEXT prompts it; `/tell N` aims typed lines at it; `/tell` or `/tell main` aims them back here."
+    n, _, text = arg.strip().partition(' ')
+    text, how = text.strip(), 'steer'
+    if n in ('', 'main'):
+        self.peer = self.target = None
+        self.write_now(force=True)
+        return self.note('talking to main')
+    if text == '--prompt' or text.startswith('--prompt '): text, how = text[len('--prompt'):].strip(), 'prompt'
+    if (row := find_peer(self.peer_list, n)) is not None and not text: return self.talk_peer(row)
+    async def go():
+        if (found := row) is None:
+            self.peer_list = await off_loop(lambda: peers_of(self.agent))
+            if (found := find_peer(self.peer_list, n)) is None: return self.note(f'no live session {n} · /peers lists them', 'error')
+        if text: await self.send_peer(found, text, how)
+        else: self.talk_peer(found)
+        self.paint()
+    self.comp.spawn(go(), name='tell')
+
+_talk_peers = Ui.talk
+@patch
+def talk(self:Ui, arg=''):
+    "`/talk`, which also stops aiming typed lines at a `/tell N` session."
+    self.peer = None
+    return _talk_peers(self, arg)
+
+_submit_peers = Ui.submit
+@patch
+def submit(self:Ui):
+    "Handle `/peers` and `/tell` to a session, and send plain lines to the session `/tell N` aimed them at."
+    line = self.buf.text.strip()
+    if line == '/peers':
+        self.buf.clear()
+        return self.peers_cmd()
+    if line == '/tell' or line.startswith('/tell '):
+        n = (line[len('/tell'):].split() or [''])[0]
+        if n in ('', 'main') or n.isdigit() or find_peer(self.peer_list, n) is not None:
+            self.buf.clear()
+            return self.tell_peer(line[len('/tell'):])
+    if self.peer and line and not line.startswith('/') and self.ask is None and self.mode == 'agent':
+        self.remember(line)
+        self.buf.clear()
+        self.comp.spawn(self.send_typed(self.peer, line), name='tell')
+        return None
+    return _submit_peers(self)
