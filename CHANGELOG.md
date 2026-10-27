@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.80
+- `--max-cost` stops a turn once it has cost that many dollars. It sets the agent's existing per-step cost stop, so the turn ends after the model step that passes the limit and is recorded with the state `budget`. Dhrona passes each replay the dollars left in its round and its night.
+- The notebooks' `fake_agent` reads no skills or beat notes from the real home folder, so the notebook tests pass under any `HOME`.
+
 ## 0.2.79
 - A tool call with a missing or unknown argument returns an error that names the tool, the argument and the expected parameters, so the model can call it again. Before, the tool raised `TypeError`; Dhrona counted 160 of these in 14 days.
 - Calm mode for the terminal: each stretch of tool calls between two text blocks folds into one collapsed line, such as "3 tool calls · 1 file changed". Errors, approvals and questions stay visible. Turn it on with `calm = true` in `config.toml`, or for a session with `/calm`, `/calm on` and `/calm off`.
