@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.81
+- `read_outside` and `vault` in the `[cli]` table of `config.toml` turn on reads outside the open folders and the vishalakshi vault for every terminal session. `--no-read-outside` and `--no-vault` turn them off for one session. A session started with its own `--cfg` folder ignores both keys. The code defaults stay off, so Dhrona's replays and scratch runs do not change.
+- A one-shot reply may use up to 8,192 tokens: a quarter of the model's window, and at least 1,024. A compaction summary may use up to 4,096 tokens. Before, both stopped at 1,024 tokens, which cut long answers and summaries short.
+- The routing test in the core notebook reads an empty temporary `config.toml`, so a machine's own job settings cannot fail it.
+
 ## 0.2.80
 - `--max-cost` stops a turn once it has cost that many dollars. It sets the agent's existing per-step cost stop, so the turn ends after the model step that passes the limit and is recorded with the state `budget`. Dhrona passes each replay the dollars left in its round and its night.
 - The notebooks' `fake_agent` reads no skills or beat notes from the real home folder, so the notebook tests pass under any `HOME`.
