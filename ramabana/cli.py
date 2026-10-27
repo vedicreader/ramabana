@@ -2635,11 +2635,15 @@ def main(
     doctor: bool = False,                # check tmux and the now pane, offer to install tmux, and exit
     warm: bool = False,                  # seed a fresh session with dhrona's example rounds
     no_warm: bool = False,               # start without them, which is the default
+    no_read_outside: bool = False,       # --no-read-outside turns off reads outside the folders even when config.toml turns them on
+    no_vault: bool = False,              # --no-vault turns off the vault even when config.toml turns it on
     optin: str = '',                     # opt-in tool groups: exhash,research,author
     profile: str = 'auto',               # auto | small | full: small suits ≤32k local models
     learned: bool = True,                # --no-learned starts without <cfg>/learned, the lessons Dhrona keeps
 ):
     "Run Ramabana as a terminal agent or Python prompt. Name every folder it may work on: --root .,~/notes"
+    read_outside = read_outside and not no_read_outside
+    vault = vault and not no_vault
     if doctor: return Setup(cfg).doctor()
     if (kernels or python or attach or agent_proxy) and (msg := need('python')):
         print(msg, file=sys.stderr)
@@ -2701,6 +2705,7 @@ def main(
         start_agent(agent)
         return sys.exit(ask_once(agent, prompt, as_json=json))
     hint = f"{', '.join(host.roots)} · /python · /help"
+    if setup.CLI_FROM_CONFIG: hint += f" · from config.toml: {', '.join(setup.CLI_FROM_CONFIG)}"
     log = stderr_log(agent)
     try:
         with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, pane=pane, resumed=bool(resume),

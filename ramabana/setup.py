@@ -15,14 +15,14 @@ from fastcore.xtras import Path
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
            'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'EFFORTS', 'CHANNELS', 'PII_OFF', 'PII_MODES', 'VALUED',
-           'EARLY', 'FLAGS', 'LAUNCHED', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'PANE_LINGER', 'Key', 'KEYS',
-           'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'HISTORY_USAGE',
-           'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes', 'installed', 'need',
-           'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path',
-           'keys_path', 'load_keys', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting',
-           'set_table', 'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset',
-           'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
-           'index_gate', 'save_index', 'log_index', 'last_index']
+           'EARLY', 'FLAGS', 'LAUNCHED', 'CLI_FROM_CONFIG', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'PANE_LINGER', 'Key',
+           'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE',
+           'HISTORY_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'env_prefixes',
+           'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume',
+           'run_cli', 'config_path', 'keys_path', 'load_keys', 'save_key', 'load_config', 'setting', 'model_setting',
+           'env_names', 'set_setting', 'set_table', 'config_defaults', 'config_template', 'config_show', 'config_set',
+           'config_cli', 'config_reset', 'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state',
+           'index_state', 'index_changes', 'index_gate', 'save_index', 'log_index', 'last_index']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -175,6 +175,7 @@ EARLY = ('-h', '--help', '--json', '--doctor', '--kernels', '--python', '--attac
 #: the flags `refusal` reads
 FLAGS = ('--vault', '--warm', '--no-warm')
 LAUNCHED = False   # set when `run_cli` has run `launch`; `main` then skips it
+CLI_FROM_CONFIG = ()   #: enabled read and vault defaults to name in the startup hint
 
 def launch_args(argv):
     "`Setup`'s `cfg` and `launch`'s `tmux` for an interactive command line `main` accepts, read without its parser; None leaves it to `main`."
@@ -202,7 +203,8 @@ def bare_resume(argv):
 
 def run_cli():
     "The `ramabana` script: rerun inside tmux before anything heavy loads, then parse the command line for `cli.main`."
-    global LAUNCHED
+    global LAUNCHED, CLI_FROM_CONFIG
+    CLI_FROM_CONFIG = ()
     load_keys()
     if sys.argv[1:2] == ['config']: return config_cli(sys.argv[2:])
     if sys.argv[1:2] == ['setup']: return setup_cli(sys.argv[2:])
@@ -215,9 +217,17 @@ def run_cli():
     from fastcore.script import anno_parser
     from ramabana.cli import main
     p = anno_parser(main.__wrapped__, pos=['prompt'])
-    p.set_defaults(**{k[4:]: v for k, v in load_config()[0].items() if k.startswith('cli.')})   # a flag given still wins
+    explicit = vars(p.parse_args())
+    defaults = {k[4:]: v for k, v in load_config()[0].items() if k.startswith('cli.')}
+    if (cfg := explicit.get('cfg')) is not None and Path(cfg).expanduser().resolve() != Path('~/.config/ramabana').expanduser().resolve():
+        for k in ('read_outside', 'vault'): defaults.pop(k, None)
+    if any(explicit.get(k) for k in ('python', 'attach', 'agent_proxy')): defaults.pop('vault', None)
+    p.set_defaults(**defaults)   # a flag given still wins
     args = vars(p.parse_args())
     for k in ('pdb', 'xtra'): args.pop(k, None)
+    for k in ('read_outside', 'vault'):
+        if k in args: args[k] = args[k] and not args[f'no_{k}']
+    CLI_FROM_CONFIG = tuple(k for k in ('read_outside', 'vault') if k in defaults and args.get(k) and not explicit.get(k))
     return main(**args)
 
 # %% ../nbs/19_setup.ipynb #bc8fcf27
@@ -317,6 +327,8 @@ KEYS = {
     'azure.api_key_env': Key(str, '', '', 'the env var holding the Azure OpenAI key; the key never goes in this file'),
     'cli.approve': Key(str, '', '--approve', 'which actions the terminal session asks about', ('ask', 'edits', 'auto', 'off', 'none')),
     'cli.theme': Key(str, '', '--theme', 'the terminal palette', ('auto', 'dark', 'light')),
+    'cli.read_outside': Key(bool, '', '--no-read-outside', 'allow reads outside the opened folders; writes stay inside them'),
+    'cli.vault': Key(bool, '', '--no-vault', 'use the vishalakshi vault for reads; ignored in Python, attach and agent-proxy sessions'),
     'cli.tmux': Key(str, '', '--tmux', 'whether the terminal session runs in tmux panes', ('auto', 'on', 'off')),
     'cli.pane': Key(str, '', '--pane', 'whether the terminal session opens the now pane', ('auto', 'on', 'off')),
     'cli.profile': Key(str, '', '--profile', 'the tool profile; small suits local models of 32k or less', PROFILES),
@@ -518,6 +530,7 @@ CONFIG_HEAD = '''# Ramabana's settings for this machine. Every key is commented 
 # Delete the leading '#' to set one. A command-line flag beats an env var, an env var beats this file,
 # and this file beats the built-in default. Inside an app that embeds Ramabana, the env vars may carry
 # that app's prefix too. `ramabana config show` prints what is in effect and where each value came from.
+# A custom --cfg folder ignores cli.read_outside and cli.vault. Their flags still work.
 '''
 MODEL_EXAMPLE = '''
 # Corrections to the numbers fastllm's table gives one model, keyed by the name you choose it by
