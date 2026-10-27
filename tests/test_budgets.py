@@ -1,6 +1,10 @@
 "A host caps what a turn, or a whole session, may spend; the turn past it is stopped and recorded as `budget`."
 from types import SimpleNamespace
 
+import pytest
+from fastcore.script import anno_parser
+import ramabana.cli as cli
+
 from urai.core import UsageStats
 
 from ramabana.runtime import Usage, current_run
@@ -50,3 +54,23 @@ def test_without_budgets_nothing_is_watched_and_the_turn_runs_out(tmp_path):
     a, be = _agent(tmp_path, steps=4)
     assert a.ask('go', result=True).state == 'complete' and be.ran == 4
     assert 'budget' not in getattr(a, '_chat_callbacks', {})
+
+
+@pytest.mark.parametrize('flags, limit, steps', [([], None, 4), (['--max-cost', '1.5'], 1.5, 2)])
+def test_cli_cost_limit_reaches_the_agent_and_stops_a_spending_turn(tmp_path, monkeypatch, flags, limit, steps):
+    made = []
+    def build(roots, **kw):
+        a, be = _agent(tmp_path, steps=4, max_cost=kw.get('max_cost'))
+        a.settle = lambda: ''
+        made.append((a, be))
+        return a, a.host
+    monkeypatch.setattr(cli, 'mk_agent', build)
+    monkeypatch.setattr(cli.setup, 'LAUNCHED', True)
+    monkeypatch.setattr(cli, 'needs_setup', lambda routing: '')
+    args = vars(anno_parser(cli.main.__wrapped__, pos=['prompt']).parse_args(['go', '--approve', 'auto', *flags]))
+    for k in ('pdb', 'xtra'): args.pop(k, None)
+    with pytest.raises(SystemExit): cli.main(**args)
+    a, be = made[0]
+    assert a.max_cost == limit and be.ran == steps
+    assert a.history[-1]['state'] == ('complete' if limit is None else 'budget')
+    if limit is not None: assert 'stopped by its budget' in a.history[-1]['error']

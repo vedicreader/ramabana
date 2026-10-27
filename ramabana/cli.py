@@ -2620,6 +2620,7 @@ def main(
     theme: str = 'auto',                 # auto | dark | light terminal palette
     max_tool_calls: str = 'auto',        # auto | 20..400 tool calls per turn
     max_steps: str = 'auto',             # auto | 8..80 model/tool-loop steps per turn
+    max_cost: float = None,              # stop the turn once it has cost this many dollars
     cfg: str = '~/.config/ramabana',     # config dir: skills, extensions, resumable history
     resume: str = '',                    # saved session id/prefix, or 'latest'; bare --resume lists this folder's sessions to pick from
     all_folders: bool = False,           # with a bare --resume, list sessions from every folder
@@ -2668,7 +2669,7 @@ def main(
     try: agent, host = mk_agent(roots, model=model, approve=approve, web=web, vault=vault, spec=spec,
                                read_outside=read_outside, subagent_writes=subagent_writes,
                                pii=pii, pii_ner=pii_ner, host_kw=host_kw(tmux),
-                               max_tool_calls=max_tool_calls, max_steps=max_steps,
+                               max_tool_calls=max_tool_calls, max_steps=max_steps, max_cost=max_cost,
                                warm=True if warm else False if no_warm else None, optin=tuple(s.strip() for s in optin.split(',') if s.strip()), profile=profile,
                                cfg=Path(cfg).expanduser() if cfg else None, learned=learned)
     except KeyError as e:
