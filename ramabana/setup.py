@@ -18,9 +18,9 @@ __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN'
            'EARLY', 'FLAGS', 'LAUNCHED', 'CLI_FROM_CONFIG', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'PANE_LINGER',
            'THEME_NAMES', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE',
            'SETUP_USAGE', 'HISTORY_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP',
-           'env_prefixes', 'installed', 'need', 'tmux_version', 'tmux_conf', 'Setup', 'refusal', 'launch_args',
-           'bare_resume', 'run_cli', 'config_path', 'keys_path', 'load_keys', 'save_key', 'load_config', 'setting',
-           'model_setting', 'env_names', 'set_setting', 'set_table', 'config_defaults', 'config_template',
+           'env_prefixes', 'installed', 'need', 'follow_cmd', 'tmux_version', 'tmux_conf', 'Setup', 'refusal',
+           'launch_args', 'bare_resume', 'run_cli', 'config_path', 'keys_path', 'load_keys', 'save_key', 'load_config',
+           'setting', 'model_setting', 'env_names', 'set_setting', 'set_table', 'config_defaults', 'config_template',
            'config_show', 'config_set', 'config_cli', 'config_reset', 'history_cli', 'setup_cli', 'kosha_env_db',
            'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate', 'save_index', 'log_index',
            'last_index']
@@ -52,6 +52,13 @@ def need(extra, *mods):
 #: console scripts besides `run_cli`: the module whose `main` runs, its extra, and the modules it needs
 SCRIPTS = dict(run_mcp=('mcp', 'serve', ('mcp',)), run_acp=('racp', 'serve', ('acp',)),
                run_pane=('pane', 'cli', ('teleprint', 'rich')))
+
+def follow_cmd(log,      # a run's transcript
+               snap='',  # the `now` snapshot whose palette colours it
+              ):
+    "The shell line that follows `log` in a pane, coloured by `pane.follow`; plain `tail -f` without the terminal extra."
+    if need('cli', *SCRIPTS['run_pane'][2]): return f'tail -n 200 -f {shlex.quote(str(log))}'
+    return shlex.join([sys.executable, '-m', 'ramabana.pane', str(snap), '--log', str(log)])
 
 def _refuse(msg):
     "A console script that prints `msg` and exits 2."

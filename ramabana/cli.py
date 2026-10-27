@@ -1064,7 +1064,7 @@ class Ui:
             return
         self._now_at, self._now_dirty = t, False
         try: write_snapshot(self.agent, p, target=self.target or 'main', chat_pane=getattr(_tmux_pane(self.agent.host), 'id', ''),
-                                  close_done=bool(setting('pane_close_done', True)))
+                                  close_done=bool(setting('pane_close_done', True)), theme=ACTIVE_THEME, palette=GRUVBOX)
         except Exception: return   # a snapshot that fails must never stop the animate loop
         self._now_busy = self.agent.busy
 
@@ -2989,6 +2989,7 @@ def apply_theme(self:Ui, name='',
     self.theme = active
     self.comp.console.push_theme(MARKDOWN_THEME)
     self.paint()
+    self.write_now(force=True)
     if not save: return self.note(f'theme: {active}')
     try: setup.set_table('cli', {'theme': name.lower()})
     except ValueError as e: return self.note(str(e), 'error')

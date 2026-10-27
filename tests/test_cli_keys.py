@@ -217,6 +217,28 @@ def test_talk_aims_typed_lines_at_a_sub_agent_until_it_finishes(tmp_path, monkey
     finally: tty.close()
 
 
+def test_the_now_snapshot_carries_the_palette_and_theme_writes_one_at_once(tmp_path, monkeypatch):
+    "Each snapshot carries the active palette, so the pane paints with it; `/theme` writes the next snapshot at once, so an idle pane follows too."
+    from teleprint.testing import EmuTty
+    from ramabana import cli
+    from ramabana.pane import read_snapshot
+    tty, was = EmuTty(80, 24), cli.ACTIVE_THEME
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    agent, _ = fake_agent()
+    now = tmp_path/'now.json'
+    monkeypatch.setattr(cli, '_now_file', lambda a: now)
+    async def go():
+        await comp.start()
+        u = cli.Ui(comp, agent); u.loop = asyncio.get_running_loop()
+        u.write_now(force=True)
+        assert read_snapshot(now)['palette'] == cli.GRUVBOX
+        u.buf.insert('/theme solarized-light'); u.submit()
+        snap = read_snapshot(now)
+        assert (snap['theme'], snap['palette']) == ('solarized-light', cli.THEMES['solarized-light'])
+    try: asyncio.run(go())
+    finally: tty.close(); cli.set_theme(was)
+
+
 def _keys_scene(body):
     "Run `await body(ui, agent, tty)` on a live loop over an emulated 80x24 terminal."
     from teleprint.testing import EmuTty

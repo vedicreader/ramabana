@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/pane.html.md"""
 # %% ../nbs/18_pane.ipynb #dcfdb8be
 from __future__ import annotations
 
-import io, json, os, re, select, shlex, signal, subprocess, textwrap, time, weakref
+import collections, io, json, os, re, select, shlex, shutil, signal, subprocess, sys, textwrap, time, weakref
 from pathlib import Path
 
 from fastcore.basics import first
@@ -19,14 +19,15 @@ from teleprint.tty import RealTty
 
 from shalya.core import clip, diff_text, one_line as _1
 
-from .hl import diff_rich
+from .hl import HL_THEMES, diff_rich
 from .monitor import _counts, _rel
-from .setup import PANE_LINGER
+from .setup import PANE_LINGER, follow_cmd
 
 # %% auto #0
 __all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'SHELL_LINES', 'PALETTE', 'ENTER', 'LEAVE',
-           'WHEEL', 'HINT', 'now_snapshot', 'write_snapshot', 'read_snapshot', 'board', 'render', 'quit_mark',
-           'talk_mark', 'PaneTty', 'Viewer', 'main']
+           'WHEEL', 'HINT', 'now_snapshot', 'write_snapshot', 'read_snapshot', 'palette_of', 'board', 'render',
+           'quit_mark', 'talk_mark', 'PaneTty', 'Viewer', 'transcript_line', 'transcript_ansi', 'Follower', 'follow',
+           'main']
 
 # %% ../nbs/18_pane.ipynb #d2a80a47
 CALLS_KEPT = 8       #: a sub-agent's latest calls in a snapshot
@@ -135,16 +136,20 @@ def read_snapshot(path):
     except (OSError, ValueError): return None
 
 # %% ../nbs/18_pane.ipynb #6f45eca9
-PALETTE = {'fg0': '#e6edf3', 'fg1': '#c9d1d9', 'gray': '#8b949e', 'red': '#ff7b72', 'green': '#3fb950',
-           'yellow': '#d29922', 'blue': '#58a6ff', 'aqua': '#39c5cf', 'bg0': '#0a0c10', 'cursor': '#30363d'}
+PALETTE = {'bg0': '#0a0c10', 'bg1': '#11151c', 'bg2': '#1c2128', 'fg0': '#e6edf3', 'fg1': '#c9d1d9', 'gray': '#8b949e',
+           'red': '#ff7b72', 'green': '#3fb950', 'yellow': '#d29922', 'blue': '#58a6ff', 'aqua': '#39c5cf', 'orange': '#ffa657'}
 _STOPPED = ('cancelled', 'detached', 'terminated', 'failed', 'stopped')
 _TODO = {'done': ('✓', 'green', 'gray'), 'active': ('◐', 'yellow', 'bold yellow'), 'cancelled': ('✗', 'gray', 'strike gray')}
 
-def _c(name): return ' '.join(PALETTE.get(w, w) for w in name.split())
+def palette_of(snap):
+    "The palette `snap` was written with, over `PALETTE` for any colour it lacks."
+    return {**PALETTE, **((snap or {}).get('palette') or {})}
 
-def _mark(state):
-    if state in ('completed', 'exit 0'): return '✓', PALETTE['green']
-    return ('✗', PALETTE['red']) if state in _STOPPED or state.startswith('exit ') else ('▶', PALETTE['yellow'])
+def _c(name, P): return ' '.join(P.get(w, w) for w in name.split())
+
+def _mark(state, P):
+    if state in ('completed', 'exit 0'): return '✓', P['green']
+    return ('✗', P['red']) if state in _STOPPED or state.startswith('exit ') else ('▶', P['yellow'])
 
 def _line(s, style, width, indent=''):
     t = Text(indent + s.expandtabs(4), style=style)
@@ -164,78 +169,79 @@ def _row(width, head, mid='', tail=None, style='', left=False):
 def _clock(secs, state, drift): return f'{secs + (drift if state == "running" else 0):.0f}s'
 def _steps(n): return f'{n} step' + ('' if n == 1 else 's')
 
-def _head(snap, width, drift):
-    root, t = snap['root'], Text('main', style=f"bold {PALETTE['blue']}")
-    if not snap['busy']: return _row(width, t, f" · idle · {_steps(root['steps'])}", style=PALETTE['gray'])
+def _head(snap, width, drift, P):
+    root, t = snap['root'], Text('main', style=f"bold {P['blue']}")
+    if not snap['busy']: return _row(width, t, f" · idle · {_steps(root['steps'])}", style=P['gray'])
     step = f"step {root['steps']}" if root['steps'] else 'thinking'
-    t.append(f" · {step} · {_clock(root['turn_elapsed'], root['state'], drift)}", style=PALETTE['gray'])
-    return _row(width, t, f" — {_1(root['status'], 200)}" if root['status'] else '', style=PALETTE['fg0'])
+    t.append(f" · {step} · {_clock(root['turn_elapsed'], root['state'], drift)}", style=P['gray'])
+    return _row(width, t, f" — {_1(root['status'], 200)}" if root['status'] else '', style=P['fg0'])
 
-def _todo(t, width):
+def _todo(t, width, P):
     mark, ms, ts = _TODO.get(t['status'], ('○', 'gray', 'fg1'))
-    return _row(width, Text(mark + ' ', style=_c(ms)), _1(t['text'], 200), style=_c(ts))
+    return _row(width, Text(mark + ' ', style=_c(ms, P)), _1(t['text'], 200), style=_c(ts, P))
 
-def _sub_rows(s, width, drift, opened):
-    mark, style = _mark(s['state'])
-    tail = Text(f" · {_clock(s['elapsed'], s['state'], drift)} ", style=PALETTE['gray']) + Text(mark, style=style)
+def _sub_rows(s, width, drift, opened, P):
+    mark, style = _mark(s['state'], P)
+    tail = Text(f" · {_clock(s['elapsed'], s['state'], drift)} ", style=P['gray']) + Text(mark, style=style)
     head = Text(('▾ ' if opened else '▸ ') + s['id'], style=f'bold {style}')
-    out = [(('sub', s['id']), _row(width, head, ' · ' + _1(s['status'] or s['question'], 200), tail, PALETTE['fg1']))]
+    out = [(('sub', s['id']), _row(width, head, ' · ' + _1(s['status'] or s['question'], 200), tail, P['fg1']))]
     if not opened: return out
-    if s['status']: out.append((None, _line(_1(s['question'], 200), PALETTE['gray'], width, '  ')))
+    if s['status']: out.append((None, _line(_1(s['question'], 200), P['gray'], width, '  ')))
     for c in s['calls']:
         m, st = ('✓', 'green') if c['done'] and c['ok'] else ('✗', 'red') if c['done'] else ('⏳', 'yellow')
-        out.append((None, _row(width, Text(f'  {m} ', style=PALETTE[st]), _1(c['line'], 200), style=PALETTE['fg1'])))
-        if c['out']: out.append((None, _line(_1(c['out'], 200), PALETTE['gray'], width, '    ')))
+        out.append((None, _row(width, Text(f'  {m} ', style=P[st]), _1(c['line'], 200), style=P['fg1'])))
+        if c['out']: out.append((None, _line(_1(c['out'], 200), P['gray'], width, '    ')))
     words = textwrap.wrap(_1(s['answer'], ANSWER_CHARS), max(8, width - 4))
-    return out + [(None, _line(l, PALETTE['fg0'], width, '  → ' if i == 0 else '    ')) for i, l in enumerate(words)]
+    return out + [(None, _line(l, P['fg0'], width, '  → ' if i == 0 else '    ')) for i, l in enumerate(words)]
 
 def _cut(t, width):
     t.truncate(width, overflow='ellipsis')
     return t
 
-def _file_rows(f, width, opened):
-    tail = Text(f" +{f['added']}", style=PALETTE['green']) + Text(f" −{f['removed']}", style=PALETTE['red'])
-    out = [(('file', f['path']), _row(width, Text('▾ ' if opened else '▸ ', style=PALETTE['gray']), f['path'], tail, PALETTE['fg0'], left=True))]
+def _file_rows(f, width, opened, P, theme):
+    tail = Text(f" +{f['added']}", style=P['green']) + Text(f" −{f['removed']}", style=P['red'])
+    out = [(('file', f['path']), _row(width, Text('▾ ' if opened else '▸ ', style=P['gray']), f['path'], tail, P['fg0'], left=True))]
     if not opened: return out
-    return out + [(None, _cut(Text('  ') + l, width)) for l in diff_rich(f['diff'].expandtabs(4), PALETTE).split('\n', allow_blank=True)]
+    return out + [(None, _cut(Text('  ') + l, width)) for l in diff_rich(f['diff'].expandtabs(4), P, theme).split('\n', allow_blank=True)]
 
-def _bg_rows(b, width, drift, opened, subs):
+def _bg_rows(b, width, drift, opened, subs, P):
     "One background row, opening to a shell's output, a watch's last review, or a delegation's sub-agent detail."
-    mark, style = _mark(b['state'])
+    mark, style = _mark(b['state'], P)
     clock = f" · {_clock(b['elapsed'], b['state'], drift)}" if b['elapsed'] is not None else ''
-    head = Text('▾ ' if opened else '▸ ', style=PALETTE['gray']) + Text(f'{mark} ', style=style) + Text(f"{b['kind']} ", style=PALETTE['gray'])
-    out = [(('bg', b['id']), _row(width, head, _1(b['label'], 200), Text(f" · {b['state']}{clock}", style=PALETTE['gray']), PALETTE['fg1']))]
+    head = Text('▾ ' if opened else '▸ ', style=P['gray']) + Text(f'{mark} ', style=style) + Text(f"{b['kind']} ", style=P['gray'])
+    out = [(('bg', b['id']), _row(width, head, _1(b['label'], 200), Text(f" · {b['state']}{clock}", style=P['gray']), P['fg1']))]
     if not opened: return out
-    if (s := next((s for s in subs if s['id'] == b['id']), None)) is not None: return out + _sub_rows(s, width, drift, True)[1:]
+    if (s := next((s for s in subs if s['id'] == b['id']), None)) is not None: return out + _sub_rows(s, width, drift, True, P)[1:]
     lines = [w for l in (b.get('detail') or '').splitlines() for w in textwrap.wrap(l, max(8, width - 2)) or ['']]
-    return out + [(None, _line(l, PALETTE['fg1'], width, '  ')) for l in lines]
+    return out + [(None, _line(l, P['fg1'], width, '  ')) for l in lines]
 
-def _note_rows(n, width, opened):
+def _note_rows(n, width, opened, P):
     "One note: `▸`, its time and first line; opened, `▾` and every word wrapped to the pane."
-    head = Text(('▾ ' if opened else '▸ ') + time.strftime('%H:%M ', time.localtime(n['at'])), style=PALETTE['gray'])
+    head = Text(('▾ ' if opened else '▸ ') + time.strftime('%H:%M ', time.localtime(n['at'])), style=P['gray'])
     room, key = max(8, width - head.cell_len), ('note', n['at'])
-    if not opened: return [(key, head + _line(n['text'].splitlines()[0], PALETTE['fg1'], room))]
+    if not opened: return [(key, head + _line(n['text'].splitlines()[0], P['fg1'], room))]
     lines = [w for l in n['text'].splitlines() for w in textwrap.wrap(l, room) or ['']]
-    return [(key if i == 0 else None, (head if i == 0 else Text(' ' * head.cell_len)) + _line(l, PALETTE['fg1'], room))
+    return [(key if i == 0 else None, (head if i == 0 else Text(' ' * head.cell_len)) + _line(l, P['fg1'], room))
             for i, l in enumerate(lines)]
 
 def board(snap, width=40, now=None, open=(), err=''):
-    "The pane for `snap` as `(key, row)` pairs, one per screen line; a row with a `key` opens and closes."
-    warn = [(None, _line('⚠ ' + err, PALETTE['red'], width))] if err else []
-    if not snap: return [(None, _line('waiting for the agent…', PALETTE['gray'], width))] + warn
-    drift = max(0, (now or time.time()) - snap['at'])
-    rows = [(None, _head(snap, width, drift))] + warn
+    "The pane for `snap` as `(key, row)` pairs, one per screen line, in the snapshot's palette; a row with a `key` opens and closes."
+    P = palette_of(snap)
+    warn = [(None, _line('⚠ ' + err, P['red'], width))] if err else []
+    if not snap: return [(None, _line('waiting for the agent…', P['gray'], width))] + warn
+    drift, theme = max(0, (now or time.time()) - snap['at']), HL_THEMES.get(snap.get('theme'), 'github_dark')
+    rows = [(None, _head(snap, width, drift, P))] + warn
     def section(title, body):
-        if body: rows.extend([(None, Text('')), (None, Text(title, style=f"bold {PALETTE['gray']}")), *body])
-    section('Plan', [(None, _todo(t, width)) for t in snap['plan']])
+        if body: rows.extend([(None, Text('')), (None, Text(title, style=f"bold {P['gray']}")), *body])
+    section('Plan', [(None, _todo(t, width, P)) for t in snap['plan']])
     target = snap.get('target') or 'main'
-    def aimed(k, t): return _cut(Text('→ ', style=f"bold {PALETTE['green']}") + t, width) if k and k == (('main', 'main') if target == 'main' else ('sub', target)) else t
-    main = [(('main', 'main'), _row(width, Text('main', style=f"bold {PALETTE['blue']}"), ' · talk to the main agent', style=PALETTE['gray']))]
-    section('Sub-agents', [(k, aimed(k, t)) for k, t in main + [r for s in snap['subs'] for r in _sub_rows(s, width, drift, ('sub', s['id']) in open)]] if snap['subs'] else [])
-    section('Files', [r for f in snap['files'] for r in _file_rows(f, width, ('file', f['path']) in open)])
-    section('Background', [r for b in snap['background'] for r in _bg_rows(b, width, drift, ('bg', b['id']) in open, snap['subs'])])
+    def aimed(k, t): return _cut(Text('→ ', style=f"bold {P['green']}") + t, width) if k and k == (('main', 'main') if target == 'main' else ('sub', target)) else t
+    main = [(('main', 'main'), _row(width, Text('main', style=f"bold {P['blue']}"), ' · talk to the main agent', style=P['gray']))]
+    section('Sub-agents', [(k, aimed(k, t)) for k, t in main + [r for s in snap['subs'] for r in _sub_rows(s, width, drift, ('sub', s['id']) in open, P)]] if snap['subs'] else [])
+    section('Files', [r for f in snap['files'] for r in _file_rows(f, width, ('file', f['path']) in open, P, theme)])
+    section('Background', [r for b in snap['background'] for r in _bg_rows(b, width, drift, ('bg', b['id']) in open, snap['subs'], P)])
     notes = snap.get('notes') or []   # newest first, and the newest starts open: toggling flips that
-    section('Notes', [r for i, n in enumerate(reversed(notes)) for r in _note_rows(n, width, (('note', n['at']) in open) != (i == 0))])
+    section('Notes', [r for i, n in enumerate(reversed(notes)) for r in _note_rows(n, width, (('note', n['at']) in open) != (i == 0), P)])
     return rows
 
 def render(snap, width=40, now=None, open=()):
@@ -247,11 +253,19 @@ ENTER = '\x1b[?1049h\x1b[?25l\x1b[?1000;1006h'   #: alt screen, cursor hidden, S
 LEAVE = '\x1b[?1000;1006l\x1b[?25h\x1b[?1049l'
 WHEEL = 3   #: rows a mouse wheel notch scrolls
 
-def _lit(t, width):
-    "`t` padded to `width` on the cursor's background."
+def _lit(t, width, P):
+    "`t` padded to `width` on the cursor's background, the palette's `bg2`."
     t = t.copy()
     t.pad_right(width - t.cell_len)
-    t.stylize(f"on {PALETTE['cursor']}")
+    t.stylize(f"on {P['bg2']}")
+    return t
+
+def _fill(t, width, P):
+    "`t` padded to `width`, its unstyled text in `fg1` and all of it on `bg0` unless a style says otherwise."
+    t = t.copy()
+    t.pad_right(width - t.cell_len)
+    if t.style: t.stylize_before(t.style)   # a span outranks the base style, so the base is restated above the fill
+    t.stylize_before(f"{P['fg1']} on {P['bg0']}")
     return t
 
 def quit_mark(path):
@@ -315,7 +329,7 @@ class Viewer:
 
     def show(self, s, chat):
         "Show the transcript of the running sub-agent `s` in the one pane this viewer opened, a new split left of `chat` when it has none."
-        cmd = f"tail -n 200 -f {shlex.quote(s['log'])}"
+        cmd = follow_cmd(s['log'], self.path)
         if self.alive() is False:
             if not chat or not (pid := self.tmux('split-window', '-h', '-b', '-P', '-F', '#{pane_id}', '-t', chat, cmd)): return
             self.pane = {'id': pid, 'run': s['id'], 'since': None}
@@ -389,10 +403,11 @@ class Viewer:
         "Draw the board at the terminal's size, writing only the lines that changed; a new size redraws all."
         w, h = self.tty.size
         if (w, h) != self.size: self.size, self.shown = (w, h), None
-        self.rows = board(self.snap, w, now, self.open, self.err)
+        self.rows, P = board(self.snap, w, now, self.open, self.err), palette_of(self.snap)
         self.top = max(0, min(self.top, len(self.rows) - (h - 1)))
-        texts = [_lit(t, w) if k and k == self.cursor else t for k, t in self.rows[self.top:self.top + h - 1]]
-        texts += [Text('')] * (h - 1 - len(texts)) + [_line(HINT, PALETTE['gray'], w)]
+        texts = [_lit(t, w, P) if k and k == self.cursor else t for k, t in self.rows[self.top:self.top + h - 1]]
+        texts += [Text('')] * (h - 1 - len(texts)) + [_line(HINT, P['gray'], w)]
+        texts = [_fill(t, w, P) for t in texts]
         con = Console(file=io.StringIO(), width=w, force_terminal=True, color_system='truecolor', highlight=False)
         with con.capture() as cap: con.print(Group(*texts))
         lines, old = cap.get().split('\n')[:-1], self.shown
@@ -431,10 +446,77 @@ class Viewer:
             self.tty.write(LEAVE)
             self.tty.restore()
 
+# %% ../nbs/18_pane.ipynb #8123b998
+_STAMP = re.compile(r'(\d\d:\d\d:\d\d) (.*)')
+_ENTRY = re.compile(r'(> |< \S+ (?:ok|ERR|REFUSED)|~ |user: |question: |answer: |reply: )(.*)')
+_ROLE = {'> ': 'blue', '~ ': 'gray', 'user: ': 'yellow', 'question: ': 'aqua', 'answer: ': 'green', 'reply: ': 'green'}
+
+def transcript_line(line, P=PALETTE):
+    "One line of a run's transcript as a rich `Text`, coloured by its role in palette `P`."
+    line = line.expandtabs(4)
+    if not (m := _STAMP.fullmatch(line)): return Text(line, style=P['fg1'])
+    if not (e := _ENTRY.fullmatch(m[2])): return Text.assemble((m[1] + ' ', P['gray']), (m[2], P['fg1']))
+    head = e[1]
+    role = _ROLE.get(head) or ('red' if head.endswith(('ERR', 'REFUSED')) else 'green')
+    return Text.assemble((m[1] + ' ', P['gray']), (head, f'bold {P[role]}'), (e[2], P['gray'] if head == '~ ' else P['fg1']))
+
+def transcript_ansi(lines, P=PALETTE, width=80):
+    "`lines` of a transcript as terminal text `width` cells wide: each coloured by `transcript_line`, wrapped, and filled to the edge with `bg0`."
+    con = Console(file=io.StringIO(), width=width, force_terminal=True, color_system='truecolor', highlight=False)
+    rows = [_fill(r, width, P) for l in lines for r in transcript_line(l, P).wrap(con, width)]
+    with con.capture() as cap: con.print(Group(*rows))
+    return cap.get()
+
+def _bg(P): return '\x1b[48;2;' + ';'.join(str(int(P['bg0'][i:i + 2], 16)) for i in (1, 3, 5)) + 'm'
+
+class Follower:
+    "What a transcript pane has read of `log` and drawn: the last `keep` whole lines, the partial line after them, and the palette of the snapshot at `path`."
+    def __init__(self, log, path='', keep=200):
+        self.log, self.path, self.lines, self.part, self.pos = Path(log), path, collections.deque(maxlen=keep), b'', 0
+        self.P, self.at, self.shown = PALETTE, None, None
+
+    def read(self):
+        "The whole lines written to the log since the last read; a log shorter than what was read starts over."
+        try:
+            with self.log.open('rb') as f:
+                if os.fstat(f.fileno()).st_size < self.pos: self.pos, self.part, self.shown = 0, b'', None; self.lines.clear()
+                f.seek(self.pos); data = f.read(); self.pos = f.tell()
+        except OSError: return []
+        *new, self.part = (self.part + data).split(b'\n')
+        new = [l.decode('utf-8', 'replace') for l in new]
+        self.lines.extend(new)
+        return new
+
+    def palette(self):
+        "Read the snapshot's palette again when its file changed; a missing or bad snapshot keeps the last."
+        try: at = os.stat(self.path).st_mtime_ns if self.path else None
+        except OSError: return
+        if at != self.at and (s := read_snapshot(self.path)) is not None: self.at, self.P = at, palette_of(s)
+
+    def tick(self, width):
+        "Terminal text for what changed since the last tick: the new lines, or every kept line again under a new palette or width."
+        new = self.read()
+        self.palette()
+        rest = _bg(self.P) + '\x1b[K'   # the line under the text, where the next one goes, on the palette's background too
+        if (self.P, width) != self.shown:
+            self.shown = self.P, width
+            return _bg(self.P) + '\x1b[H\x1b[2J' + transcript_ansi(self.lines, self.P, width) + rest
+        return transcript_ansi(new, self.P, width) + rest if new else ''
+
+def follow(log, path='', every=0.2, keep=200):
+    "Draw a `Follower` of `log` on the terminal every `every` seconds."
+    f = Follower(log, path, keep)
+    while True:
+        if (out := f.tick(shutil.get_terminal_size().columns)): sys.stdout.write(out); sys.stdout.flush()
+        time.sleep(every)
+
 # %% ../nbs/18_pane.ipynb #7f9d2673
 @call_parse
 def main(path:str,        # the snapshot file the CLI writes
          every:float=0.2, # seconds to wait for input between frames
+         log:str='',      # a run's transcript to follow in the snapshot's palette, in place of the board
         ):
-    "Show the `now` snapshot at `path` as a board until q or ctrl+c."
-    Viewer(path, PaneTty()).run(every)
+    "Show the `now` snapshot at `path` as a board until q or ctrl+c, or with `log` follow that transcript."
+    if not log: return Viewer(path, PaneTty()).run(every)
+    try: follow(log, path, every)
+    except KeyboardInterrupt: sys.stdout.write('\x1b[0m\n')

@@ -1,6 +1,6 @@
 "The `now` pane: what a turn and its sub-agents are doing, as a file, and that file drawn."
 
-import json, time
+import json, re, time
 from rich.console import Console
 
 from ramabana.pane import Viewer, now_snapshot, render
@@ -237,6 +237,56 @@ def test_a_click_aims_the_terminal_through_the_talk_mark_and_opens_the_transcrip
     assert cmd[:5] == ('split-window', '-h', '-b', '-P', '-F') and cmd[-2] == '%7' and str(log) in cmd[-1]
     _click(v, ('sub', 'run_aaa'))
     assert len(tmux.ran('split-window')) == 1, 'its transcript is already open'
+
+
+def _sgr(colour, layer=38):
+    "The truecolor SGR parameters that set `colour` as the foreground (38) or the background (48)."
+    return f'{layer};2;' + ';'.join(str(int(colour[i:i + 2], 16)) for i in (1, 3, 5))
+
+
+def _ansi(t, width=80):
+    con = Console(width=width, force_terminal=True, color_system='truecolor', highlight=False)
+    with con.capture() as cap: con.print(t)
+    return cap.get()
+
+
+def test_the_board_and_a_transcript_paint_in_the_palette_the_snapshot_carries(tmp_path):
+    "A snapshot written with a light palette draws the board on its background in its colours, and so does a transcript; without a palette both stay github-dark."
+    from ramabana.cli import GITHUB_DARK, LIGHT
+    import ramabana.pane as pane
+    now = time.time()
+    snap = {**_board(now), 'palette': LIGHT}
+    main = next(t for k, t in pane.board(snap, 80, now) if k == ('main', 'main'))
+    assert _sgr(LIGHT['blue']) in _ansi(main), 'the main row is in the light blue'
+    v, _ = _viewer(tmp_path, snap, size=(80, 30))
+    drawn = ''.join(v.tty.writes)
+    assert _sgr(LIGHT['bg0'], 48) in drawn and _sgr(LIGHT['fg1']) in drawn, 'the viewer fills the pane with the palette'
+    assert _sgr(GITHUB_DARK['blue']) not in drawn
+    assert re.search(_sgr(LIGHT['gray']) + r'[;\d]*m' + re.escape(pane.HINT[:10]), drawn), 'a gray row keeps its gray on the filled background'
+    line = pane.transcript_ansi(['12:00:01 < view_file ERR no such file'], LIGHT, 40)
+    assert all(_sgr(c, l) in line for c, l in ((LIGHT['bg0'], 48), (LIGHT['red'], 38), (LIGHT['gray'], 38))), 'a failed result is red, its time gray'
+    assert _sgr(GITHUB_DARK['bg0'], 48) in pane.transcript_ansi(['12:00:01 > Read a.py'], width=40)
+
+
+def test_a_transcript_pane_shows_whole_lines_and_draws_again_under_a_new_palette(tmp_path):
+    "A missing log draws an empty pane; a partial line waits for its newline; a new palette in the snapshot draws every kept line again; a truncated log starts over."
+    from ramabana.cli import LIGHT
+    from ramabana.pane import PALETTE, Follower
+    log, snap = tmp_path/'run_a.log', tmp_path/'now.json'
+    f = Follower(log, snap)
+    assert _sgr(PALETTE['bg0'], 48) in f.tick(40)
+    log.write_text('12:00:01 > Read a.py\n12:00:02 < view_file ok de')
+    out = f.tick(40)
+    assert 'Read a.py' in out and 'view_file' not in out
+    with log.open('a') as w: w.write('f a\n')
+    assert 'view_file' in f.tick(40) and f.tick(40) == '', 'a tick with nothing new writes nothing'
+    snap.write_text(json.dumps({'palette': LIGHT}))
+    again = f.tick(40)
+    assert _sgr(LIGHT['bg0'], 48) in again and 'Read a.py' in again and 'view_file' in again
+    log.write_text('12:00:03 question: new\n')
+    out = f.tick(40)
+    assert 'new' in out and 'Read a.py' not in out
+
 
 def test_the_files_section_lists_every_file_written_this_session():
     a, _ = fake_agent(MemHost({'/proj/a.py': 'a = 1\n', '/proj/b.py': 'b = 1\n'}))

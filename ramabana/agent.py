@@ -36,7 +36,7 @@ from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import DFLT_TURN, needs_setup, accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
-from .setup import PANE_LINGER, config_path, config_reset, config_set, config_show, load_config, set_table, setting
+from .setup import PANE_LINGER, config_path, follow_cmd, config_reset, config_set, config_show, load_config, set_table, setting
 from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
@@ -4202,11 +4202,9 @@ def leftovers(self:Agent):
     "What the root turn was sent and never read, taken once."
     return [] if (r := self.run()) is None else r.drain_inbox()
 
-def _tail(log): return f'tail -n 200 -f {shlex.quote(str(log))}'
-
 @patch
 def watch(self:Agent, target=''):
-    "Open a pane tailing a run's transcript or `monitors`. With no target, list what can be watched."
+    "Open a pane following a run's transcript or `monitors`. With no target, list what can be watched."
     if not target:
         rows = [f"{r['id']}  {r['state']:10} {r['question'][:50]}  {r.get('log') or ''}"
                 for r in self.runs(active=True) + [r.dict() for r in self._monitor_runs() if not r.terminal]]
@@ -4221,8 +4219,9 @@ def watch(self:Agent, target=''):
         self.on_watch(target, log)
         return f'watching {target}'
     if target in self._panes: return f'already watching {target} in pane {self._panes[target]}'
-    try: self._panes[target] = self.host.open_pane(_tail(log), title=target)
-    except Exception: return f'no tmux here; in another terminal run: {_tail(log)}'
+    cmd = follow_cmd(log, log.parent/'now.json')   # the CLI writes its snapshot, and so its palette, beside the transcripts
+    try: self._panes[target] = self.host.open_pane(cmd, title=target)
+    except Exception: return f'no tmux here; in another terminal run: {cmd}'
     if (r := self.run(target)) is not None and r.terminal: self._pane_done[target] = float('inf')   # asked for after the run ended: it stays until `/unwatch`
     return f'watching {target} in pane {self._panes[target]}'
 

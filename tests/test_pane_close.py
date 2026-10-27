@@ -19,7 +19,7 @@ class FakeTmux:
         if a[0] == 'list-panes': return '\n'.join(self.panes)
         return ''
 
-    def transcripts(self): return {p: c for p, c in self.panes.items() if c.startswith('tail ')}
+    def transcripts(self): return {p: c for p, c in self.panes.items() if c != 'someone else'}
     def ran(self, cmd): return [c for c in self.calls if c[0] == cmd]
 
 
