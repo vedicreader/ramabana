@@ -2353,7 +2353,8 @@ async def run_shell_line(self:Ui, command):
         self._shell_sigint = False
         out, _ = await p.communicate()
         if out.strip(): self.say(Text.from_ansi(out.decode(errors='replace').rstrip('\n')), 'note')
-        self.note('stopped' if p.returncode < 0 else f'exit {p.returncode}', 'error' if p.returncode else 'note')
+        killed = p.returncode < 0 or (self._shell_sigint and p.returncode in (128 + signal.SIGINT, 128 + signal.SIGKILL))   # a shell reports its killed child as 128+N
+        self.note('stopped' if killed else f'exit {p.returncode}', 'error' if p.returncode else 'note')
     finally:
         if p is not None and p.returncode is None: os.killpg(p.pid, signal.SIGKILL)   # the task was cancelled, as on quit
         self.shell_proc = self.turn = None
