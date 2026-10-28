@@ -94,12 +94,13 @@ def test_a_session_reads_the_beat_under_its_own_id_and_only_once(tmp_path, monke
     home.mkdir()
     monkeypatch.setattr(mo, 'POB_HOME', home)
     monkeypatch.setattr('ramabana.agent.beat_problems', lambda: [])   # this machine's installed launcher is not under test
-    pob(home/'pob.db').note('watches', '1 fired')
+    pob(home/'pob.db').note('watches', 'from a job that ended before both sessions')
     a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
-    assert a.beat_drain() == ['watches: 1 fired']
-    assert a.beat_drain() == [], 'the same session read the note twice'
-
     b = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
+    assert a.beat is not None and b.beat is not None
+    pob(home/'pob.db').note('watches', '1 fired')
+    assert a.beat_drain() == ['watches: 1 fired'], 'a session showed a note from before it began'
+    assert a.beat_drain() == [], 'the same session read the note twice'
     assert b.beat_drain() == ['watches: 1 fired'], 'a second session missed what the beat left'
     assert b.beat_drain() == []
 
@@ -111,8 +112,10 @@ def test_the_reader_does_not_move_when_a_session_is_resumed(tmp_path, monkeypatc
     home.mkdir()
     monkeypatch.setattr(mo, 'POB_HOME', home)
     monkeypatch.setattr('ramabana.agent.beat_problems', lambda: [])   # this machine's installed launcher is not under test
-    pob(home/'pob.db').note('watches', 'x')
+    db = pob(home/'pob.db')
     a = Agent(host=MemHost({'/p/x.py': 'x=1'}), extensions=False, profile='full')
+    assert a.beat is not None
+    db.note('watches', 'x')
     assert a.beat_drain() == ['watches: x']
     was = a._beat_reader
     a.session_id = 'some-other-session'

@@ -46,7 +46,7 @@ from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, Too
                             summarise, summary, is_write, one_line as _1,
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background, Slots, SUB_MAX_STEPS, SUB_STEP_CEILING, SUB_TIMEOUT, SUB_READ_ONLY, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
-from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, beat_problems, pob, pob_path, review_notice
+from .monitor import _counts, _rel, Monitors, POB_READER, beat_join, beat_notes, beat_notice, beat_problems, pob, pob_path, review_notice
 from .peers import all_peers, folder_denial, guard_of, peer_text
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
@@ -2870,6 +2870,7 @@ def beat(self:Agent):
         self._beat = pob(p) if p.exists() else None
         # fixed now, or a `resume_session` rename replays carried notes
         self._beat_reader = f'{POB_READER}:{self.session_id}'
+        beat_join(self._beat, self._beat_reader)
     return self._beat
 
 @patch

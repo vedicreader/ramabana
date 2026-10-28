@@ -26,8 +26,8 @@ __all__ = ['SNAP_MAX_FILES', 'SNAP_MAX_BYTES', 'REVIEW_MAX_CHARS', 'PENDING_MAX'
            'TICKS', 'POB_HOME', 'BEAT_TAG', 'TICK_GROUP', 'BEAT_TOOLS', 'LAUNCHD_PATHS', 'BEAT_LIMIT', 'BEAT_ENV',
            'LEARNING_TICKS', 'LEARNING_OFF', 'secs', 'files_under', 'snapshot', 'changed', 'summarise', 'report',
            'review_prompt', 'review_notice', 'FolderWatch', 'Monitors', 'on_tick', 'pob_path', 'pob', 'beat_notes',
-           'beat_notice', 'beat_command', 'beat_missing', 'beat_env_path', 'load_beat_env', 'beat_problems',
-           'heartbeat', 'BeatTimeout', 'tick']
+           'beat_join', 'beat_notice', 'beat_command', 'beat_missing', 'beat_env_path', 'load_beat_env',
+           'beat_problems', 'heartbeat', 'BeatTimeout', 'tick']
 
 # %% ../nbs/17_monitor.ipynb #a7c32aa8
 SNAP_MAX_FILES = 2000
@@ -354,6 +354,16 @@ def beat_notes(db, reader=POB_READER, limit=20):
     try: got = db.drain(str(reader), limit)
     except Exception: return []
     return [f"{n['title']}: {n['body']}" if n.get('body') else str(n['title']) for n in got]
+
+def beat_join(db, reader=POB_READER):
+    "Start `reader` at the newest note if it has never read; a reader that has read keeps its place."
+    if db is None: return
+    try:
+        from pobblebonk.core import NOTES
+        if db.stream.get_offset(str(reader)): return   # honker gives 0 for a reader it does not know
+        end = db.db.query('SELECT max(offset) n FROM _honker_stream WHERE topic=?', [NOTES])[0]['n']
+        if end: db.stream.save_offset(str(reader), end)
+    except Exception: pass
 
 def beat_notice(notes, mx=REVIEW_MAX_CHARS):
     "Beat notes since the last look, as a prompt block."
