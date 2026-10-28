@@ -2,6 +2,20 @@
 
 <!-- do not remove -->
 
+## 0.2.82
+- API keys in tool output are masked. Every read the model sees passes through a guard: files, search hits, diffs, web pages, and now shell and Python output too. Key shapes such as `sk-`, `ghp_`, `github_pat_`, `AKIA`, `AIza`, `hf_` and private-key blocks come back as `[SECRET]`. A write that would put `[SECRET]` over a real key is refused.
+- The shell refuses commands that print the whole environment: `env`, `printenv`, bare `set`, `export -p`, `declare -x`, reading `/proc/*/environ`, and reading a `.env` file. Ask whether one variable is set instead.
+- `--pii redact` and `--pii refuse` also cover shell, Python and web reads sent to a hosted model. Code reads keep their personal data, because edits need the exact text. `pii` in the `[cli]` table of `config.toml` sets it for every session; it is skipped when the vault is off.
+- Sessions talk to each other. Every terminal session listens on its control socket. `/peers` lists the other live sessions by number and friendly name, `/tell N TEXT` sends a message to one, and `/tell N` sends each line you type there until `/tell main`. The agent has `peers()` and `tell()` tools; a `tell()` that starts a turn in another session asks you first.
+- A message you queue during a turn runs on its own when the turn ends, before anything you type next. Before, a key typed at that moment could start first, and the queued message stayed in the queue and joined your next one.
+- Up on an empty prompt takes back the newest waiting message, one per press. Alt+up still takes back all of them.
+- Steered messages that the agent has not read yet show as rows under the transcript, and each row goes when the agent reads it.
+- The hint row follows what you are doing: idle, typing, a running turn, waiting messages or an approval. `?` on an empty prompt shows every key. `hints = false` in `config.toml`, or `--no-hints`, hides the row.
+- `auto` picks a light or dark theme from the terminal's background. Every palette name is a valid `theme`, `/theme` lists them, and `/theme NAME --save` keeps one in `config.toml`. The now pane and the sub-agent panes use the same palette, and follow `/theme`.
+- A `!` command you stop ends with `stopped`, even when the shell reports its killed command as status 130 or 137.
+- The `abhyasa` extra installs abhyasa with its `abhyasa-index` tick.
+- Needs shalya 0.1.23.
+
 ## 0.2.81
 - `read_outside` and `vault` in the `[cli]` table of `config.toml` turn on reads outside the open folders and the vishalakshi vault for every terminal session. `--no-read-outside` and `--no-vault` turn them off for one session. A session started with its own `--cfg` folder ignores both keys. The code defaults stay off, so Dhrona's replays and scratch runs do not change.
 - A one-shot reply may use up to 8,192 tokens: a quarter of the model's window, and at least 1,024. A compaction summary may use up to 4,096 tokens. Before, both stopped at 1,024 tokens, which cut long answers and summaries short.
