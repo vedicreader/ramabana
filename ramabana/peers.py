@@ -254,12 +254,14 @@ def control_call(path, method, timeout=30, **params):
 # %% ../nbs/23_peers.ipynb #6d8554f6
 CONTROL = 'control.sock'   #: in a session's run folder: the socket `Control` listens on
 
-def socket_peers(cfg, timeout=2):
-    "The live Ramabana sessions under `cfg`: each one's `status` plus `kind`, `key` and the `path` it listens on."
+def socket_peers(cfg, timeout=2, skip=''):
+    "The live Ramabana sessions under `cfg`: each one's `status` plus `kind`, `key` and the `path` it listens on. The socket of session `skip` (an id or its key) is not asked."
     runs = Path(cfg).expanduser()/'runs'
     tmp = (p for p in Path(tempfile.gettempdir()).glob('ramabana-*.sock') if (runs/p.stem.removeprefix('ramabana-')).is_dir())
     out = []
+    sid = skip.removeprefix('ramabana-')
     for p in [*runs.glob(f'*/{CONTROL}'), *tmp]:
+        if sid and sid in (p.parent.name, p.stem.removeprefix('ramabana-')): continue
         try: st = control_call(p, 'status', timeout=timeout)
         except (OSError, RuntimeError, ValueError): continue   # a crashed runner's socket, or one too busy to answer
         out.append(st | dict(kind='ramabana', key=f"ramabana-{st.get('session', '')}", path=str(p)))
@@ -269,7 +271,7 @@ def all_peers(cfg=None, exclude='', timeout=2):
     "The live sessions, most recently active first: sockets and registrations, without the one whose `key` or `session` is `exclude`."
     cfg = cfg or '~/.config/ramabana'
     regs = [{'folder': (r['folders'] or [''])[0]} | r for r in registered(peers_dir(cfg))]
-    return sorted((r for r in [*socket_peers(cfg, timeout), *regs] if exclude not in (r['key'], r.get('session'))), key=lambda r: r.get('at') or 0, reverse=True)
+    return sorted((r for r in [*socket_peers(cfg, timeout, exclude), *regs] if exclude not in (r['key'], r.get('session'))), key=lambda r: r.get('at') or 0, reverse=True)
 
 def peer_lines(rows, ids=False):
     "`rows` numbered from 1, one line each: name, state and folder, and with `ids` the session id."

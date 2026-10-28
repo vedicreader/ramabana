@@ -7,23 +7,23 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
-           'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT', 'INLINE_SKILLS',
-           'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'DATED_CONTEXT', 'PICTURE_RULE', 'RULES', 'SMALL_RULES',
-           'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'MASKED_NOTE', 'CLAUDE_NOTES', 'LESSON_RULE',
-           'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS',
-           'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'RAHASYA_SECRETS', 'MORE_SECRETS', 'PRIVATE_KEY',
-           'HIDING', 'READERS', 'ASK_PRESENCE', 'PEER_ROWS_EVERY', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS',
-           'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'PEER_ASK', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER',
-           'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP',
-           'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
-           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'PII_READS',
-           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
-           'never', 'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt',
-           'prompt_directives', 'project_context', 'dated_lessons', 'learned_context', 'work_rules', 'skill_catalogue',
-           'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent',
-           'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial', 'generated_denial',
-           'note_tools', 'hydrate_turns', 'peer_text', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed',
-           'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
+           'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT', 'PERSON_ONLY',
+           'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'DATED_CONTEXT', 'PICTURE_RULE', 'RULES',
+           'SMALL_RULES', 'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'MASKED_NOTE', 'CLAUDE_NOTES',
+           'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK',
+           'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'RAHASYA_SECRETS', 'MORE_SECRETS',
+           'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE', 'PEER_ROWS_EVERY', 'PEER_ROWS_WAIT', 'MEMORY_CHARS',
+           'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'PEER_ASK', 'WARM_ROUNDS',
+           'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX',
+           'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP',
+           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
+           'MAX_SPANS', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject',
+           'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'request_text',
+           'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons', 'learned_context',
+           'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
+           'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
+           'generated_denial', 'note_tools', 'hydrate_turns', 'peer_text', 'repo_state', 'SessionBusy', 'TurnResult',
+           'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
            'compact_history', 'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
@@ -395,6 +395,7 @@ APPROVE_MODES = ('off', 'ask', 'edits', 'auto')   #: strictest first
 VERDICTS = ('allow', 'deny', 'ask')   #: what an approval `policy` may return; anything else falls through
 NO_LISTENER = ('refuse', 'wait')   #: an ask with nobody listening is refused at once, or waits for a listener
 ON_TIMEOUT = ('refuse', 'allow')   #: what an ask nobody answers in time becomes
+PERSON_ONLY = frozenset({'peer ask'})   #: requests only a person answers: no mode, saved rule, policy, timeout or cancelled turn decides them
 
 class Approvals:
     "The approval gate: it holds each request waiting for an answer and wakes the model's thread when a person answers."
@@ -536,8 +537,8 @@ class Approvals:
     def cancel_all(self, note='the turn was cancelled', run=None):
         "Refuse the waiting asks. Without `run`, refuse all of them. With `run`, refuse the asks that belong to `run`, to a run that `run` started, or to no known run."
         for a in self.waiting:
-            # an ask raised off the run's thread names no run and may be this one's
-            if run is None or a.run is None or _of_run(a.run, run): self.answer(a.id, False, note)
+            # an ask raised off the run's thread names no run and may be this one's, unless only a person answers it
+            if run is None or (a.run is None and a.forced != 'person') or _of_run(a.run, run): self.answer(a.id, False, note)
 
 
     def gate(self, tool_call):
@@ -567,6 +568,9 @@ class Approvals:
     def decide(self, name, args, force=False, ask=None, loop=False):
         "Resolve the `Ask` without a person when the policy, a rule or the mode decides it, else None."
         a = self.ask(name, args) if ask is None else ask
+        if name in PERSON_ONLY:
+            a.forced = 'person'
+            return None
         v = self._verdict(name, args)
         if v == 'deny': return self._decided(a, False, 'denied by the host policy')
         if v == 'ask':
@@ -596,7 +600,7 @@ class Approvals:
 
     def _settle(self):
         "Answer what is waiting that the new mode decides without a person."
-        settled = [a for a in self.waiting if a.forced != 'policy' and self.mode != 'ask' and not (self.mode == 'edits' and not self.edits_cover(a.tool))]
+        settled = [a for a in self.waiting if a.forced not in ('policy', 'person') and self.mode != 'ask' and not (self.mode == 'edits' and not self.edits_cover(a.tool))]
         if not settled: return ''
         ok = self.mode != 'off'
         for a in settled: self.answer(a.id, ok, f'answered by /approve {self.mode}')
@@ -1303,6 +1307,7 @@ class Agent:
         self._watch_found, self._watch_lock = [], threading.Lock()
         self.peer_notes, self.peer_waits = [], set()   #: peer notes and replies kept for the next turn; the peers a `tell` waits on for a reply
         self._peer_rows, self._peer_rows_at = [], float('-inf')
+        self.turn_ends = []   #: callables given each turn's log row once it is recorded, however the turn ended
         self.git_undo = {}       # turn id -> its git writes and `undo` tokens
         self.warm_choice, self._warmed, self.warm_report = warm, False, {'used': [], 'skipped': []}
         self.on_warm = None      # callable(warm_report) once a session is seeded
@@ -1771,18 +1776,19 @@ def generated_denial(host, name, args):
     return ''
 
 PEER_ROWS_EVERY = 10   #: seconds the folder guard keeps the list of live peers
+PEER_ROWS_WAIT = .3    #: seconds each peer has to answer `status` when the folder guard reads the list
 
 def _full(host, p):
-    "`p` as `host` resolves it, else as given."
+    "`p` as `host` resolves it; a path the host refuses is taken from its first root."
     try: return host.check(p)
-    except Exception: return p
+    except HostError: return Path(host.roots[0])/p
 
 @patch
 def peer_denial(self:Agent, name, args):
     "Why a write would change a folder that another live session holds and this one does not, or ''."
     if self.cfg is None or not (paths := write_targets(name, args)): return ''
     if time.monotonic() - self._peer_rows_at > PEER_ROWS_EVERY:
-        self._peer_rows, self._peer_rows_at = all_peers(self.cfg, self.session_id), time.monotonic()
+        self._peer_rows, self._peer_rows_at = all_peers(self.cfg, self.session_id, PEER_ROWS_WAIT), time.monotonic()
     me = f'ramabana-{self.session_id}'
     rows = [*self._peer_rows, {'key': me, 'folders': [str(r) for r in self.host.roots]}]
     return next(filter(None, (folder_denial(_full(self.host, p), me, rows) for p in paths)), '')
@@ -3325,6 +3331,9 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
             self._last_span = _append_line(p, json.dumps(self._slim(turn), ensure_ascii=False) + '\n')
         except Exception: pass
     self._event('turn_end', turn_id=turn['turn_id'], state=state, error=error, usage=turn['usage'], reply=str(text or '')[:4000])
+    for f in list(self.turn_ends):
+        try: f(turn)
+        except Exception: pass   # a listener never breaks the turn's record
     self._save_hist()
     if (d := getattr(self, 'runs_dir', None)) is not None: (d/PENDING).unlink(missing_ok=True)
 

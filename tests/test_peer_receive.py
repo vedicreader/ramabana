@@ -10,7 +10,7 @@ import ramabana.cli as cli
 import ramabana.control as control
 from ramabana.agent import Approvals
 from ramabana.control import Control, control_call, peer_tools, self_frm
-from ramabana.peers import TOGETHER_HOURS, Envelope, peers_dir, post, register, take, together_on, together_state
+from ramabana.peers import HOP_MAX, TOGETHER_HOURS, Envelope, peers_dir, post, register, take, together_on, together_state
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 from ramabana.tools import WRITE_TOOLS, failed
 
@@ -223,3 +223,122 @@ def test_typed_line_ends_together_mode(cfg):
         finally: ctl.close()
     try: asyncio.run(asyncio.wait_for(go(), 30))
     finally: tty.close()
+
+
+def test_peer_ask_always_asks_a_person(cfg):
+    ap = Approvals(tools=WRITE_TOOLS, mode='auto')
+    ap.always('peer ask', '*', glob=True)
+    agent, be = fake_agent(cfg=cfg, approvals=ap, replies=['never'])
+    seen = []
+    ap.listen(seen.append)
+    ctl = Control(agent).start()
+    try:
+        _ring(ctl, 'ask', 'add a Card part')
+        [a] = _until(lambda: seen, 'the approval, in auto mode and with a saved allow rule')
+        for mode in ('edits', 'auto', 'off'): ap.set_mode(mode)
+        ap.cancel_all(run=object())
+        assert a.pending and ap.waiting == [a], 'no mode switch or cancelled turn settles it'
+        ap.answer(a.id, False, 'no')
+        assert _reply(cfg).text == 'refused: no' and be.sent == []
+    finally: ctl.close()
+
+
+class Raises(FakeBackend):
+    def _send(self, msg, **kw): raise RuntimeError('the model is down')
+
+class TurnError(FakeBackend):
+    def _send(self, msg, **kw):
+        out = super()._send(msg, **kw)
+        self.turn_error = 'rate limited'
+        return out
+
+
+@pytest.mark.parametrize('be,why', [(Raises(), 'the model is down'), (TurnError(replies=['rate limited']), 'rate limited')])
+def test_failed_ask_turn_replies_failed(cfg, be, why):
+    agent, _ = fake_agent(cfg=cfg)
+    agent._be = agent._be_or_none = lambda job='turn': be
+    ctl = Control(agent).start()
+    together_on(ctl.d, ctl.key)
+    try:
+        env = _ring(ctl, 'ask', 'add a Card part')
+        r = _reply(cfg)
+        assert r.text.startswith('failed:') and why in r.text and r.thread == env.thread, r.text
+    finally: ctl.close()
+
+
+def test_cancelled_ask_gets_failed_reply(cfg):
+    agent, _ = fake_agent(cfg=cfg)
+    agent._be = agent._be_or_none = lambda job='turn': Slow(replies=['done'] * 3)
+    ctl = Control(agent).start()
+    together_on(ctl.d, ctl.key)
+    try:
+        ctl.do_prompt('a long job')
+        _until(lambda: agent.run() is not None and not agent.run().terminal, 'the turn to start')
+        env = _ring(ctl, 'ask', 'add a Card part')
+        _until(lambda: agent.queued, 'the ask to queue')
+        ctl.do_cancel()
+        r = _reply(cfg)
+        assert (r.text, r.thread) == ('failed: cancelled by the user', env.thread)
+    finally: ctl.close()
+
+
+def test_queued_asks_each_get_a_reply(cfg):
+    agent, _ = fake_agent(cfg=cfg)
+    be = Slow(replies=['first', REPLY, REPLY])
+    agent._be = agent._be_or_none = lambda job='turn': be
+    tty = EmuTty(100, 30)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    got = []
+    async def go():
+        await comp.start()
+        u = cli.Ui(comp, agent, loop=asyncio.get_running_loop())
+        ctl = cli.start_control(u)
+        try:
+            together_on(ctl.d, ctl.key)
+            await asyncio.to_thread(ctl.do_prompt, 'a long job')
+            envs = [await asyncio.to_thread(_ring, ctl, 'ask', t) for t in ('add a Card part', 'and a Badge part')]
+            for _ in range(200):
+                got.extend(take(peers_dir(cfg), 'claude-s1'))
+                if len(got) >= 2: break
+                await asyncio.sleep(.05)
+            assert sorted(r.thread for r in got) == sorted(e.thread for e in envs), got
+            assert all(r.proof == ['pytest -q: 3 passed'] for r in got)
+            for _ in range(200):
+                if u.turn is None: break
+                await asyncio.sleep(.05)
+        finally: ctl.close()
+    try: asyncio.run(asyncio.wait_for(go(), 30))
+    finally: tty.close()
+
+
+def test_restart_in_together_mode_runs_once(cfg):
+    first, _ = fake_agent(cfg=cfg)
+    env = Envelope('ask', 'add a Card part', FRM, f'ramabana-{first.session_id}')
+    Control(first)._hold(env)   # as a session that quit while the user had not answered
+    together_on(peers_dir(cfg), f'ramabana-{first.session_id}')
+    sent = []
+    for _ in range(2):
+        again, be = fake_agent(cfg=cfg, replies=[REPLY], session_id=first.session_id)
+        ctl = Control(again).start()
+        try:
+            time.sleep(.5)
+            sent += be.sent
+        finally: ctl.close()
+    assert len(sent) == 1 and Control(first)._held() == [], 'the ask ran once, on the first restart'
+    assert len(take(peers_dir(cfg), 'claude-s1')) == 1
+
+
+def test_limit_refusal_in_together_mode_refuses(cfg):
+    ap = Approvals(tools=WRITE_TOOLS, mode='ask')
+    agent, be = fake_agent(cfg=cfg, approvals=ap, replies=['never'])
+    seen = []
+    ap.listen(seen.append)
+    ctl = Control(agent).start()
+    together_on(ctl.d, ctl.key)
+    try:
+        env = _ring(ctl, 'ask', 'one more round', hops=HOP_MAX)
+        r = _reply(cfg)
+        assert r.text.startswith('refused: hop limit') and r.thread == env.thread, r.text
+        time.sleep(.2)
+        assert seen == [] and be.sent == [], 'no turn, and the user is not asked'
+    finally: ctl.close()
