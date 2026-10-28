@@ -104,3 +104,42 @@ def test_run_cli_dispatches_report(peers, monkeypatch):
     from ramabana.setup import run_cli
     monkeypatch.setattr('sys.argv', ['ramabana', 'report', '--since', 'soon'])
     assert run_cli() == 2
+
+def test_refused_needs_the_exact_prefix():
+    st = lambda text: pr.threads([ROWS[0], env('r', 'reply', B, A['key'], text, 'a1', proof=['p'])])[0]['state']
+    assert st('refused: not my repo') == 'refused'
+    assert st("I can't reproduce it, but I fixed X") == 'replied'
+
+def test_save_report_rebuilds_degraded_and_keys_on_since(peers):
+    def boom(ts, agent=None): raise RuntimeError('no model')
+    p = pr.save_report(0, summary=boom)
+    assert pr.MISSING in p.read_text() and 'RuntimeError: no model' in p.read_text()
+    assert pr.save_report(0, summary=STUB) == p and pr.MISSING not in p.read_text()
+    assert pr.save_report(3600, summary=STUB) != p
+    assert p.name.endswith('-%s.md' % time.strftime('%H%M', time.localtime(0)))
+
+def test_waiting_thread_shows_receiver_name_and_folder():
+    named = env('x', 'reply', dict(C, folders=['/tmp/abhyasa']), A['key'], 'Done', 'b1', proof=['p'])
+    ts = pr.threads([*ROWS, named, env('d1', 'ask', A, C['key'], 'Wait for me')])
+    t = [t for t in ts if t['id'] == 'd1'][0]
+    assert t['worker'] == 'Abhyasa'
+    ts = pr.threads([env('d1', 'ask', A, C['key'], 'Wait for me')], known={C['key']: dict(C, folders=['/tmp/abhyasa'])})
+    assert pr.derived_actions(ts) == ["- Get an answer to 'Wait for me': Abhyasa (abhyasa)"]
+
+def test_no_made_up_asker_or_ask():
+    t, = pr.threads([ROWS[1]])
+    assert (t['asker'], t['worker'], t['ask']) == ('claude-1', 'Ramabana', pr.NO_ASK)
+    t, = pr.threads([ROWS[-1]])
+    assert (t['asker'], t['worker'], t['ask']) == ('?', '', 'hop limit: 6 of 6 hops used')
+
+def test_checked_changes_skips_non_repo_and_missing_git(tmp_path, monkeypatch):
+    t = dict(changes=['a.py'], folders=[str(tmp_path)])
+    assert pr.checked_changes(t, 0) == ['a.py']
+    def nogit(*a, **k): raise FileNotFoundError('git')
+    monkeypatch.setattr(pr.subprocess, 'run', nogit)
+    assert pr.checked_changes(t, 0) == ['a.py']
+
+def test_no_threads_skips_the_model(tmp_path, monkeypatch):
+    monkeypatch.setenv('RAMABANA_PEERS', str(tmp_path))
+    def boom(*a, **k): raise AssertionError('called')
+    assert 'No thread in this time.' in pr.report(0, summary=boom)
