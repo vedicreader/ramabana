@@ -318,16 +318,17 @@ def test_restart_in_together_mode_runs_once(cfg):
     env = Envelope('ask', 'add a Card part', FRM, f'ramabana-{first.session_id}')
     Control(first)._hold(env)   # as a session that quit while the user had not answered
     together_on(peers_dir(cfg), f'ramabana-{first.session_id}')
-    sent = []
-    for _ in range(2):
+    sent, got = [], []
+    for i in range(2):
         again, be = fake_agent(cfg=cfg, replies=[REPLY], session_id=first.session_id)
         ctl = Control(again).start()
         try:
-            time.sleep(.5)
+            if i == 0: got += _until(lambda: take(peers_dir(cfg), 'claude-s1'), 'the reply')   # the reply is sent after the turn ends
+            else: time.sleep(.3)   # nothing is to happen: give a second run the time to show it
             sent += be.sent
         finally: ctl.close()
     assert len(sent) == 1 and Control(first)._held() == [], 'the ask ran once, on the first restart'
-    assert len(take(peers_dir(cfg), 'claude-s1')) == 1
+    assert len(got) + len(take(peers_dir(cfg), 'claude-s1')) == 1
 
 
 def test_limit_refusal_in_together_mode_refuses(cfg):
