@@ -45,3 +45,22 @@ def test_an_approval_ask_shows_the_placeholder_and_the_call_runs_with_the_real_v
     assert S not in json.dumps([ask.args, ask.summary, ask.preview, ask.dict()]), ask
     got.clear()
     assert t(task='double it', solution=S) == 'added' and got == [S]
+
+def test_an_ask_a_host_builds_with_the_real_value_keeps_nothing(tmp_path):
+    "A host that builds its own `Ask` gives it the real arguments, and a summary and preview made from them."
+    from ramabana.agent import Ask
+    a, _ = fake_agent(cfg=tmp_path)
+    ev = a.events_to(tmp_path/'events.jsonl')
+    a._record(add_exercise)
+    real = {'task': 'double it', 'solution': S}
+    mk = lambda: Ask(tool='add_exercise', args=dict(real), summary=f'add_exercise(solution={S!r})', preview=json.dumps(real))
+    for ok in (True, False):
+        ask = mk(); a._ask_raised(ask); ask.resolve(ok); a._ask_settled(ask)
+    unasked = mk(); unasked.resolve(False, 'refused by the policy'); a._ask_settled(unasked)   # a row with no raise
+    rows = [x.dict() for x in a.activity.acts]
+    assert len(rows) == 3 and S not in json.dumps(rows) and all(r['args']['solution'] == '[SECRET]' for r in rows), rows
+    assert S not in ev.read_text() and '"tool": "add_exercise"' in ev.read_text()
+    a.activity._mark = 0   # the rows came before the turn; count them in it
+    a.ask('go on')
+    assert S not in json.dumps(a.history[-1]) and S not in a.history_path.read_text()
+    assert unasked.args['solution'] == S, 'the Ask itself keeps the real value for the host'

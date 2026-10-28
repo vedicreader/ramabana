@@ -1351,15 +1351,23 @@ class Agent:
         self._steered.extend(msgs)
         self._event('steer', turn_id=self.current_turn_id, messages=list(msgs))
 
+    def _ask_kept(self, ask):
+        "`(args, summary, preview)` of `ask` as rows and events keep them. A host can build an `Ask` from the real arguments, so a tool's `secret_args` are hidden and the summary and preview made again."
+        if not SECRET_ARGS.get(ask.tool): return ask.args, ask.summary, ask.preview
+        a = _hidden(ask.tool, ask.args)
+        return a, _summary(ask.tool, a), preview_for(ask.tool, a, self.host)
+
     def _ask_event(self, ask, event):
-        self._event('ask', event=event, id=ask.id, tool=ask.tool, summary=ask.summary, run_id=ask.run_id,
-                    answer=ask.answer, note=ask.note, forced=ask.forced, preview=_clip(ask.preview, 2000))
+        _, summary, preview = self._ask_kept(ask)
+        self._event('ask', event=event, id=ask.id, tool=ask.tool, summary=summary, run_id=ask.run_id,
+                    answer=ask.answer, note=ask.note, forced=ask.forced, preview=_clip(preview, 2000))
 
     def _ask_raised(self, ask):
         "Show an ask put to a person as an `awaiting` activity row before its call runs."
         self._ask_event(ask, 'raised')
-        act = self.activity.start(ask.tool, ask.args, summary=ask.summary, kind='ask', state='awaiting', detail=ask.preview,
-                                  ask_id=ask.id, **self._action_meta(ask.tool, ask.args))
+        args, summary, preview = self._ask_kept(ask)
+        act = self.activity.start(ask.tool, args, summary=summary, kind='ask', state='awaiting', detail=preview,
+                                  ask_id=ask.id, **self._action_meta(ask.tool, args))
         self.__dict__.setdefault('_ask_acts', {})[ask.id] = act
 
     def _ask_settled(self, ask):
@@ -1368,7 +1376,8 @@ class Agent:
         act = self.__dict__.get('_ask_acts', {}).pop(ask.id, None)
         if act is None:
             if ask.answer: return
-            act = self.activity.start(ask.tool, ask.args, summary=ask.summary, kind='ask', ask_id=ask.id, **self._action_meta(ask.tool, ask.args))
+            args, summary, _ = self._ask_kept(ask)
+            act = self.activity.start(ask.tool, args, summary=summary, kind='ask', ask_id=ask.id, **self._action_meta(ask.tool, args))
         self.activity.finish(act, ask.reply() or 'approved', ok=bool(ask.answer))
         if ask.answer: return
         run = ask.run or current_run()
