@@ -1116,16 +1116,16 @@ wheels = [
 
 [[package]]
 name = "fastcdp"
-version = "0.0.10"
+version = "0.0.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastcore" },
     { name = "httpx" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ca/ae/99e387cb56eff9cce2eb5b4a0687a93eb72739acbef57840030e21b7f4ad/fastcdp-0.0.10.tar.gz", hash = "sha256:cc06930328c79b93e30b449ab03a8222aa83d527b2edfa8af49e2d46c1139eb6", size = 287855, upload-time = "2026-08-31T05:50:17.44Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/d3/0a6b96b71521c0c6d4f3739f968e3ee39105fab2266661e1f2b4d4feb372/fastcdp-0.0.17.tar.gz", hash = "sha256:41ac6f256467106c614e1337b31fc0c8de99763322dd9c72281e3239a22058f9", size = 293260, upload-time = "2026-09-15T05:53:45.28Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/82/27/b8feaee14ae02e1aad8627941784e897e9c1d7a2360cc8a4cc8c8ad5141a/fastcdp-0.0.10-py3-none-any.whl", hash = "sha256:65100149ab0716dbe07e4cfb085424bcc0e950e9118d356f6f7693c8346bed72", size = 290615, upload-time = "2026-08-31T05:50:15.741Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/2a/cd1d256d879f235517560c49a8bd04d4694d4749480facf721ecbd5fe63d/fastcdp-0.0.17-py3-none-any.whl", hash = "sha256:ceafcc3aa945867f79fee3feece436d2ffdc40a0656016f0a42e07f17816e31a", size = 294538, upload-time = "2026-09-15T05:53:43.613Z" },
 ]
 
 [[package]]
@@ -1314,7 +1314,7 @@ wheels = [
 
 [[package]]
 name = "fossick"
-version = "0.1.21"
+version = "0.1.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -1331,9 +1331,9 @@ dependencies = [
     { name = "scrapling", extra = ["fetchers"] },
     { name = "yt-dlp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/e5/46c01696ab395510ebd076b8fd7ac8ddf839d1629c1d6c6564b72fa6d549/fossick-0.1.21.tar.gz", hash = "sha256:21935555fc08f606c658a7c2c4b95f5ced5d8e18ce7f6e83d60911c3e300d31e", size = 100026, upload-time = "2026-10-24T19:59:56.477Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/19/eae66d48e4b6f7e9438c9e2610fbb3e9370af48b48b4d6b429521a75294e/fossick-0.1.22.tar.gz", hash = "sha256:aa38d89412346e67fa7414ea1a5dd25ef87fb623da8b593ff7adef2ebdf6ae9a", size = 103277, upload-time = "2026-10-28T02:55:47.861Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/9c/96a0428393ac735ea38217b8d574f5c9f5d26500852c780bf4caba2fb87d/fossick-0.1.21-py3-none-any.whl", hash = "sha256:3662827d8cbc23df14186fdadf43afbf13e2468835aef0a3a1e5bbd6584641c9", size = 100469, upload-time = "2026-10-24T19:59:54.968Z" },
+    { url = "https://files.pythonhosted.org/packages/62/0d/23f3312b23948c3072526f8cc991473dce15655f5e8196402e71330579b8/fossick-0.1.22-py3-none-any.whl", hash = "sha256:971c4ec075a0b2f06471d961f89158f9773d4b4f0a5e92ef35f141ef8e2e4176", size = 103619, upload-time = "2026-10-28T02:55:46.174Z" },
 ]
 
 [[package]]
@@ -4080,10 +4080,10 @@ requires-dist = [
     { name = "fastpylight", marker = "extra == 'cli'", specifier = ">=0.1.18" },
     { name = "fastpylight", marker = "extra == 'dev'", specifier = ">=0.1.18" },
     { name = "fastspec", specifier = ">=0.2.4" },
-    { name = "fossick", marker = "extra == 'all'", specifier = ">=0.1.21" },
-    { name = "fossick", marker = "extra == 'cli'", specifier = ">=0.1.21" },
-    { name = "fossick", marker = "extra == 'dev'", specifier = ">=0.1.21" },
-    { name = "fossick", marker = "extra == 'search'", specifier = ">=0.1.21" },
+    { name = "fossick", marker = "extra == 'all'", specifier = ">=0.1.22" },
+    { name = "fossick", marker = "extra == 'cli'", specifier = ">=0.1.22" },
+    { name = "fossick", marker = "extra == 'dev'", specifier = ">=0.1.22" },
+    { name = "fossick", marker = "extra == 'search'", specifier = ">=0.1.22" },
     { name = "gheasy", specifier = ">=0.0.15" },
     { name = "jupyter-client", marker = "extra == 'all'", specifier = ">=8.10.0" },
     { name = "jupyter-client", marker = "extra == 'cli'", specifier = ">=8.10.0" },
