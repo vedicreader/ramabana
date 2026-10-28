@@ -200,7 +200,7 @@ def test_prompt_ends_together_and_points_at_report(world):
     cfg, d = world
     st = together_on(d, 'claude-s1')
     text = context(hook(cfg, 'prompt')[1], 'UserPromptSubmit')
-    assert together_state(d, 'claude-s1') is None and 'ramabana report' in text
+    assert together_state(d, 'claude-s1') is None and f'{sys.executable} -m ramabana.peer_report --since ' in text
     assert hook(cfg, 'prompt') == (0, '', ''), 'the end shows once'
     st = together_on(d, 'claude-s1', now=time.time() - 100)
     p = report_path(st['started'], cfg); p.parent.mkdir(exist_ok=True); p.write_text('# Night of now\nall done')
@@ -358,3 +358,15 @@ def test_hook_text_names_this_python(world):
 def test_peers_module_runs_without_path(tmp_path):
     r = subprocess.run(['env', '-i', f'HOME={tmp_path}', sys.executable, '-m', 'ramabana.peers', 'peers'], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and 'no other session is running' in r.stdout, r.stderr
+
+
+def test_save_report_runs_this_python(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ph.subprocess, 'run', lambda argv, **kw: calls.append(argv))
+    ph._save_report(12.5)
+    assert calls == [[sys.executable, '-m', 'ramabana.peer_report', '--save', '--since', '12.5']]
+
+
+def test_report_module_runs_without_path(tmp_path):
+    r = subprocess.run(['env', '-i', f'HOME={tmp_path}', sys.executable, '-m', 'ramabana.peer_report', '--since', '0', '--save'], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and r.stdout.strip().endswith('.md'), r.stderr

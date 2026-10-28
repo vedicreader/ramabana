@@ -166,3 +166,6 @@ def report_cli(argv, cfg=None):
     except ValueError: print(f'bad time {a.since!r}', file=sys.stderr); return 2
     print(save_report(since, cfg) if a.save else report(since, cfg))
     return 0
+
+# %% ../nbs/26_peer_report.ipynb #cae4a04b
+if __name__ == '__main__': sys.exit(report_cli(sys.argv[1:]))

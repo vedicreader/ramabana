@@ -110,7 +110,7 @@ def _report_note(since, cfg):
     "The saved report of the mode that started at `since`, or how to make it."
     p = report_path(since, cfg)
     if p.exists(): return f'Work together mode ended. Show the user this report, saved at {p}:\n\n{p.read_text()}'
-    return f'Work together mode ended. Run `ramabana report --since {since}` and show the user the report.'
+    return f'Work together mode ended. Run `{shlex.quote(sys.executable)} -m ramabana.peer_report --since {since}` and show the user the report.'
 
 def _prompt(ad, d, data, cfg):
     "End work together mode, and give the agent its unread messages and the report of the mode that ended."
@@ -131,8 +131,8 @@ def _live(d, key):
     except (OSError, ValueError, KeyError): return False
 
 def _save_report(since):
-    "Save the report of the mode that started at `since` with `ramabana report --save`; a failure is logged."
-    try: subprocess.run(['ramabana', 'report', '--save', '--since', str(since)], capture_output=True, timeout=600)
+    "Save the report of the mode that started at `since` with `python -m ramabana.peer_report --save` on this Python; a failure is logged."
+    try: subprocess.run([sys.executable, '-m', 'ramabana.peer_report', '--save', '--since', str(since)], capture_output=True, timeout=600)
     except (OSError, subprocess.SubprocessError): _log_error('report')
 
 def _watch(d, key):
