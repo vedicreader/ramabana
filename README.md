@@ -490,6 +490,10 @@ Set up the hooks once. This step edits the Claude Code hook settings and gives t
 ramabana setup peers --agent claude
 ```
 
+Plain `ramabana setup` does not install these hooks. The command shows the diff of `~/.claude/settings.json` and asks before it writes. Add `--yes` to write without the question. Use `--agent codex` for Codex, or `--agent all` for both. `--remove` takes the hooks out again.
+
+A Claude Code session registers when it starts. A session that was already running before the setup does not appear in `ramabana peers`. Restart it, or resume it with `claude --resume`. `ramabana --doctor` shows whether each agent has the hooks.
+
 List the live sessions:
 
 ``` sh
