@@ -61,6 +61,28 @@ def test_every_palette_is_a_cli_theme_and_an_unknown_name_warns_and_takes_auto(m
     assert [str(x.message) for x in w if 'cli.theme' in str(x.message)] and len(w) == 1, [str(x.message) for x in w]
 
 
+def test_cli_pii_from_the_file_needs_the_vault_and_is_skipped_without_it(monkeypatch):
+    assert setup.KEYS['cli.pii'].choices == setup.PII_MODES
+    seen = {}
+    def fake(prompt: str = '', vault: bool = False, no_vault: bool = False, pii: str = 'off'): pass
+    class Main:
+        __wrapped__ = staticmethod(fake)
+        def __call__(self, **kw): seen.update(kw); return 0
+    import ramabana.cli
+    monkeypatch.setattr(ramabana.cli, 'main', Main())
+    monkeypatch.setattr(sys, 'argv', ['ramabana', 'hi'])
+    _write('[cli]\npii = "redact"\nvault = true\n')
+    assert setup.run_cli() == 0 and (seen['pii'], seen['vault']) == ('redact', True) and 'pii' in setup.CLI_FROM_CONFIG, seen
+    _write('[cli]\npii = "redact"\n')
+    assert setup.run_cli() == 0 and seen['pii'] == 'off' and 'pii' not in setup.CLI_FROM_CONFIG, 'skipped, so startup does not refuse'
+    assert setup.refusal(pii=seen['pii'], vault=seen['vault']) == ''
+    monkeypatch.setattr(sys, 'argv', ['ramabana', '--pii', 'refuse', 'hi'])
+    assert setup.run_cli() == 0 and seen['pii'] == 'refuse' and setup.refusal(pii='refuse', vault=False), 'the flag without --vault is still refused'
+    _write('[cli]\npii = "redact"\nvault = true\n')
+    monkeypatch.setattr(sys, 'argv', ['ramabana', '--pii', 'off', 'hi'])
+    assert setup.run_cli() == 0 and seen['pii'] == 'off' and 'pii' not in setup.CLI_FROM_CONFIG, '--pii off beats the file'
+
+
 def test_run_cli_hands_config_to_its_own_command_before_parsing_a_prompt(monkeypatch, capsys):
     monkeypatch.setattr(sys, 'argv', ['ramabana', 'config', 'path'])
     assert setup.run_cli() == 0 and capsys.readouterr().out.strip() == str(config_path())

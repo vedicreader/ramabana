@@ -9,20 +9,22 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
            'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT', 'INLINE_SKILLS',
            'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'DATED_CONTEXT', 'PICTURE_RULE', 'RULES', 'SMALL_RULES',
-           'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE',
-           'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY',
-           'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'HIDING', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS',
-           'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK',
-           'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP',
-           'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
-           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'Act',
-           'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
+           'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'MASKED_NOTE', 'CLAUDE_NOTES', 'LESSON_RULE',
+           'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS',
+           'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'RAHASYA_SECRETS', 'MORE_SECRETS', 'PRIVATE_KEY',
+           'HIDING', 'READERS', 'ASK_PRESENCE', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE',
+           'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING',
+           'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP',
+           'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'PII_READS',
+           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
            'never', 'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt',
            'prompt_directives', 'project_context', 'dated_lessons', 'learned_context', 'work_rules', 'skill_catalogue',
            'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent',
-           'git_shell_denial', 'shell_denial', 'generated_denial', 'note_tools', 'hydrate_turns', 'repo_state',
-           'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title',
-           'model_title', 'HistoryBusy', 'compact_history', 'mk_host', 'mk_agent']
+           'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial', 'generated_denial',
+           'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing',
+           'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy', 'compact_history',
+           'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -892,8 +894,7 @@ def system_prompt(host, skills=(), inline=INLINE_SKILLS, extra='', tools=(), cfg
             '\n- To *look at* live state, prefer `inspect_python`: neither of its scopes can change\n'
             '  what the user made, so it needs no approval. Start with the default sandbox and pass\n'
             f"  `scope='overlay'` when it refuses a library call you need.{conc}")
-    env = getattr(host, 'environment', lambda: '')()
-    machine = f'\n\nOn this machine:\n{env}' if env else ''
+    machine = _machine(host, getattr(host, 'environment', lambda: '')())
     sp = f"""You are Ramabana, a coding agent. Follow the user's latest explicit request and the project instructions below. You are working in these folders:
 {roots}{machine}
 
@@ -912,6 +913,13 @@ How to work:
 
 
 SMALL_CONTEXT_FILE = 2000   # chars
+MASKED_NOTE = ('API keys and tokens in tool output come back as `[SECRET]`, and commands that print the environment are refused; '
+               'to check a variable, ask whether it is set: `test -n "$NAME" && echo set`.')
+
+def _machine(host, env):
+    "The briefing's `On this machine` block: the host's environment line, and that secrets are masked when its read guard masks them."
+    lines = [l for l in (env, MASKED_NOTE if getattr(getattr(host, 'read_guard', None), 'masks_secrets', False) else '') if l]
+    return '\n\nOn this machine:\n' + '\n'.join(lines) if lines else ''
 
 def _folders(host):
     "The open folders as the briefing lists them, followed by the folders open for reading only."
@@ -926,7 +934,7 @@ def small_system_prompt(host, tools=(), cfg=None, learned=None):
     roots = _folders(host)
     env = (getattr(host, 'environment', lambda: '')() or '').strip()
     line = env.splitlines()[0].split('; inspect_python')[0] if env else ''   # `inspect_python` is not offered here
-    machine = f"\n\nOn this machine:\n{line}" if line else ''
+    machine = _machine(host, line)
     return (f"You are Ramabana, a coding agent. Follow the user's latest explicit request. You are working in these folders:\n"
             f"{roots}{machine}\n\nHow to work:\n{work_rules(names, SMALL_RULES)}" + learned_context(learned, SMALL_CONTEXT_FILE, SMALL_CONTEXT_FILE)
             + project_context(host, mx=SMALL_CONTEXT_FILE, cfg=cfg))
@@ -1552,6 +1560,33 @@ def git_shell_denial(command, tools=None):
             return f'`git {sub}` goes through `{GIT_SHELL[sub]}` here; it returns an `undo` token and keeps the tree snapshot for /rewind'
     return ''
 
+# %% ../nbs/03_agent.ipynb #5626c734
+try: from rahasya import pii_report, redact
+except ImportError: pii_report = redact = None   # rahasya comes with the search extra
+
+#: rahasya's `secret` shapes, which ramabana masks itself when rahasya is not installed
+RAHASYA_SECRETS = r'sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}'
+#: documented key prefixes rahasya's `secret` kind misses: GitHub, Stripe, Hugging Face, GitLab, npm, PyPI and AWS temporary keys
+MORE_SECRETS = (r'github_pat_[A-Za-z0-9_]{22,}|gh[ousr]_[A-Za-z0-9]{36,}|[sr]k_(?:live|test)_[A-Za-z0-9]{16,}|hf_[A-Za-z0-9]{30,}'
+                r'|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{36}|pypi-[A-Za-z0-9_-]{50,}|ASIA[0-9A-Z]{16}')
+#: a PEM or PGP private key; a block cut off before its END line is masked to the end of the text
+PRIVATE_KEY = r'-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY(?: BLOCK)?-----|\Z)'
+
+def mask_secrets(text):
+    "`text` with every API key, token and private key replaced by `[SECRET]`, the label rahasya's `redact` writes."
+    text = re.sub(PRIVATE_KEY, '[SECRET]', text)
+    if redact is not None: text, shapes = redact(text, kinds=('secret',)), MORE_SECRETS
+    else: shapes = f'{RAHASYA_SECRETS}|{MORE_SECRETS}'
+    return re.sub(rf'\b(?:{shapes})\b', '[SECRET]', text)
+
+def secret_denial(host, name, args):
+    "Why a write would put `[SECRET]`, the reads' mask, over a real key in a file, or ''."
+    if '[SECRET]' not in json.dumps(args, default=str): return ''
+    for p in write_targets(name, args):
+        if (t := host.text_at(p)) and mask_secrets(t) != t:
+            return f'{p} holds a key the reads show as `[SECRET]`, and writing that mask would replace the key. Leave that line out of the edit, or ask the user to change it'
+    return ''
+
 # %% ../nbs/03_agent.ipynb #62782197
 @patch
 def _record(self:Agent, f):
@@ -1668,9 +1703,48 @@ def _deny_git_shell(self:Agent, name, args):
 
 
 HIDING = {'head', 'tail'}   #: commands a pipe may not end in, because they cut output before anyone reads it
+READERS = {'cat', 'less', 'more', 'head', 'tail', 'grep', 'tac', 'nl', 'strings'}   #: commands refused on a `.env` file, because they print its values
+ASK_PRESENCE = 'ask whether one variable is set instead: `test -n "$NAME" && echo set`'
+#: commands that run the command after them, with their options that take a value
+_ENV_WRAPS = {'env': ('-u', '--unset', '-C', '--chdir'), 'sudo': ('-u', '-g'), 'nice': ('-n', '--adjustment'), 'nohup': (), 'time': (), 'command': (),
+              'exec': ('-a',), 'builtin': (), 'xargs': ('-n', '-I', '-L', '-P', '-s', '-d', '-E', '-a', '--max-args', '--arg-file'), 'stdbuf': (), 'setsid': (),
+              'timeout': ('-k', '-s', '--kill-after', '--signal')}
+
+def _dotenv(w):
+    "Whether `w` names a `.env` file that holds values: `.env` or `.env.local`, not a template such as `.env.example`."
+    n = Path(w).name
+    return n == '.env' or (n.startswith('.env.') and n.rsplit('.', 1)[-1] not in ('example', 'sample', 'template', 'dist', 'md'))
+
+def env_denial(command):
+    "Why a shell line prints environment values, which hold API keys, or ''. Quoted text never matches. A `sh -c` line is checked too."
+    for seg in _segments(command):
+        groups, cur = [], []
+        for w in seg:   # `$(printenv X)` and `( env )` are commands of their own; `$HOME/.env` is one word
+            if w in ('(', ')', '{', '}'): groups.append(cur); cur = []
+            elif w != '$': cur.append(w)
+        for words in groups + [cur]:
+            if (p := next((w for w in words if re.fullmatch(r'/proc/[^/]+/environ', w)), None)): return f'`{p}` holds a process environment; {ASK_PRESENCE}'
+            while words and (_NAMEVAL.fullmatch(words[0]) or (Path(words[0]).name in _ENV_WRAPS and not (words[0] == 'command' and words[1:2] in (['-v'], ['-V'])))):   # `command -v env` only looks
+                w0, inner = ('' if _NAMEVAL.fullmatch(words[0]) else Path(words[0]).name), words[1:]
+                while inner and (inner[0].startswith('-') or (w0 == 'env' and _NAMEVAL.fullmatch(inner[0]))):
+                    inner = inner[2:] if inner[0] in _ENV_WRAPS.get(w0, ()) else inner[1:]
+                if w0 == 'timeout': inner = inner[1:]   # its duration
+                if w0 == 'env' and not inner: break   # `env` with nothing to run prints the environment
+                words = inner
+            if not words: continue
+            head, rest = Path(words[0]).name, words[1:]
+            flags = ''.join(w[1:] for w in rest if re.fullmatch(r'-[a-zA-Z]+', w))
+            if (head == 'printenv' or (head == 'env' and rest not in (['--help'], ['--version'])) or (head == 'set' and not rest) or (head == 'export' and rest in ([], ['-p']))
+                or (head in ('declare', 'typeset') and (not rest or 'p' in flags or ('x' in flags and all(w.startswith('-') for w in rest))))):
+                return f'`{shlex.join(words)}` prints environment values, which hold API keys; {ASK_PRESENCE}'
+            if head in READERS and (f := next((w for w in rest if _dotenv(w)), None)): return f'`{head} {f}` prints a file of secrets; {ASK_PRESENCE}'
+            if head in _SHELLS and (i := next((i for i, w in enumerate(rest) if re.fullmatch(r'-[a-zA-Z]*c', w)), -1)) >= 0 and i + 1 < len(rest):
+                if (why := env_denial(rest[i + 1])): return why
+    return ''
 
 def shell_denial(command):
-    "Why a shell line hides its own output, or ''. Quoted text never matches. A `sh -c` line is checked too."
+    "Why a shell line hides its own output or prints environment values, or ''. Quoted text never matches. A `sh -c` line is checked too."
+    if (why := env_denial(command)): return why
     try: toks = list(shlex.shlex(str(command or ''), posix=True, punctuation_chars=True))
     except ValueError: return ''
     for i, t in enumerate(toks):
@@ -1696,9 +1770,9 @@ def generated_denial(host, name, args):
 @patch
 def _guard(self:Agent, name, args,
            writing=False):   # whether this call writes where it names; a write to a generated module is refused
-    "Why a call is refused before it runs, or None. Git writes go through git tools. Shell output is read whole. Write tools leave generated modules to their notebooks."
+    "Why a call is refused before it runs, or None. Git writes go through git tools. Shell output is read whole and never dumps the environment. Write tools leave generated modules to their notebooks and never write `[SECRET]` over a real key."
     if name in ('run_shell', 'run_shell_bg'): return self._deny_git_shell(name, args) or shell_denial(args.get('command', '')) or None
-    return (generated_denial(self.host, name, args) or None) if writing else None
+    return (generated_denial(self.host, name, args) or secret_denial(self.host, name, args) or None) if writing else None
 
 
 @patch
@@ -4992,6 +5066,38 @@ def _be(self:Agent, job='turn'):
             self._backends[key] = backend
         return self._backends[key]
 
+# %% ../nbs/03_agent.ipynb #fdaa8fff
+from shalya.core import Refusal
+from .core import PII_OFF, is_local
+
+#: the read kinds `--pii` gates; code reads are edited by exact text, so they get secrets masked only
+PII_READS = ('shell', 'python', 'url', 'page')
+
+def masking_guard(policy=None,  # callable -> `(pii, pii_ner)`, asked on each read; None masks secrets only
+                 ):
+    "A host `read_guard` that masks secrets in every read, and personal data in the shell, Python and web reads a hosted model gets."
+    def guard(r):
+        if r.kind == 'image' or not isinstance(r.text, str): return None
+        text, (mode, ner) = mask_secrets(r.text), (policy() if policy is not None else (PII_OFF, False))
+        if mode != PII_OFF and r.kind in PII_READS and not r.local:
+            if mode == 'refuse' and pii_report(text, mx=max(len(text), 1), ner=ner).has_pii:
+                return Refusal('it holds personal data and this turn runs on a hosted model, so --pii refuse withholds it')
+            if mode == 'redact': text = redact(text, ner=ner)
+        return None if text == r.text else text
+    guard.masks_secrets = True
+    return guard
+
+def guard_reads(host):
+    "`host` with `masking_guard` as its `read_guard`, unless it has one; a vault host's `--pii` policy gates personal data."
+    if host.read_guard is None: host.read_guard = masking_guard(host._policy if getattr(host, '_vault_enabled', False) else None)
+    return host
+
+@patch
+def model_local(self:Agent):
+    "`(local, model)` of the model making the call in flight, for the read guard: a sub-agent's while one runs, else the turn's."
+    m, run = self.model, current_run()
+    return (is_local(run.model), run.model) if run is not None and run.model and run.model != m.name else (m.local, m.name)
+
 # %% ../nbs/03_agent.ipynb #08c3bf66
 from .core import PII_OFF
 from .vault import WorkspaceHost
@@ -5003,12 +5109,12 @@ def mk_host(roots=('.',),
             vault=False,             # keep reads in a vishalakshi vault
             spec=False,              # let the agent read and call an API spec
             read_outside=False,      # read-only tools may name any path
-            pii=PII_OFF,             # off | redact | refuse PII from the vault
+            pii=PII_OFF,             # off | redact | refuse PII from the vault, and from shell, Python and web reads a hosted model gets
             pii_ner=False,           # gate titled names too, not only patterns
-            **kwargs):               # to the host: `index`, `warm`, `vault=<path>`
-    "The workspace host shared by the terminal, MCP and ACP."
-    return WorkspaceHost(roots, approvals=approvals, web=web, vault=vault, spec=spec,
-                         read_outside=read_outside, pii=pii, pii_ner=pii_ner, **kwargs)
+            **kwargs):               # to the host: `index`, `warm`, `vault=<path>`, `read_guard`
+    "The workspace host shared by the terminal, MCP and ACP, with secrets masked in every read unless `read_guard` says otherwise."
+    return guard_reads(WorkspaceHost(roots, approvals=approvals, web=web, vault=vault, spec=spec,
+                                     read_outside=read_outside, pii=pii, pii_ner=pii_ner, **kwargs))
 
 
 def mk_agent(roots=('.',),
@@ -5018,7 +5124,7 @@ def mk_agent(roots=('.',),
              vault=False,             # keep reads in a vishalakshi vault
              spec=False,              # let the agent load OpenAPI/Azure/GCP specs
              read_outside=False,      # read-only tools may name any path
-             pii=PII_OFF,             # off | redact | refuse PII from the vault
+             pii=PII_OFF,             # off | redact | refuse PII from the vault, and from shell, Python and web reads a hosted model gets
              pii_ner=False,           # gate titled names too, not only patterns
              host_kw=None,            # to `mk_host`: `index` (off: `sync_index` runs it after the model), `warm`, `vault=<path>`
              read_roots=(),           # folders the read tools search and no write touches
@@ -5039,5 +5145,6 @@ def mk_agent(roots=('.',),
         from .pyrepl import use_kernel
         use_kernel(host, python)
     agent = Agent(host, model=model, approvals=approvals, **kw)
+    if host.model_local is None: host.model_local = agent.model_local
     agent.lend_model()   # else `--vault` loads a second runtime
     return agent, host

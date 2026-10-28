@@ -134,6 +134,24 @@ def test_mk_host_carries_pii_into_every_vault_read(own_vault, mode):
     assert 'ada@example.com' not in got and '020 7946 0958' not in got
 
 
+def test_pii_gates_shell_output_sent_to_a_hosted_model_and_never_code_reads(own_vault):
+    from ramabana.cli import mk_host
+    from shalya.tools import tools_for
+    (own_vault/'contact.txt').write_text('write to ada@example.com\n')
+    h = mk_host([own_vault], vault=True, web=False, pii='redact', **OFFLINE)
+    t = {f.__name__: f for f in tools_for(h)}
+    h.model_local = lambda: (False, 'claude-opus')
+    out = t['run_shell']('cat contact.txt', cwd=str(own_vault))
+    assert 'ada@example.com' not in out and '[EMAIL]' in out, out
+    assert 'ada@example.com' in t['view_file'](str(own_vault/'contact.txt')), 'a code read is edited by exact text, so it keeps PII'
+    h.model_local = lambda: (True, 'litert/gemma')
+    assert 'ada@example.com' in t['run_shell']('cat contact.txt', cwd=str(own_vault))
+    r = mk_host([own_vault], vault=True, web=False, pii='refuse', **OFFLINE)
+    r.model_local = lambda: (False, 'claude-opus')
+    out = {f.__name__: f for f in tools_for(r)}['run_shell']('cat contact.txt', cwd=str(own_vault))
+    assert out.startswith('ERROR: withheld: ') and 'ada@example.com' not in out, out
+
+
 
 
 def test_the_entity_graph_waits_for_a_model_chosen_for_it(tmp_path, monkeypatch):

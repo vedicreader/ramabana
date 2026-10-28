@@ -94,7 +94,7 @@ def main(
     web: bool = True,                # let web tools reach the network via fossick
     read_outside: bool = False,      # reads may name any path; writes stay inside
     vault: bool = False,             # keep reads in a vishalakshi vault
-    pii: str = PII_OFF,              # off | redact | refuse PII from the vault
+    pii: str = PII_OFF,              # off | redact | refuse PII from the vault, and from shell, Python and web reads a hosted model gets
     pii_ner: bool = False,           # --pii also gates titled names, not only patterns
     transport: str = 'stdio',        # stdio | sse | streamable-http
     cfg: str = None,                 # config dir, for skills and extensions

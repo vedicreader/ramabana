@@ -183,7 +183,7 @@ EARLY = ('-h', '--help', '--json', '--doctor', '--kernels', '--python', '--attac
 #: the flags `refusal` reads
 FLAGS = ('--vault', '--warm', '--no-warm')
 LAUNCHED = False   # set when `run_cli` has run `launch`; `main` then skips it
-CLI_FROM_CONFIG = ()   #: enabled read and vault defaults to name in the startup hint
+CLI_FROM_CONFIG = ()   #: the read, vault and pii defaults config.toml turned on, named in the startup hint
 
 def launch_args(argv):
     "`Setup`'s `cfg` and `launch`'s `tmux` for an interactive command line `main` accepts, read without its parser; None leaves it to `main`."
@@ -228,14 +228,16 @@ def run_cli():
     explicit = vars(p.parse_args())
     defaults = {k[4:]: v for k, v in load_config()[0].items() if k.startswith('cli.')}
     if (cfg := explicit.get('cfg')) is not None and Path(cfg).expanduser().resolve() != Path('~/.config/ramabana').expanduser().resolve():
-        for k in ('read_outside', 'vault'): defaults.pop(k, None)
+        for k in ('read_outside', 'vault', 'pii'): defaults.pop(k, None)
     if any(explicit.get(k) for k in ('python', 'attach', 'agent_proxy')): defaults.pop('vault', None)
     p.set_defaults(**defaults)   # a flag given still wins
     args = vars(p.parse_args())
     for k in ('pdb', 'xtra'): args.pop(k, None)
     for k in ('read_outside', 'vault'):
         if k in args: args[k] = args[k] and not args[f'no_{k}']
-    CLI_FROM_CONFIG = tuple(k for k in ('read_outside', 'vault') if k in defaults and args.get(k) and not explicit.get(k))
+    pii_cfg = 'pii' in defaults and explicit.get('pii') == PII_OFF   # config.toml set it and no --pii did; `--pii off` leaves it off either way
+    if pii_cfg and not args.get('vault'): args['pii'] = PII_OFF   # skipped, as cli.vault is for --python, where the flag is refused
+    CLI_FROM_CONFIG = tuple(k for k in ('read_outside', 'vault') if k in defaults and args.get(k) and not explicit.get(k)) + (('pii',) if pii_cfg and args['pii'] != PII_OFF else ())
     return main(**args)
 
 # %% ../nbs/19_setup.ipynb #bc8fcf27
@@ -340,6 +342,7 @@ KEYS = {
     'cli.theme': Key(str, '', '--theme', "the terminal palette; auto follows the terminal's background", ('auto', *THEME_NAMES)),
     'cli.read_outside': Key(bool, '', '--no-read-outside', 'allow reads outside the opened folders; writes stay inside them'),
     'cli.vault': Key(bool, '', '--no-vault', 'use the vishalakshi vault for reads; ignored in Python, attach and agent-proxy sessions'),
+    'cli.pii': Key(str, '', '--pii', 'mask or withhold personal data in vault reads, and in shell, Python and web reads a hosted model gets; needs cli.vault, and is skipped without it', PII_MODES),
     'cli.tmux': Key(str, '', '--tmux', 'whether the terminal session runs in tmux panes', ('auto', 'on', 'off')),
     'cli.pane': Key(str, '', '--pane', 'whether the terminal session opens the now pane', ('auto', 'on', 'off')),
     'cli.hints': Key(bool, '', '--no-hints', 'show a row under the status bar with the keys that work at that moment'),
@@ -542,7 +545,7 @@ CONFIG_HEAD = '''# Ramabana's settings for this machine. Every key is commented 
 # Delete the leading '#' to set one. A command-line flag beats an env var, an env var beats this file,
 # and this file beats the built-in default. Inside an app that embeds Ramabana, the env vars may carry
 # that app's prefix too. `ramabana config show` prints what is in effect and where each value came from.
-# A custom --cfg folder ignores cli.read_outside and cli.vault. Their flags still work.
+# A custom --cfg folder ignores cli.read_outside, cli.vault and cli.pii. Their flags still work.
 '''
 MODEL_EXAMPLE = '''
 # Corrections to the numbers fastllm's table gives one model, keyed by the name you choose it by

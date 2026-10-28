@@ -2747,7 +2747,7 @@ def main(
     read_outside: bool = False,          # reads reach any path; writes need --root
     subagent_writes: bool = True,       # --no-subagent-writes restricts delegates to read-only tools
     vault: bool = False,                 # vishalakshi vault for reads; not in python mode
-    pii: str = PII_OFF,                  # off | redact | refuse PII from the vault
+    pii: str = PII_OFF,                  # off | redact | refuse PII from the vault, and from shell, Python and web reads a hosted model gets
     pii_ner: bool = False,               # --pii also gates titled names
     spec: bool = False,                  # enable OpenAPI, Azure and Google Discovery tools
     theme: str = 'auto',                 # auto follows the terminal's background; /theme lists the palettes

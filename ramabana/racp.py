@@ -22,7 +22,7 @@ except ImportError as e: raise ImportError(
 from fastcore.basics import ifnone
 from fastcore.script import call_parse
 from . import __version__
-from .agent import DFLT_TIMEOUT, Agent, Approvals, REPLAYED
+from .agent import DFLT_TIMEOUT, Agent, Approvals, REPLAYED, guard_reads
 from .core import PII_OFF, accepts
 from .vault import WorkspaceHost
 from shalya.core import apply_edits, edits
@@ -137,10 +137,11 @@ def mk_agent(roots, model=None, approve='ask', web=True, vault=False, pii=PII_OF
              timeout=DFLT_TIMEOUT, **kw):
     "An `EditorHost` over `roots` and a gated `Agent` on it."
     approvals = Approvals(mode=approve, timeout=timeout)
-    host = EditorHost(list(roots), approvals=approvals, web=web, vault=vault,
-                      pii=pii, pii_ner=pii_ner, read_outside=False)
+    host = guard_reads(EditorHost(list(roots), approvals=approvals, web=web, vault=vault,
+                                  pii=pii, pii_ner=pii_ner, read_outside=False))
     approvals.host = host
     a = Agent(host, model=model, approvals=approvals, project_extensions=False, **kw)
+    host.model_local = a.model_local
     a.lend_model()
     return a, host
 
@@ -383,7 +384,7 @@ def main(
     model: str = None,      # turn model; omit for the routing default
     web: bool = True,       # let web tools reach the network via fossick
     vault: bool = False,    # keep reads in a vishalakshi vault
-    pii: str = PII_OFF,     # off | redact | refuse PII from the vault
+    pii: str = PII_OFF,     # off | redact | refuse PII from the vault, and from shell, Python and web reads a hosted model gets
     pii_ner: bool = False,  # --pii also gates titled names, not only patterns
     cfg: str = None,        # config dir, for skills, extensions and history
 ):
