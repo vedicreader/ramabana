@@ -182,8 +182,10 @@ def test_tell_tool_sends_ask_envelope(cfg):
             [ask] = _until(lambda: take(peers_dir(cfg), 'claude-s1'), 'the second ask')
             post(ctl.d, ctl.key, Envelope('reply', 'done', FRM, ctl.key, thread=ask.thread, proof=['pytest: ok']))
             control_call(ctl.path, 'message', id='x')   # the doorbell leaves a reply the tool waits for
-        threading.Thread(target=answer, daemon=True).start()
+        t = threading.Thread(target=answer, daemon=True)
+        t.start()
         assert tell('s1', 'and a Badge part', kind='ask', wait=10) == 'done\nproof: pytest: ok'
+        t.join(10)
         assert agent.peer_notes == []
     finally: ctl.close()
 

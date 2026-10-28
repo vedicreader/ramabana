@@ -8,7 +8,7 @@ Two roles exist. The worker does the work. The owner holds the repo. One session
 
 1. Read the repo rules before you write code. Read `CLAUDE.md` or `AGENTS.md` and the repo skills. Some repos have their own pattern. For example, vedicreader builds features from small lego blocks. Read the repo's rules to find its pattern.
 2. Follow the user's general rules. Use functional style. Write short and efficient code. Write one-line docstrings. Add no comments that are not needed. Write prose in STE. Do not add code that you do not need. Do not write a helper that already exists.
-3. Agree the shape with the owner before you add code that the owner's repo will keep. Send an ask: `ramabana tell OWNER "..." --ask --repo R --wait N`. Name the blocks to use, the place for the code and the API. Wait for the owner to agree. Then write the code.
+3. Agree the shape with the owner before you add code that the owner's repo will keep. Send an ask: `ramabana tell OWNER "..." --ask --repo R --wait N`. Name the blocks to use, the place for the code and the API. Wait for a reply from the owner that starts with `agreed:`. Then write the code.
 4. Do not edit a folder that another live session works in. The tool or hook refuses the write and names the folder. Ask the owner to make the change.
 5. Show proof before you say "done". Show the test command and its output. For UI, check the page in Chrome for Testing and show the screenshot path. Never use the user's own Chrome. No proof means the work is not done.
 
@@ -18,6 +18,7 @@ Two roles exist. The worker does the work. The owner holds the repo. One session
 2. If the code is too large or does not follow the repo's patterns, ask for changes.
 3. Accept the work only when the code follows the rules.
 4. Before you do the work in an ask, read your repo rules. If the ask breaks them, reply `refused: <why>` and name the rule.
+5. When you agree to the shape that a worker sends, start your reply with `agreed:`.
 
 ## Find sessions
 
@@ -43,6 +44,7 @@ Two roles exist. The worker does the work. The owner holds the repo. One session
   - `changes: file or commit; file or commit`
   - `proof: command → result; screenshot path`
 - If you decline, start the reply with `refused: <why>`. If you fail, start it with `failed: <why>`.
+- Do not reply to a reply that has no new request.
 
 ## Work together mode
 
