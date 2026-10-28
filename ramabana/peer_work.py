@@ -22,6 +22,7 @@ Two roles exist. The worker does the work. The owner holds the repo. One session
 
 ## Find sessions
 
+- If the hook gave you a full command for `ramabana`, use that command.
 - Run `ramabana peers` to list live sessions. Add `--ids` to see the session ids.
 - After `/add-dir`, run `ramabana peers --add-folder PATH`. The folder guard then knows the new folder.
 - Inside Ramabana, use the `peers()` tool.
@@ -34,7 +35,7 @@ Two roles exist. The worker does the work. The owner holds the repo. One session
 - Inside Ramabana, use `tell(session, text, kind='note'|'ask', wait=60)`.
 - An ask needs the user's approval, unless work together mode is on with that sender.
 - Work together mode does not change tool permissions. Your own permission mode still applies.
-- A thread carries at most 6 messages: the ask and 5 replies. A session sends at most 40 messages in 12 hours. In work together mode, a session also stops after 40 messages sent or 20 asks received.
+- A thread carries at most 6 messages: the ask and 5 replies. A session sends at most 40 notes and asks in 12 hours. Replies do not count. In work together mode, a session also stops after 40 notes and asks sent or 20 asks received.
 
 ## Receive
 

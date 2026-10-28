@@ -25,7 +25,7 @@ __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN'
            'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset',
            'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
            'index_gate', 'save_index', 'log_index', 'last_index', 'merge_hooks', 'peer_skill', 'setup_peers',
-           'hook_check', 'peers_status']
+           'hook_check', 'peers_status', 'path_check']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -1028,6 +1028,13 @@ def peers_status(home=None):
         return f'peers: {k} hooks installed (runs: {shlex.split(cmd)[0]}, ramabana {said})' if ok else f'peers: {k} hook command fails: {said}; {fix}'
     return [line(k, ad) for k, ad in ADAPTERS.items()]
 
+def path_check(home=None, which=shutil.which):
+    "A line when the `ramabana` on `PATH` is missing or reports a version other than the one the hooks run, else None."
+    from ramabana import __version__
+    if not (p := which('ramabana')): return f'peers: no ramabana on PATH; the hooks run {__version__}. To add it: uv tool install ramabana'
+    ok, said = hook_check(f'{shlex.quote(str(p))} peer-hook claude version', home or Path.home())
+    if not (ok and said == __version__): return f"peers: ramabana on PATH ({p}) is {said if ok else 'an older version with no peer commands'}; the hooks run {__version__}. To fix it: uv tool upgrade ramabana"
+
 # %% ../nbs/19_setup.ipynb #883f4a12
 @patch
 def doctor(self:Setup):
@@ -1041,7 +1048,8 @@ def doctor(self:Setup):
           f'config: {conf}' + ('' if conf.exists() else ', written by the first session'),
           f'ramabana-pane: {pane}' if pane else 'ramabana-pane: not on PATH; the pane runs python -m ramabana.pane',
           f"extras: {', '.join(miss)} missing: pip install 'ramabana[{','.join(miss)}]'" if miss else 'extras: all installed',
-          f'kosha: {last_index(self.cfg) or f"no decision yet; the first session writes {self.cfg/KOSHA_LOG}"}', *peers_status(self.environ.get('HOME')), sep='\n')
+          f'kosha: {last_index(self.cfg) or f"no decision yet; the first session writes {self.cfg/KOSHA_LOG}"}', *peers_status(self.environ.get('HOME')),
+          *filter(None, [path_check(self.environ.get('HOME'), self.which)]), sep='\n')
     from ramabana.core import checklist, getting_started
     print('', 'getting started:', checklist(getting_started()), sep='\n')
     if not v: self.offer_install(force=True)

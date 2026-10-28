@@ -207,3 +207,15 @@ def test_doctor_reports_failing_hook_command(tmp_path):
         p.write_text(json.dumps({'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': cmd}]}]}}))
         line = peers_status(tmp_path)[0]
         assert line.startswith('peers: claude hook command fails: ') and line.endswith('; run ramabana setup peers --agent claude'), line
+
+
+def test_doctor_names_a_ramabana_on_path_of_another_version(tmp_path, capsys):
+    fake = tmp_path/'bin/ramabana'; fake.parent.mkdir()
+    s = Setup(tmp_path/'cfg', environ={'HOME': str(tmp_path), 'PATH': '/bin'}, which=lambda n: fake if n == 'ramabana' else None, system=lambda: 'Linux',
+              run=lambda *a, **k: SimpleNamespace(returncode=0, stdout=''), ask=lambda q: 'n', isatty=lambda: False)
+    fake.write_text('#!/bin/sh\necho 0.0.1\n'); fake.chmod(0o755)
+    s.doctor()
+    assert f'peers: ramabana on PATH ({fake}) is 0.0.1; the hooks run {__version__}. To fix it: uv tool upgrade ramabana\n' in capsys.readouterr().out
+    fake.write_text(f'#!/bin/sh\necho {__version__}\n')
+    s.doctor()
+    assert 'ramabana on PATH' not in capsys.readouterr().out

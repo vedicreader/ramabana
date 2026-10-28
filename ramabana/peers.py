@@ -465,3 +465,6 @@ def peers_cli(argv, cfg=None):
         if not got: print('no new messages')
     else: return _together(a, d, frm, rows)
     return 0
+
+# %% ../nbs/23_peers.ipynb #3429dab3
+if __name__ == '__main__': sys.exit(peers_cli(sys.argv[1:]))

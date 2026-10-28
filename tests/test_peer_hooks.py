@@ -344,3 +344,17 @@ def test_claude_session_replies_to_cli(world):
     post(d, 'claude-s1', ask := Envelope('ask', 'fix it', {'kind': 'cli', 'session': 'cli', 'key': 'cli', 'name': 'cli'}, 'claude-s1'))
     assert peers.tell('cli', 'done', 'reply', peers.me(cfg, 's1'), thread=ask.thread, cfg=cfg) == 'told cli'
     assert [e.text for e in take(d, 'cli')] == ['done']
+
+
+def test_hook_text_names_this_python(world):
+    cfg, d = world
+    run = f'{sys.executable} -m ramabana.peers'
+    text = context(hook(cfg, 'session-start')[1], 'SessionStart')
+    assert f'In this session, run peer commands as: `{run}`' in text and Path(sys.executable).is_absolute()
+    note(d, 'add a Card part', 'ask')
+    assert f'Answer with `{run} tell ramabana-r1 ' in context(hook(cfg, 'prompt')[1], 'UserPromptSubmit')
+
+
+def test_peers_module_runs_without_path(tmp_path):
+    r = subprocess.run(['env', '-i', f'HOME={tmp_path}', sys.executable, '-m', 'ramabana.peers', 'peers'], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and 'no other session is running' in r.stdout, r.stderr
