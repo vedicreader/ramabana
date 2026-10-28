@@ -15,6 +15,7 @@ os.environ.setdefault('LITESEARCH_CACHE', str(_home/'.cache'/'litesearch'))
 # usearch otherwise downloads its SQLite extension into every scratch HOME.
 os.environ['VIRTUAL_ENV'] = sys.prefix
 os.environ['HOME'] = str(_home); os.environ.pop('RAMABANA_CONFIG', None)
+os.environ.pop('SANKETA_KEYMAPS', None)   # a session start writes its keymap there; the scratch HOME has no Sanketa folder
 from ramabana.testing import SPEC
 
 
