@@ -115,6 +115,13 @@ def test_the_session_opens_its_socket_and_removes_it_on_exit(monkeypatch):
     assert not path.exists(), 'the socket goes with the session'
 
 
+def _until_sync(cond, what, n=200):
+    "`_until` for a test that is not async."
+    for _ in range(n):
+        if (got := cond()): return got
+        time.sleep(.05)
+    raise AssertionError(f'timed out waiting for {what}')
+
 def test_peers_and_tell_between_two_agents_in_one_process():
     d = _cfg()
     other, obe = _slow_agent(d, ['the other reply', 'after the steer'], pause=1, host=MemHost(root='/other'), approvals=Approvals(tools=WRITE_TOOLS, mode='ask'))
@@ -130,10 +137,9 @@ def test_peers_and_tell_between_two_agents_in_one_process():
         together_on(peers_dir(d), f'ramabana-{other.session_id}')
         assert 'the other reply' in tell(1, 'what are you working on?', kind='ask', wait=10)
         control_call(control_path(other), 'prompt', text='a long job')
-        time.sleep(.1)
+        _until_sync(other.run, 'the long job to start')   # a note steers only a turn that is running
         assert tell(other.session_id, 'turn left', wait=0).startswith('told')
-        time.sleep(.2)
-        assert any('turn left' in m for m in other.run().inbox), 'a note steers the running turn'
+        _until_sync(lambda: any('turn left' in m for m in getattr(other.run(), 'inbox', [])), 'a note to steer the running turn')
     finally:
         for c in ctls: c.close()
 

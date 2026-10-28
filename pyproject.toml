@@ -23,7 +23,7 @@ dependencies = [
     "gheasy>=0.0.15",   # 0.0.15 merges never reset away conflicts; 0.0.14 git gets /dev/null as stdin
     "exhash>=0.4.11",
     "fastcore>=2.2.19",
-    "rishi>=0.1.56",
+    "rishi>=0.1.57",   # ClaudeChat.set_opts and the cost of a budget stop
     "fastspec>=0.2.4",
     "pyyaml>=6.0.3",
     "pobblebonk>=0.0.5",   # retry_after: a schedule's own delay before a retry
@@ -40,7 +40,7 @@ dhrona = ["dhrona>=0.1.19"]   # 0.1.19 dated lessons on pending/ branches
 abhyasa = ["abhyasa[tick]>=0.0.10"]   # the abhyasa-index tick, which indexes sessions into the vault on the beat
 cli = ["ramabana[search,python]", "teleprint>=0.1.4,<0.1.5", "pyghostty>=0.1.3", "shalya[tmux]>=0.1.24", "fastpylight>=0.1.18"]
 all = ["ramabana[search,python,serve,dhrona,cli]"]
-dev = ["ramabana[all]", "rishi[all]>=0.1.56", "nbdev>=3.3.25", "notebook>=7.6.2", "pytest>=9.1.1", "pytest-xdist>=3.8.0"]   # CI and the docs build install `.[dev]`
+dev = ["ramabana[all]", "rishi[all]>=0.1.57", "nbdev>=3.3.25", "notebook>=7.6.2", "pytest>=9.1.1", "pytest-xdist>=3.8.0"]   # CI and the docs build install `.[dev]`
 
 [project.urls]
 Repository = "https://github.com/vedicreader/ramabana"
