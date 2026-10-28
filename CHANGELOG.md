@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.86
+- Work together mode ends only when you type. A task notification or a subagent's hand-back that Claude Code sends as a prompt no longer ends it.
+- A new session's beat starts at the newest note. Notes from before the session, such as old failures that are already fixed, no longer come back.
+- The README says that plain `ramabana setup` does not install the peer hooks, and that a session that was running before the setup must restart to appear in `ramabana peers`.
+
 ## 0.2.85
 - Claude Code, Codex and ramabana sessions on one Mac talk to each other. `ramabana peers` lists the live sessions with their folders. `ramabana tell TARGET TEXT` sends a note, and `--ask` sends work that needs a reply. TARGET is a list number, a session id or a folder name. `--all` sends a note to every session.
 - `ramabana setup peers --agent claude|codex|all` adds the peer hooks and the `peer-work` skill to Claude Code and Codex. It shows a diff and writes only when you say yes. `--remove` takes them out. The hooks run this ramabana's own Python, not the `ramabana` on `PATH`. `ramabana --doctor` checks that the hooks run and names a stale `ramabana` on `PATH`.
