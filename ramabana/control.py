@@ -17,7 +17,7 @@ from fastcore.basics import patch
 from shalya import acts, err
 from .core import agent_err
 from .agent import TurnResult, model_title
-from .peers import (CONTROL, Envelope, _atomic_write, _rows, all_peers, answer, control_call, is_partner, limit_refusal, peer_lines, peer_text,
+from .peers import (CONTROL, Envelope, _atomic_write, _rows, all_peers, answer, control_call, is_partner, limit_refusal, next_hops, peer_lines, peer_text,
                             peers_dir, take, together_off, together_state, tell as send)
 from .peer_report import save_report
 
@@ -244,12 +244,12 @@ def _run_ask(self:Control, env):
 @patch
 def _reply(self:Control, env, text,
            check=True):   # False posts it past the limits: the one refusal a limit sends
-    "Send `text` to the sender of `env` as a reply in its thread; a sender with no live session, such as the `cli`, finds it in its inbox."
-    me = self_frm(self.agent)
-    if check:
-        try: return send(env.frm['key'], text, 'reply', me, env.repo, env.thread, env.hops + 1, cfg=self.agent.cfg)
+    "Send `text` to the sender of `env` as a reply in its thread. The asker always gets a reply: one the hop limit stops goes as `failed: <why>`, and a sender with no live session, such as the `cli`, finds it in its inbox."
+    me, hops = self_frm(self.agent), next_hops(self.d, env.thread, env.hops + 1)
+    if check and (why := limit_refusal(self.d, me['key'], Envelope('reply', text, me, env.frm['key'], thread=env.thread, hops=hops))): text = f'failed: {why}'
+    elif check:
+        try: return send(env.frm['key'], text, 'reply', me, env.repo, env.thread, hops, cfg=self.agent.cfg)
         except LookupError: pass
-        if why := limit_refusal(self.d, me['key'], Envelope('reply', text, me, env.frm['key'], thread=env.thread, hops=env.hops + 1)): return why
     answer(self.d, env, me, text)
 
 @patch

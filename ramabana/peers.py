@@ -9,7 +9,7 @@ __all__ = ['HOP_MAX', 'PEER_BUDGET', 'TOGETHER_HOURS', 'CONTROL', 'PEER_ASK', 'P
            'read_log', 'post', 'take', 'wait_take', 'pid_alive', 'register', 'unregister', 'registered', 'agent_pid',
            'git_top', 'git_root', 'add_folder', 'together_on', 'together_off', 'together_state', 'together_end',
            'is_partner', 'limit_refusal', 'match_peer', 'folder_denial', 'split_proof', 'control_call', 'socket_peers',
-           'all_peers', 'peer_lines', 'me', 'answer', 'tell', 'peer_text', 'peers_cli']
+           'all_peers', 'peer_lines', 'me', 'answer', 'next_hops', 'tell', 'peer_text', 'peers_cli']
 
 # %% ../nbs/23_peers.ipynb #d3f55a39
 import argparse, fcntl, json, os, re, socket, subprocess, sys, tempfile, time, uuid
@@ -236,16 +236,17 @@ def is_partner(state, frm):
 
 # %% ../nbs/23_peers.ipynb #5ed415a2
 def limit_refusal(d, key, env, now=None):
-    "Why `env` must not go on, or ''; a refusal is logged. `env` itself is not counted, so a receiver can judge an ask already in the log."
+    "Why `env` must not go on, or ''; a refusal is logged. Only notes and asks count, and only the hop limit stops a reply. `env` itself is not counted, so a receiver can judge an ask already in the log."
     now, why = ifnone(now, time.time()), ''
     st, day = together_state(d, key, now), now - TOGETHER_HOURS*3600
     rows = [r for r in read_log(d, min(day, st['started']) if st else day) if r.get('id') != env.id]
-    sent = lambda since: sum(r.get('from', {}).get('key') == key for r in rows if r.get('at', 0) > since)
+    sent = lambda since: sum(r.get('from', {}).get('key') == key and r.get('kind') in ('note', 'ask') for r in rows if r.get('at', 0) > since)
+    capped = env.kind != 'reply'
     m, t = PEER_BUDGET['messages'], PEER_BUDGET['turns']
     if env.hops >= HOP_MAX: why = f'hop limit: {env.hops} of {HOP_MAX} hops used'
-    elif (n := sent(day)) >= m: why = f'budget: {n} of {m} messages sent in {TOGETHER_HOURS} h'
-    elif st and (n := sent(st['started'])) >= m: why = f'budget: {n} of {m} messages sent'
-    elif st and (n := sum(r.get('to') == key and r.get('kind') == 'ask' for r in rows if r.get('at', 0) > st['started'])) >= t:
+    elif capped and (n := sent(day)) >= m: why = f'budget: {n} of {m} messages sent in {TOGETHER_HOURS} h'
+    elif capped and st and (n := sent(st['started'])) >= m: why = f'budget: {n} of {m} messages sent'
+    elif capped and st and (n := sum(r.get('to') == key and r.get('kind') == 'ask' for r in rows if r.get('at', 0) > st['started'])) >= t:
         why = f'budget: {n} of {t} asks received'
     if why: log(d, {'event': 'refused', 'key': key, 'why': why, 'thread': env.thread, 'at': now})
     return why
@@ -356,13 +357,17 @@ def _target(d, rows, target, kind, thread):
         if kind == 'reply' and thread and any(r.get('thread') == thread and r.get('from', {}).get('key') == target for r in read_log(d)): return {'key': target}
         raise
 
+def next_hops(d, thread, hops=0):
+    "The hops of a new message in `thread`: one more than any message there has, and at least `hops`."
+    return max(hops, 1 + max((r.get('hops', 0) for r in read_log(d) if r.get('thread') == thread and r.get('kind')), default=0))
+
 def tell(target, text, kind='note', frm=None, repo='', thread='', hops=0, everyone=False, wait=0, cfg=None):
     "Post `text` to the peer `target` (or every peer); with `wait`, return the reply to it. A refusal or a missing peer comes back as text or `LookupError`."
     d, frm = peers_dir(cfg), frm or me(cfg)
     if everyone and kind != 'note': raise ValueError('only a note goes to everyone')
     rows = all_peers(cfg, exclude=frm['key'])
     if not everyone: rows = [_target(d, rows, target, kind, thread)]
-    if thread: hops = max(hops, 1 + max((r.get('hops', 0) for r in read_log(d) if r.get('thread') == thread and r.get('kind')), default=0))
+    if thread: hops = next_hops(d, thread, hops)
     body, changes, proof = split_proof(text) if kind == 'reply' else (text, [], [])
     sent, said = [], []
     for row in rows:

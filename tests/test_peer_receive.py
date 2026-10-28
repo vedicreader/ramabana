@@ -10,7 +10,7 @@ import ramabana.cli as cli
 import ramabana.control as control
 from ramabana.agent import Approvals
 from ramabana.control import Control, control_call, peer_tools, self_frm
-from ramabana.peers import HOP_MAX, PEER_NOTE, TOGETHER_HOURS, Envelope, peers_dir, post, register, take, together_on, together_state
+from ramabana.peers import HOP_MAX, PEER_BUDGET, PEER_NOTE, TOGETHER_HOURS, Envelope, answer, log, peers_dir, post, register, take, together_on, together_state
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 from ramabana.tools import WRITE_TOOLS, failed
 
@@ -355,4 +355,55 @@ def test_limit_refusal_in_together_mode_refuses(cfg):
         assert r.text.startswith('refused: hop limit') and r.thread == env.thread, r.text
         time.sleep(.2)
         assert seen == [] and be.sent == [], 'no turn, and the user is not asked'
+    finally: ctl.close()
+
+
+def test_reply_goes_after_forty_notes(cfg):
+    ap = Approvals(tools=WRITE_TOOLS, mode='ask')
+    agent, _ = fake_agent(cfg=cfg, approvals=ap, replies=[REPLY])
+    seen = []
+    ap.listen(seen.append)
+    ctl = Control(agent).start()
+    for i in range(PEER_BUDGET['messages']): log(ctl.d, Envelope('note', str(i), self_frm(agent), 'claude-s1').dict())
+    try:
+        env = _ring(ctl, 'ask', 'add a Card part')
+        [a] = _until(lambda: seen, 'the approval')
+        ap.answer(a.id, True)
+        r = _reply(cfg)
+        assert (r.kind, r.thread, r.text) == ('reply', env.thread, 'Card part added.'), 'the send cap does not hold back a reply'
+    finally: ctl.close()
+
+
+def test_twenty_refusals_leave_twenty_replies(cfg):
+    agent, _ = fake_agent(cfg=cfg)
+    ctl = Control(agent).start()
+    together_on(ctl.d, ctl.key)
+    try:
+        for i in range(20): answer(ctl.d, Envelope('ask', str(i), FRM, ctl.key), self_frm(agent), 'refused: no')
+        take(peers_dir(cfg), 'claude-s1')
+        asks = [Envelope('ask', str(i), FRM, ctl.key) for i in range(20)]
+        for e in asks: ctl._reply(e, f'done {e.text}')
+        got = take(peers_dir(cfg), 'claude-s1')
+        assert sorted(r.thread for r in got) == sorted(e.thread for e in asks) and all(r.text.startswith('done') for r in got)
+    finally: ctl.close()
+
+
+def test_reply_past_hop_limit_reaches_asker_as_failed(cfg):
+    agent, _ = fake_agent(cfg=cfg)
+    ctl = Control(agent).start()
+    try:
+        env = Envelope('ask', 'one more round', FRM, ctl.key, hops=HOP_MAX - 1)
+        ctl._reply(env, 'done')
+        [r] = take(peers_dir(cfg), 'claude-s1')
+        assert (r.kind, r.thread) == ('reply', env.thread) and r.text.startswith('failed: hop limit'), r.text
+    finally: ctl.close()
+
+
+def test_reply_to_cli_lands_in_its_inbox(cfg):
+    agent, _ = fake_agent(cfg=cfg)
+    ctl = Control(agent).start()
+    try:
+        ctl._reply(env := Envelope('ask', 'status?', {'kind': 'cli', 'session': 'cli', 'key': 'cli', 'name': 'cli'}, ctl.key), 'all well')
+        [r] = take(peers_dir(cfg), 'cli')
+        assert (r.text, r.thread) == ('all well', env.thread)
     finally: ctl.close()
