@@ -138,15 +138,23 @@ def registered(d):
 
 
 # %% ../nbs/23_peers.ipynb #1220f299
-def agent_pid(names=('claude', 'codex')):
-    "The nearest ancestor process whose command base name is in `names`, else the parent process."
+def _ps(pid):
+    "The `ppid command` line that `ps` gives for process `pid`."
+    return subprocess.run(['ps', '-o', 'ppid=,command=', '-p', str(pid)], capture_output=True, text=True).stdout
+
+def _runs(argv, names):
+    "True when the command line `argv` runs a program in `names`: its first word, or the script an interpreter such as `node` runs."
+    return any(Path(a).name in names for a in [argv[0], *[a for a in argv[1:] if not a.startswith('-')][:1]])
+
+def agent_pid(names=('claude', 'codex'), ps=_ps):
+    "The nearest ancestor process whose command line runs a program in `names`, else the parent process."
     pid = os.getppid()
-    while pid > 1:
-        try: out = subprocess.run(['ps', '-o', 'ppid=,comm=', '-p', str(pid)], capture_output=True, text=True).stdout.split(None, 1)
-        except OSError: break
-        if len(out) < 2: break
-        if Path(out[1].strip()).name in names: return pid
-        pid = int(out[0])
+    try:
+        while pid > 1:
+            ppid, *argv = ps(pid).split()
+            if argv and _runs(argv, names): return pid
+            pid = int(ppid)
+    except (OSError, ValueError): pass
     return os.getppid()
 
 def git_root(path):
