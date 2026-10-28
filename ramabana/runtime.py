@@ -683,6 +683,7 @@ class Backend:
     narrates=True   # the text before each tool call reaches `hist` or the stream; see `QUIET_RUNTIMES`
     _tag_reminded=False
     turn_error=''   # why the last `send` or `stream` gave a failure note instead of a reply; '' when it answered
+    turn_budget=False   # whether that failure was the model's own budget stop (`ClaudeError.budget`)
     on_notice=None  # where a frontend shows a status note mid-turn; set on the class, as `TokenLogger.sink` is
     def __init__(self,spec,sp='',tools=(),approve=None,tool_max_len=None,shared=False,**kw):
         self.spec,self.sp,self.tools,self.approve=spec,sp,list(tools),approve
@@ -762,7 +763,7 @@ class Backend:
         for cb in getattr(self, '_callbacks', ()):
             if not any(isinstance(x, cb) for x in held): add(cb)
     def send(self,msg,run=None,**kw):
-        self.turn_error=''
+        self.turn_error,self.turn_budget='',False
         if self.start() is None:self.turn_error=self.note; return self.note
         with self.lock:
             self.run=run
@@ -781,11 +782,14 @@ class Backend:
                         return out or self._empty()
                     except Exception as e:
                         if run is not None and run.cancelled:return ''
-                        if (why:=self._recover(e)) in tried or not why:self.turn_error=agent_err(e); return self._failed('failed',e)
+                        if (why:=self._recover(e)) in tried or not why:
+                            # a failed run can still have been paid for: its cost is already in the chat's `use`
+                            self.use,self.turn_budget=self._usage(),bool(getattr(e,'budget',False))
+                            self.turn_error=agent_err(e); return self._failed('failed',e)
                         tried.add(why)
             finally:self.run=None
     def stream(self,msg,run=None,**kw):
-        self.turn_error=''
+        self.turn_error,self.turn_budget='',False
         if self.start() is None:self.turn_error=self.note; yield self.note; return
         with self.lock:
             self.run=run
@@ -815,6 +819,7 @@ class Backend:
                         if run is not None and run.cancelled:return
                         # retry only before any chunk was shown
                         if n or not (why:=self._recover(e)) or why in tried:
+                            self.use,self.turn_budget=self._usage(),bool(getattr(e,'budget',False))
                             self.turn_error=agent_err(e); yield f'\n\n{self._failed("failed",e)}'; return
                         tried.add(why)
             finally:self.run=None

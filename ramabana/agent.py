@@ -2095,7 +2095,7 @@ def note_tools(note, learning=lambda: True):
 # %% ../nbs/03_agent.ipynb #00efc09f
 @patch
 def _be(self:Agent, job='turn'):
-    "The backend for `job`, built on first use and shared by every job on the same model."
+    "The backend for `job`, applying registered turn callbacks when it is first built."
     with self._be_lock:
         spec = self.routing.spec(job)
         key = (spec.backend, spec.model_id)
@@ -2106,8 +2106,21 @@ def _be(self:Agent, job='turn'):
                 kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
                           approve=(self.approvals.gate if self.approvals is not None else None))
                 if self.turn_channel: kw['tool_mode'] = self.turn_channel
-            self._backends[key] = make_backend(spec, **kw)
+                # the first turn's limit, for a rishi with no `set_opts`; `_claude_budget` keeps it current where rishi has one
+                if spec.runtime == 'claude' and self.max_cost is not None:
+                    kw['opts'] = {**((getattr(spec, 'config', None) or {}).get('opts') or {}), 'max_budget_usd': float(self.max_cost)}
+            backend = make_backend(spec, **kw)
+            if is_turn:
+                for cb in getattr(self, '_chat_callbacks', {}).values(): backend.add_cb(cb)
+            self._backends[key] = backend
         return self._backends[key]
+
+@patch
+def _claude_budget(self:Agent, backend):
+    "Give a Claude Code turn what is left of its turn and session dollar limits as Claude Code's own `max_budget_usd`. Claude Code reports cost only when a run ends, too late for the budget callback."
+    if getattr(backend.spec, 'runtime', '') != 'claude' or backend.start() is None or not hasattr(chat := backend.chat, 'set_opts'): return
+    left = [v for v in (self.max_cost, None if self.session_max_cost is None else self.session_max_cost - self.use.cost) if v is not None]
+    chat.set_opts(max_budget_usd=max(min(left), 0.01) if left else None)
 
 # %% ../nbs/03_agent.ipynb #1b4fa81d
 #: the log is read back up to `HISTORY_TAIL` bytes and `HISTORY_TURNS` turns; whichever limit is reached first applies
@@ -3378,7 +3391,7 @@ def _finish(self:Agent, text, prompt=''):
     self.registry.fire('after_turn', self, text)
     if self.current_turn_id in self.checkpoints: self.checkpoints[self.current_turn_id]['after'] = b.snapshot_hist()
     err = getattr(b, 'turn_error', '') or ''   # the backend caught a model failure and returned its note as the text
-    self._remember(prompt, text, err, state='failed' if err else 'complete')
+    self._remember(prompt, text, err, state='budget' if getattr(b, 'turn_budget', False) else 'failed' if err else 'complete')
     return text
 
 # %% ../nbs/03_agent.ipynb #10069f98
@@ -4206,6 +4219,7 @@ def _ask_once(self:Agent, prompt, **kw):
         if self.start() is None:
             run.finish('failed'); keep('failed', self.note, self.note); return self.note
         backend = self._be('turn')
+        self._claude_budget(backend)
         if not run.start(backend): keep('cancelled'); return run.dict()
         with run_context(run):
             outgoing = self._prepare(prompt)
@@ -4246,6 +4260,7 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
             keep('failed', self.note, self.note)
             yield self.note; return
         backend = self._be('turn')
+        self._claude_budget(backend)
         if not run.start(backend): keep('cancelled'); return
         if on_registered is not None: on_registered(run)
         if run.cancelled: run.finish(); keep('cancelled'); return
@@ -5111,29 +5126,6 @@ def add_chat_callback(self:Agent, name):
 def chat_callback(self:Agent, name):
     "Attach one built-in callback to the current turn backend."
     return self.add_chat_callback(name)
-
-# %% ../nbs/03_agent.ipynb #240ae8af
-@patch
-def _be(self:Agent, job='turn'):
-    "The backend for `job`, applying registered turn callbacks when it is first built."
-    with self._be_lock:
-        spec = self.routing.spec(job)
-        key = (spec.backend, spec.model_id)
-        if key not in self._backends:
-            is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
-            kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
-            if is_turn:
-                kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
-                          approve=(self.approvals.gate if self.approvals is not None else None))
-                if self.turn_channel: kw['tool_mode'] = self.turn_channel
-                # Claude Code reports a turn's cost only at its end, after the budget callback can act; its own `max_budget_usd` stops it in time
-                if spec.runtime == 'claude' and self.max_cost is not None:
-                    kw['opts'] = {**((getattr(spec, 'config', None) or {}).get('opts') or {}), 'max_budget_usd': float(self.max_cost)}
-            backend = make_backend(spec, **kw)
-            if is_turn:
-                for cb in getattr(self, '_chat_callbacks', {}).values(): backend.add_cb(cb)
-            self._backends[key] = backend
-        return self._backends[key]
 
 # %% ../nbs/03_agent.ipynb #fdaa8fff
 from shalya.core import Refusal
