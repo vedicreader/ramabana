@@ -1,44 +1,53 @@
 """The rules an agent follows when it works for another session, or asks another session to work.
 
-Read this before you work for another session, or ask another session to work for you. Sessions are Claude Code, Codex and Ramabana sessions on this Mac. The aim is good code that follows the rules of the repo that owns it.
+Read this before you work for another session, or ask another session to work for you. Sessions are Claude Code, Codex and Ramabana sessions on this Mac.
 
-## Rules
+Two roles exist. The worker does the work. The owner holds the repo. One session can have both roles.
 
-1. Read the repo rules before you write code. Read `CLAUDE.md` or `AGENTS.md` and the repo skills. Examples are `coding_patterns` in ramabana and the lego block pattern in vedicreader. Follow the user's general rules: functional style, short and efficient code, one-line docstrings, no comment that restates the code, and STE prose. Do not add bloat. Do not add a helper that already exists.
-2. Agree the shape with the owner before you add code that another repo will own. Name the existing blocks to use, the place for the code and the API. The owning repo has the final say.
-3. Do not edit a folder that another live session holds. A guard refuses the write. Ask the owner to make the change.
-4. Proof means evidence. Give the test command and its output. For UI, check the page in Chrome for Testing and give the screenshot path. Never use the user's own Chrome. No proof means the work is not done.
-5. The owner reviews the diff against its repo rules. If the code is bloated or off-pattern, the owner asks for changes. Make them before the owner accepts the work.
+## When you do work for another session (worker)
+
+1. Read the repo rules before you write code. Read `CLAUDE.md` or `AGENTS.md` and the repo skills. Some repos have their own pattern. For example, vedicreader builds features from small lego blocks. Read the repo's rules to find its pattern.
+2. Follow the user's general rules. Use functional style. Write short and efficient code. Write one-line docstrings. Add no comments that are not needed. Write prose in STE. Do not add code that you do not need. Do not write a helper that already exists.
+3. Agree the shape with the owner before you add code that the owner's repo will keep. Send an ask: `ramabana tell OWNER "..." --ask --repo R --wait N`. Name the blocks to use, the place for the code and the API. Wait for the owner to agree. Then write the code.
+4. Do not edit a folder that another live session works in. The tool or hook refuses the write and names the folder. Ask the owner to make the change.
+5. Show proof before you say "done". Show the test command and its output. For UI, check the page in Chrome for Testing and show the screenshot path. Never use the user's own Chrome. No proof means the work is not done.
+
+## When you own the repo (owner)
+
+1. Review the diff against your repo's rules. Do this before you accept the work.
+2. If the code is too large or does not follow the repo's patterns, ask for changes.
+3. Accept the work only when the code follows the rules.
+4. Before you do the work in an ask, read your repo rules. If the ask breaks them, reply `refused: <why>` and name the rule.
 
 ## Find sessions
 
 - Run `ramabana peers` to list live sessions. Add `--ids` to see the session ids.
-- After `/add-dir`, run `ramabana peers --add-folder PATH` so that the folder guard knows the new folder.
+- After `/add-dir`, run `ramabana peers --add-folder PATH`. The folder guard then knows the new folder.
 - Inside Ramabana, use the `peers()` tool.
 
 ## Send
 
 - `ramabana tell TARGET TEXT` sends a note. A note needs no answer.
 - Add `--ask` to request work. Add `--repo R` so that the receiver knows whose rules apply. Add `--wait N` to wait N seconds for the reply.
-- `--all` sends to every live session.
+- Add `--all` to send to every live session.
 - Inside Ramabana, use `tell(session, text, kind='note'|'ask', wait=60)`.
-- An ask needs the user's approval, unless work together mode is on with that sender. Work together mode does not change tool permissions. Your own permission mode still applies.
-- Do not reply to a reply that holds no new request. Limits stop long chains of messages.
+- An ask needs the user's approval, unless work together mode is on with that sender.
+- Work together mode does not change tool permissions. Your own permission mode still applies.
+- A thread stops after 6 replies. In work together mode, a session stops after 40 messages sent or 20 asks received.
 
 ## Receive
 
 - Run `ramabana inbox` to read your messages. Add `--wait N` to wait for new ones.
-- Answer an ask with `ramabana tell TARGET TEXT --reply-to THREAD`. Take THREAD from the message.
+- Answer with `ramabana tell TARGET TEXT --reply-to THREAD`. Take THREAD from the message.
 - End a finished reply with these two lines:
   - `changes: file or commit; file or commit`
   - `proof: command → result; screenshot path`
 - If you decline, start the reply with `refused: <why>`. If you fail, start it with `failed: <why>`.
-- Before you start an ask, read the repo rules (rule 1). If the ask breaks them, refuse and say which rule.
 
 ## Work together mode
 
-- `ramabana together on` lets chosen sessions send asks without approval. Add `--with A,B` to choose the sessions. Add `--until HH:MM` to set the end. Without `--until`, it ends after 12 hours.
-- `ramabana together off` ends it. `ramabana together status` shows it. The mode also ends when the user types in your session.
+- `ramabana together on` lets those sessions send asks to you without approval. Add `--with A,B` to name them. Add `--until HH:MM` to set the end. Without `--until`, it ends after 12 hours.
+- `ramabana together off` ends it. `ramabana together status` shows it. It also ends when the user types in your session.
 - `ramabana report` shows what the sessions did: changes, proof and the user's action list.
 
 Docs: https://vedicreader.github.io/ramabana/peer_work.html.md"""
@@ -48,5 +57,5 @@ Docs: https://vedicreader.github.io/ramabana/peer_work.html.md"""
 # %% auto #0
 __all__ = []
 
-# %% ../nbs/24_peer_work.ipynb #c7f4a115
+# %% ../nbs/24_peer_work.ipynb #70f11f8b
 __all__ = []
