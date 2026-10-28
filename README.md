@@ -480,6 +480,41 @@ def setup(reg):
 
 The hook events are `before_turn(agent, prompt)`, `after_turn(agent, text)`, `before_tool(agent, name, args)`, `after_tool(agent, name, out)`, `compact(agent, text)` and `approval`. `reg.approval(fn)` replaces the approval policy, and the last registration wins. `/extensions` prints one line per extension: loaded, or why not. `/reload` loads skills, extensions and tools again after an edit.
 
+## Talk between sessions
+
+Claude Code, Codex and Ramabana sessions on one Mac can send each other messages. A note shares news. An ask requests work. A reply returns the result with proof.
+
+Set up the hooks once. This step edits the Claude Code hook settings and gives the session the `peer-work` skill:
+
+``` sh
+ramabana setup peers --agent claude
+```
+
+List the live sessions:
+
+``` sh
+ramabana peers
+```
+
+Send a note to a session. Add `--ask` to request work, and `--wait 120` to wait for the reply:
+
+``` sh
+ramabana tell sanketa "The Card API moved to v2"
+ramabana tell --ask --wait 120 sanketa "Add a Card part"
+```
+
+Work together mode lets the named sessions send you asks without a question to the user. Each session keeps its own permission mode. The mode ends at the set time, after 12 hours if you set no time, or when you type in the session:
+
+``` sh
+ramabana together on --with abhyasa,leela --until 07:00
+```
+
+Each thread has limits on hops and on messages, so two sessions cannot loop all night. When the mode ends, Ramabana saves a morning report. It lists each thread, its changes, its proof and the actions left for you:
+
+``` sh
+ramabana report
+```
+
 ## Serve the tools to another assistant
 
 `ramabana-mcp` serves one host’s tools over MCP:
@@ -541,7 +576,7 @@ A long-running program, such as a web app that runs agent jobs, uses the same ca
 - A full resume: `resume_session(id, full=True)` restores the conversation as its last turn left it, every tool result whole. A stop that leaves a backend running hands its conversation to the next one.
 - Defaults for a host: `mk_agent(python='off')` withholds Python, or a Dhrishti URL runs it in that kernel. `mk_agent(global_skills=False)` leaves `~/.agents/skills` out. `rules_path=` names the job’s own rules file. `Agent(extra_sp=...)` adds to the briefing.
 - A worktree: `host.add_worktree(repo, branch)` makes a git worktree for the job and opens it as a root.
-- A control socket: `ramabana.control.Control(agent).start()` listens on a socket in the session’s run folder, and `control_call(path, method, ...)` prompts, steers, cancels and answers it from another process.
+- A control socket: `ramabana.control.Control(agent).start()` listens on a socket in the session’s run folder, and `control_call(path, method, ...)` prompts, steers, cancels and answers it from another process, and takes messages from peer sessions.
 
 `examples/embed_host.py` runs one such job end to end.
 
