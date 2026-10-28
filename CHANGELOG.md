@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.90
+- A Claude Code turn stops in time at its dollar limit. Claude Code reports cost only when a run ends, after ramabana's budget check can act. ramabana now gives each Claude Code turn its limit as Claude Code's own `max_budget_usd`: the turn limit `max_cost`, or what is left of `session_max_cost`, whichever is smaller. It sets this again at the start of each turn. Before, one nightly replay spent $28.49 against an $8 limit.
+- A turn that Claude Code stops at its budget is recorded with the state `budget`, and its cost counts in the session's use.
+- Needs rishi 0.1.57, for `ClaudeChat.set_opts` and the cost of a budget stop.
+
 ## 0.2.89
 - The morning report of work together mode has its examples and actions again. It made its summary with the pair that `mk_agent` returns, not the agent, and said "the summary model failed: 'tuple' object has no attribute 'oneshot'" every time.
 
