@@ -80,6 +80,8 @@ def test_stop_blocks_on_unread_and_passes_when_empty(world):
     o = json.loads(out)
     assert code == 0 and o['decision'] == 'block' and 'v2 is out' in o['reason']
     assert hook(cfg, 'stop', stop_hook_active=True) == (0, '', '')
+    note(d, 'v3 is out')
+    assert json.loads(hook(cfg, 'stop', stop_hook_active=True)[1])['decision'] == 'block', 'take-once and the hop limit bound it, not the flag'
 
 
 def waiter(cfg):
@@ -105,6 +107,17 @@ def test_wait_exits_2_with_messages(world):
     finally: p.kill()
     assert p.returncode == 2 and 'v2 is out' in err and '<peer-message' in err
     assert take(d, 'claude-s1') == []
+
+
+def test_waiter_puts_taken_mail_back_when_formatting_fails(world, monkeypatch):
+    cfg, d = world
+    hook(cfg, 'session-start')
+    note(d, 'v2 is out')
+    monkeypatch.setattr(ph, '_messages', lambda *a: 1/0)
+    assert hook(cfg, 'wait') == (0, '', '')
+    monkeypatch.undo()
+    back = take(d, 'claude-s1')
+    assert [e.text for e in back] == ['v2 is out'] and 'ZeroDivisionError' in (d/'hooks.log').read_text()
 
 
 def test_second_waiter_exits_at_once(world):
@@ -136,7 +149,7 @@ def test_waiter_exits_on_unregister(world):
         assert hook(cfg, 'end', reason='other') == (0, '', '')
         p.communicate(timeout=5)
     finally: p.kill()
-    assert p.returncode == 0 and not (d/'claude-s1.wait').exists() and not (d/'claude-s1.json').exists()
+    assert p.returncode == 0 and (d/'claude-s1.wait').exists() and not (d/'claude-s1.json').exists()
 
 
 def test_waiter_saves_report_when_mode_expires(world, monkeypatch):

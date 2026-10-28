@@ -11,10 +11,10 @@ __all__ = ['ADAPTERS', 'WAIT_TIMEOUT', 'EDIT_TOOLS', 'ASK_USER', 'ASK_FREE', 'BR
 # %% ../nbs/25_peer_hooks.ipynb #b316c3f6
 import fcntl, json, os, re, subprocess, sys, time, traceback
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from .peers import (agent_pid, all_peers, folder_denial, git_root, is_partner, log, peer_lines, peer_text, peers_dir, pid_alive,
-                            read_log, register, take, together_off, together_state, unregister, wait_take)
+                            post, read_log, register, take, together_off, together_state, unregister, wait_take)
 from .peer_report import report_path
 
 # %% ../nbs/25_peer_hooks.ipynb #70ebdcc0
@@ -132,22 +132,25 @@ def _watch(d, key):
     return alive
 
 def _wait(ad, d, data, cfg):
-    "Wait for a message; exit 2 with it on stderr, or 0 at once when another waiter runs."
+    "Wait for a message; exit 2 with it on stderr, or 0 at once when another waiter runs. Taken mail goes back to the inbox if it cannot be written."
     key = _key(ad, data)
     with open(d/f'{key}.wait', 'a+') as f:
         try: fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError: return 0, '', ''
         f.truncate(0); f.write(str(os.getpid())); f.flush()
         got = wait_take(d, key, None, alive=_watch(d, key))
-    return (2, '', _messages(ad, d, data, got)) if got else (0, '', '')
+    if not got: return 0, '', ''
+    try: return 2, '', _messages(ad, d, data, got)
+    except Exception:
+        for e in got: post(d, key, replace(e, id=''))
+        raise
 
 # %% ../nbs/25_peer_hooks.ipynb #9349742c
 PATCH_PATH = re.compile(r'^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$', re.M)
 
 def _end(ad, d, data, cfg):
-    "Remove the registration and the waiter's lock file."
+    "Remove the registration; the waiter sees that and exits."
     unregister(d, ad.kind, data['session_id'])
-    (d/f'{_key(ad, data)}.wait').unlink(missing_ok=True)
     return 0, '', ''
 
 def _paths(data):
