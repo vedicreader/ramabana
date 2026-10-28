@@ -4120,10 +4120,10 @@ requires-dist = [
     { name = "rich", marker = "extra == 'python'", specifier = ">=15.0.0" },
     { name = "rishi", specifier = ">=0.1.56" },
     { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.56" },
-    { name = "shalya", specifier = ">=0.1.23" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.21" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.21" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'dev'", specifier = ">=0.1.21" },
+    { name = "shalya", specifier = ">=0.1.24" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.24" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.24" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'dev'", specifier = ">=0.1.24" },
     { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.4,<0.1.5" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.4,<0.1.5" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.4,<0.1.5" },
@@ -4543,7 +4543,7 @@ wheels = [
 
 [[package]]
 name = "shalya"
-version = "0.1.23"
+version = "0.1.24"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dhrishti" },
@@ -4553,12 +4553,13 @@ dependencies = [
     { name = "fossick" },
     { name = "gheasy" },
     { name = "jupyter-client" },
+    { name = "koshas" },
     { name = "litesearch" },
     { name = "vishalakshi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0e/fc/c76a836ac5becb77fb0e5fab9cbf2b68ec68a1ccad03ff2add5ab4150153/shalya-0.1.23.tar.gz", hash = "sha256:451ad177e2735f7d3b9acfe1fa73b0fbe9670ec356756052e363f0dbc4f0e17e", size = 64610, upload-time = "2026-10-27T23:58:19.225Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/8b/a24e4806d1e9cc779ee8c766febe9bf07ee7c78b61491b2deab5504a3410/shalya-0.1.24.tar.gz", hash = "sha256:8f95162f2248583587326d0d79def044aee141f0281d82c307e1996664a96cc6", size = 65000, upload-time = "2026-10-28T03:16:49.638Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/90/e8/27b21908f1eda1e93cbb542482ac01b3fd90ed6b78b51af6cbc54e70cc45/shalya-0.1.23-py3-none-any.whl", hash = "sha256:7b3fbaf47a2ec7963a7ec665ac136886673c0244ff40ae01645ff1d1744698d2", size = 68215, upload-time = "2026-10-27T23:58:17.82Z" },
+    { url = "https://files.pythonhosted.org/packages/32/42/3cb6b2c090a8d9d71c9a7a2ed0cf4e1031c67ab8591e24179415d34aea42/shalya-0.1.24-py3-none-any.whl", hash = "sha256:19e593df067f08714dda46f455bb5aa5172103912917c8364bcf427896ceb78d", size = 68593, upload-time = "2026-10-28T03:16:48.107Z" },
 ]
 
 [package.optional-dependencies]
