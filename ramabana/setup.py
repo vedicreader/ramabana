@@ -219,6 +219,9 @@ def run_cli():
     if sys.argv[1:2] == ['config']: return config_cli(sys.argv[2:])
     if sys.argv[1:2] == ['setup']: return setup_cli(sys.argv[2:])
     if sys.argv[1:2] == ['history']: return history_cli(sys.argv[2:])
+    if sys.argv[1:2] in (['peers'], ['tell'], ['inbox'], ['together']):
+        from ramabana.peers import peers_cli
+        return peers_cli(sys.argv[1:])
     if (msg := need('cli')): return _refuse(msg)()
     sys.argv[1:] = bare_resume(sys.argv[1:])   # both parsers, and the rerun inside tmux, see a value
     if (kw := launch_args(sys.argv[1:])) is not None:

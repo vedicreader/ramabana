@@ -51,3 +51,11 @@ def test_guard_resolves_paths(tmp_path, monkeypatch):
 def test_split_proof():
     body, ch, pr = split_proof('Done.\nchanges: rupaka/card.py; abc123\nProof: uv run pytest -q → 12 passed')
     assert body == 'Done.' and ch == ['rupaka/card.py', 'abc123'] and pr == ['uv run pytest -q → 12 passed']
+
+
+def test_registered_skips_corrupt_files(tmp_path):
+    register(tmp_path, 'claude', 's1', ['/r/abhyasa'], os.getpid())
+    (tmp_path/'claude-bad.json').write_text('{not json')
+    (tmp_path/'claude-part.json').write_text('{"kind": "claude"}')
+    register(tmp_path, 'claude', 's2', ['/r/leela'], os.getpid())
+    assert [r['session'] for r in registered(tmp_path)] == ['s2']
