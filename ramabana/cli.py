@@ -10,17 +10,18 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'ACTIVE_THEME', 'OSC11', 'OSC11_END', 'OSC11_RGB', 'TERM_BG', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD',
            'FOLD_TOOL', 'STRETCH_ENDS', 'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL',
            'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS',
-           'HELP', 'TIPS', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS',
-           'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR',
-           'MENUS', 'TASKS_KEY', 'TASK_ROWS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS',
-           'PLAN_ROWS', 'PLAN_RESERVE', 'HINTS', 'TIPS_USAGE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES',
-           'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'BG_WAIT', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL',
-           'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES',
-           'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'light_rgb', 'is_light', 'reply_light',
-           'fgbg_light', 'auto_theme', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
-           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
-           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'task_order', 'task_age', 'TaskMenu',
-           'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural',
+           'CONTEXTS', 'TASKS_KEY', 'NOT_SENT', 'KEYMAP', 'CARD', 'HELP', 'TIPS', 'BUILD', 'VERSION', 'GUIDE',
+           'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW',
+           'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'TASK_ROWS', 'BELL_IDLE', 'REASK_EVERY',
+           'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'HINTS', 'TIPS_USAGE',
+           'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'BG_WAIT',
+           'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE', 'ALIVE_EVERY',
+           'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg',
+           'light_rgb', 'is_light', 'reply_light', 'fgbg_light', 'auto_theme', 'set_theme', 'plan_text', 'key_text',
+           'key_names', 'help_text', 'keymap_doc', 'keymap_dir', 'write_keymap', 'key_card', 'guide_text',
+           'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note',
+           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'task_order', 'task_age',
+           'TaskMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural',
            'stretch_summary', 'Row', 'Stretch', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang',
            'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to',
            'stderr_log', 'pick_session', 'loop_error', 'query_background', 'can_ask_background', 'amain',
@@ -47,6 +48,7 @@ from rich.padding import Padding
 import fastpylight
 from fastcore.script import call_parse
 from fastcore.basics import first, patch, ifnone, store_attr
+from fastcore.xtras import atomic_save
 from teleprint.buffer import Buffer
 from teleprint.compositor import Compositor
 from teleprint.keys import Key, Parser, _mod
@@ -65,7 +67,7 @@ from . import hl, setup
 from .hl import HL_THEMES, is_diff
 from .setup import PANE_MODES, SETUP_FIELDS, TMUX_MODES, Setup, config_path, config_reset, keys_path, model_setting, refusal, save_key, setting, setup_cli
 import getpass, io
-from datetime import datetime
+from datetime import datetime, timezone
 from . import __version__
 
 
@@ -395,46 +397,6 @@ MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'calm', 'copy', 'detach', 'exit', 'guide', 'help',
                     'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'peers', 'promote', 'python', 'quit', 'root', 'talk', 'tasks', 'tell', 'theme', 'tips', 'vars')
 
-HELP = """normal  enter send, or steer mid-turn · alt+enter (or shift+enter) queue after the turn · ? on an empty prompt shows this card · alt+up take the queued text back into the composer · enter on an empty line steers the queued one · shift+tab cycle approvals, then plan mode · tab complete /commands and @paths · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+l background tasks (or /tasks): enter opens, x stops, esc back · ctrl+o fold the working · alt+o fold all turns · alt+1..9 drill in · ctrl+c stop, keeping what is queued and typed in the composer · ctrl+d quit
-timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
-transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
-edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
-media   drop or paste a path to attach · @path in a prompt, tab completes files and folders across the open folders, or from ~/, / or ../ when reading outside them is on · @"a path with spaces" · @folder/ attaches its listing · /attach PATH · /detach [N] · ctrl+v or /paste clipboard image
-memory  #note TEXT keeps a line for later sessions · /SKILL ARGS runs a skill or a <cfg>/commands/*.md file ($1..$n, $ARGUMENTS, @path) as a prompt
-copy    select with the mouse · /copy the last reply · /copy turn all of it · ctrl+r then y any block
-approve y approve · n ⏎ refuse · n: REASON ⏎ refuse with a reason · a approve all · ctrl+y approve with a note · A always allow this · anything else re-asks
-          shift+tab cycles ask, edits, auto, plan · ctrl+g one step stricter · /approve off|ask|edits|auto sets any
-options ↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line
-shell   !COMMAND runs it in the first open folder, in agent mode · ctrl+c interrupts it, twice kills it · the output stays out of the model's context
-python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
-plan    /planmode on|off withholds every tool that acts and asks for a plan · /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
-setup   /login lists the providers · /login NAME signs in, or keeps a key or an endpoint · /config shows each setting and where it came from · /config set KEY VALUE · /config edit · /config reset · /config reload · /model NAME --save keeps it
-extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme lists the palettes · /theme NAME [--save] · /mouse clicks blocks on the main screen · /calm [on|off] folds each stretch of tool calls into one row · /tasks lists background shells, sub-agents and watches · /tips [on|off] [--save] shows one tip while a turn runs · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
-subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N|auto, timeout S, nest N · /subagents model NAME|default, effort low|medium|high|xhigh|max|default, tools native|text|auto, each with --save to keep it · tab completes them
-talk    /talk RUN aims typed lines at a running sub-agent, an id prefix being enough · /talk or /talk main aims them at the main agent again · tab completes main and the running ids
-peers   /peers lists the other live sessions, numbered, most recently active first · /tell N TEXT steers session N · /tell N --prompt TEXT starts or queues a turn there · /tell N aims typed lines at it · /tell or /tell main aims them back here
-api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
-
-#: one shows at a time under the working rows, the next one each turn; every key and command here is on `HELP`
-TIPS = (
-    '? on an empty prompt lists every key',
-    'alt+enter queues a line for after this turn',
-    'enter sends a line into the running turn: it steers',
-    'alt+up takes your queued text back into the prompt',
-    'ctrl+c stops the turn and keeps what you typed',
-    'ctrl+l lists background shells, sub-agents and watches',
-    'ctrl+o folds or opens the working rows',
-    'alt+1..9 opens one tool call in full',
-    'ctrl+r browses the transcript; y copies a block',
-    'ctrl+t shows or hides the plan checklist',
-    'shift+tab cycles approvals: ask, edits, auto, plan',
-    'ctrl+v attaches the clipboard image; @path attaches a file',
-    '!COMMAND runs a shell line the model never sees',
-    '#note TEXT keeps a line for later sessions',
-    '/calm folds each stretch of tool calls into one row',
-)
-
-
 _TODO_RE = re.compile(r'^(\[[ x▸\-]\])\s+(`[^`]*`)?\s*(.*)$')
 
 def plan_text(md):
@@ -456,6 +418,228 @@ def plan_text(md):
         if sep: out.append('  -- ' + note, style=GRUVBOX['gray'])
     return out
 
+
+# %% ../nbs/05_cli.ipynb #bb9288c9
+CONTEXTS = (dict(id='idle', label='Waiting for you'), dict(id='typing', label='Typing a message'),
+            dict(id='running', label='While a turn runs'), dict(id='waiting', label='Messages waiting for the turn'),
+            dict(id='approval', label='Asking for approval'), dict(id='python', label='Python mode'),
+            dict(id='transcript', label='Browsing the transcript'), dict(id='tasks', label='The background task list'))
+
+TASKS_KEY = 'ctrl+l'   #: opens the list of background tasks, as does `/tasks`
+NOT_SENT = {'shift+enter'}   #: chords Leela's terminal and a default tmux never pass on: a row keeps one as an alternative, the card never names it
+
+def _key(action, chords, label, group, card, **kw):
+    "One `KEYMAP` row: `chords` is one chord or a list; `kw` holds the keymap format's `context`, `command` and `range`."
+    return dict(action=action, chords=[chords] if isinstance(chords, str) else list(chords), label=label, group=group, card=card, **kw)
+
+def _cmd(action, text, label, card, group='Commands', **kw):
+    "A `KEYMAP` row for typed text, such as `/peers`."
+    return _key(action, text, label, group, card, command=True, **kw)
+
+KEYMAP = [
+    _key('keys', '?', 'on an empty prompt, show every key', 'Help', 'normal', context='idle'),
+    _key('send', 'enter', 'send, or steer mid-turn', 'Composer', 'normal'),
+    _key('queue', ['alt+enter', 'shift+enter'], 'queue for after this turn', 'Composer', 'normal', context='running'),
+    _key('steer_queued', 'enter', 'on an empty line, steer the queued message in', 'Composer', 'normal', context='waiting'),
+    _key('recall_one', 'up', 'take back the newest waiting message', 'Composer', 'normal', context='waiting'),
+    _key('recall_all', 'alt+up', 'take every waiting message back into the composer', 'Composer', 'normal', context='waiting'),
+    _key('complete', 'tab', 'complete /commands and @paths', 'Composer', 'normal', context='typing'),
+    _key('history', ['ctrl+p', 'ctrl+n'], 'walk back and forward through sent prompts', 'Composer', 'normal'),
+    _key('transcript', 'ctrl+r', 'browse the transcript', 'Transcript', 'normal'),
+    _key('browse', ['up', 'down'], 'browse it from an empty prompt', 'Transcript', 'normal', context=['idle', 'running']),
+    _key('tasks', TASKS_KEY, 'list background shells, sub-agents and watches', 'Turn', 'normal'),
+    _key('plan', 'ctrl+t', 'show or hide the plan', 'Turn', 'normal'),
+    _key('stop', 'ctrl+c', 'stop the turn, keeping what is queued and typed', 'Turn', 'normal', context='running'),
+    _key('clear', 'ctrl+c', 'clear the line', 'Composer', 'normal', context='typing'),
+    _key('quit', 'ctrl+d', 'quit, on an empty prompt', 'Composer', 'normal', context=['idle', 'running', 'waiting', 'python']),
+    _key('fold', 'ctrl+o', 'fold or open the working rows', 'Turn', 'timeline'),
+    _key('fold_all', 'alt+o', "fold or open every turn's working rows", 'Turn', 'timeline'),
+    _key('open_call', [f'alt+{i}' for i in range(1, 10)], 'open one tool call in full', 'Turn', 'timeline', range='1-9'),
+    _key('tr_move', ['up', 'down'], 'move between blocks', 'Transcript', 'transcript', context='transcript'),
+    _key('tr_page', ['pageup', 'pagedown'], 'page up or down', 'Transcript', 'transcript', context='transcript'),
+    _key('tr_search', '/', 'search down', 'Transcript', 'transcript', context='transcript'),
+    _key('tr_search_up', '?', 'search up', 'Transcript', 'transcript', context='transcript'),
+    _key('tr_match', ['n', 'N'], 'next or previous match', 'Transcript', 'transcript', context='transcript'),
+    _key('tr_ends', ['g', 'G'], 'first or last block', 'Transcript', 'transcript', context='transcript'),
+    _key('copy_block', 'y', 'copy this block', 'Transcript', 'transcript', context='transcript'),
+    _key('tr_compose', 'i', 'write in the composer', 'Transcript', 'transcript', context='transcript'),
+    _key('tr_leave', 'escape', 'leave', 'Transcript', 'transcript', context='transcript'),
+    _key('line_ends', ['ctrl+a', 'ctrl+e'], 'go to the start or end of the line', 'Editing', 'edit', context='typing'),
+    _key('cut_line', ['ctrl+u', 'ctrl+k'], 'cut to the start or end of the line', 'Editing', 'edit', context='typing'),
+    _key('cut_word', 'ctrl+w', 'cut the word before the cursor', 'Editing', 'edit', context='typing'),
+    _key('yank', 'ctrl+y', 'paste back what was cut', 'Editing', 'edit', context='typing'),
+    _cmd('cmd_at', '@path', 'attaches a file; tab completes files and folders across the open folders, or from ~/, / or ../ when reading outside them is on', 'media'),
+    _cmd('cmd_at_quoted', '@"a path with spaces"', 'attaches a path that has spaces', 'media'),
+    _cmd('cmd_at_folder', '@folder/', 'attaches its listing', 'media'),
+    _cmd('cmd_attach', '/attach PATH', 'attaches a file', 'media'),
+    _cmd('cmd_detach', '/detach [N]', 'drops an attachment', 'media'),
+    _key('attach_image', 'ctrl+v', 'attach the clipboard image', 'Composer', 'media'),
+    _cmd('cmd_paste', '/paste', 'attaches the clipboard image', 'media'),
+    _cmd('cmd_note', '#note TEXT', 'keeps a line for later sessions', 'memory'),
+    _cmd('cmd_skill', '/SKILL ARGS', 'runs a skill or a <cfg>/commands/*.md file ($1..$n, $ARGUMENTS, @path) as a prompt', 'memory'),
+    _cmd('cmd_copy', '/copy', 'copies the last reply', 'copy'),
+    _cmd('cmd_copy_turn', '/copy turn', 'copies all of the turn', 'copy'),
+    _key('approve', ['y', 'Y'], 'approve', 'Approval', 'approve', context='approval'),
+    _cmd('refuse', 'n ⏎', 'refuse', 'approve', group='Approval', context='approval'),
+    _cmd('refuse_why', 'n: REASON ⏎', 'refuse with a reason', 'approve', group='Approval', context='approval'),
+    _key('approve_all', 'a', 'approve all this session', 'Approval', 'approve', context='approval'),
+    _key('always_allow', 'A', 'always allow this', 'Approval', 'approve', context='approval'),
+    _key('approve_now', 'ctrl+y', 'approve, whatever is typed', 'Approval', 'approve', context='approval'),
+    _key('refuse_now', 'ctrl+c', 'refuse', 'Approval', 'approve', context='approval'),
+    _key('approvals', 'shift+tab', 'cycle approvals: ask, edits, auto, then plan mode', 'Turn', 'approvals'),
+    _key('stricter', 'ctrl+g', 'one step stricter', 'Turn', 'approvals'),
+    _cmd('cmd_approve', '/approve off|ask|edits|auto', 'sets the approval mode', 'approvals'),
+    _cmd('cmd_shell', '!COMMAND', "runs it in the first open folder, in agent mode; the output stays out of the model's context", 'shell'),
+    _cmd('cmd_python', '/python', 'takes the line', 'python', group='Python'),
+    _cmd('cmd_agent', '/agent', 'hands it back', 'python', group='Python'),
+    _cmd('cmd_agent_proxy', '/agent_proxy', 'exposes the owner agent', 'python', group='Python'),
+    _key('run_code', 'enter', 'run what compiles, else add a line', 'Python', 'python', context='python'),
+    _key('complete_name', 'tab', 'complete names', 'Python', 'python', context='python'),
+    _key('interrupt', 'ctrl+c', 'interrupt the cell', 'Python', 'python', context='python'),
+    _cmd('cmd_vars', '/vars', 'lists the names the agent has bound', 'python', group='Python'),
+    _cmd('cmd_promote', '/promote NAME', "adopts one of the agent's variables into your namespace", 'python', group='Python'),
+    _cmd('cmd_planmode', '/planmode on|off', 'withholds every tool that acts and asks for a plan', 'plan'),
+    _cmd('cmd_plan', '/plan', 'shows the plan', 'plan'),
+    _cmd('cmd_todo', '/todo TEXT', 'adds a step', 'plan'),
+    _cmd('cmd_todo_state', '/todo ID done|active|pending|cancel', "sets a step's state", 'plan'),
+    _cmd('cmd_login', '/login', 'lists the providers', 'setup'),
+    _cmd('cmd_login_name', '/login NAME', 'signs in, or keeps a key or an endpoint', 'setup'),
+    _cmd('cmd_config', '/config', 'shows each setting and where it came from', 'setup'),
+    _cmd('cmd_config_set', '/config set KEY VALUE', 'sets one', 'setup'),
+    _cmd('cmd_config_file', '/config edit|reset|reload', 'edits, resets or reloads the file', 'setup'),
+    _cmd('cmd_model_save', '/model NAME --save', 'switches model and keeps it', 'setup'),
+    _cmd('cmd_root', '/root', 'lists the open folders', 'extra'),
+    _cmd('cmd_root_add', '/root add PATH', 'opens a folder', 'extra'),
+    _cmd('cmd_pane', '/pane', 'shows the agent and sub-agents in a tmux split', 'extra'),
+    _cmd('cmd_pane_off', '/pane off', 'closes it', 'extra'),
+    _cmd('cmd_theme', '/theme', 'lists the palettes', 'extra'),
+    _cmd('cmd_theme_name', '/theme NAME [--save]', 'switches the palette; --save keeps it', 'extra'),
+    _cmd('cmd_mouse', '/mouse', 'clicks blocks on the main screen', 'extra'),
+    _cmd('cmd_calm', '/calm [on|off]', 'folds each stretch of tool calls into one row', 'extra'),
+    _cmd('cmd_tasks', '/tasks', 'lists background shells, sub-agents and watches', 'extra'),
+    _cmd('cmd_tips', '/tips [on|off] [--save]', 'shows one tip while a turn runs', 'extra'),
+    _cmd('cmd_tool_budget', '/tool-budget', 'shows or sets the tool calls a turn may make', 'extra'),
+    _cmd('cmd_steps', '/steps', 'shows or sets the steps a turn may take', 'extra'),
+    _cmd('cmd_models', '/models', 'lists models, their tool channel and effort', 'extra'),
+    _cmd('cmd_model', '/model NAME', 'switches model', 'extra'),
+    _cmd('cmd_model_tools', '/model tools native|text|auto [--save]', "sets how the turn's tools travel", 'extra'),
+    _cmd('cmd_sessions', '/sessions [all]', 'lists past sessions', 'extra'),
+    _cmd('cmd_resume', '/resume [ID|latest]', 'resumes a session', 'extra'),
+    _cmd('cmd_cost', '/cost', 'shows what the session has cost', 'extra'),
+    _cmd('cmd_compact', '/compact', 'compacts the conversation', 'extra'),
+    _cmd('cmd_reload', '/reload', 'finds skills, extensions and tools again', 'extra'),
+    _cmd('cmd_learned', '/learned', 'lists what Dhrona proposes', 'extra'),
+    _cmd('cmd_learned_review', '/learned diff|accept|reject ID', 'reviews one proposal', 'extra'),
+    _cmd('cmd_learned_compact', '/learned compact [ID]', 'proposes a shorter AGENTS.md, with candidate ID folded in', 'extra'),
+    _cmd('cmd_learned_on', '/learned on|off', 'turns learning on or off for every session', 'extra'),
+    _cmd('cmd_subagents', '/subagents', 'shows every sub-agent setting', 'subagent'),
+    _cmd('cmd_subagents_on', '/subagents on|off', 'sets writes', 'subagent'),
+    _cmd('cmd_subagents_steps', '/subagents steps N|auto', 'sets their steps', 'subagent'),
+    _cmd('cmd_subagents_timeout', '/subagents timeout S', 'sets their timeout', 'subagent'),
+    _cmd('cmd_subagents_nest', '/subagents nest N', 'sets how deep they nest', 'subagent'),
+    _cmd('cmd_subagents_model', '/subagents model NAME|default', 'sets their model', 'subagent'),
+    _cmd('cmd_subagents_effort', '/subagents effort low|medium|high|xhigh|max|default', 'sets their effort', 'subagent'),
+    _cmd('cmd_subagents_tools', '/subagents tools native|text|auto', 'sets how their tools travel', 'subagent'),
+    _cmd('cmd_talk', '/talk RUN', 'aims typed lines at a running sub-agent, an id prefix being enough', 'talk'),
+    _cmd('cmd_talk_main', ['/talk', '/talk main'], 'aims them at the main agent again', 'talk'),
+    _cmd('cmd_peers', '/peers', 'lists the other live sessions, numbered, most recently active first', 'peers'),
+    _cmd('cmd_tell', '/tell N TEXT', 'steers session N', 'peers'),
+    _cmd('cmd_tell_prompt', '/tell N --prompt TEXT', 'starts or queues a turn there', 'peers'),
+    _cmd('cmd_tell_aim', '/tell N', 'aims typed lines at it', 'peers'),
+    _cmd('cmd_tell_main', ['/tell', '/tell main'], 'aims them back here', 'peers'),
+    _key('task_move', ['up', 'down', 'left', 'right'], 'move', 'Tasks', 'tasks', context='tasks'),
+    _key('task_row', [str(i) for i in range(1, 10)], 'go to that row', 'Tasks', 'tasks', context='tasks', range='1-9'),
+    _key('task_open', 'enter', 'open it', 'Tasks', 'tasks', context='tasks'),
+    _key('task_stop', 'x', 'stop it, once y confirms', 'Tasks', 'tasks', context='tasks'),
+    _key('task_confirm', 'y', 'confirm the stop', 'Tasks', 'tasks', context='tasks'),
+    _key('task_close', ['escape', 'ctrl+c'], 'back', 'Tasks', 'tasks', context='tasks'),
+]
+
+#: the key card's lines in order, each with the prose that leads and ends its rows
+CARD = dict(
+    normal=('', ''), timeline=('a turn reads top to bottom · ┆ narration · │ a call · the answer last', ''),
+    transcript=('', ''), edit=('', ''), media=('drop or paste a path to attach', ''), memory=('', ''),
+    copy=('select with the mouse', ''), approve=('', 'anything else re-asks'), approvals=('', ''),
+    options=("↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line", ''),
+    shell=('', 'ctrl+c interrupts it, twice kills it'), python=('', ''), plan=('', 'the plan survives stop and /resume'),
+    setup=('', ''), extra=('', ''), subagent=('', 'each with --save to keep it · tab completes them'),
+    talk=('', 'tab completes main and the running ids'), peers=('', ''), tasks=('', ''),
+    api=('start with --spec · then api_load URL-or-path · api_ops · api_call', ''))
+
+_SHOWN = dict(up='↑', down='↓', left='←', right='→', pageup='pgup', pagedown='pgdn', escape='esc')
+
+def key_text(row):
+    "How the card, hints and tips name a row's keys: typed text as written, a range as `alt+1..9`, else every chord outside `NOT_SENT`, a shared modifier written once."
+    cs = row['chords']
+    if row.get('command'): return ' or '.join(cs)
+    if 'range' in row: return cs[0][:-1] + row['range'].replace('-', '..')
+    runs = []
+    for c in cs:
+        if c in NOT_SENT: continue
+        mods, _, base = c.rpartition('+')
+        if not mods: base = _SHOWN.get(base, base)
+        if runs and runs[-1][0] == mods: runs[-1][1].append(base)
+        else: runs.append((mods, [base]))
+    return ' or '.join((f'{m}+' if m else '') + '/'.join(bases) for m, bases in runs)
+
+def key_names(rows=None):
+    "Each action's keys as `key_text` writes them."
+    return {r['action']: key_text(r) for r in ifnone(rows, KEYMAP)}
+
+def help_text(rows=None):
+    "The key card from `rows` (default `KEYMAP`): one line per `CARD` entry, its lead, its rows' keys and labels, then its tail."
+    rows, lines = ifnone(rows, KEYMAP), []
+    for name, (lead, tail) in CARD.items():
+        segs = [lead, *(f"{key_text(r)} {r['label']}" for r in rows if r['card'] == name and key_text(r)), tail]
+        lines.append(f'{name}  ' + ' · '.join(s for s in segs if s))
+    return '\n'.join(lines)
+
+HELP = help_text()
+
+#: one shows at a time under the working rows, the next one each turn; `{action}` is that row's keys
+TIPS = tuple(t.format_map(key_names()) for t in (
+    '{keys} on an empty prompt lists every key',
+    '{queue} queues a line for after this turn',
+    '{send} sends a line into the running turn: it steers',
+    '{recall_all} takes your queued text back into the prompt',
+    '{stop} stops the turn and keeps what you typed',
+    '{tasks} lists background shells, sub-agents and watches',
+    '{fold} folds or opens the working rows',
+    '{open_call} opens one tool call in full',
+    '{transcript} browses the transcript; {copy_block} copies a block',
+    '{plan} shows or hides the plan checklist',
+    '{approvals} cycles approvals: ask, edits, auto, plan',
+    '{attach_image} attaches the clipboard image; {cmd_at} attaches a file',
+    '{cmd_shell} runs a shell line the model never sees',
+    '{cmd_note} keeps a line for later sessions',
+    '{cmd_calm} folds each stretch of tool calls into one row',
+))
+
+# %% ../nbs/05_cli.ipynb #6f6fbd7d
+def keymap_doc(rows=None):
+    "Sanketa's keymap file, format version 1, built from `rows` (default `KEYMAP`)."
+    keys = [{k: v[:1].upper() + v[1:] if k == 'label' else v for k, v in r.items() if k != 'card'} for r in ifnone(rows, KEYMAP)]
+    return dict(version=1, app='ramabana', name='ramabana', written_by=f'ramabana {__version__}',
+                written_at=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), contexts=list(CONTEXTS), keys=keys)
+
+def keymap_dir():
+    "The folder Sanketa reads keymap files from, or None when Sanketa is not set up."
+    if (d := os.environ.get('SANKETA_KEYMAPS')): return Path(d)
+    sanketa = Path.home()/'.config'/'sanketa'
+    return sanketa/'keymaps' if sanketa.is_dir() else None
+
+def write_keymap():
+    "Write `keymap_doc` as `ramabana.json` for Sanketa when its keys changed; the path written, else None."
+    try:
+        if (d := keymap_dir()) is None: return None
+        p, doc = d/'ramabana.json', keymap_doc()
+        if p.exists():
+            old = _json.loads(p.read_text())
+            if not str(old.get('written_by', '')).startswith('ramabana'): return None
+            if {**old, 'written_at': ''} == {**doc, 'written_at': ''}: return None
+        with atomic_save(p, 'w') as f: f.write(_json.dumps(doc, indent=2) + '\n')
+        return p
+    except Exception: return None   # Sanketa's file is a courtesy: no failure here may stop the session
 
 # %% ../nbs/05_cli.ipynb #buildstamp
 BUILD = datetime.fromtimestamp(Path(__file__).stat().st_mtime).strftime('%H:%M') if '__file__' in dir() else ''
@@ -491,7 +675,7 @@ WORK
   /learned  /learned diff|accept|reject ID  review what Dhrona proposes
   /learned compact [ID]  a shorter learned AGENTS.md, ID folded in
   /learned on|off  learning on or off, for every session
-  enter mid-turn steers the turn, attachments and all; shift+enter queues
+  enter mid-turn steers the turn, attachments and all; alt+enter queues
   the next one, enter on an empty line steers the queued one in, and
   alt+up takes the queued text back into the composer.
   shift+tab cycles approvals: ask, edits, auto.
@@ -715,7 +899,6 @@ class ChoiceMenu:
         return False, None
 
 
-TASKS_KEY = 'ctrl+l'   #: opens the list of background tasks, as does `/tasks`
 TASK_ROWS = 9          #: the most rows the list shows, one per digit key
 
 def _since(secs):
@@ -2126,15 +2309,15 @@ def _plan_rows(self:Ui, rows):
     room = self.comp.rows - used - PLAN_RESERVE
     return [Tooltip(self.agent.plan.md(), max_lines=min(PLAN_ROWS, room - 1)).renderable()] if room >= 2 else []
 
-#: the hint row for each state; every key here reaches ramabana in tmux and in Leela's xterm.js, which never sends shift+enter
-HINTS = dict(
-    idle='? keys · / commands · @ files · ctrl+r transcript · ctrl+l tasks',
-    typing='enter sends · tab completes /commands and @paths · ctrl+u cuts the line',
-    python='enter runs what compiles, else adds a line · tab completes · /agent goes back',
-    running='enter steers · alt+enter queues · ctrl+c stops · ctrl+l tasks',
-    waiting='↑ edits newest waiting · alt+up takes them back · \u21aa after this call · \u23f3 after the turn',
-    approval='y approve · n refuse · n: REASON \u23ce says why · a approve all · A always allow',
-    tasks='↑/↓ move · enter opens · x stops · esc back')
+#: the hint row for each state; `{action}` is that `KEYMAP` row's keys, which `key_text` names only as they reach ramabana in tmux and in Leela's xterm.js
+HINTS = {state: hint.format_map(key_names()) for state, hint in dict(
+    idle='{keys} keys · / commands · @ files · {transcript} transcript · {tasks} tasks',
+    typing='{send} sends · {complete} completes /commands and @paths · {cut_line} cuts the line',
+    python='{run_code} runs what compiles, else adds a line · {complete_name} completes · {cmd_agent} goes back',
+    running='{send} steers · {queue} queues · {stop} stops · {tasks} tasks',
+    waiting='{recall_one} edits newest waiting · {recall_all} takes them back · \u21aa after this call · \u23f3 after the turn',
+    approval='y approve · n refuse · n: REASON \u23ce says why · {approve_all} approve all · {always_allow} always allow',
+    tasks='{task_move} move · {task_open} opens · {task_stop} stops · {task_close} back').items()}
 
 @patch
 def footer_hint(self:Ui):
@@ -2783,6 +2966,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         asyncio.get_running_loop().set_exception_handler(loop_error(ui))   # a key handler or a posted notice that raises
         ctl = start_control(ui)
         comp.spawn(ui.animate(), name='spinner')
+        write_keymap()
         def on_key(k):
             out = ui.on_key(k)
             if out == 'quit': return done.set()
