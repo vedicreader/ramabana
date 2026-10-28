@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.2.89
+- The morning report of work together mode has its examples and actions again. It made its summary with the pair that `mk_agent` returns, not the agent, and said "the summary model failed: 'tuple' object has no attribute 'oneshot'" every time.
+
 ## 0.2.88
 - An approval request that a host builds with the real arguments no longer shows a secret argument. Its row, its event, the turn history and the saved conversation show `[SECRET]`, and the summary and preview are made again from the hidden arguments. The approved call still runs with the real value.
 

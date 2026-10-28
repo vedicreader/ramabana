@@ -143,3 +143,12 @@ def test_no_threads_skips_the_model(tmp_path, monkeypatch):
     monkeypatch.setenv('RAMABANA_PEERS', str(tmp_path))
     def boom(*a, **k): raise AssertionError('called')
     assert 'No thread in this time.' in pr.report(0, summary=boom)
+
+def test_the_summary_with_no_agent_given_uses_the_agent_mk_agent_makes(monkeypatch):
+    "`mk_agent` gives `(agent, host)`; the report used the pair as the agent, and every morning said `'tuple' object has no attribute 'oneshot'`."
+    import ramabana.agent as ag
+    class Agent:
+        def oneshot(self, prompt, sp='', job='oneshot'): return 'EXAMPLES\n- Ramabana added a shortcut.\nACTIONS\n- Read the diff: ramabana/cli.py'
+    monkeypatch.setattr(ag, 'mk_agent', lambda *a, **kw: (Agent(), object()))
+    ts = pr.threads(ROWS, {r['key']: r for r in (A, B, C)})
+    assert pr.summarise(ts) == ('- Ramabana added a shortcut.', '- Read the diff: ramabana/cli.py')

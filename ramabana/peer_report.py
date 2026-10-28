@@ -114,7 +114,7 @@ def _bullets(s): return [l if l.lstrip().startswith(('-', '*')) else f'- {l}' fo
 def summarise(ts, agent=None):
     "The simple examples and the action list for threads `ts`, from one `summary` model call."
     from ramabana.agent import mk_agent
-    agent = agent or mk_agent()
+    agent = agent or mk_agent()[0]   # `mk_agent` gives `(agent, host)`
     out = agent.oneshot('\n'.join(f"- {t['asker']} asked {t['worker'] or 'nobody'}: {t['ask']} (state: {t['state']}; changed: {'; '.join(t['changes']) or 'nothing'})" for t in ts), SUMMARY_SP, job='summary')
     ex, *ac = re.split(r'(?im)^\s*actions\s*:?\s*$', out or '', maxsplit=1) + ['']
     return '\n'.join(_bullets(re.sub(r'(?im)^\s*examples\s*:?\s*$', '', ex))), '\n'.join(_bullets(ac[0]))
