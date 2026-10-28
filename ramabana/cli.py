@@ -61,7 +61,7 @@ from shalya.core import one_line
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
 from .pane import background_rows, quit_mark, talk_mark, write_snapshot
-from .control import EVENT_FILE, Control, ago, control_call, find_peer, peer_label, peer_lines, peer_tools, peers_of, pick_row
+from .control import EVENT_FILE, Control, ago, control_call, find_peer, note_peer, peer_label, peer_lines, peer_tools, peers_of, pick_row
 from .tools import WRITE_TOOLS, path_write, write_targets
 from . import hl, setup
 from .hl import HL_THEMES, is_diff
@@ -3797,6 +3797,12 @@ def talk_peer(self:Ui, row):
 async def send_peer(self:Ui, row, text, how='steer'):
     "Send `text` to the session `row` off the loop, as a steer or a prompt, and say whether it arrived; True when it did."
     name, ok = peer_label(row), False
+    if 'path' not in row:   # a Claude Code or Codex session: it takes a note, whatever `how` says
+        try: await off_loop(lambda: note_peer(self.agent, row, text))
+        except Exception as e: self.note(f'{name} did not take it: {agent_err(e)}', 'error')
+        else: self.note(f'→ {name}: {text}'); ok = True
+        self.paint()
+        return ok
     try: out = await off_loop(lambda: control_call(row['path'], how, text=text))
     except Exception as e: self.note(f'{name} did not take it: {agent_err(e)}', 'error')
     else:

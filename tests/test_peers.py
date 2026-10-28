@@ -8,6 +8,7 @@ from teleprint.testing import EmuTty
 import ramabana.cli as cli
 from ramabana.agent import Approvals
 from ramabana.control import Control, control_call, control_path, peer_tools
+from ramabana.peers import peers_dir, register, take
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 from ramabana.tools import WRITE_TOOLS
 
@@ -169,3 +170,22 @@ def test_the_user_lists_peers_and_tells_one_by_number():
         finally: ctl.close()
     try: _live(body, agent)
     finally: other_ctl.close()
+
+
+def test_tell_tool_and_slash_tell_post_a_note_to_a_registered_peer(monkeypatch):
+    d = _cfg()
+    monkeypatch.setenv('RAMABANA_PEERS', str(d/'peers'))
+    register(peers_dir(d), 'claude', 's1', ['/r/abhyasa'], os.getpid())
+    agent, _ = fake_agent(cfg=d)
+    key = f'ramabana-{agent.session_id}'
+    assert peer_tools(agent)[1]('s1', 'via the tool', how='prompt', wait=0).startswith('told')
+    async def body(u):
+        u.buf.text = '/peers'
+        u.submit()
+        await _until(lambda: 'abhyasa' in _said(u), 'the /peers list')
+        u.buf.text = '/tell 1 via slash'
+        u.submit()
+        await _until(lambda: 'via slash' in _said(u) and 'did not take' not in _said(u), 'the note to be sent')
+    _live(body, agent)
+    got = take(peers_dir(d), 'claude-s1')
+    assert [(e.text, e.frm['key']) for e in got] == [('via the tool', key), ('via slash', key)]

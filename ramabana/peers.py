@@ -286,10 +286,11 @@ def me(cfg=None, session=None):
 
 # %% ../nbs/23_peers.ipynb #9c024257
 def _ring(row, env):
-    "Tell the Ramabana session in `row` that `env` is in its inbox; a session that does not answer finds it later."
+    "Tell the Ramabana session in `row` that `env` is in its inbox; why that failed, else ''. A session not rung finds the message later."
     if row.get('path'):
         try: control_call(row['path'], 'message', timeout=2, id=env.id)
-        except (OSError, RuntimeError, ValueError): pass
+        except (OSError, RuntimeError, ValueError) as e: return str(e)
+    return ''
 
 def _show(e):
     "The envelope `e` as text: its body, then its `changes` and `proof` lines."
@@ -309,9 +310,9 @@ def tell(target, text, kind='note', frm=None, repo='', thread='', hops=0, everyo
         if why := limit_refusal(d, frm['key'], env): said.append(f"not sent to {row.get('name') or row['key']}: {why}")
         else:
             post(d, row['key'], env)
-            _ring(row, env)
+            why = _ring(row, env)
             sent.append(env)
-            said.append(f"told {row.get('name') or row['key']}")
+            said.append(f"told {row.get('name') or row['key']}" + (f' (queued; not rung: {why})' if why else ''))
     if wait and len(sent) == 1:
         got = wait_take(d, frm['key'], wait, lambda e: e.kind == 'reply' and e.thread == sent[0].thread)
         return _show(got[0]) if got else f"{said[0]}; no reply within {wait} s"
@@ -364,7 +365,7 @@ def peers_cli(argv, cfg=None):
             except OSError: print('only a registered session has folders', file=sys.stderr); return 1
         else: print(peer_lines(rows(), a.ids) or 'no other session is running')
     elif a.cmd == 'tell':
-        target, text = ('', a.words[0]) if a.all else (a.words[0], ' '.join(a.words[1:]))
+        target, text = ('', ' '.join(a.words)) if a.all else (a.words[0], ' '.join(a.words[1:]))
         try: print(tell(target, text, 'reply' if a.reply_to else 'ask' if a.ask else 'note', frm, a.repo or '', a.reply_to or '', everyone=a.all, wait=a.wait, cfg=cfg))
         except (LookupError, ValueError) as e: print(e, file=sys.stderr); return 1
     elif a.cmd == 'inbox':

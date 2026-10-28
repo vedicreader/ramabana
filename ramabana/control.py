@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/control.html.md"""
 # %% auto #0
 __all__ = ['METHODS', 'SOCKET_MAX', 'REQUEST_MAX', 'EVENTS_MAX', 'EVENT_FILE', 'PEER_WAIT', 'control_path', 'ago', 'pick_row',
            'session_name', 'Control', 'peers_of', 'peer_label', 'find_peer', 'events_end', 'carries', 'await_reply',
-           'peer_tools']
+           'note_peer', 'peer_tools']
 
 # %% ../nbs/20_control.ipynb #f32d5009
 import json, os, socket, socketserver, stat, tempfile, threading, time
@@ -16,7 +16,7 @@ from pathlib import Path
 from shalya import acts, err
 from .core import agent_err
 from .agent import TurnResult, model_title
-from .peers import CONTROL, all_peers, control_call, peer_lines
+from .peers import CONTROL, all_peers, control_call, peer_lines, tell as send_note
 
 # %% ../nbs/20_control.ipynb #9c6353b2
 METHODS = ('prompt', 'steer', 'cancel', 'asks', 'answer', 'status', 'events')
@@ -201,6 +201,11 @@ def await_reply(path, offset, text, timeout):
         if time.monotonic() >= end: return None
         time.sleep(.2)
 
+def note_peer(agent, row, text):
+    "Post `text` as a note from this session to the registered session `row`, which has no socket; what `tell` says. `LookupError` when it is gone."
+    me = dict(kind='ramabana', session=agent.session_id, key=f'ramabana-{agent.session_id}', name=Path(next(iter(agent.host.roots), 'ramabana')).name or 'ramabana')
+    return send_note(row['key'], text, frm=me, cfg=agent.cfg)
+
 def peer_tools(agent):
     "`peers()` and `tell()`: the agent's tools for reaching the other live sessions."
     shown = []
@@ -222,6 +227,9 @@ def peer_tools(agent):
             shown[:] = peers_of(agent)
             row = find_peer(shown, session)
         if row is None: return err(f'no live session {session!r}; peers() lists them')
+        if 'path' not in row:   # a Claude Code or Codex session: it takes a note, whatever `how` says
+            try: return note_peer(agent, row, text)
+            except LookupError as e: return err(str(e))
         name, path = peer_label(row), row['path']
         if how == 'prompt' and agent.approvals is not None:
             ask = agent.approvals.request('tell', {'session': name, 'how': how, 'text': text}, force=True)

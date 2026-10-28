@@ -46,6 +46,19 @@ def test_tell_note_posts_and_rings(world):
     assert rang == [got[0].id]
 
 
+def test_tell_says_when_the_ring_failed(world, monkeypatch):
+    cfg, agent, _ = world
+    monkeypatch.setattr(Control, 'do_message', lambda self, id: 1/0)
+    out = tell(agent.session_id, 'hi', frm=SELF, cfg=cfg)
+    assert 'queued; not rung' in out and len(take(peers_dir(cfg), f'ramabana-{agent.session_id}')) == 1
+
+
+def test_tell_all_takes_the_whole_text(world):
+    cfg, agent, _ = world
+    assert peers_cli(['tell', '--all', 'one', 'two'], cfg=cfg) == 0
+    assert [e.text for e in take(peers_dir(cfg), f'ramabana-{agent.session_id}')] == ['one two']
+
+
 def test_tell_ask_waits_for_reply(world):
     cfg, agent, _ = world
     d = peers_dir(cfg)
