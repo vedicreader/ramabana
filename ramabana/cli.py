@@ -619,8 +619,8 @@ TIPS = tuple(t.format_map(key_names()) for t in (
 def keymap_doc(rows=None):
     "Sanketa's keymap file, format version 1, built from `rows` (default `KEYMAP`)."
     keys = [{k: v[:1].upper() + v[1:] if k == 'label' else v for k, v in r.items() if k != 'card'} for r in ifnone(rows, KEYMAP)]
-    return dict(version=1, app='ramabana', name='ramabana', written_by=f'ramabana {__version__}',
-                written_at=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), contexts=list(CONTEXTS), keys=keys)
+    return dict(version=1, app='ramabana', name='ramabana', app_version=__version__,
+                written_by=f'ramabana {__version__}', written_at=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), contexts=list(CONTEXTS), keys=keys)
 
 def keymap_dir():
     "The folder Sanketa reads keymap files from, or None when Sanketa is not set up."
@@ -1125,6 +1125,7 @@ class Ui:
         self.by_id = {}
         self.kids = {}
         self.hint = ''   #: the session's folders, shown after the keys on an empty composer
+        self._titled = None   #: the context last written to the terminal title
         self.hints = bool(setting('cli.hints', True))   #: `hints = false` under [cli] in config.toml, or --no-hints, hides the hint row
         self.tips = bool(setting('cli.tips', True))   #: `tips = false` under [cli] in config.toml, `--no-tips` or `/tips off` hides the tip in the working rows
         self.turn_no = 0   #: turns started this session; it picks the tip, so a tip stays for the whole turn
@@ -1389,6 +1390,7 @@ class Ui:
 
     def paint(self):
         "Repaint the live tail, and the browsing view when it is up."
+        self.announce_context()
         rows, cursor = self.tail()
         self.comp.set_tail(*rows, cursor=cursor, over=self.overlay())
         if self.transcript.active: self.transcript.draw()
@@ -2320,16 +2322,30 @@ HINTS = {state: hint.format_map(key_names()) for state, hint in dict(
     tasks='{task_move} move · {task_open} opens · {task_stop} stops · {task_close} back').items()}
 
 @patch
+def context(self:Ui, browsing=True):
+    "The `CONTEXTS` id for what the surface is doing now; with `browsing` off the transcript view does not count, as the hint row has no state of its own for it."
+    if isinstance(self.menu, TaskMenu): return 'tasks'
+    if browsing and self.transcript.active: return 'transcript'
+    if self.ask is not None: return 'approval'
+    if self._queued is not None or self.unread_steered(): return 'waiting'
+    if self.turn is not None and not self._turn_over(): return 'running'
+    if self.mode == 'python': return 'python'
+    return 'typing' if self.buf.text else 'idle'
+
+@patch
 def footer_hint(self:Ui):
     "The hint row for what the surface is doing now, from `HINTS`; empty with `cli.hints` off."
     if not self.hints: return ''
-    if isinstance(self.menu, TaskMenu): return HINTS['tasks']
-    if self.ask is not None: return HINTS['approval']
-    if self._queued is not None or self.unread_steered(): return HINTS['waiting']
-    if self.turn is not None and not self._turn_over(): return HINTS['running']
-    if self.mode == 'python': return HINTS['python']
-    if self.buf.text: return HINTS['typing']
-    return HINTS['idle'] + (f' · {self.hint}' if self.hint else '')
+    state = self.context(browsing=False)
+    return HINTS[state] + (f' · {self.hint}' if state == 'idle' and self.hint else '')
+
+@patch
+def announce_context(self:Ui):
+    "Set the terminal title to `ramabana · <context>` when the context has changed since the last call, so Sanketa can show the keys that work now."
+    if self.comp._borrowing: return   # an editor has the terminal: `lend` announces again when it ends
+    if (ctx := self.context()) != self._titled:
+        self._titled = ctx
+        self.comp.tty.write(f'\x1b]2;ramabana · {ctx}\x07')
 
 @patch
 def tail(self:Ui):
@@ -2380,12 +2396,14 @@ def enter_transcript(self:Ui):
     self.flush_stream()   # flush first: the view renders block bodies
     self.comp.set_modes(1000, 1006)
     self.transcript.enter()
+    self.announce_context()
 
 @patch
 def leave_transcript(self:Ui):
     "Close the browsing view and return the mouse unless `/mouse` is on."
     self.transcript.leave()
     if not self.mouse: self.comp.set_modes(1000, 1006, on=False)
+    self.announce_context()
 
 @patch
 def set_mouse(self:Ui, want=''):
@@ -3409,9 +3427,13 @@ def task_stop(self:Ui, row):
 @patch
 async def lend(self:Ui, fn):
     "Run `fn` in a thread with the terminal lent to it in the shell's own line mode, then take it back: what `fn` returned."
-    async with self.comp.borrow():
-        self.comp.tty.restore()   # `borrow` lends raw mode, where a prompt's Enter never ends its line
-        return await asyncio.to_thread(fn)
+    try:
+        async with self.comp.borrow():
+            self.comp.tty.restore()   # `borrow` lends raw mode, where a prompt's Enter never ends its line
+            return await asyncio.to_thread(fn)
+    finally:
+        self._titled = None   # `fn` may have set the terminal's title
+        self.announce_context()
 
 @patch
 async def edit_config(self:Ui):

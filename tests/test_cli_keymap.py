@@ -120,6 +120,7 @@ def test_a_session_writes_its_keymap_file_for_sanketa(tmp_path, monkeypatch):
     doc = json.loads(f.read_text())
     assert doc['version'] == 1 and doc['app'] == 'ramabana' and doc['name'] and doc['written_by'].startswith('ramabana ')
     assert re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ', doc['written_at']) and 'overrides' not in doc
+    assert doc['app_version'] == cli.__version__ and doc['written_by'] == f'ramabana {doc["app_version"]}'
     ids = [c['id'] for c in doc['contexts']]
     assert {'idle', 'typing', 'running', 'waiting', 'approval', 'python', 'transcript'} <= set(ids)
     actions = [r['action'] for r in doc['keys']]

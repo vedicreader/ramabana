@@ -83,6 +83,8 @@ set -g mouse on
 set -g status off
 set -g remain-on-exit off
 set -g destroy-unattached on
+set -g set-titles on
+set -g set-titles-string "#{pane_title}"
 '''
 VERSIONED = {KEYS_MIN: "set -s extended-keys on\nset -as terminal-features ',*:extkeys'",
              (3, 5): 'set -s extended-keys-format csi-u'}
