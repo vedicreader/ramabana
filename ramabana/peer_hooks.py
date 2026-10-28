@@ -113,8 +113,8 @@ def _report_note(since, cfg):
     return f'Work together mode ended. Run `{shlex.quote(sys.executable)} -m ramabana.peer_report --since {since}` and show the user the report.'
 
 def _prompt(ad, d, data, cfg):
-    "End work together mode, and give the agent its unread messages and the report of the mode that ended."
-    since = _ended(d, _key(ad, data))
+    "End work together mode on a typed prompt, and give the agent its unread messages and the report of the mode that ended."
+    since = None if '<task-notification>' in data.get('prompt', '') else _ended(d, _key(ad, data))
     text = _messages(ad, d, data, take(d, _key(ad, data)))
     parts = [*([text] if text else []), *([_report_note(since, cfg)] if since is not None else [])]
     return _context('UserPromptSubmit', '\n\n'.join(parts)) if parts else (0, '', '')
