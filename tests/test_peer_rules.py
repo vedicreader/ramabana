@@ -97,3 +97,13 @@ def test_codex_shows_no_wake(tmp_path):
     register(tmp_path, 'claude', 's1', ['/r/b'], os.getpid())
     lines = peer_lines([{'folder': r['folders'][0]} | r for r in registered(tmp_path)]).splitlines()
     assert '(no wake)' in lines[0] and '(no wake)' not in lines[1]
+
+
+def test_reply_refused_by_hop_limit_reaches_asker_as_failed(tmp_path, monkeypatch):
+    monkeypatch.setenv('RAMABANA_PEERS', str(tmp_path))
+    monkeypatch.delenv('CLAUDE_CODE_SESSION_ID', raising=False)
+    register(tmp_path, 'claude', 's1', ['/r/abhyasa'], os.getpid())
+    log(tmp_path, (ask := Envelope('ask', 'one more round', me(tmp_path), 'claude-s1', hops=HOP_MAX - 1)).dict())
+    said = tell('cli', 'done', 'reply', me(tmp_path, 's1'), thread=ask.thread, cfg=tmp_path)
+    [r] = take(tmp_path, 'cli')
+    assert said.startswith('not sent to cli: hop limit') and (r.kind, r.thread) == ('reply', ask.thread) and r.text.startswith('failed: hop limit'), (said, r.text)

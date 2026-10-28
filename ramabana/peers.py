@@ -374,7 +374,7 @@ def next_hops(d, thread, hops=0):
     return max(hops, 1 + max((r.get('hops', 0) for r in read_log(d) if r.get('thread') == thread and r.get('kind')), default=0))
 
 def tell(target, text, kind='note', frm=None, repo='', thread='', hops=0, everyone=False, wait=0, cfg=None):
-    "Post `text` to the peer `target` (or every peer); with `wait`, return the reply to it. A refusal or a missing peer comes back as text or `LookupError`."
+    "Post `text` to the peer `target` (or every peer); with `wait`, return the reply to it. A refusal or a missing peer comes back as text or `LookupError`; a refused reply reaches the asker as `failed: <why>`."
     d, frm = peers_dir(cfg), frm or me(cfg)
     if everyone and kind != 'note': raise ValueError('only a note goes to everyone')
     rows = all_peers(cfg, exclude=frm['key'])
@@ -384,7 +384,9 @@ def tell(target, text, kind='note', frm=None, repo='', thread='', hops=0, everyo
     sent, said = [], []
     for row in rows:
         env = Envelope(kind, body, frm, row['key'], repo, thread, hops, changes, proof)
-        if why := limit_refusal(d, frm['key'], env): said.append(f"not sent to {row.get('name') or row['key']}: {why}")
+        if why := limit_refusal(d, frm['key'], env):
+            said.append(f"not sent to {row.get('name') or row['key']}: {why}")
+            if kind == 'reply': post(d, row['key'], Envelope('reply', f'failed: {why}', frm, row['key'], repo, thread, hops))
         else:
             post(d, row['key'], env)
             why = _ring(row, env)
