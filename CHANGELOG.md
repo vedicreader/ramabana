@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.2.87
+- A tool can name secret arguments with `secret_args`, for example `add_exercise.secret_args = ('solution',)`. ramabana writes `[SECRET]` in their place in the call list, the activity rows, the approval card, the events and the saved conversation. The tool still gets the real value.
+
 ## 0.2.86
 - Work together mode ends only when you type. A task notification or a subagent's hand-back that Claude Code sends as a prompt no longer ends it.
 - A new session's beat starts at the newest note. Notes from before the session, such as old failures that are already fixed, no longer come back.
