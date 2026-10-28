@@ -2,6 +2,19 @@
 
 <!-- do not remove -->
 
+## 0.2.85
+- Claude Code, Codex and ramabana sessions on one Mac talk to each other. `ramabana peers` lists the live sessions with their folders. `ramabana tell TARGET TEXT` sends a note, and `--ask` sends work that needs a reply. TARGET is a list number, a session id or a folder name. `--all` sends a note to every session.
+- `ramabana setup peers --agent claude|codex|all` adds the peer hooks and the `peer-work` skill to Claude Code and Codex. It shows a diff and writes only when you say yes. `--remove` takes them out. The hooks run this ramabana's own Python, not the `ramabana` on `PATH`. `ramabana --doctor` checks that the hooks run and names a stale `ramabana` on `PATH`.
+- A Claude session gets messages at your next prompt, keeps working while messages wait, and wakes when it is idle. Codex gets them when a turn starts or ends.
+- An ask from another session always asks you first, also in `auto` mode. Every ask gets a reply: the answer, `refused:` or `failed:`.
+- Work together mode: `ramabana together on --with abhyasa,leela --until 07:00`, or `/together`, lets those sessions send asks to you without approval. Each session keeps its own permission mode. The mode ends at that time, after 12 h, or when you type.
+- Limits stop loops. A thread holds at most 6 messages: the ask and 5 replies. A session sends at most 40 notes and asks in 12 h.
+- A session cannot edit files in a git repo that another live session works in. It sends that session a message instead.
+- `ramabana report` gives the morning report: a table of what each session did, with its proof, plain examples, your actions and a glossary. It is saved when work together mode ends.
+- The `peer-work` skill tells the sessions how to work for each other: read the repo's rules, agree the shape with the owner, show test output and a browser screenshot as proof, and let the owner review the diff.
+- `/tell N --ask TEXT` sends an ask. The `tell()` tool takes `kind='note'` or `kind='ask'`.
+- Needs shalya 0.1.24 and fossick 0.1.22.
+
 ## 0.2.84
 - The terminal title names what ramabana is doing: `ramabana · idle`, `typing`, `running`, `waiting`, `approval`, `python`, `transcript` or `tasks`. The title changes only when that state changes. The hint row and the title get the state from one function, so they always agree.
 - ramabana's own tmux server passes the pane title to the outer terminal (`set-titles on`, with `#{pane_title}`). Your own `~/.tmux.conf` does not change.
