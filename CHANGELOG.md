@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.2.88
+- An approval request that a host builds with the real arguments no longer shows a secret argument. Its row, its event, the turn history and the saved conversation show `[SECRET]`, and the summary and preview are made again from the hidden arguments. The approved call still runs with the real value.
+
 ## 0.2.87
 - A tool can name secret arguments with `secret_args`, for example `add_exercise.secret_args = ('solution',)`. ramabana writes `[SECRET]` in their place in the call list, the activity rows, the approval card, the events and the saved conversation. The tool still gets the real value.
 
