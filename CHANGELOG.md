@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.83
+- ctrl+l, or `/tasks`, lists the background shells, sub-agents and watches, with each one's state and age. Enter opens one, `x` then `y` stops it, and Esc goes back with your typed text kept.
+- While a turn runs, the working rows end with one short tip that names a key or command. It changes once per turn and hides while you type. `/tips off`, `tips = false` in `config.toml`, or `--no-tips` turns tips off; `/tips on --save` keeps the choice.
+- One key table drives the key card, `/help`, `?`, the hint row and the tips, so they always name the same keys.
+- At start, ramabana writes its keys to `~/.config/sanketa/keymaps/ramabana.json` (or `$SANKETA_KEYMAPS`), in Sanketa's keymap format 1, so Sanketa shows ramabana's current keys. It writes only when Sanketa is set up and only when the keys changed, and it never writes over a file that ramabana did not write.
+- The help names alt+enter as the queue key. shift+enter still queues where the terminal sends it, but Leela's terminal does not.
+
 ## 0.2.82
 - API keys in tool output are masked. Every read the model sees passes through a guard: files, search hits, diffs, web pages, and now shell and Python output too. Key shapes such as `sk-`, `ghp_`, `github_pat_`, `AKIA`, `AIza`, `hf_` and private-key blocks come back as `[SECRET]`. A write that would put `[SECRET]` over a real key is refused.
 - The shell refuses commands that print the whole environment: `env`, `printenv`, bare `set`, `export -p`, `declare -x`, reading `/proc/*/environ`, and reading a `.env` file. Ask whether one variable is set instead.
