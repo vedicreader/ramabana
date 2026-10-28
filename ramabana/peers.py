@@ -65,8 +65,11 @@ def _atomic_write(p, text):
     with atomic_save(p, 'w') as f: f.write(text)
 
 def _append(p, row):
-    "Add `row` as one line to `p`."
-    with open(p, 'a') as f: f.write(json.dumps(row) + '\n')
+    "Add `row` as one line to `p` under a lock; a torn last line is ended first, so it does not take `row` with it."
+    with open(p, 'a+b') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        if f.seek(0, os.SEEK_END) and (f.seek(-1, os.SEEK_END), f.read(1))[1] != b'\n': f.write(b'\n')
+        f.write((json.dumps(row) + '\n').encode())
 
 def _row(l):
     "The JSON object on line `l`, or None when the line does not parse to one."

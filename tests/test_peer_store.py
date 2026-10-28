@@ -52,9 +52,9 @@ def test_torn_log_line_is_skipped(tmp_path):
     torn(tmp_path/'log.jsonl')
     assert [r['text'] for r in read_log(tmp_path)] == ['a']
     log(tmp_path, {'event': 'x', 'at': 9e9})
-    assert [r.get('event') for r in read_log(tmp_path, 5e9)] == [], 'the next row joins the torn line, and is lost with it'
+    assert [r.get('event') for r in read_log(tmp_path, 5e9)] == ['x'], 'the torn line is ended first, so the next row stays'
     post(tmp_path, 'k', Envelope('note', 'b', {}))
-    assert [r['text'] for r in read_log(tmp_path)] == ['a', 'b']
+    assert [r['text'] for r in read_log(tmp_path) if 'text' in r] == ['a', 'b']
     assert (tmp_path/'hooks.log').read_text().count('log.jsonl') == 1, 'the file is named once'
 
 
@@ -77,3 +77,18 @@ def test_torn_pending_line_does_not_stop_held(tmp_path):
 def test_together_state_is_written_whole(tmp_path):
     st = together_on(tmp_path, 'k')
     assert together_state(tmp_path, 'k') == st and [p.name for p in tmp_path.iterdir()] == ['k.together.json']
+
+def test_torn_line_does_not_take_the_next_row(tmp_path):
+    (tmp_path/'log.jsonl').write_text('{"kind": "note", "te')
+    log(tmp_path, {'event': 'after', 'at': 1.})
+    assert [r['event'] for r in read_log(tmp_path)] == ['after']
+    post(tmp_path, 'k', Envelope('note', 'hi', {}))
+    (tmp_path/'k.inbox.jsonl').write_text((tmp_path/'k.inbox.jsonl').read_text() + '{"kind": "no')
+    post(tmp_path, 'k', Envelope('note', 'again', {}))
+    assert [e.text for e in take(tmp_path, 'k')] == ['hi', 'again']
+
+def test_appends_from_threads_stay_whole(tmp_path):
+    big = 'x' * 200_000   # bigger than one write, so rows would mix without the lock
+    with ThreadPoolExecutor(8) as ex: list(ex.map(lambda i: log(tmp_path, {'n': i, 'pad': big, 'at': 1.}), range(64)))
+    lines = (tmp_path/'log.jsonl').read_text().splitlines()
+    assert len(lines) == 64 and sorted(json.loads(l)['n'] for l in lines) == list(range(64))
