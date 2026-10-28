@@ -4,6 +4,7 @@ Modules:
 
 - `ramabana.coding_patterns`: Answer.AI coding standards adapted to Ramabana's tools and nbdev workflow.
 - `ramabana.debugging`: Diagnose a failure, a misbehaving tool, or Ramabana itself.
+- `ramabana.peer_work`: The rules an agent follows when it works for another session, or asks another session to work.
 - `ramabana.racp`: Ramabana as an [Agent Client Protocol](https://agentclientprotocol.com/) agent: an editor drives this host through its own files and terminal.
 - `ramabana.theory`: Naur's programming-as-theory-building, in the sense this team uses the word.
 - `ramabana.vault`: Memory that outlives the process: a vishalakshi vault behind the host, and the watches that bring work back to the agent later.

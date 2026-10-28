@@ -63,6 +63,7 @@ debugging = "ramabana.debugging"
 theory = "ramabana.theory"
 write_prose = "ramabana.write_prose"
 write_docs = "ramabana.write_docs"
+peer_work = "ramabana.peer_work"
 
 [tool.nbdev]
 allowed_cell_metadata_keys = ["leela"]
