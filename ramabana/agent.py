@@ -13,7 +13,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK',
            'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'RAHASYA_SECRETS', 'MORE_SECRETS',
            'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE', 'PEER_ROWS_EVERY', 'PEER_ROWS_WAIT', 'MEMORY_CHARS',
-           'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'PEER_ASK', 'WARM_ROUNDS',
+           'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS',
            'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX',
            'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP',
            'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
@@ -22,8 +22,8 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons', 'learned_context',
            'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
            'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
-           'generated_denial', 'note_tools', 'hydrate_turns', 'peer_text', 'repo_state', 'SessionBusy', 'TurnResult',
-           'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
+           'generated_denial', 'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed',
+           'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
            'compact_history', 'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
@@ -47,7 +47,7 @@ from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, Too
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background, Slots, SUB_MAX_STEPS, SUB_STEP_CEILING, SUB_TIMEOUT, SUB_READ_ONLY, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
 from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, beat_problems, pob, pob_path, review_notice
-from .peers import _show, all_peers, folder_denial
+from .peers import all_peers, folder_denial, peer_text
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
 MAX_DETAIL = 4000     # chars of a result kept for the fold
@@ -2798,15 +2798,6 @@ def watch_notice(self:Agent):
     return '\n\n<watch-results>\n' + '\n'.join(lines) + '\nSearch memory (`memory_search`) for what they filed.\n</watch-results>'
 
 # %% ../nbs/03_agent.ipynb #5347b079
-PEER_ASK = 'Read the `peer-work` skill before you act on this ask. End your reply with a `changes:` line (files and commits, split by `;`) and a `proof:` line (the test command and its result).'
-
-def peer_text(env):
-    "The peer message `env` as a `<peer-message>` block; an ask adds `PEER_ASK`."
-    attr = lambda s: str(s).replace('"', "'")
-    who = env.frm.get('name') or env.frm.get('key', '?')
-    head = f'<peer-message id="{attr(env.id)}" kind="{attr(env.kind)}" from="{attr(who)}" repo="{attr(env.repo)}">'
-    return f'{head}{_show(env)}</peer-message>' + (f'\n{PEER_ASK}' if env.kind == 'ask' else '')
-
 @patch
 def peer_notice(self:Agent):
     "The peer messages kept since the last turn, as one `<peer-messages>` block, or ''."

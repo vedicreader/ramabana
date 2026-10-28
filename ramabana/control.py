@@ -16,8 +16,8 @@ from pathlib import Path
 from fastcore.basics import patch
 from shalya import acts, err
 from .core import agent_err
-from .agent import TurnResult, model_title, peer_text
-from .peers import (CONTROL, Envelope, all_peers, control_call, is_partner, limit_refusal, peer_lines, peers_dir, post, split_proof,
+from .agent import TurnResult, model_title
+from .peers import (CONTROL, Envelope, all_peers, control_call, is_partner, limit_refusal, peer_lines, peer_text, peers_dir, post, split_proof,
                             take, together_off, together_state, tell as send)
 from .peer_report import save_report
 
