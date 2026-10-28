@@ -346,6 +346,7 @@ KEYS = {
     'cli.tmux': Key(str, '', '--tmux', 'whether the terminal session runs in tmux panes', ('auto', 'on', 'off')),
     'cli.pane': Key(str, '', '--pane', 'whether the terminal session opens the now pane', ('auto', 'on', 'off')),
     'cli.hints': Key(bool, '', '--no-hints', 'show a row under the status bar with the keys that work at that moment'),
+    'cli.tips': Key(bool, '', '--no-tips', 'show one tip under the working rows while a turn runs; /tips switches it for a session'),
     'cli.profile': Key(str, '', '--profile', 'the tool profile; small suits local models of 32k or less', PROFILES),
     'cli.max_tool_calls': Key((int, str), '', '--max-tool-calls', 'tool calls one turn may make: auto, or 20 to 400'),
     'cli.max_steps': Key((int, str), '', '--max-steps', 'model and tool steps one turn may take: auto, or 8 to 80'),

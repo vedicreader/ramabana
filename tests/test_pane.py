@@ -3,7 +3,7 @@
 import json, re, time
 from rich.console import Console
 
-from ramabana.pane import Viewer, now_snapshot, render
+from ramabana.pane import Viewer, background_rows, now_snapshot, render
 from ramabana.runtime import current_run
 from ramabana.testing import MemHost, ScriptedBackend, Step, fake_agent
 
@@ -109,7 +109,7 @@ def test_background_lists_delegations_shells_and_folder_watches(monkeypatch):
     monkeypatch.setattr(a.host, 'cmd_output', out, raising=False)
     w = FolderWatch('/proj', 'review it'); a.monitors.watches[w.id] = w
     bg = now_snapshot(a)['background']
-    assert all({'kind', 'id', 'label', 'state', 'elapsed', 'detail'} <= set(r) for r in bg)
+    assert all({'kind', 'id', 'label', 'state', 'elapsed', 'started', 'detail'} <= set(r) for r in bg)
     kinds = {r['kind']: r for r in bg}
     assert set(kinds) == {'delegate', 'shell', 'watch'}, 'a shell the host no longer knows is left out'
     assert kinds['delegate']['state'] == 'completed' and kinds['delegate']['label'].startswith('what does a.py')
@@ -118,6 +118,9 @@ def test_background_lists_delegations_shells_and_folder_watches(monkeypatch):
     assert kinds['shell']['detail'].endswith('3 passed') and 'all files · 0 reviews' == kinds['watch']['detail'], 'a row opens to what it has to show'
     assert now_snapshot(a)['subs'][0]['id'] == kinds['delegate']['id'], 'a background delegation is a sub-agent too'
     json.dumps(bg)
+    at = time.time()
+    monkeypatch.setattr(time, 'time', lambda: at)
+    assert background_rows(a) == now_snapshot(a)['background'], 'the task list and the pane read one source'
 
 
 def test_changes_survive_a_tool_thread_adding_to_before():

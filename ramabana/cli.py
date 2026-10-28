@@ -10,16 +10,17 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'ACTIVE_THEME', 'OSC11', 'OSC11_END', 'OSC11_RGB', 'TERM_BG', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD',
            'FOLD_TOOL', 'STRETCH_ENDS', 'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL',
            'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS',
-           'HELP', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS',
+           'HELP', 'TIPS', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS',
            'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR',
-           'MENUS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE',
-           'HINTS', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN',
-           'BG_WAIT', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE',
-           'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme',
-           'hl_theme', 'code_bg', 'light_rgb', 'is_light', 'reply_light', 'fgbg_light', 'auto_theme', 'set_theme',
-           'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture',
-           'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for',
-           'ChoiceMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural',
+           'MENUS', 'TASKS_KEY', 'TASK_ROWS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS',
+           'PLAN_ROWS', 'PLAN_RESERVE', 'HINTS', 'TIPS_USAGE', 'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES',
+           'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'BG_WAIT', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL',
+           'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES',
+           'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'light_rgb', 'is_light', 'reply_light',
+           'fgbg_light', 'auto_theme', 'set_theme', 'plan_text', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
+           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
+           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'task_order', 'task_age', 'TaskMenu',
+           'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural',
            'stretch_summary', 'Row', 'Stretch', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang',
            'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to',
            'stderr_log', 'pick_session', 'loop_error', 'query_background', 'can_ask_background', 'amain',
@@ -54,9 +55,10 @@ from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
 from .core import EFFORTS, EXTRAS, JOBS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, available_models, env, installed, model_note, need, needs_setup, setup_guide, welcome
 from .core import PROVIDERS, auth_status, checklist, config_models, getting_started, provider_ready, ready_model
+from shalya.core import one_line
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
-from .pane import quit_mark, talk_mark, write_snapshot
+from .pane import background_rows, quit_mark, talk_mark, write_snapshot
 from .control import EVENT_FILE, Control, ago, control_call, find_peer, peer_label, peer_lines, peer_tools, peers_of, pick_row
 from .tools import WRITE_TOOLS, path_write, write_targets
 from . import hl, setup
@@ -391,9 +393,9 @@ MAX_GROUP_ROWS = 8
 DIFF_OPEN = 20    #: diff lines a finished call shows until the reader opens it
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'calm', 'copy', 'detach', 'exit', 'guide', 'help',
-                    'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'peers', 'promote', 'python', 'quit', 'root', 'talk', 'tell', 'theme', 'vars')
+                    'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'peers', 'promote', 'python', 'quit', 'root', 'talk', 'tasks', 'tell', 'theme', 'tips', 'vars')
 
-HELP = """normal  enter send, or steer mid-turn · shift+enter queue after the turn · alt+up take the queued text back into the composer · enter on an empty line steers the queued one · shift+tab cycle approvals, then plan mode · tab complete /commands and @paths · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+o fold the working · alt+o fold all turns · alt+1..9 drill in · ctrl+c stop, keeping what is queued and typed in the composer · ctrl+d quit
+HELP = """normal  enter send, or steer mid-turn · alt+enter (or shift+enter) queue after the turn · ? on an empty prompt shows this card · alt+up take the queued text back into the composer · enter on an empty line steers the queued one · shift+tab cycle approvals, then plan mode · tab complete /commands and @paths · ctrl+t plan · ctrl+p/n history · ↑/↓ or ctrl+r transcript · ctrl+l background tasks (or /tasks): enter opens, x stops, esc back · ctrl+o fold the working · alt+o fold all turns · alt+1..9 drill in · ctrl+c stop, keeping what is queued and typed in the composer · ctrl+d quit
 timeline  a turn reads top to bottom · ┆ narration · │ a call · the answer last · ctrl+o all the working · alt+1..9 one entry
 transcript  ↑/↓ blocks · pgup/pgdn page · /? search · n/N matches · g/G ends · y copy block · i compose · esc leave
 edit    ctrl+a/e ends · ctrl+u/k cut line · ctrl+w cut word · ctrl+y yank
@@ -407,11 +409,30 @@ shell   !COMMAND runs it in the first open folder, in agent mode · ctrl+c inter
 python  /python takes the line · /agent hands it back · /agent_proxy exposes the owner agent · enter runs what compiles · shift+enter new line · tab completes names · ctrl+c interrupts the cell · /vars · /promote NAME
 plan    /planmode on|off withholds every tool that acts and asks for a plan · /plan · /todo TEXT · /todo ID done|active|pending|cancel · ctrl+t show/hide · survives stop and /resume
 setup   /login lists the providers · /login NAME signs in, or keeps a key or an endpoint · /config shows each setting and where it came from · /config set KEY VALUE · /config edit · /config reset · /config reload · /model NAME --save keeps it
-extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme lists the palettes · /theme NAME [--save] · /mouse clicks blocks on the main screen · /calm [on|off] folds each stretch of tool calls into one row · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
+extra   /root · /root add PATH opens a folder · /pane shows the agent and sub-agents in a tmux split · /pane off · /theme lists the palettes · /theme NAME [--save] · /mouse clicks blocks on the main screen · /calm [on|off] folds each stretch of tool calls into one row · /tasks lists background shells, sub-agents and watches · /tips [on|off] [--save] shows one tip while a turn runs · /tool-budget · /steps · /models lists models, their tool channel and effort · /model NAME · /model tools native|text|auto [--save] · /sessions [all] · /resume [ID|latest] · /cost · /compact · /reload · /learned lists what Dhrona proposes · /learned diff|accept|reject ID · /learned compact [ID] proposes a shorter AGENTS.md, with candidate ID folded in · /learned on|off turns learning on or off for every session
 subagent /subagents shows every sub-agent setting · /subagents on|off sets writes · /subagents steps N|auto, timeout S, nest N · /subagents model NAME|default, effort low|medium|high|xhigh|max|default, tools native|text|auto, each with --save to keep it · tab completes them
 talk    /talk RUN aims typed lines at a running sub-agent, an id prefix being enough · /talk or /talk main aims them at the main agent again · tab completes main and the running ids
 peers   /peers lists the other live sessions, numbered, most recently active first · /tell N TEXT steers session N · /tell N --prompt TEXT starts or queues a turn there · /tell N aims typed lines at it · /tell or /tell main aims them back here
 api     start with --spec · then api_load URL-or-path · api_ops · api_call"""
+
+#: one shows at a time under the working rows, the next one each turn; every key and command here is on `HELP`
+TIPS = (
+    '? on an empty prompt lists every key',
+    'alt+enter queues a line for after this turn',
+    'enter sends a line into the running turn: it steers',
+    'alt+up takes your queued text back into the prompt',
+    'ctrl+c stops the turn and keeps what you typed',
+    'ctrl+l lists background shells, sub-agents and watches',
+    'ctrl+o folds or opens the working rows',
+    'alt+1..9 opens one tool call in full',
+    'ctrl+r browses the transcript; y copies a block',
+    'ctrl+t shows or hides the plan checklist',
+    'shift+tab cycles approvals: ask, edits, auto, plan',
+    'ctrl+v attaches the clipboard image; @path attaches a file',
+    '!COMMAND runs a shell line the model never sees',
+    '#note TEXT keeps a line for later sessions',
+    '/calm folds each stretch of tool calls into one row',
+)
 
 
 _TODO_RE = re.compile(r'^(\[[ x▸\-]\])\s+(`[^`]*`)?\s*(.*)$')
@@ -694,6 +715,66 @@ class ChoiceMenu:
         return False, None
 
 
+TASKS_KEY = 'ctrl+l'   #: opens the list of background tasks, as does `/tasks`
+TASK_ROWS = 9          #: the most rows the list shows, one per digit key
+
+def _since(secs):
+    "A span of seconds as `41s`, `2m` or `3h`."
+    return f'{secs:.0f}s' if secs < 60 else f'{secs // 60:.0f}m' if secs < 3600 else f'{secs // 3600:.0f}h'
+
+def task_order(rows):
+    "Running tasks first, then finished ones, each newest first; a folder watch is always live."
+    return sorted(rows, key=lambda r: (not (r['state'] == 'running' or r['kind'] == 'watch'), -(r.get('started') or 0)))
+
+def task_age(row, now):
+    "A task's state with its age: `running · 2m` or `completed · 41s ago`; just the state when the row has no start or end time."
+    start, took = row.get('started'), row.get('elapsed')
+    if start is None: return row['state']
+    if row['state'] == 'running': return f"running · {_since(now - start)}"
+    return row['state'] if took is None else f"{row['state']} · {_since(now - start - took)} ago"
+
+class TaskMenu(ChoiceMenu):
+    "The task list: `ChoiceMenu`'s rows, built again from `source()` at every draw so state and age stay current."
+
+    def __init__(self, source, now=time.time, width=lambda: 80):
+        self.source, self.now, self.width, self.rows, self.total, self.sure, self.at_id = source, now, width, [], 0, None, None
+        super().__init__('', [])
+        self.refresh()
+
+    def refresh(self):
+        "Read `source` again, in order, keeping the cursor on the row it was on."
+        rows = task_order(self.source())
+        self.total, self.rows, now = len(rows), rows[:TASK_ROWS], self.now()
+        self.at = next((i for i, r in enumerate(self.rows) if r['id'] == self.at_id), min(self.at, max(len(self.rows) - 1, 0)))
+        self.at_id = self.rows[self.at]['id'] if self.rows else None
+        names, ages = [f"{r['kind']} {r['id']}" for r in self.rows], [task_age(r, now) for r in self.rows]
+        room = lambda name, age: max(8, self.width() - 14 - len(max(names, key=len)) - len(age))
+        self.options = [Option(str(i + 1), name, f"{one_line(r['label'], room(name, age))}  {age}")
+                        for i, (r, name, age) in enumerate(zip(self.rows, names, ages))]
+        shown = f'{len(self.rows)} of {self.total}' if self.total > len(self.rows) else str(self.total)
+        self.title = (f"stop {self.sure['kind']} {self.sure['id']}?  y stop · n keep" if self.sure is not None
+                      else f'tasks · {shown} · enter opens · x stops · esc back')
+
+    def render(self):
+        self.refresh()
+        return super().render() if self.options else [Text(f' {self.title}', style=f"bold {GRUVBOX['fg0']}")]
+
+    def choose(self, key):
+        "`(done, pick)` for one keystroke: `('open' or 'stop', row)`, or `(True, None)` to close. Digits move the cursor; `x` asks, and `y` then stops that row; any other key withdraws the question."
+        if not self.rows: return True, None   # the last task ended while the list was open
+        if self.sure is not None:
+            row, self.sure = self.sure, None
+            return (True, ('stop', row)) if key == 'y' else (False, None)
+        if key in ('escape', 'ctrl+c'): return True, None
+        if key in ('up', 'left'): self.at = (self.at - 1) % len(self.rows)
+        elif key in ('down', 'right'): self.at = (self.at + 1) % len(self.rows)
+        elif key.isdecimal() and 0 < int(key) <= len(self.rows): self.at = int(key) - 1
+        elif key == 'enter': return True, ('open', self.rows[self.at])
+        elif key.lower() == 'x': self.sure = self.rows[self.at]
+        self.at_id = self.rows[self.at]['id']
+        return False, None
+
+
 def close_done_shells(host):
     "Close the tmux panes of `run_shell_bg` commands that have exited; `cmd_output` keeps what they printed."
     for rid, r in list(getattr(host, '_bg', {}).items()):
@@ -711,6 +792,7 @@ async def run_turn(ui, prompt):
     ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
     ui._plan_blk, ui._plan_row, ui._stretch = None, None, None
     ui._turn_at, ui._turn_from = time.monotonic(), max(ui.comp.blocks, default=0)
+    ui.turn_no += 1
     atts, ui.attachments = list(ui.attachments), []
     ui.drawn = 0
     spec = ui.agent.model
@@ -861,6 +943,8 @@ class Ui:
         self.kids = {}
         self.hint = ''   #: the session's folders, shown after the keys on an empty composer
         self.hints = bool(setting('cli.hints', True))   #: `hints = false` under [cli] in config.toml, or --no-hints, hides the hint row
+        self.tips = bool(setting('cli.tips', True))   #: `tips = false` under [cli] in config.toml, `--no-tips` or `/tips off` hides the tip in the working rows
+        self.turn_no = 0   #: turns started this session; it picks the tip, so a tip stays for the whole turn
         self.mode = 'agent'
         self.kernel = None
         self.shell_proc = None   #: the running `!` command
@@ -1046,7 +1130,13 @@ class Ui:
         if (sub := len(acts) - len(mine)): bits.append(f'{sub} delegated')
         if (n := sum(1 for a in acts if not a.done)) > 1: bits.append(f'{n} in flight')
         rows.append(Text('  ' + ' · '.join(bits), style=GRUVBOX['gray']))
+        if (tip := self.tip_row()): rows.append(tip)
         return rows
+
+    def tip_row(self):
+        "One grey `tip:` row for this turn, or None while typing, asking, in a menu, in calm mode or with `cli.tips` off."
+        if not self.tips or self.calm or not self.turn_no or self.buf.text or self.ask is not None or self.menu is not None or self.complete is not None: return None
+        return Text('  tip: ' + TIPS[(self.turn_no - 1) % len(TIPS)], style=GRUVBOX['gray'], no_wrap=True, overflow='ellipsis')
 
     async def animate(self):
         "Repaint the live tail while a turn runs."
@@ -1057,6 +1147,9 @@ class Ui:
                 self.frame += 1
                 self.flush_stream()
                 self.paint()
+            elif isinstance(self.menu, TaskMenu):
+                self.frame += 1
+                if self.frame % 10 == 0: self.paint()   # once a second, so ages and states move while the list is open
             if self.turn is not None or self._now_busy or self._now_dirty: self.write_now()
             if self.pane is not None and _now_file(self.agent) != self._pane_at: self.open_pane()
             self._revive()
@@ -1488,6 +1581,7 @@ class Ui:
         self._post(self._ask, ask)
 
     def _ask(self, ask):
+        if isinstance(self.menu, TaskMenu): self.menu = None   # the question takes the keys the list would
         self.ask = ask
         self.buf.clear()
         self.reask(ask.preview)
@@ -1709,6 +1803,10 @@ class Ui:
         if name == '/paste': return self.note(self.attach_clipboard())
         if name == '/copy': return self.note(self.copy_last(arg))
         if name == '/mouse': return self.note(self.set_mouse(arg))
+        if name == '/tasks': return self.tasks()
+        if name == '/tips':
+            self.say(Text(self.set_tips(arg)), 'note', fold=None)
+            return None
         if name == '/calm':
             self.say(Text(self.set_calm(arg)), 'note', fold=None)   # said, not noted: mid-turn a note would fold into the stretch
             return None
@@ -2030,17 +2128,19 @@ def _plan_rows(self:Ui, rows):
 
 #: the hint row for each state; every key here reaches ramabana in tmux and in Leela's xterm.js, which never sends shift+enter
 HINTS = dict(
-    idle='? keys · / commands · @ files · ctrl+r transcript',
+    idle='? keys · / commands · @ files · ctrl+r transcript · ctrl+l tasks',
     typing='enter sends · tab completes /commands and @paths · ctrl+u cuts the line',
     python='enter runs what compiles, else adds a line · tab completes · /agent goes back',
-    running='enter steers · alt+enter queues · ctrl+c stops · ctrl+o folds the working',
+    running='enter steers · alt+enter queues · ctrl+c stops · ctrl+l tasks',
     waiting='↑ edits newest waiting · alt+up takes them back · \u21aa after this call · \u23f3 after the turn',
-    approval='y approve · n refuse · n: REASON \u23ce says why · a approve all · A always allow')
+    approval='y approve · n refuse · n: REASON \u23ce says why · a approve all · A always allow',
+    tasks='↑/↓ move · enter opens · x stops · esc back')
 
 @patch
 def footer_hint(self:Ui):
     "The hint row for what the surface is doing now, from `HINTS`; empty with `cli.hints` off."
     if not self.hints: return ''
+    if isinstance(self.menu, TaskMenu): return HINTS['tasks']
     if self.ask is not None: return HINTS['approval']
     if self._queued is not None or self.unread_steered(): return HINTS['waiting']
     if self.turn is not None and not self._turn_over(): return HINTS['running']
@@ -2122,6 +2222,21 @@ def set_calm(self:Ui, want=''):
     self.calm = not self.calm if want in ('', 'toggle') else want in ('on', 'yes')
     return ('calm on: each stretch of tool calls folds into one row, from the next call'
             if self.calm else 'calm off: each tool call is its own block again, from the next stretch')
+
+TIPS_USAGE = 'usage: /tips [on|off] [--save]'
+
+@patch
+def set_tips(self:Ui, arg=''):
+    "Switch the working-row tips for this session; `--save` also keeps the choice as `tips` under [cli] in config.toml."
+    words = (arg or '').lower().split()
+    save, want = '--save' in words, [w for w in words if w != '--save']
+    if len(want) > 1 or (want and want[0] not in ('on', 'off', 'toggle', 'yes', 'no')): return TIPS_USAGE
+    self.tips = not self.tips if not want or want[0] == 'toggle' else want[0] in ('on', 'yes')
+    said = 'tips on: one tip shows under the working rows while a turn runs' if self.tips else 'tips off'
+    if not save: return said
+    try: setup.set_table('cli', {'tips': self.tips})
+    except ValueError as e: return str(e)
+    return f'{said} · saved in {config_path()}'
 
 @patch
 def on_mouse(self:Ui, ev):
@@ -2639,6 +2754,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
                 first='',   # what the session says before anything else: the welcome, or the model it moved to
                 cold=False,   # no model runs here, so none is warmed
                 hints=True,   # the hint row under the status bar
+                tips=True,   # the tip under the working rows
                 theme='auto'):   # `auto` asks the terminal for its background before the first frame
     "The tty loop: one terminal, one event loop, one keyboard owner."
     global TERM_BG
@@ -2662,7 +2778,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         comp._fatal = lambda sig: done.set()   # TERM or HUP quits through the teardown, which stops the background shells
         ui = Ui(comp, agent, loop=asyncio.get_running_loop())
         ui.bell = bell
-        ui.hint, ui.hints = hint, hints
+        ui.hint, ui.hints, ui.tips = hint, hints, tips
         comp.on_task_error = lambda e, t: ui.say(Text(f'{t.get_name()} failed: {e!r}'), 'error')
         asyncio.get_running_loop().set_exception_handler(loop_error(ui))   # a key handler or a posted notice that raises
         ctl = start_control(ui)
@@ -2764,6 +2880,7 @@ def main(
     json: bool = False,                  # with a prompt: print the full result as JSON
     bell: bool = True,                   # --no-bell silences turn-end and approval bells
     hints: bool = True,                  # --no-hints hides the row of keys under the status bar
+    tips: bool = True,                   # --no-tips hides the tip under the working rows
     tmux: str = 'auto',                  # auto | on | off: read and run in tmux panes
     pane: str = 'auto',                  # auto | on | off: the `now` pane; auto in tmux
     doctor: bool = False,                # check tmux and the now pane, offer to install tmux, and exit
@@ -2842,7 +2959,7 @@ def main(
     if setup.CLI_FROM_CONFIG: hint += f" · from config.toml: {', '.join(setup.CLI_FROM_CONFIG)}"
     log = stderr_log(agent)
     try:
-        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, hints=hints, pane=pane, resumed=bool(resume), theme=theme,
+        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, hints=hints, tips=tips, pane=pane, resumed=bool(resume), theme=theme,
                                                first=welcome(agent.routing) if cold else moved, cold=cold))
     except KeyboardInterrupt: pass
     if log.exists() and log.stat().st_size: print(f'library output from the session is in {log}', file=sys.stderr)
@@ -3062,6 +3179,50 @@ def open_root(self:Ui, path=''):
 
 
 @patch
+def tasks(self:Ui):
+    "`/tasks` and ctrl+l: list the background shells, sub-agents and folder watches, or flash that there are none."
+    if not background_rows(self.agent): return self.flash('no background tasks')
+    self.menu, self.menu_prompt = TaskMenu(lambda: background_rows(self.agent), width=lambda: self.comp.cols), ''
+    self.paint()
+
+@patch
+def task_key(self:Ui, k):
+    "A key while the task list is open: move, open or stop a row, or close the list."
+    done, pick = self.menu.choose(k.name)
+    if done:
+        self.menu = None
+        if pick is not None: getattr(self, f'task_{pick[0]}')(pick[1])
+    self.paint()
+
+@patch
+def task_open(self:Ui, row):
+    "Enter on a task: under tmux a shell's log or a running sub-agent in a pane, else what the task has to show, printed here."
+    host, kind = self.agent.host, row['kind']
+    run = self.agent.run(row['id']) if kind == 'delegate' else None
+    if kind == 'shell' and row.get('log') and _tmux_pane(host): return host.open_pane(f"less -R +F {shlex.quote(row['log'])}", title=row['id'])
+    if run is not None and not run.terminal and _tmux_pane(host): return self.note(self.agent.watch(run.id))
+    text = row['detail']
+    if run is not None:
+        text = run.answer if run.terminal else '\n'.join(run.log.read_text().splitlines()[-40:]) if run.log and run.log.exists() else ''
+    self.say(Text(text or row['label']), 'note', fold=None)
+
+@patch
+def task_stop(self:Ui, row):
+    "Stop one task after the confirm: a shell, a sub-agent run or a folder watch."
+    rid, kind = row['id'], row['kind']
+    if kind == 'delegate':
+        def work():
+            try: said = f"stopped {rid} · {self.agent.cancel(rid)['state']}"
+            except Exception as e: said = agent_err(e)
+            self._post(lambda: self.say(Text(said), 'note', fold=None))
+        return threading.Thread(target=work, daemon=True).start()
+    try:
+        if kind == 'watch': self.agent.monitors.remove(rid)
+        else: self.agent.host.cmd_stop(rid)
+    except Exception as e: return self.note(agent_err(e), 'error')
+    self.say(Text(f'stopped {rid}'), 'note', fold=None)
+
+@patch
 async def lend(self:Ui, fn):
     "Run `fn` in a thread with the terminal lent to it in the shell's own line mode, then take it back: what `fn` returned."
     async with self.comp.borrow():
@@ -3209,11 +3370,15 @@ _ui_on_key = Ui.on_key
 
 @patch
 def on_key(self:Ui, k):
-    "Ctrl-C stops without wiping the composer; alt+up pulls queued text back into it; `?` on an empty composer prints the key card."
+    "Ctrl-C stops without wiping the composer; alt+up pulls queued text back into it; `?` on an empty composer prints the key card; `TASKS_KEY` lists the background tasks."
+    if isinstance(self.menu, TaskMenu): return self.task_key(k)
     if (k.name == '?' and not self.buf.text and self.mode != 'python' and self.menu is None
             and self.ask is None and not self.transcript.active):
         self.show_keys()
         return self.paint()
+    if (k.name == TASKS_KEY and self.menu is None and self.complete is None
+            and self.ask is None and not self.transcript.active):
+        return self.tasks() or self.paint()
     if k.name == 'alt+up' and self.ask is None and not self.transcript.active:
         if not self.take_back(): self.flash('nothing queued to take back')
         self.paint()

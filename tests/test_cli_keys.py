@@ -25,10 +25,10 @@ KITTY = {'\x1b[57414u': 'enter', '\x1b[57399u': '0', '\x1b[57408u': '9', '\x1b[5
          '\x1b[100;5u': 'ctrl+d', '\x1b[103;5u': 'ctrl+g', '\x1b[111;5u': 'ctrl+o', '\x1b[116;5u': 'ctrl+t',
          '\x1b[114;5u': 'ctrl+r', '\x1b[112;5u': 'ctrl+p', '\x1b[110;5u': 'ctrl+n', '\x1b[121;5u': 'ctrl+y',
          '\x1b[49;3u': 'alt+1', '\x1b[57;3u': 'alt+9', '\x1b[102;3u': 'alt+f', '\x1b[32;5u': 'ctrl+space',
-         '\x1b[97u': 'a', '\x1b[13;2:1u': 'shift+enter', '\x1b[13;2:2u': 'shift+enter', '\x1b[99;69u': 'ctrl+c'}
+         '\x1b[97u': 'a', '\x1b[13;2:1u': 'shift+enter', '\x1b[13;2:2u': 'shift+enter', '\x1b[99;69u': 'ctrl+c', '\x1b[108;5u': 'ctrl+l'}
 XTERM = {'\x1b[27;2;13~': 'shift+enter', '\x1b[27;3;13~': 'alt+enter', '\x1b[27;5;99~': 'ctrl+c',
-         '\x1b[27;2;9~': 'shift+tab', '\x1b[27;3;49~': 'alt+1', '\x1b[27;5;103~': 'ctrl+g', '\x1b[27;5;100~': 'ctrl+d'}
-LEGACY = {'\r': 'enter', '\t': 'tab', '\x1b[Z': 'shift+tab', '\x03': 'ctrl+c', '\x04': 'ctrl+d', '\x07': 'ctrl+g',
+         '\x1b[27;2;9~': 'shift+tab', '\x1b[27;3;49~': 'alt+1', '\x1b[27;5;103~': 'ctrl+g', '\x1b[27;5;100~': 'ctrl+d', '\x1b[27;5;108~': 'ctrl+l'}
+LEGACY = {'\r': 'enter', '\t': 'tab', '\x1b[Z': 'shift+tab', '\x03': 'ctrl+c', '\x04': 'ctrl+d', '\x07': 'ctrl+g', '\x0c': 'ctrl+l',
           '\x1b1': 'alt+1', '\x1b\r': 'alt+enter', '\x1b[A': 'up', '\x1b[1;5A': 'ctrl+up', '\x1b[1;3A': 'alt+up', '\x1b[3~': 'delete',
           '\x1b[5;2~': 'shift+pageup', 'a': 'a', '\x7f': 'backspace'}
 

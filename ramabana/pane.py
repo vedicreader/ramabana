@@ -25,9 +25,9 @@ from .setup import PANE_LINGER, follow_cmd
 
 # %% auto #0
 __all__ = ['CALLS_KEPT', 'OUT_CHARS', 'ANSWER_CHARS', 'DIFF_LINES', 'SHELL_EVERY', 'SHELL_LINES', 'PALETTE', 'ENTER', 'LEAVE',
-           'WHEEL', 'HINT', 'now_snapshot', 'write_snapshot', 'read_snapshot', 'palette_of', 'board', 'render',
-           'quit_mark', 'talk_mark', 'PaneTty', 'Viewer', 'transcript_line', 'transcript_ansi', 'Follower', 'follow',
-           'main']
+           'WHEEL', 'HINT', 'background_rows', 'now_snapshot', 'write_snapshot', 'read_snapshot', 'palette_of', 'board',
+           'render', 'quit_mark', 'talk_mark', 'PaneTty', 'Viewer', 'transcript_line', 'transcript_ansi', 'Follower',
+           'follow', 'main']
 
 # %% ../nbs/18_pane.ipynb #d2a80a47
 CALLS_KEPT = 8       #: a sub-agent's latest calls in a snapshot
@@ -94,17 +94,23 @@ def _shells(agent, seen, every, since, now):
         if state and (state == 'running' or a.started >= since):
             r, cmd = getattr(agent.host, '_bg', {}).get(m[1]), str(a.args.get('command') or '')
             out.append({'kind': 'shell', 'id': m[1], 'label': _1(cmd, 120), 'state': state,
-                        'elapsed': round(now - a.started, 1) if state == 'running' else None,
+                        'elapsed': round(now - a.started, 1) if state == 'running' else None, 'started': a.started,
                         'detail': f"$ {cmd}\n{text or '(no output yet)'}", 'log': str(r[1]) if isinstance(r, tuple) else ''})
     return out
 
 def _background(agent, seen, bg, every, since, now):
     "Background delegations, shells and folder watches, one row each."
     watch = lambda w: f"{w.pattern or 'all files'} · {w.reviews} review{'' if w.reviews == 1 else 's'}" + (f'\n{w.last_review}' if w.last_review else '')
-    return ([{'kind': 'delegate', 'id': r.id, 'label': _1(r.question, 120), 'state': r.state, 'elapsed': _secs(r, now), 'detail': ''} for r in bg]
+    return ([{'kind': 'delegate', 'id': r.id, 'label': _1(r.question, 120), 'state': r.state, 'elapsed': _secs(r, now), 'started': r.started, 'detail': ''} for r in bg]
             + _shells(agent, seen, every, since, now)
-            + [{'kind': 'watch', 'id': w.id, 'label': w.folder, 'state': w.last_status or 'watching', 'elapsed': None, 'detail': watch(w)}
+            + [{'kind': 'watch', 'id': w.id, 'label': w.folder, 'state': w.last_status or 'watching', 'elapsed': None, 'started': None, 'detail': watch(w)}
                for w in agent.monitors.all()])
+
+def background_rows(agent, now=None):
+    "The rows `now_snapshot` carries under `background`: sub-agents started in the background, shells and folder watches."
+    (every, _), now, root = agent.activity.window(), time.time() if now is None else now, agent.run()
+    since = root.started if root else 0
+    return _background(agent, _SEEN.setdefault(agent, _Seen()), _bg_runs(agent, since), every, since, now)
 
 def now_snapshot(agent):
     "The foreground turn, its plan, sub-agents, writes and background work, as a JSON-able dict."
@@ -118,7 +124,7 @@ def now_snapshot(agent):
             'plan': [{'text': t.text, 'status': t.status} for t in agent.plan.todos],
             'subs': [_sub(r, every, now) for r in kids + bg],
             'files': _files(agent, seen, every[mark:]),
-            'background': _background(agent, seen, bg, every, since, now),
+            'background': background_rows(agent, now),
             'notes': [{'at': t, 'text': s} for t, s in (root.notes if root else [])]}
 
 # %% ../nbs/18_pane.ipynb #22ae7faf
