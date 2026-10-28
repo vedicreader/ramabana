@@ -1,8 +1,10 @@
 "The peers store: the envelope, the log and the inboxes."
-import threading
+import json, threading
+from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor
 
-from ramabana.peers import Envelope, peers_dir, post, read_log, take, wait_take
+from ramabana.control import Control
+from ramabana.peers import Envelope, log, peers_dir, post, read_log, take, together_on, together_state, wait_take
 
 
 def test_envelope_round_trip(tmp_path):
@@ -36,3 +38,42 @@ def test_wait_take_returns_when_posted(tmp_path):
 def test_peers_dir_from_cfg(tmp_path, monkeypatch):
     monkeypatch.delenv('RAMABANA_PEERS', raising=False)
     assert peers_dir(tmp_path) == tmp_path/'peers' and (tmp_path/'peers').is_dir()
+
+def test_peers_dir_is_private(tmp_path, monkeypatch):
+    monkeypatch.delenv('RAMABANA_PEERS', raising=False)
+    assert peers_dir(tmp_path).stat().st_mode & 0o777 == 0o700
+
+
+def torn(p): open(p, 'a').write('{"kind": "note", "te')
+
+
+def test_torn_log_line_is_skipped(tmp_path):
+    post(tmp_path, 'k', Envelope('note', 'a', {}))
+    torn(tmp_path/'log.jsonl')
+    assert [r['text'] for r in read_log(tmp_path)] == ['a']
+    log(tmp_path, {'event': 'x', 'at': 9e9})
+    assert [r.get('event') for r in read_log(tmp_path, 5e9)] == [], 'the next row joins the torn line, and is lost with it'
+    post(tmp_path, 'k', Envelope('note', 'b', {}))
+    assert [r['text'] for r in read_log(tmp_path)] == ['a', 'b']
+    assert (tmp_path/'hooks.log').read_text().count('log.jsonl') == 1, 'the file is named once'
+
+
+def test_torn_inbox_line_does_not_stop_take(tmp_path):
+    post(tmp_path, 'k', Envelope('note', 'a', {}))
+    torn(tmp_path/'k.inbox.jsonl')
+    assert [e.text for e in take(tmp_path, 'k')] == ['a']
+    open(tmp_path/'k.inbox.jsonl', 'a').write('\n')
+    post(tmp_path, 'k', Envelope('note', 'b', {}))
+    assert [e.text for e in take(tmp_path, 'k')] == ['b']
+
+
+def test_torn_pending_line_does_not_stop_held(tmp_path):
+    ctl = SimpleNamespace(_pending=tmp_path/'r.pending.jsonl')
+    ctl._pending.write_text(json.dumps(Envelope('ask', 'a', {}, id='a1').dict()) + '\n')
+    torn(ctl._pending)
+    assert [e.id for e in Control._held(ctl)] == ['a1']
+
+
+def test_together_state_is_written_whole(tmp_path):
+    st = together_on(tmp_path, 'k')
+    assert together_state(tmp_path, 'k') == st and [p.name for p in tmp_path.iterdir()] == ['k.together.json']

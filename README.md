@@ -509,7 +509,7 @@ Work together mode lets the named sessions send you asks without a question to t
 ramabana together on --with abhyasa,leela --until 07:00
 ```
 
-Each thread has limits on hops and on messages, so two sessions cannot loop all night. When the mode ends, Ramabana saves a morning report. It lists each thread, its changes, its proof and the actions left for you:
+A thread carries at most 6 messages: the ask and 5 replies. Each session sends at most 40 messages in 12 hours. So two sessions cannot loop all night. When the mode ends, Ramabana saves a morning report. It lists each thread, its changes, its proof and the actions left for you:
 
 ``` sh
 ramabana report

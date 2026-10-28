@@ -6,15 +6,15 @@ Docs: https://vedicreader.github.io/ramabana/peer_hooks.html.md"""
 
 # %% auto #0
 __all__ = ['ADAPTERS', 'WAIT_TIMEOUT', 'EDIT_TOOLS', 'ASK_USER', 'ASK_FREE', 'BRIEF', 'NO_SESSION_ENV', 'PATCH_PATH', 'EVENTS',
-           'Adapter', 'hook_block', 'peer_hook', 'main']
+           'Adapter', 'hook_cmd', 'hook_block', 'peer_hook', 'main']
 
 # %% ../nbs/25_peer_hooks.ipynb #b316c3f6
-import fcntl, json, os, re, subprocess, sys, time, traceback
+import fcntl, json, os, re, shlex, subprocess, sys, time, traceback
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
-from .peers import (agent_pid, all_peers, folder_denial, git_root, is_partner, log, peer_lines, peer_text, peers_dir, pid_alive,
-                            post, read_log, register, take, together_off, together_state, unregister, wait_take)
+from .peers import (agent_pid, all_peers, answer, folder_denial, git_top, is_partner, limit_refusal, log, peer_lines, peer_text, peers_dir,
+                            pid_alive, post, register, take, together_end, together_off, together_state, unregister, wait_take)
 from .peer_report import report_path
 
 # %% ../nbs/25_peer_hooks.ipynb #70ebdcc0
@@ -34,9 +34,13 @@ ADAPTERS = {'claude': Adapter('claude', '~/.claude/settings.json', '~/.claude/sk
 WAIT_TIMEOUT = 7*24*3600   #: seconds before Claude Code stops the waiter; the next `Stop` starts a new one
 EDIT_TOOLS = {'claude': 'Edit|Write|NotebookEdit', 'codex': 'apply_patch'}
 
+def hook_cmd(kind, event):
+    "The command that runs hook `event` of agent `kind` with this Python, whatever `ramabana` is first on `PATH`."
+    return f'{shlex.quote(sys.executable)} -m ramabana.peer_hooks {kind} {event}'
+
 def _group(kind, event, matcher='', **kw):
-    "One hook group that runs `ramabana peer-hook KIND EVENT`."
-    return ({'matcher': matcher} if matcher else {}) | {'hooks': [{'type': 'command', 'command': f'ramabana peer-hook {kind} {event}', **kw}]}
+    "One hook group that runs `hook_cmd(kind, event)`."
+    return ({'matcher': matcher} if matcher else {}) | {'hooks': [{'type': 'command', 'command': hook_cmd(kind, event), **kw}]}
 
 def hook_block(kind):
     "The hook groups, by event, that agent `kind` needs in its config."
@@ -55,13 +59,18 @@ def _flag(ad, data):
     return '' if ad.session_env else f" --session {data['session_id']}"
 
 def _messages(ad, d, data, got):
-    "The messages `got` as text for the agent; an ask says who decides and how to answer."
-    st = together_state(d, _key(ad, data))
+    "The messages `got` as text for the agent, '' when none is left: an ask says who decides and how to answer, and one over the budget is refused."
+    key = _key(ad, data)
+    st, frm = together_state(d, key), dict(kind=ad.kind, session=data['session_id'], key=key, name=key)
     def one(e):
         if e.kind != 'ask': return peer_text(e)
-        who = ASK_FREE if st and is_partner(st, e.frm) else ASK_USER
-        return f"{peer_text(e)}\n{who} Answer with `ramabana tell{_flag(ad, data)} {e.frm.get('key', '?')} \"...\" --reply-to {e.thread}`."
-    return '\n\n'.join(map(one, got))
+        free = bool(st) and is_partner(st, e.frm)
+        if free and (why := limit_refusal(d, key, e)):
+            answer(d, e, frm, f'refused: {why}')
+            return ''
+        how = f"Answer with `ramabana tell{_flag(ad, data)} {e.frm.get('key', '?')} \"...\" --reply-to {e.thread}`."
+        return peer_text(e, f'{ASK_FREE if free else ASK_USER} {how}')
+    return '\n\n'.join(filter(None, map(one, got)))
 
 def _context(event, text):
     "The hook result that adds `text` to the agent's context."
@@ -77,19 +86,23 @@ Read the `peer-work` skill before you work for a peer or ask a peer to work."""
 NO_SESSION_ENV = 'Your agent does not give your session id to commands. Add `--session {session}` after the command name in each `ramabana peers`, `tell`, `inbox` and `together` command.'
 
 def _start(ad, d, data, cfg):
-    "Register the session and brief the agent."
-    row = register(d, ad.kind, data['session_id'], [git_root(data.get('cwd') or '.')], agent_pid())
+    "Register the session, with its git root as the folder it guards, and brief the agent."
+    cwd = data.get('cwd') or '.'
+    top = git_top(cwd)
+    row = register(d, ad.kind, data['session_id'], [top or str(Path(cwd).resolve())], agent_pid(), guard=[top] if top else [], wakes=ad.wakes)
     text = BRIEF.format(name=row['name'], key=row['key'], peers=peer_lines(all_peers(cfg, exclude=row['key'], timeout=1)) or 'none', s=_flag(ad, data))
     return _context('SessionStart', text + ('' if ad.session_env else '\n' + NO_SESSION_ENV.format(session=data['session_id'])))
 
 # %% ../nbs/25_peer_hooks.ipynb #54a16519
 def _ended(d, key):
     "End work together mode of `key`; the start time of a mode that ended and that the user has not seen, else None."
-    if st := together_off(d, key): log(d, {'event': 'together_end', 'key': key, 'started': st['started'], 'at': time.time()})
-    ends = [r for r in read_log(d) if r.get('key') == key and r.get('event') in ('together_end', 'report_shown')]
-    if not ends or ends[-1]['event'] == 'report_shown': return None
-    log(d, {'event': 'report_shown', 'key': key, 'started': ends[-1]['started'], 'at': time.time()})
-    return ends[-1]['started']
+    if st := together_off(d, key): together_end(d, key, st['started'])
+    p = d/f'{key}.ended'
+    try: since = json.loads(p.read_text())['started']
+    except (OSError, ValueError, KeyError, TypeError): return None
+    p.unlink(missing_ok=True)
+    log(d, {'event': 'report_shown', 'key': key, 'started': since, 'at': time.time()})
+    return since
 
 def _report_note(since, cfg):
     "The saved report of the mode that started at `since`, or how to make it."
@@ -100,15 +113,15 @@ def _report_note(since, cfg):
 def _prompt(ad, d, data, cfg):
     "End work together mode, and give the agent its unread messages and the report of the mode that ended."
     since = _ended(d, _key(ad, data))
-    got = take(d, _key(ad, data))
-    parts = [*([_messages(ad, d, data, got)] if got else []), *([_report_note(since, cfg)] if since is not None else [])]
+    text = _messages(ad, d, data, take(d, _key(ad, data)))
+    parts = [*([text] if text else []), *([_report_note(since, cfg)] if since is not None else [])]
     return _context('UserPromptSubmit', '\n\n'.join(parts)) if parts else (0, '', '')
 
 # %% ../nbs/25_peer_hooks.ipynb #2ed7d1f1
 def _stop(ad, d, data, cfg):
     "Block the stop while messages are unread."
-    got = take(d, _key(ad, data))
-    return (0, json.dumps({'decision': 'block', 'reason': _messages(ad, d, data, got)}), '') if got else (0, '', '')
+    text = _messages(ad, d, data, take(d, _key(ad, data)))
+    return (0, json.dumps({'decision': 'block', 'reason': text}), '') if text else (0, '', '')
 
 def _live(d, key):
     "True while the registration of `key` exists and its agent process lives."
@@ -132,18 +145,20 @@ def _watch(d, key):
     return alive
 
 def _wait(ad, d, data, cfg):
-    "Wait for a message; exit 2 with it on stderr, or 0 at once when another waiter runs. Taken mail goes back to the inbox if it cannot be written."
+    "Wait for a message to show; exit 2 with it on stderr, or 0 at once when another waiter runs. Taken mail goes back to the inbox if it cannot be written."
     key = _key(ad, data)
     with open(d/f'{key}.wait', 'a+') as f:
         try: fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError: return 0, '', ''
         f.truncate(0); f.write(str(os.getpid())); f.flush()
-        got = wait_take(d, key, None, alive=_watch(d, key))
-    if not got: return 0, '', ''
-    try: return 2, '', _messages(ad, d, data, got)
-    except Exception:
-        for e in got: post(d, key, replace(e, id=''))
-        raise
+        alive = _watch(d, key)
+        while got := wait_take(d, key, None, alive=alive):
+            try: text = _messages(ad, d, data, got)
+            except Exception:
+                for e in got: post(d, key, replace(e, id=''))
+                raise
+            if text: return 2, '', text
+    return 0, '', ''
 
 # %% ../nbs/25_peer_hooks.ipynb #9349742c
 PATCH_PATH = re.compile(r'^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$', re.M)
@@ -183,13 +198,20 @@ def peer_hook(kind, event, data, d=None, cfg=None):
         return 0, '', ''
 
 def main(argv):
-    "Run `ramabana peer-hook KIND EVENT` on the hook input in stdin; the exit code."
-    kind, event = [*argv, '', ''][:2]
-    try: data = json.loads(sys.stdin.read() or '{}')
-    except ValueError: data = {}
-    code, out, err = peer_hook(kind, event, data)
-    sys.stdout.write(out); sys.stderr.write(err)
-    return code
+    "Run `python -m ramabana.peer_hooks KIND EVENT` on the hook input in stdin; the exit code, which is 2 only from a waiter with messages."
+    try:
+        kind, event = argv
+        if event == 'version':
+            from ramabana import __version__
+            print(__version__); return 0
+        if kind not in ADAPTERS or event not in EVENTS: raise ValueError(f'no peer hook {kind!r} {event!r}')
+        data = json.loads(sys.stdin.read() or '{}')
+        code, out, err = peer_hook(kind, event, data if isinstance(data, dict) else {})
+        sys.stdout.write(out); sys.stderr.write(err)
+        return code if event == 'wait' else 0
+    except Exception:
+        _log_error(f'peer hook {argv}')
+        return 0
 
 # %% ../nbs/25_peer_hooks.ipynb #544f95a7
 if __name__ == '__main__': sys.exit(main(sys.argv[1:]))

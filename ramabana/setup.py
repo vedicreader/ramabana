@@ -19,13 +19,13 @@ __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN'
            'EARLY', 'FLAGS', 'LAUNCHED', 'CLI_FROM_CONFIG', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'PANE_LINGER',
            'THEME_NAMES', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE',
            'SETUP_USAGE', 'HISTORY_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP',
-           'PEER_CMD', 'PEER_START', 'PEER_END', 'env_prefixes', 'installed', 'need', 'follow_cmd', 'tmux_version',
+           'PEER_MARKS', 'PEER_START', 'PEER_END', 'env_prefixes', 'installed', 'need', 'follow_cmd', 'tmux_version',
            'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path', 'keys_path',
            'load_keys', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting', 'set_table',
            'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset',
            'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
            'index_gate', 'save_index', 'log_index', 'last_index', 'merge_hooks', 'peer_skill', 'setup_peers',
-           'peers_status']
+           'hook_check', 'peers_status']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -912,13 +912,15 @@ def last_index(cfg):
     except (OSError, IndexError): return ''
 
 # %% ../nbs/19_setup.ipynb #61cafae5
-PEER_CMD = 'ramabana peer-hook'
+PEER_MARKS = ('ramabana.peer_hooks', 'peer-hook')   #: a hook command with one of these is ours: the new form, or the `ramabana peer-hook` of older setups
 PEER_START, PEER_END = '<!-- ramabana peer-work start -->', '<!-- ramabana peer-work end -->'
+
+def _our_cmd(c): return isinstance(c, str) and any(m in c for m in PEER_MARKS)
 
 def _ours(g):
     "Whether hook group `g` runs our command; an entry of any other shape is not ours."
     hs = g.get('hooks') if isinstance(g, dict) else None
-    return isinstance(hs, list) and any(isinstance(h, dict) and isinstance(c := h.get('command'), str) and c.startswith(PEER_CMD) for h in hs)
+    return isinstance(hs, list) and any(isinstance(h, dict) and _our_cmd(h.get('command')) for h in hs)
 
 def merge_hooks(cfg, block):
     "`cfg` with our hook groups set to `block` (by event) where ours stood; empty `block` removes them."
@@ -1005,14 +1007,25 @@ def setup_peers(argv, ask=input, out=print, home=None):
     return code
 
 # %% ../nbs/19_setup.ipynb #01566d29
+def hook_check(cmd, home):
+    "Run hook command `cmd` with the event `version`, with no `PATH`, as a check: (True, the ramabana version) or (False, why it fails)."
+    try: r = subprocess.run(['/bin/sh', '-c', cmd.rsplit(' ', 1)[0] + ' version'], input='{}', capture_output=True, text=True, timeout=30, env={'HOME': str(home)})
+    except (OSError, subprocess.SubprocessError) as e: return False, str(e)
+    if r.returncode == 0 and (v := r.stdout.strip()): return True, v
+    return False, (r.stderr.strip().splitlines() or [f'exit {r.returncode}'])[-1]
+
 def peers_status(home=None):
-    "One line for each agent: whether its config has the peer hooks, or how to install them."
-    from ramabana.peer_hooks import ADAPTERS, hook_block
+    "One line for each agent: whether its config has the peer hooks and what they run, or how to install or fix them."
+    from ramabana.peer_hooks import ADAPTERS
+    home = Path(home or Path.home())
     def line(k, ad):
-        p = _at(home or Path.home(), ad.config)
+        p, fix = _at(home, ad.config), f'run ramabana setup peers --agent {k}'
         try: cfg = _read_json(p)
         except ValueError: return f'peers: {k} config unreadable: {p}'
-        return f'peers: {k} hooks installed' if merge_hooks(cfg, hook_block(k)) == cfg else f'peers: {k} hooks not installed: run ramabana setup peers --agent {k}'
+        cmd = next((h['command'] for gs in cfg.get('hooks', {}).values() for g in gs if _ours(g) for h in g['hooks'] if isinstance(h, dict) and _our_cmd(h.get('command'))), None)
+        if cmd is None: return f'peers: {k} hooks not installed: {fix}'
+        ok, said = hook_check(cmd, home)
+        return f'peers: {k} hooks installed (runs: {shlex.split(cmd)[0]}, ramabana {said})' if ok else f'peers: {k} hook command fails: {said}; {fix}'
     return [line(k, ad) for k, ad in ADAPTERS.items()]
 
 # %% ../nbs/19_setup.ipynb #883f4a12

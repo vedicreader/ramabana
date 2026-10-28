@@ -1,10 +1,12 @@
 "`ramabana setup peers`: show a diff, write only on yes, merge with the user's own config, remove only ours."
-import json
+import json, shlex, subprocess, sys
 from types import SimpleNamespace
 
 import pytest
 
+from ramabana import __version__
 from ramabana.peer_hooks import hook_block
+from ramabana.peers import Envelope, post
 from ramabana.setup import Setup, setup_cli, setup_peers
 
 THEIRS = {'matcher': '', 'hooks': [{'type': 'command', 'command': 'notify-me stop'}]}
@@ -116,7 +118,7 @@ def test_doctor_reports_adapters(tmp_path, capsys):
     run(tmp_path, '--agent', 'claude', '--yes')
     s.doctor()
     err = capsys.readouterr().out
-    assert 'peers: claude hooks installed\n' in err and 'peers: codex hooks not installed: run ramabana setup peers --agent codex' in err
+    assert f'peers: claude hooks installed (runs: {sys.executable}, ramabana {__version__})\n' in err and 'peers: codex hooks not installed: run ramabana setup peers --agent codex' in err
 
 
 def test_setup_cli_hands_peers_on(tmp_path, monkeypatch):
@@ -171,3 +173,37 @@ def test_doctor_names_an_unreadable_config(tmp_path):
     p = tmp_path/'.claude/settings.json'; p.parent.mkdir()
     p.write_text('{oops')
     assert peers_status(tmp_path)[0] == f'peers: claude config unreadable: {p}'
+
+
+def commands(p): return [h['command'] for gs in load(p)['hooks'].values() for g in gs for h in g['hooks']]
+
+
+def test_written_command_is_absolute_and_runs_without_path(tmp_path):
+    run(tmp_path, '--yes')
+    for p in (tmp_path/'.claude/settings.json', tmp_path/'.codex/hooks.json'):
+        assert all(c.startswith(f'{shlex.quote(sys.executable)} -m ramabana.peer_hooks ') for c in commands(p))
+    [stop] = [c for c in commands(tmp_path/'.claude/settings.json') if c.endswith(' claude stop')]
+    peers = tmp_path/'peers'; peers.mkdir()
+    post(peers, 'claude-s1', Envelope('note', 'v2 is out', {'key': 'ramabana-r1', 'name': 'leela'}))
+    r = subprocess.run(['/bin/sh', '-c', stop], input=json.dumps({'session_id': 's1'}), capture_output=True, text=True, timeout=60,
+                       env={'HOME': str(tmp_path), 'RAMABANA_PEERS': str(peers)})
+    assert r.returncode == 0 and json.loads(r.stdout)['decision'] == 'block' and 'v2 is out' in r.stdout
+
+
+def test_old_peer_hook_groups_are_replaced_and_removed(tmp_path):
+    p = tmp_path/'.claude/settings.json'; p.parent.mkdir()
+    old = lambda e: {'hooks': [{'type': 'command', 'command': f'ramabana peer-hook claude {e}'}]}
+    p.write_text(json.dumps({'hooks': {'Stop': [THEIRS, old('stop'), old('wait')], 'SessionStart': [old('session-start')]}}))
+    run(tmp_path, '--agent', 'claude', '--yes')
+    assert not [c for c in commands(p) if 'peer-hook' in c] and load(p)['hooks']['Stop'][0] == THEIRS
+    run(tmp_path, '--agent', 'claude', '--remove', '--yes')
+    assert load(p)['hooks'] == {'Stop': [THEIRS]}
+
+
+def test_doctor_reports_failing_hook_command(tmp_path):
+    from ramabana.setup import peers_status
+    p = tmp_path/'.claude/settings.json'; p.parent.mkdir()
+    for cmd in ('ramabana peer-hook claude stop', '/no/such/python -m ramabana.peer_hooks claude stop'):
+        p.write_text(json.dumps({'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': cmd}]}]}}))
+        line = peers_status(tmp_path)[0]
+        assert line.startswith('peers: claude hook command fails: ') and line.endswith('; run ramabana setup peers --agent claude'), line

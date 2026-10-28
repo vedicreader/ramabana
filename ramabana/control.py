@@ -17,8 +17,8 @@ from fastcore.basics import patch
 from shalya import acts, err
 from .core import agent_err
 from .agent import TurnResult, model_title
-from .peers import (CONTROL, Envelope, all_peers, control_call, is_partner, limit_refusal, peer_lines, peer_text, peers_dir, post, split_proof,
-                            take, together_off, together_state, tell as send)
+from .peers import (CONTROL, Envelope, _atomic_write, _rows, all_peers, answer, control_call, is_partner, limit_refusal, peer_lines, peer_text,
+                            peers_dir, take, together_off, together_state, tell as send)
 from .peer_report import save_report
 
 # %% ../nbs/20_control.ipynb #9c6353b2
@@ -249,10 +249,8 @@ def _reply(self:Control, env, text,
     if check:
         try: return send(env.frm['key'], text, 'reply', me, env.repo, env.thread, env.hops + 1, cfg=self.agent.cfg)
         except LookupError: pass
-    body, changes, proof = split_proof(text)
-    r = Envelope('reply', body, me, env.frm['key'], env.repo, env.thread, env.hops + 1, changes, proof)
-    if check and (why := limit_refusal(self.d, me['key'], r)): return why
-    post(self.d, r.to, r)
+        if why := limit_refusal(self.d, me['key'], Envelope('reply', text, me, env.frm['key'], thread=env.thread, hops=env.hops + 1)): return why
+    answer(self.d, env, me, text)
 
 @patch
 def _turn_end(self:Control, turn):
@@ -271,22 +269,21 @@ def _pending(self:Control): return self.d/f'{self.key}.pending.jsonl'
 @patch
 def _held(self:Control):
     "The asks that wait for the user's answer."
-    p = self._pending
-    return [Envelope.load(json.loads(l)) for l in p.read_text().splitlines() if l.strip()] if p.exists() else []
+    return [Envelope.load(r) for r in _rows(self._pending)]
 
 @patch
 def _hold(self:Control, env):
     "Add the ask `env` to the pending file, once."
     with self._plock:
         held = self._held()
-        if env.id not in {e.id for e in held}: self._pending.write_text(''.join(json.dumps(e.dict()) + '\n' for e in [*held, env]))
+        if env.id not in {e.id for e in held}: _atomic_write(self._pending, ''.join(json.dumps(e.dict()) + '\n' for e in [*held, env]))
 
 @patch
 def _drop(self:Control, id):
     "Remove the ask `id` from the pending file."
     with self._plock:
         left = [e for e in self._held() if e.id != id]
-        if left: self._pending.write_text(''.join(json.dumps(e.dict()) + '\n' for e in left))
+        if left: _atomic_write(self._pending, ''.join(json.dumps(e.dict()) + '\n' for e in left))
         else: self._pending.unlink(missing_ok=True)
 
 @patch

@@ -86,10 +86,10 @@ GLOSSARY = {
     'ask': 'A message that asks a peer to do work.',
     'reply': 'The answer to an ask.',
     'thread': 'One ask and all the replies to it.',
-    'hop': f'One step in a thread. A thread stops after {HOP_MAX} hops.',
+    'hop': f'One message in a thread. A thread carries at most {HOP_MAX} messages: the ask and {HOP_MAX - 1} replies.',
     'work together mode': 'A time when peers may take asks from each other with no one at the keyboard.',
     'proof': 'A test or a check that shows the work is done.',
-    'budget': f"The most that one session may do in work together mode: {PEER_BUDGET['messages']} messages sent and {PEER_BUDGET['turns']} asks taken.",
+    'budget': f"The most that one session may do: {PEER_BUDGET['messages']} messages sent in {TOGETHER_HOURS} hours, and in work together mode {PEER_BUDGET['messages']} messages sent and {PEER_BUDGET['turns']} asks taken.",
 }
 
 def glossary(text):

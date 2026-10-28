@@ -1,5 +1,5 @@
 "Peer rules: registration, work together mode, limits, targets and the folder guard."
-import os
+import os, time
 from datetime import datetime
 
 import pytest
@@ -59,3 +59,41 @@ def test_registered_skips_corrupt_files(tmp_path):
     (tmp_path/'claude-part.json').write_text('{"kind": "claude"}')
     register(tmp_path, 'claude', 's2', ['/r/leela'], os.getpid())
     assert [r['session'] for r in registered(tmp_path)] == ['s2']
+
+
+def test_rolling_cap_outside_together_mode(tmp_path):
+    for i in range(PEER_BUDGET['messages']): log(tmp_path, Envelope('note', str(i), {'key': 'k'}).dict())
+    assert 'budget: 40 of 40 messages sent in 12 h' == limit_refusal(tmp_path, 'k', Envelope('note', 'x', {'key': 'k'}))
+    assert limit_refusal(tmp_path, 'o', Envelope('note', 'x', {'key': 'o'})) == '', 'the cap is per sender'
+
+def test_exactly_20_asks_run(tmp_path):
+    together_on(tmp_path, 'k', now=time.time() - 1)
+    ran = 0
+    for i in range(25):
+        log(tmp_path, (e := Envelope('ask', str(i), {'key': 'o'}, to='k')).dict())
+        ran += not limit_refusal(tmp_path, 'k', e)
+    assert ran == PEER_BUDGET['turns'] == 20
+
+def test_guard_skips_home_and_its_parents(tmp_path, monkeypatch):
+    monkeypatch.setenv('HOME', str(tmp_path/'home'))
+    (tmp_path/'home'/'repo').mkdir(parents=True)
+    rows = [{'key': 'ramabana-r', 'folders': [str(tmp_path/'home'), str(tmp_path)]}]
+    assert folder_denial(tmp_path/'home'/'repo'/'a.py', 'claude-s1', rows) is None, 'a session rooted in $HOME or above locks nothing'
+    rows = [{'key': 'ramabana-r', 'folders': [str(tmp_path/'home'/'repo')]}]
+    assert 'belongs to' in folder_denial(tmp_path/'home'/'repo'/'a.py', 'claude-s1', rows)
+    assert folder_denial(tmp_path/'home'/'repo'/'a.py', 'claude-s1', [rows[0] | {'guard': []}]) is None, 'guard wins over folders'
+
+
+def test_me_warns_when_claude_session_is_not_registered(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv('RAMABANA_PEERS', str(tmp_path))
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', 'nope')
+    assert me()['key'] == 'cli'
+    assert capsys.readouterr().err == 'this Claude session is not registered; run ramabana setup peers\n'
+    monkeypatch.delenv('CLAUDE_CODE_SESSION_ID')
+    me(); assert capsys.readouterr().err == ''
+
+def test_codex_shows_no_wake(tmp_path):
+    register(tmp_path, 'codex', 'c1', ['/r/a'], os.getpid(), wakes=False)
+    register(tmp_path, 'claude', 's1', ['/r/b'], os.getpid())
+    lines = peer_lines([{'folder': r['folders'][0]} | r for r in registered(tmp_path)]).splitlines()
+    assert '(no wake)' in lines[0] and '(no wake)' not in lines[1]
