@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.84
+- The terminal title names what ramabana is doing: `ramabana · idle`, `typing`, `running`, `waiting`, `approval`, `python`, `transcript` or `tasks`. The title changes only when that state changes. The hint row and the title get the state from one function, so they always agree.
+- ramabana's own tmux server passes the pane title to the outer terminal (`set-titles on`, with `#{pane_title}`). Your own `~/.tmux.conf` does not change.
+- The Sanketa keymap file has an optional `app_version` field, the ramabana version. A new version rewrites the file.
+
 ## 0.2.83
 - ctrl+l, or `/tasks`, lists the background shells, sub-agents and watches, with each one's state and age. Enter opens one, `x` then `y` stops it, and Esc goes back with your typed text kept.
 - While a turn runs, the working rows end with one short tip that names a key or command. It changes once per turn and hides while you type. `/tips off`, `tips = false` in `config.toml`, or `--no-tips` turns tips off; `/tips on --save` keeps the choice.
