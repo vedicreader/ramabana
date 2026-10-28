@@ -12,19 +12,19 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'MASKED_NOTE', 'CLAUDE_NOTES', 'LESSON_RULE',
            'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK', 'PLAN_TOOLS',
            'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'RAHASYA_SECRETS', 'MORE_SECRETS', 'PRIVATE_KEY',
-           'HIDING', 'READERS', 'ASK_PRESENCE', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE',
-           'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING',
-           'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP',
-           'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'HIDING', 'READERS', 'ASK_PRESENCE', 'PEER_ROWS_EVERY', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS',
+           'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'PEER_ASK', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER',
+           'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP',
+           'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
            'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'PII_READS',
            'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
            'never', 'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt',
            'prompt_directives', 'project_context', 'dated_lessons', 'learned_context', 'work_rules', 'skill_catalogue',
            'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent',
            'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial', 'generated_denial',
-           'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing',
-           'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy', 'compact_history',
-           'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
+           'note_tools', 'hydrate_turns', 'peer_text', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed',
+           'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
+           'compact_history', 'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -47,6 +47,7 @@ from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, Too
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background, Slots, SUB_MAX_STEPS, SUB_STEP_CEILING, SUB_TIMEOUT, SUB_READ_ONLY, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
 from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, beat_problems, pob, pob_path, review_notice
+from .peers import _show, all_peers, folder_denial
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
 MAX_DETAIL = 4000     # chars of a result kept for the fold
@@ -1300,6 +1301,8 @@ class Agent:
         self._catalog_view = ToolCatalog()
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self._watch_found, self._watch_lock = [], threading.Lock()
+        self.peer_notes, self.peer_waits = [], set()   #: peer notes and replies kept for the next turn; the peers a `tell` waits on for a reply
+        self._peer_rows, self._peer_rows_at = [], float('-inf')
         self.git_undo = {}       # turn id -> its git writes and `undo` tokens
         self.warm_choice, self._warmed, self.warm_report = warm, False, {'used': [], 'skipped': []}
         self.on_warm = None      # callable(warm_report) once a session is seeded
@@ -1767,12 +1770,29 @@ def generated_denial(host, name, args):
             return f'{p} is generated from {m.group(1)}. Edit that notebook, then run `nbdev-export`'
     return ''
 
+PEER_ROWS_EVERY = 10   #: seconds the folder guard keeps the list of live peers
+
+def _full(host, p):
+    "`p` as `host` resolves it, else as given."
+    try: return host.check(p)
+    except Exception: return p
+
+@patch
+def peer_denial(self:Agent, name, args):
+    "Why a write would change a folder that another live session holds and this one does not, or ''."
+    if self.cfg is None or not (paths := write_targets(name, args)): return ''
+    if time.monotonic() - self._peer_rows_at > PEER_ROWS_EVERY:
+        self._peer_rows, self._peer_rows_at = all_peers(self.cfg, self.session_id), time.monotonic()
+    me = f'ramabana-{self.session_id}'
+    rows = [*self._peer_rows, {'key': me, 'folders': [str(r) for r in self.host.roots]}]
+    return next(filter(None, (folder_denial(_full(self.host, p), me, rows) for p in paths)), '')
+
 @patch
 def _guard(self:Agent, name, args,
            writing=False):   # whether this call writes where it names; a write to a generated module is refused
-    "Why a call is refused before it runs, or None. Git writes go through git tools. Shell output is read whole and never dumps the environment. Write tools leave generated modules to their notebooks and never write `[SECRET]` over a real key."
+    "Why a call is refused before it runs, or None. Git writes go through git tools. Shell output is read whole and never dumps the environment. Write tools leave generated modules to their notebooks, never write `[SECRET]` over a real key, and stay out of another live session's folders."
     if name in ('run_shell', 'run_shell_bg'): return self._deny_git_shell(name, args) or shell_denial(args.get('command', '')) or None
-    return (generated_denial(self.host, name, args) or secret_denial(self.host, name, args) or None) if writing else None
+    return (generated_denial(self.host, name, args) or secret_denial(self.host, name, args) or self.peer_denial(name, args) or None) if writing else None
 
 
 @patch
@@ -2771,6 +2791,23 @@ def watch_notice(self:Agent):
         if (h := r.get('housekeeping')): lines.append(f"housekeeping: {h.get('stale', 0)} stale, {h.get('pruned', 0)} pruned")
     return '\n\n<watch-results>\n' + '\n'.join(lines) + '\nSearch memory (`memory_search`) for what they filed.\n</watch-results>'
 
+# %% ../nbs/03_agent.ipynb #5347b079
+PEER_ASK = 'Read the `peer-work` skill before you act on this ask. End your reply with a `changes:` line (files and commits, split by `;`) and a `proof:` line (the test command and its result).'
+
+def peer_text(env):
+    "The peer message `env` as a `<peer-message>` block; an ask adds `PEER_ASK`."
+    attr = lambda s: str(s).replace('"', "'")
+    who = env.frm.get('name') or env.frm.get('key', '?')
+    head = f'<peer-message id="{attr(env.id)}" kind="{attr(env.kind)}" from="{attr(who)}" repo="{attr(env.repo)}">'
+    return f'{head}{_show(env)}</peer-message>' + (f'\n{PEER_ASK}' if env.kind == 'ask' else '')
+
+@patch
+def peer_notice(self:Agent):
+    "The peer messages kept since the last turn, as one `<peer-messages>` block, or ''."
+    got = []
+    while self.peer_notes: got.append(self.peer_notes.pop(0))
+    return '\n\n<peer-messages>\n' + '\n'.join(map(peer_text, got)) + '\n</peer-messages>' if got else ''
+
 # %% ../nbs/03_agent.ipynb #45435c30
 WARM_ROUNDS = 3   #: dhrona rounds seeded into a fresh session
 WARM_SMALL_CHARS = 2500   #: max chars of the small profile's one round
@@ -2998,6 +3035,7 @@ def _prepare(self:Agent, prompt):
     if reviews: outgoing = _append(outgoing, review_notice(reviews))
     if (done := self.background_notice()): outgoing = _append(outgoing, done)
     if (fired := self.watch_notice()): outgoing = _append(outgoing, fired)
+    if (heard := self.peer_notice()): outgoing = _append(outgoing, heard)
     if (left := self.beat_drain()): outgoing = _append(outgoing, beat_notice(left))
     for skill in loaded:
         outgoing = _append(outgoing, f'\n\n<requested-skill name="{skill.name}">\n{skill.text()}\n</requested-skill>')

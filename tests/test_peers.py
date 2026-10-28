@@ -8,7 +8,7 @@ from teleprint.testing import EmuTty
 import ramabana.cli as cli
 from ramabana.agent import Approvals
 from ramabana.control import Control, control_call, control_path, peer_tools
-from ramabana.peers import peers_dir, register, take
+from ramabana.peers import peers_dir, register, take, together_on
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 from ramabana.tools import WRITE_TOOLS
 
@@ -117,22 +117,23 @@ def test_the_session_opens_its_socket_and_removes_it_on_exit(monkeypatch):
 
 def test_peers_and_tell_between_two_agents_in_one_process():
     d = _cfg()
-    other, obe = _slow_agent(d, ['the other reply', 'after the steer'], pause=1, host=MemHost(root='/other'))
+    other, obe = _slow_agent(d, ['the other reply', 'after the steer'], pause=1, host=MemHost(root='/other'), approvals=Approvals(tools=WRITE_TOOLS, mode='ask'))
     me, _ = fake_agent(cfg=d, approvals=Approvals(tools=WRITE_TOOLS, mode='auto'))
-    asked, _ = fake_agent(cfg=d, approvals=Approvals(tools=WRITE_TOOLS, mode='ask'))
     other.events_to(other.runs_dir/'events.jsonl')   # as a terminal session does
     ctls = [Control(other).start(), Control(me).start()]
     try:
         peers, tell = peer_tools(me)
         listed = peers()
-        assert listed.startswith('1  other') and other.session_id in listed and me.session_id not in listed, listed
-        assert 'the other reply' in tell(1, 'what are you working on?', how='prompt', wait=10)
-        refused = peer_tools(asked)[1](other.session_id, 'start something', how='prompt', wait=0)
-        assert 'nothing is listening' in refused and len(obe.sent) == 1, 'a prompt into another session asks first'
+        assert listed.startswith('1  other') and listed.endswith('ramabana') and other.session_id in listed and me.session_id not in listed, listed
+        refused = tell(1, 'start something', kind='ask', wait=10)
+        assert refused.startswith('refused:') and 'nothing is listening' in refused and obe.sent == [], 'an ask into another session asks its user first'
+        together_on(peers_dir(d), f'ramabana-{other.session_id}')
+        assert 'the other reply' in tell(1, 'what are you working on?', kind='ask', wait=10)
         control_call(control_path(other), 'prompt', text='a long job')
         time.sleep(.1)
         assert tell(other.session_id, 'turn left', wait=0).startswith('told')
-        assert 'turn left' in other.run().inbox
+        time.sleep(.2)
+        assert any('turn left' in m for m in other.run().inbox), 'a note steers the running turn'
     finally:
         for c in ctls: c.close()
 
@@ -178,7 +179,7 @@ def test_tell_tool_and_slash_tell_post_a_note_to_a_registered_peer(monkeypatch):
     register(peers_dir(d), 'claude', 's1', ['/r/abhyasa'], os.getpid())
     agent, _ = fake_agent(cfg=d)
     key = f'ramabana-{agent.session_id}'
-    assert peer_tools(agent)[1]('s1', 'via the tool', how='prompt', wait=0).startswith('told')
+    assert peer_tools(agent)[1]('s1', 'via the tool', wait=0).startswith('told')
     async def body(u):
         u.buf.text = '/peers'
         u.submit()

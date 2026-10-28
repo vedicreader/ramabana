@@ -61,7 +61,8 @@ from shalya.core import one_line
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
 from .pane import background_rows, quit_mark, talk_mark, write_snapshot
-from .control import EVENT_FILE, Control, ago, control_call, find_peer, note_peer, peer_label, peer_lines, peer_tools, peers_of, pick_row
+from .control import EVENT_FILE, Control, ago, control_call, find_peer, note_peer, peer_label, peer_lines, peer_tools, peers_of, pick_row, self_frm
+from .peers import _parser as peer_parser, _together, peers_dir
 from .tools import WRITE_TOOLS, path_write, write_targets
 from . import hl, setup
 from .hl import HL_THEMES, is_diff
@@ -395,7 +396,7 @@ MAX_GROUP_ROWS = 8
 DIFF_OPEN = 20    #: diff lines a finished call shows until the reader opens it
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
 SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'calm', 'copy', 'detach', 'exit', 'guide', 'help',
-                    'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'peers', 'promote', 'python', 'quit', 'root', 'talk', 'tasks', 'tell', 'theme', 'tips', 'vars')
+                    'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'peers', 'promote', 'python', 'quit', 'root', 'talk', 'tasks', 'tell', 'theme', 'tips', 'together', 'vars')
 
 _TODO_RE = re.compile(r'^(\[[ x▸\-]\])\s+(`[^`]*`)?\s*(.*)$')
 
@@ -545,8 +546,11 @@ KEYMAP = [
     _cmd('cmd_peers', '/peers', 'lists the other live sessions, numbered, most recently active first', 'peers'),
     _cmd('cmd_tell', '/tell N TEXT', 'steers session N', 'peers'),
     _cmd('cmd_tell_prompt', '/tell N --prompt TEXT', 'starts or queues a turn there', 'peers'),
+    _cmd('cmd_tell_ask', '/tell N --ask TEXT', 'asks it for work, and its user says yes first', 'peers'),
     _cmd('cmd_tell_aim', '/tell N', 'aims typed lines at it', 'peers'),
     _cmd('cmd_tell_main', ['/tell', '/tell main'], 'aims them back here', 'peers'),
+    _cmd('cmd_together', '/together on [--with A,B] [--until HH:MM]', 'runs the asks of partners without asking you', 'peers'),
+    _cmd('cmd_together_off', '/together off|status', 'ends it or shows it', 'peers'),
     _key('task_move', ['up', 'down', 'left', 'right'], 'move', 'Tasks', 'tasks', context='tasks'),
     _key('task_row', [str(i) for i in range(1, 10)], 'go to that row', 'Tasks', 'tasks', context='tasks', range='1-9'),
     _key('task_open', 'enter', 'open it', 'Tasks', 'tasks', context='tasks'),
@@ -563,7 +567,7 @@ CARD = dict(
     options=("↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line", ''),
     shell=('', 'ctrl+c interrupts it, twice kills it'), python=('', ''), plan=('', 'the plan survives stop and /resume'),
     setup=('', ''), extra=('', ''), subagent=('', 'each with --save to keep it · tab completes them'),
-    talk=('', 'tab completes main and the running ids'), peers=('', ''), tasks=('', ''),
+    talk=('', 'tab completes main and the running ids'), peers=('', 'a typed line ends work together mode'), tasks=('', ''),
     api=('start with --spec · then api_load URL-or-path · api_ops · api_call', ''))
 
 _SHOWN = dict(up='↑', down='↓', left='←', right='→', pageup='pgup', pagedown='pgdn', escape='esc')
@@ -1117,6 +1121,7 @@ class Ui:
         self._hold = False
         self.target = None   #: the run id typed lines go to; None is the main agent
         self.peer, self.peer_list = None, []   #: the live session `/tell N` aimed typed lines at, and the last `/peers` list
+        self.control = None   #: the `UiControl` peers reach this session through, once `start_control` starts it
         self.pane, self._pane_at, self._alive_at, self._reopen_at = None, None, 0.0, 0.0
         self._opened_at, self._quick = None, 0
         self._now_at, self._now_busy, self._now_dirty = 0.0, False, False
@@ -3731,6 +3736,10 @@ class UiControl(Control):
     def do_prompt(self, text):
         "Hand `text` to the event loop, which starts it or queues it as a typed line."
         return self.ui._as_owner(lambda: self.ui.peer_prompt(text))
+    def receive(self, env):
+        "Show a peer's note or reply in the `Ui`, on the event loop, then handle it as `Control.receive` does."
+        if env.kind != 'ask': self.ui._post(lambda: (self.ui.note(f"⇠ {env.kind} from {env.frm.get('name') or env.frm.get('key', '?')}: {env.text}"), self.ui.paint()))
+        return super().receive(env)
     def do_cancel(self):
         "Stop the turn the way ctrl+c does, on the event loop."
         return self.ui._as_owner(self.ui.peer_cancel)
@@ -3744,13 +3753,14 @@ class UiControl(Control):
         return time.time() - (time.monotonic() - max(self.ui._key_at, self.ui._turn_at))
 
 def start_control(ui):
-    "Let peers reach `ui`'s session: write its events to `EVENT_FILE` in its run folder when nothing else does, give its agent `peer_tools`, and return its started `UiControl`. None without a run folder, or when the socket cannot start, which a note says."
+    "Let peers reach `ui`'s session: write its events to `EVENT_FILE` in its run folder when nothing else does, give its agent `peer_tools`, and return its started `UiControl`, also kept as `ui.control`. Its start raises again each peer ask still pending. None without a run folder, or when the socket cannot start, which a note says."
     a = ui.agent
     if a.runs_dir is None: return None
     if not a.__dict__.get('_event_files'): a.events_to(a.runs_dir/EVENT_FILE)
     for t in peer_tools(a): a.add_tool(t)
-    try: return UiControl(ui).start()
+    try: ui.control = UiControl(ui).start()
     except (OSError, RuntimeError, ValueError) as e: ui.note(f'peers cannot reach this session: {agent_err(e)}', 'error')
+    return ui.control
 
 @patch
 def peer_prompt(self:Ui, text):
@@ -3781,7 +3791,7 @@ def peers_cmd(self:Ui):
     async def go():
         try: self.peer_list = await off_loop(lambda: peers_of(self.agent))
         except Exception as e: return self.note(f'/peers failed: {agent_err(e)}', 'error')
-        self.note(f'{peer_lines(self.peer_list)}\n/tell N TEXT steers one · /tell N --prompt TEXT starts a turn there · /tell N talks to it'
+        self.note(f'{peer_lines(self.peer_list)}\n/tell N TEXT steers one · /tell N --ask TEXT asks it for work · /tell N --prompt TEXT starts a turn there · /tell N talks to it'
                   if self.peer_list else 'no other session is running')
         self.paint()
     self.comp.spawn(go(), name='peers')
@@ -3795,12 +3805,15 @@ def talk_peer(self:Ui, row):
 
 @patch
 async def send_peer(self:Ui, row, text, how='steer'):
-    "Send `text` to the session `row` off the loop, as a steer or a prompt, and say whether it arrived; True when it did."
+    "Send `text` to the session `row` off the loop, as a steer, a prompt or an ask, and say whether it arrived; True when it did."
     name, ok = peer_label(row), False
-    if 'path' not in row:   # a Claude Code or Codex session: it takes a note, whatever `how` says
-        try: await off_loop(lambda: note_peer(self.agent, row, text))
+    if 'path' not in row or how == 'ask':   # a Claude Code or Codex session takes a note for a steer or a prompt
+        kind = 'ask' if how == 'ask' else 'note'
+        try: said = await off_loop(lambda: note_peer(self.agent, row, text, kind))
         except Exception as e: self.note(f'{name} did not take it: {agent_err(e)}', 'error')
-        else: self.note(f'→ {name}: {text}'); ok = True
+        else:
+            if (ok := said.startswith('told')): self.note(f"→ {name}{' (ask)' if kind == 'ask' else ''}: {text}")
+            else: self.note(f'{name} did not take it: {said}', 'error')
         self.paint()
         return ok
     try: out = await off_loop(lambda: control_call(row['path'], how, text=text))
@@ -3822,14 +3835,15 @@ async def send_typed(self:Ui, row, line):
 
 @patch
 def tell_peer(self:Ui, arg):
-    "`/tell N TEXT` steers session N of the last `/peers` list, or with `--prompt` before TEXT prompts it; `/tell N` aims typed lines at it; `/tell` or `/tell main` aims them back here."
+    "`/tell N TEXT` steers session N of the last `/peers` list, with `--prompt` before TEXT prompts it, and with `--ask` asks it for work; `/tell N` aims typed lines at it; `/tell` or `/tell main` aims them back here."
     n, _, text = arg.strip().partition(' ')
     text, how = text.strip(), 'steer'
     if n in ('', 'main'):
         self.peer = self.target = None
         self.write_now(force=True)
         return self.note('talking to main')
-    if text == '--prompt' or text.startswith('--prompt '): text, how = text[len('--prompt'):].strip(), 'prompt'
+    for flag in ('--prompt', '--ask'):
+        if text == flag or text.startswith(flag + ' '): text, how = text[len(flag):].strip(), flag[2:]
     if (row := find_peer(self.peer_list, n)) is not None and not text: return self.talk_peer(row)
     async def go():
         if (found := row) is None:
@@ -3866,3 +3880,35 @@ def submit(self:Ui):
         self.comp.spawn(self.send_typed(self.peer, line), name='tell')
         return None
     return _submit_peers(self)
+
+@patch
+def together_cmd(self:Ui, arg):
+    "`/together on|off|status [--with A,B] [--until HH:MM]`: work together mode for this session, as `ramabana together` sets it."
+    a = self.agent
+    def run():
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            try: _together(peer_parser().parse_args(['together', *shlex.split(arg)]), peers_dir(a.cfg), self_frm(a), lambda: peers_of(a))
+            except (SystemExit, ValueError): pass   # argparse printed why
+        return out.getvalue().strip()
+    async def go():
+        self.note(await off_loop(run))
+        self.paint()
+    self.comp.spawn(go(), name='together')
+
+@patch
+def welcome_back(self:Ui, ended, report):
+    "Show the report of a work together mode that ended, or how to get it."
+    if report is not None and report.exists(): self.say(Markdown(t := report.read_text()), 'note', fold=None, source=t)
+    elif ended: self.note('work together mode ended · run `ramabana report` to see what the peers did')
+
+_submit_together = Ui.submit
+@patch
+def submit(self:Ui):
+    "Handle `/together`; any other typed line ends work together mode, because the user is back, and shows its report."
+    line = self.buf.text.strip()
+    if line == '/together' or line.startswith('/together '):
+        self.buf.clear()
+        return self.together_cmd(line[len('/together'):])
+    if line and self.control is not None: self.welcome_back(*self.control.user_back())
+    return _submit_together(self)
