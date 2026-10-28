@@ -789,7 +789,7 @@ def ext_keys(self:Setup):
     "Turn on `extended-keys` in the tmux server we run inside when it is off: True if turned on."
     if self._show_ext() != 'off': return False
     self.run([self.tmux, 'set', '-s', 'extended-keys', 'on'], capture_output=True)
-    print('turned on extended-keys in this tmux server so shift+enter reaches ramabana; ~/.tmux.conf is unchanged', file=sys.stderr)
+    print('turned on extended-keys in this tmux server for the alt keys, and for shift+enter where the terminal sends it. ~/.tmux.conf is unchanged', file=sys.stderr)
     return True
 
 # %% ../nbs/19_setup.ipynb #b4e1a002

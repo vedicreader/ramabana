@@ -678,7 +678,7 @@ WORK
   enter mid-turn steers the turn, attachments and all; alt+enter queues
   the next one, enter on an empty line steers the queued one in, and
   alt+up takes the queued text back into the composer.
-  shift+tab cycles approvals: ask, edits, auto.
+  shift+tab cycles approvals: ask, edits, auto, plan.
   Outside tmux it starts in its own; --tmux off stays out.
   /pane shows the turn and its sub-agents; /pane off closes it.
   --max-tool-calls auto|N  --max-steps auto|N  /tool-budget  /steps

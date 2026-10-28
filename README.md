@@ -61,7 +61,7 @@ A program that embeds Ramabana installs only the extras it needs, such as `ramab
 
 The core install already brings in the packages shalya depends on: dhrishti, jupyter-client, fossick, litesearch and vishalakshi, which in turn brings in mcp. The extras add the terminal, the two servers, the Python prompt and the search pieces on top.
 
-To use the terminal on its own, run `uv tool install 'ramabana[cli]'` and then `ramabana`. The first interactive run starts inside a tmux server that belongs to Ramabana. That server needs no setup from you. It gives you the now pane, a live view of what the agent is doing in a split beside the session. It also lets `shift+enter` queue a message. When tmux is missing, Ramabana offers the install command once. `ramabana --doctor` checks tmux, extended keys, the config and `ramabana-pane`. `--tmux off` or `RAMABANA_TMUX=off` keeps the session in the terminal you started it in. Detaching or closing the window ends the session, and `--resume latest` reopens it.
+To use the terminal on its own, run `uv tool install 'ramabana[cli]'` and then `ramabana`. The first interactive run starts inside a tmux server that belongs to Ramabana. That server needs no setup from you. It gives you the now pane, a live view of what the agent is doing in a split beside the session. It also passes the alt keys and `shift+enter` through to Ramabana as keys of their own. `shift+enter` arrives only from a terminal that sends it. Inside a tmux server of your own, Ramabana turns `extended-keys` on for that server when it is off. When tmux is missing, Ramabana offers the install command once. `ramabana --doctor` checks tmux, extended keys, the config and `ramabana-pane`. `--tmux off` or `RAMABANA_TMUX=off` keeps the session in the terminal you started it in. Detaching or closing the window ends the session, and `--resume latest` reopens it.
 
 | command | what it is |
 |----|----|
@@ -262,7 +262,7 @@ The one-turn form prints each problem on stderr and exits 1 when the turn model 
 | `--read-outside` | off | reads may name any path. Writes stay inside `--root` |
 | `--no-subagent-writes` | writes on | restrict delegated sub-agents to read-only tools |
 | `--vault` | off | keeps what the agent reads in a vishalakshi vault |
-| `--pii MODE` | `off` | `redact` or `refuse` for what the vault hands back |
+| `--pii MODE` | `off` | `redact` or `refuse` for what the vault hands back, and for shell, Python and web reads a hosted model gets; `cli.pii` in config.toml |
 | `--pii-ner` | off | `--pii` gates titled names too, not only patterns |
 | `--spec` | off | adds `api_load`, `api_ops` and `api_call` |
 | `--theme NAME` | `auto` | the terminal palette |
@@ -276,6 +276,8 @@ The one-turn form prints each problem on stderr and exits 1 when the turn model 
 | `--kernels` | off | list live Python sessions and exit |
 | `--json` | off | with a prompt: reply, usage, changes, activity, problems and session as JSON |
 | `--no-bell` | bell on | no terminal bell when a turn ends or an approval waits |
+| `--no-hints` | hints on | hides the row of keys under the status bar. `hints = false` in config.toml does the same |
+| `--no-tips` | tips on | hides the tip under the working rows. `tips = false` in config.toml or `/tips off` does the same |
 | `--tmux MODE` | `auto` | `on` or `off`: read the sibling panes and open the side pane. `off`, like `RAMABANA_TMUX=off`, also keeps the session out of ramabana’s own tmux |
 | `--pane MODE` | `auto` | `on` or `off`: the now pane at startup. `auto` opens it only inside tmux |
 | `--doctor` | off | check tmux and the now pane, offer to install tmux, and exit |
@@ -283,7 +285,7 @@ The one-turn form prints each problem on stderr and exits 1 when the turn model 
 | `--warm` / `--no-warm` | off | seed the chat with a few of dhrona’s example rounds (`uv add "ramabana[dhrona]"`), or start empty. Off by default: a model copies an example’s one call per message and its paths. `--warm` gives the `small` profile one round |
 | `--profile P` | `auto` | `small` offers fourteen tools and a one-screen briefing. `full` offers everything. `auto` picks `small` for a local model or a window of 32k or less. `/model` shows the active one. `small` leaves out extension tools not marked with [`ramabana.tools.small_tool`](https://vedicreader.github.io/ramabana/tools.html#small_tool) |
 
-`--theme` takes `auto`, `github-dark`, `dark`, `light`, `gruvbox`, `gruvbox-light`, `nord`, `tokyonight`, `catppuccin`, `latte`, `everforest`, `dracula`, `kanagawa`, `solarized` or `solarized-light`. `auto` is `github-dark`. Set your terminal to the scheme of the same name and the two agree. `/theme NAME` switches mid-session and repaints what is already on screen.
+`--theme` takes `auto`, `github-dark`, `dark`, `light`, `gruvbox`, `gruvbox-light`, `nord`, `tokyonight`, `catppuccin`, `latte`, `everforest`, `dracula`, `kanagawa`, `solarized` or `solarized-light`. `auto` picks `light` or `github-dark` from the terminal’s background, and `github-dark` when the terminal does not say. Set your terminal to the scheme of the same name and the two agree. `/theme NAME` switches mid-session and repaints what is already on screen.
 
 ## Inside a session
 
@@ -303,6 +305,7 @@ Type `/` and press tab to complete a command. The list holds this session’s co
 | `/commit [FOLDER] [MESSAGE]`, `/pr [FOLDER] [TITLE]` | a commit or pull request drafted from the diff of the repository holding FOLDER (default the project), behind approval |
 | `/rewind [TURN] [files\|chat\|both]`, `/branches`, `/branch NAME` | undo a turn’s files or chat, and the conversation branches. Undo restores edits, undoes git writes, and removes created files still unchanged |
 | `/watch [RUN\|monitors]`, `/unwatch`, `/tell RUN TEXT` | a tmux pane on a run’s transcript, and a message to a running sub-agent |
+| `/peers`, `/tell N TEXT`, `/tell N --prompt TEXT`, `/tell N` | the other live sessions, by number N. `/tell N TEXT` steers one. `--prompt` starts or queues a turn there. `/tell N` aims typed lines at it until `/tell main` |
 | `/pane`, `/pane off` | the now pane in a tmux split, and closing it |
 | `/NAME ARGS`, `#note TEXT` | run a skill, or `<cfg>/commands/NAME.md` as a turn with `$ARGUMENTS`, `$1..$n` and `@path` filled in. A repo’s `.agents/commands/` counts once `project_extensions` is opted in. `#note` saves a line to the next session’s memory |
 | `/root [add PATH]`, `/theme [NAME]`, `/mouse` | the open folders, the palette, and clicking blocks |
@@ -311,6 +314,7 @@ Type `/` and press tab to complete a command. The list holds this session’s co
 | `/python`, `/agent`, `/vars`, `/promote NAME` | the Python prompt and its namespace |
 | `/kernels`, `/join NAME`, `/agent_proxy` | live Python sessions |
 | `/stop [ID]`, `/runs [all]` | the runs in flight |
+| `/tasks`, `/tips [on\|off] [--save]` | the background shells, sub-agents and watches, and the tip shown while a turn runs |
 | `/quit`, `/exit` | leave |
 
 The keys:
@@ -318,8 +322,12 @@ The keys:
 | key | what it does |
 |----|----|
 | `enter` | send. Mid-turn it steers: the running turn gets the line after its current tool call. A line with an `@path`, or sent with an attachment, waits for the next turn. `tab` completes a `/command` or an `@path` |
-| `shift+enter` | mid-turn, queue the line as the next turn. It needs tmux extended keys, which ramabana’s own tmux has. Inside your tmux, ramabana turns them on for that server when they are off |
-| `shift+tab` | cycle approvals through `ask`, `edits` and `auto`. The mode shows at the left of the row under the bar |
+| `alt+enter` | mid-turn, queue the line as the next turn. `shift+enter` does the same in a terminal that sends it |
+| `up` | on an empty prompt with messages waiting, take back the newest one. Each press takes one |
+| `alt+up` | take back every waiting message into the composer |
+| `?` | on an empty prompt, show every key |
+| `ctrl+l` | list the background shells, sub-agents and watches. `enter` opens one. `x` then `y` stops it. `esc` goes back |
+| `shift+tab` | cycle approvals through `ask`, `edits`, `auto` and plan mode. The mode shows at the left of the row under the bar |
 | `ctrl+t` | show or hide the plan |
 | `ctrl+p`, `ctrl+n` | walk the prompts you have sent |
 | `up`, `down`, `ctrl+r` | browse the transcript. `pgup`, `pgdn`, `/?` to search, `y` to copy a block, `esc` to leave |
@@ -327,7 +335,7 @@ The keys:
 | `alt+1` to `alt+9` | open one entry of it |
 | `ctrl+g` | make approvals one step stricter |
 | `ctrl+v` | attach an image from the clipboard |
-| `ctrl+c` | stop the turn and drop queued lines and any steering the turn has not taken yet. A second press terminates it, a third quits |
+| `ctrl+c` | stop the turn. Queued lines and unread steering go back into the composer. A second press terminates it, a third quits |
 | `ctrl+d` | quit |
 
 A turn reads top to bottom: `┆` narration, `│` a tool call, then the answer. To send a file or an image with the prompt, drop its path on the terminal, write `@path` in the prompt, or use `/attach PATH`. `tab` after `@` completes files and folders in the open folders, and from `~/`, `/` or `../` when reading outside them is on. A folder attaches its listing. Quote a path with spaces: `@"my notes/plan.md"`.
@@ -426,7 +434,7 @@ Other terminals can share a live session. `ramabana --kernels` lists the ones ru
 
 ## Memory, API specifications and a beat
 
-`--vault` keeps what the agent reads in a [vishalakshi](https://github.com/vedicreader/vishalakshi) vault, for the next session to retrieve. `--pii redact` masks personal data on the way back out of the vault. `--pii refuse` refuses the retrieval instead. `--pii-ner` extends either mode to titled names, not only patterns. Either mode needs `--vault`. Without it the command exits 2 and does not ignore the flag. A `--python`, `--attach` or `--agent-proxy` session has no vault-backed host and refuses `--vault`.
+`--vault` keeps what the agent reads in a [vishalakshi](https://github.com/vedicreader/vishalakshi) vault, for the next session to retrieve. `--pii redact` masks personal data on the way back out of the vault, and in the shell, Python and web reads sent to a hosted model; file reads keep it, because edits match text exactly. `--pii refuse` refuses those reads instead. API keys and tokens are masked as `[SECRET]` in every read whatever `--pii` says, and commands that print the environment are refused. `--pii-ner` extends either mode to titled names, not only patterns. Either mode needs `--vault`. Without it the command exits 2 and does not ignore the flag; a `cli.pii` in config.toml is skipped instead. A `--python`, `--attach` or `--agent-proxy` session has no vault-backed host and refuses `--vault`.
 
 `--spec` adds `api_load`, `api_ops` and `api_call`. Point `api_load` at an OpenAPI, Azure or Google Discovery document and the agent can call the operations it describes.
 
