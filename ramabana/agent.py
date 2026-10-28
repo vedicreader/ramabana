@@ -6,24 +6,24 @@ Docs: https://vedicreader.github.io/ramabana/agent.html.md"""
 
 # %% auto #0
 __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_EVERY', 'SHELL_SNAPSHOT', 'ICONS',
-           'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'EDIT_GROUPS', 'ALWAYS_ASK',
-           'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT', 'PERSON_ONLY',
-           'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'DATED_CONTEXT', 'PICTURE_RULE', 'RULES',
-           'SMALL_RULES', 'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'MASKED_NOTE', 'CLAUDE_NOTES',
-           'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES', 'TODO_MARK',
-           'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'RAHASYA_SECRETS', 'MORE_SECRETS',
-           'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE', 'PEER_ROWS_EVERY', 'PEER_ROWS_WAIT', 'MEMORY_CHARS',
-           'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS',
-           'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX',
-           'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP',
-           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES',
-           'MAX_SPANS', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject',
-           'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for', 'request_text',
-           'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons', 'learned_context',
-           'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
-           'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
-           'generated_denial', 'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed',
-           'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
+           'DELEGATE_TOOLS', 'ARG_TEXT', 'DENIED', 'DFLT_TIMEOUT', 'MAX_PREVIEW', 'SECRET_ARGS', 'EDIT_GROUPS',
+           'ALWAYS_ASK', 'REMOVED_TOOLS', 'DOOM_LOOP', 'APPROVE_MODES', 'VERDICTS', 'NO_LISTENER', 'ON_TIMEOUT',
+           'PERSON_ONLY', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'DATED_CONTEXT', 'PICTURE_RULE',
+           'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'MASKED_NOTE',
+           'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES',
+           'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'RAHASYA_SECRETS',
+           'MORE_SECRETS', 'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE', 'PEER_ROWS_EVERY', 'PEER_ROWS_WAIT',
+           'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE',
+           'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST',
+           'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK',
+           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
+           'BRANCH_POLICIES', 'MAX_SPANS', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
+           'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
+           'request_text', 'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons',
+           'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family',
+           'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial',
+           'shell_denial', 'generated_denial', 'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult',
+           'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
            'compact_history', 'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
@@ -250,6 +250,13 @@ def _tc(tool_call):
     "Canonical `(name, args)` from a tool call."
     fn = tool_call.get('function') or {}
     return tc_name(tool_call), parse_args(fn.get('arguments'))
+
+SECRET_ARGS = {}   #: tool name -> the arguments it marks `secret_args`, whose values are never kept
+
+def _hidden(name, args):
+    "`args` as kept and shown: each secret argument's value is `[SECRET]`."
+    ks = SECRET_ARGS.get(name, ())
+    return {k: '[SECRET]' if k in ks else v for k, v in args.items()} if ks and isinstance(args, dict) else args
 
 # %% ../nbs/03_agent.ipynb #f0c058fe
 def _fmt_cmds(commands):
@@ -547,7 +554,7 @@ class Approvals:
 
     def ask(self, name, args):
         "Add an undecided `Ask` for this call to `history` and return it."
-        run = current_run()
+        run, args = current_run(), _hidden(name, args)
         a = Ask(tool=name, args=args, summary=_summary(name, args), preview=preview_for(name, args, self.host),
                 run_id=getattr(run, 'id', '') or '', run=run)
         self.history.append(a)
@@ -1601,6 +1608,7 @@ def _record(self:Agent, f):
     "Wrap one tool so the agent logs its calls and can measure its changes. The `read_only` copy is wrapped too."
     if getattr(f, '_recorded', None) == (self, f): return f   # not a mark `wraps` copied from another wrapper
     name = getattr(f, '__name__', '?')
+    if (ks := getattr(f, 'secret_args', ())): SECRET_ARGS[name] = tuple(ks)
 
     @functools.wraps(f)   # backends build the schema from the real signature
     def wrapper(*a, **kw):
@@ -1620,7 +1628,7 @@ def _record(self:Agent, f):
         if rewritten: denied = denied or self._guard(name, args, writing) or _arg_problem(f, args)   # the call that runs is the rewritten one
         if rewritten and writing and not denied and self.approvals is not None and not (ask := self.approvals.request(name, args)).answer:
             return err(ask.reply())   # the gate's recorder already logged it
-        self.calls.append((name, args))
+        self.calls.append((name, _hidden(name, args)))
         act = self._open_act(f, name, args)
         if denied:
             self.activity.finish(act, denied, ok=False)
@@ -1663,6 +1671,7 @@ def _record(self:Agent, f):
 @patch
 def _open_act(self:Agent, f, name, args):
     "Start the row for one call, and write it in the transcript of the run that makes the call."
+    args = _hidden(name, args)
     act = self.activity.start(name, args, summary=summarise(f, args), **self._action_meta(name, args))
     if (run := current_run()) is not None: run.write(f'> {act.summary}')
     return act
@@ -1679,6 +1688,7 @@ def _close_act(self:Agent, act, out):
 def _observe(self:Agent, f):
     "Show the calls of a read-only sub-agent tool on the activity feed. It runs no hooks and no gate. It applies only the tree's budget."
     name = getattr(f, '__name__', '?')
+    if (ks := getattr(f, 'secret_args', ())): SECRET_ARGS[name] = tuple(ks)
     @functools.wraps(f)
     def wrapper(*a, **kw):
         if not self._draw(): return TREE_SPENT
@@ -3234,6 +3244,14 @@ def _whole(hist):
             return list(hist[:i])
     return list(hist)
 
+def _scrub(hist):
+    "`hist` with the secret arguments of each tool call as `[SECRET]`."
+    def one(c):
+        fn = c.get('function') or {}
+        if not SECRET_ARGS.get(n := tc_name(c)): return c
+        return c | {'function': fn | {'arguments': json.dumps(_hidden(n, parse_args(fn.get('arguments'))), ensure_ascii=False)}}
+    return [m | {'tool_calls': [one(c) for c in m['tool_calls']]} if isinstance(m, dict) and m.get('tool_calls') else m for m in hist]
+
 @patch
 def _save_hist(self:Agent):
     "Keep the turn model's whole conversation, tool results included, for `resume_session(full=True)`, when `keep_conversation` asks."
@@ -3241,7 +3259,7 @@ def _save_hist(self:Agent):
     try:
         b = self._be('turn')
         data = json.dumps({'turn_id': self.current_turn_id, 'backend': b.spec.backend, 'model_id': b.spec.model_id,
-                           'hist': _whole(b.snapshot_hist())}, ensure_ascii=False)
+                           'hist': _scrub(_whole(b.snapshot_hist()))}, ensure_ascii=False)
         d.mkdir(parents=True, exist_ok=True)
         with atomic_save(d/HIST, 'w') as f: f.write(data)
     except Exception as e: self.history_problem = f'the conversation was not saved for a full resume ({agent_err(e)})'
