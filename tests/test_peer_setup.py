@@ -126,3 +126,48 @@ def test_setup_cli_hands_peers_on(tmp_path, monkeypatch):
 
 def test_bad_arguments(tmp_path):
     with pytest.raises(SystemExit): run(tmp_path, '--agent', 'gemini')
+
+
+def test_write_failure_keeps_the_original(tmp_path, monkeypatch):
+    import os
+    p = tmp_path/'.claude/settings.json'; p.parent.mkdir()
+    p.write_text('{"model": "opus"}')
+    monkeypatch.setattr(os, 'replace', lambda *a: (_ for _ in ()).throw(OSError('disk')))
+    with pytest.raises(OSError): run(tmp_path, '--agent', 'claude', '--yes')
+    assert p.read_text() == '{"model": "opus"}'
+
+
+def test_equal_config_in_other_format_is_skipped(tmp_path):
+    p = tmp_path/'.claude/settings.json'; p.parent.mkdir()
+    p.write_text(json.dumps({'hooks': hook_block('claude')}, indent=4))
+    sk = tmp_path/'.claude/skills/peer-work/SKILL.md'; sk.parent.mkdir(parents=True)
+    from ramabana.setup import peer_skill
+    sk.write_text(peer_skill('claude'))
+    code, out, asked = run(tmp_path, '--agent', 'claude')
+    assert code == 0 and asked == [] and 'up to date' in out and p.read_text() == json.dumps({'hooks': hook_block('claude')}, indent=4)
+    p.write_text('{"model":"opus"}')
+    sk.unlink()
+    code, out, asked = run(tmp_path, '--agent', 'claude', '--remove')
+    assert asked == [] and 'up to date' in out and p.read_text() == '{"model":"opus"}'
+
+
+def test_odd_hook_entries_are_not_ours(tmp_path):
+    p = tmp_path/'.claude/settings.json'; p.parent.mkdir()
+    odd = {'Stop': ['text', {'hooks': 'x'}, {'hooks': [1, {'command': 5}]}]}
+    p.write_text(json.dumps({'hooks': odd}))
+    assert run(tmp_path, '--agent', 'claude', '--yes')[0] == 0
+    assert load(p)['hooks']['Stop'][:3] == odd['Stop']
+    run(tmp_path, '--agent', 'claude', '--remove', '--yes')
+    assert load(p) == {'hooks': odd}
+
+
+def test_setup_cli_takes_a_tuple(tmp_path, monkeypatch):
+    monkeypatch.setenv('HOME', str(tmp_path))
+    assert setup_cli(('peers', '--agent', 'codex', '--yes'), out=lambda *_: None) == 0 and (tmp_path/'.codex/hooks.json').exists()
+
+
+def test_doctor_names_an_unreadable_config(tmp_path):
+    from ramabana.setup import peers_status
+    p = tmp_path/'.claude/settings.json'; p.parent.mkdir()
+    p.write_text('{oops')
+    assert peers_status(tmp_path)[0] == f'peers: claude config unreadable: {p}'

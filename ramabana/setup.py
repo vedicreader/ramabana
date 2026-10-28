@@ -714,7 +714,7 @@ def _flags(argv):
 
 def setup_cli(argv=(), ask=input, isatty=None, out=print):
     "`ramabana setup peers` installs the peer hooks; `ramabana setup`: add a provider's model to config.toml, as the turn when no model runs here yet (`--jobs` names others). Asks only on a terminal; never writes a key."
-    if argv[:1] == ['peers']: return setup_peers(argv[1:], ask, out)
+    if list(argv[:1]) == ['peers']: return setup_peers(argv[1:], ask, out)
     from ramabana.core import AZURE_KEY_ENV, JOBS, PROVIDERS, azure_base, needs_setup, provider_ready, ready_turn, setup_guide
     f = _flags(argv)
     if f is None: print(SETUP_USAGE, file=sys.stderr); return 2
@@ -915,7 +915,10 @@ def last_index(cfg):
 PEER_CMD = 'ramabana peer-hook'
 PEER_START, PEER_END = '<!-- ramabana peer-work start -->', '<!-- ramabana peer-work end -->'
 
-def _ours(g): return any(h.get('command', '').startswith(PEER_CMD) for h in g.get('hooks', []))
+def _ours(g):
+    "Whether hook group `g` runs our command; an entry of any other shape is not ours."
+    hs = g.get('hooks') if isinstance(g, dict) else None
+    return isinstance(hs, list) and any(isinstance(h, dict) and isinstance(c := h.get('command'), str) and c.startswith(PEER_CMD) for h in hs)
 
 def merge_hooks(cfg, block):
     "`cfg` with our hook groups set to `block` (by event) where ours stood; empty `block` removes them."
@@ -948,11 +951,11 @@ import argparse
 def _at(home, path): return Path(home)/path.removeprefix('~/')
 
 def _read_json(p):
-    "The hooks config in `p`, `{}` when there is none; a ValueError names `p` when it is not a JSON object of hook groups."
+    "The hooks config in `p`, `{}` when there is none; a ValueError names `p` when it is not a JSON object with lists of hook groups."
     try: cfg = json.loads(p.read_text() or '{}') if p.exists() else {}
     except ValueError: cfg = None
     hooks = cfg.get('hooks', {}) if isinstance(cfg, dict) else None
-    if not isinstance(hooks, dict) or not all(isinstance(g, dict) for v in hooks.values() if isinstance(v, list) for g in v) or not all(isinstance(v, list) for v in hooks.values()):
+    if not isinstance(hooks, dict) or not all(isinstance(v, list) for v in hooks.values()):
         raise ValueError(f'{p} is not valid JSON with a hooks table')
     return cfg
 
@@ -963,10 +966,11 @@ def _plan(ad, home, remove):
     from ramabana.peer_hooks import hook_block
     cp, sp = _at(home, ad.config), _at(home, ad.skill_path)
     cfg = _read_json(cp)
-    after = json.dumps(merge_hooks(cfg, {} if remove else hook_block(ad.kind)), indent=2, ensure_ascii=False) + '\n'
+    merged, now, cnow = merge_hooks(cfg, {} if remove else hook_block(ad.kind)), _text(sp), _text(cp)
+    after = cnow if merged == cfg and cp.exists() else json.dumps(merged, indent=2, ensure_ascii=False) + '\n'
     now = _text(sp)
     sk = _section(now or '', '' if remove else peer_skill('codex')) if ad.kind == 'codex' else None if remove else peer_skill('claude')
-    return [(cp, _text(cp), None if remove and not cp.exists() else after), (sp, now, sk if sk and sk.strip() else None)]
+    return [(cp, cnow, None if remove and not cp.exists() else after), (sp, now, sk if sk and sk.strip() else None)]
 
 def _diff(p, now, after):
     "The unified diff from text `now` to text `after` of `p`."
@@ -978,7 +982,7 @@ def _write(p, text):
         p.unlink(missing_ok=True)
         with suppress(OSError): p.parent.rmdir()
         return
-    p.parent.mkdir(parents=True, exist_ok=True); p.write_text(text)
+    _replace(p, text)
 
 def setup_peers(argv, ask=input, out=print, home=None):
     "`ramabana setup peers [--agent claude|codex|all] [--remove] [--yes]`: show each file's diff, write after a yes; 0, or 1 when something was refused."
@@ -1004,11 +1008,12 @@ def setup_peers(argv, ask=input, out=print, home=None):
 def peers_status(home=None):
     "One line for each agent: whether its config has the peer hooks, or how to install them."
     from ramabana.peer_hooks import ADAPTERS, hook_block
-    def ok(ad):
-        try: cfg = _read_json(_at(home or Path.home(), ad.config))
-        except ValueError: return False
-        return merge_hooks(cfg, hook_block(ad.kind)) == cfg
-    return [f'peers: {k} hooks installed' if ok(ad) else f'peers: {k} hooks not installed: run ramabana setup peers --agent {k}' for k, ad in ADAPTERS.items()]
+    def line(k, ad):
+        p = _at(home or Path.home(), ad.config)
+        try: cfg = _read_json(p)
+        except ValueError: return f'peers: {k} config unreadable: {p}'
+        return f'peers: {k} hooks installed' if merge_hooks(cfg, hook_block(k)) == cfg else f'peers: {k} hooks not installed: run ramabana setup peers --agent {k}'
+    return [line(k, ad) for k, ad in ADAPTERS.items()]
 
 # %% ../nbs/19_setup.ipynb #883f4a12
 @patch
