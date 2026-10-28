@@ -6,7 +6,7 @@ Docs: https://vedicreader.github.io/ramabana/peer_report.html.md"""
 
 # %% auto #0
 __all__ = ['REFUSAL', 'NO_ASK', 'COLS', 'GLOSSARY', 'TODO', 'SUMMARY_SP', 'MISSING', 'threads', 'checked_changes', 'table',
-           'glossary', 'derived_actions', 'summarise', 'report', 'save_report', 'report_cli']
+           'glossary', 'derived_actions', 'summarise', 'report', 'report_path', 'save_report', 'report_cli']
 
 # %% ../nbs/26_peer_report.ipynb #1e2e5dff
 import argparse, re, subprocess, sys, time
@@ -137,10 +137,13 @@ def report(since, cfg=None, agent=None, summary=None):
     return f"# Night of {datetime.fromtimestamp(since):%Y-%m-%d}\n\n{body}\n\n## Glossary\n\n{glossary(body)}\n"
 
 # %% ../nbs/26_peer_report.ipynb #2f316937
+def report_path(since, cfg=None):
+    "The file in the reports folder for the report since `since`."
+    return peers_dir(cfg)/'reports'/f'{datetime.fromtimestamp(since):%Y-%m-%d-%H%M}.md'
+
 def save_report(since, cfg=None, summary=None):
     "Write the report since `since` to the reports folder; a file with examples and newer than the whole log is kept."
-    d = peers_dir(cfg)
-    p = d/'reports'/f'{datetime.fromtimestamp(since):%Y-%m-%d-%H%M}.md'
+    d, p = peers_dir(cfg), report_path(since, cfg)
     if p.exists() and MISSING not in p.read_text() and not read_log(d, p.stat().st_mtime): return p
     p.parent.mkdir(exist_ok=True)
     p.write_text(report(since, cfg, summary=summary))

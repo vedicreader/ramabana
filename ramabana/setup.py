@@ -215,6 +215,9 @@ def run_cli():
     "The `ramabana` script: rerun inside tmux before anything heavy loads, then parse the command line for `cli.main`."
     global LAUNCHED, CLI_FROM_CONFIG
     CLI_FROM_CONFIG = ()
+    if sys.argv[1:2] == ['peer-hook']:
+        from ramabana import peer_hooks
+        return peer_hooks.main(sys.argv[2:])
     load_keys()
     if sys.argv[1:2] == ['config']: return config_cli(sys.argv[2:])
     if sys.argv[1:2] == ['setup']: return setup_cli(sys.argv[2:])
