@@ -6,8 +6,8 @@ Docs: https://vedicreader.github.io/ramabana/control.html.md"""
 
 # %% auto #0
 __all__ = ['CONTROL', 'METHODS', 'SOCKET_MAX', 'REQUEST_MAX', 'EVENTS_MAX', 'EVENT_FILE', 'PEER_WAIT', 'control_path', 'ago',
-           'pick_row', 'session_name', 'Control', 'control_call', 'peers_of', 'peer_lines', 'peer_label', 'find_peer',
-           'events_end', 'carries', 'await_reply', 'peer_tools']
+           'pick_row', 'session_name', 'Control', 'peers_of', 'peer_lines', 'peer_label', 'find_peer', 'events_end',
+           'carries', 'await_reply', 'peer_tools']
 
 # %% ../nbs/20_control.ipynb #f32d5009
 import json, os, socket, socketserver, stat, tempfile, threading, time
@@ -16,6 +16,7 @@ from pathlib import Path
 from shalya import acts, err
 from .core import agent_err
 from .agent import TurnResult, model_title
+from .peers import control_call
 
 # %% ../nbs/20_control.ipynb #9c6353b2
 CONTROL = 'control.sock'   #: in a session's run folder: the socket `Control` listens on
@@ -159,17 +160,6 @@ class Control:
             data = f.read(EVENTS_MAX)
         cut = data.rfind(b'\n') + 1   # whole lines only: one still being written waits for the next read
         return {'events': [json.loads(l) for l in data[:cut].splitlines() if l.strip()], 'offset': offset + cut, 'rotated': rotated}
-
-
-def control_call(path, method, timeout=30, **params):
-    "Send one request to the `Control` socket at `path` and return its `result`; an error reply raises `RuntimeError`."
-    with socket.socket(socket.AF_UNIX) as s:
-        s.settimeout(timeout)
-        s.connect(str(path))
-        s.sendall((json.dumps({'id': 1, 'method': method, 'params': params}) + '\n').encode())
-        out = json.loads(s.makefile('rb').readline())
-    if 'error' in out: raise RuntimeError(out['error']['message'])
-    return out['result']
 
 # %% ../nbs/20_control.ipynb #c74ae65b
 PEER_WAIT = 2   #: seconds a peer has to answer `status` before `peers_of` leaves it out
