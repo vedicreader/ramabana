@@ -1,5 +1,5 @@
 "A Ramabana session takes notes, asks and replies from peers: a note joins the turn, an ask asks the user or runs in work together mode, and the reply goes back."
-import asyncio, os, tempfile, threading, time
+import asyncio, os, subprocess, tempfile, threading, time
 from pathlib import Path
 
 import pytest
@@ -10,7 +10,7 @@ import ramabana.cli as cli
 import ramabana.control as control
 from ramabana.agent import Approvals
 from ramabana.control import Control, control_call, peer_tools, self_frm
-from ramabana.peers import HOP_MAX, PEER_BUDGET, PEER_NOTE, TOGETHER_HOURS, Envelope, answer, log, peers_dir, post, register, take, together_on, together_state
+from ramabana.peers import HOP_MAX, PEER_BUDGET, PEER_NOTE, TOGETHER_HOURS, Envelope, answer, folder_denial, log, peers_dir, post, register, take, together_on, together_state
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 from ramabana.tools import WRITE_TOOLS, failed
 
@@ -169,13 +169,36 @@ def test_pending_ask_survives_restart(cfg):
     finally: ctl2.close()
 
 
-def test_guard_refuses_other_sessions_folder(cfg):
+def test_guard_refuses_other_sessions_folder(cfg, tmp_path):
     agent, _ = fake_agent(cfg=cfg, host=MemHost({'/r/abhyasa/a.py': 'x = 1\n'}, root='/mine'))
     out = {f.__name__: f for f in agent.tools}['replace_text']('/r/abhyasa/a.py', [{'oldText': 'x = 1', 'newText': 'x = 2'}])
     assert failed(out) and 'abhyasa · claude' in out and '/r/abhyasa/a.py' in out, out
-    shared, _ = fake_agent(cfg=cfg, host=MemHost({'/r/abhyasa/a.py': 'x = 1\n'}, root='/r/abhyasa'))
-    out = {f.__name__: f for f in shared.tools}['replace_text']('/r/abhyasa/a.py', [{'oldText': 'x = 1', 'newText': 'x = 2'}])
-    assert not failed(out), 'a folder both sessions hold is open to both'
+    repo = _git_repo(tmp_path/'abhyasa')
+    register(peers_dir(cfg), 'claude', 's2', [repo], os.getpid(), guard=[repo])
+    shared, _ = fake_agent(cfg=cfg, host=MemHost({f'{repo}/a.py': 'x = 1\n'}, root=repo))
+    out = {f.__name__: f for f in shared.tools}['replace_text'](f'{repo}/a.py', [{'oldText': 'x = 1', 'newText': 'x = 2'}])
+    assert not failed(out), 'a git folder both sessions hold is open to both'
+
+
+def _git_repo(p):
+    "A new git repo at `p`, as its resolved path."
+    p.mkdir(parents=True)
+    subprocess.run(['git', 'init', '-q', str(p)], check=True)
+    return str(p.resolve())
+
+
+def test_ramabana_outside_git_guards_nothing(cfg, tmp_path):
+    (plain := tmp_path/'notes').mkdir()
+    row = Control(fake_agent(cfg=cfg, host=MemHost({}, root=str(plain)))[0]).do_status()
+    claude = {'key': 'claude-s9', 'folders': ['/elsewhere'], 'guard': []}
+    assert row['guard'] == [] and folder_denial(plain/'a.py', 'claude-s9', [row, claude]) is None
+
+
+def test_ramabana_in_git_repo_guards_it(cfg, tmp_path):
+    repo = _git_repo(tmp_path/'leela')
+    row = Control(fake_agent(cfg=cfg, host=MemHost({}, root=repo))[0]).do_status()
+    claude = {'key': 'claude-s9', 'folders': ['/elsewhere'], 'guard': []}
+    assert row['guard'] == [repo] and 'belongs to' in folder_denial(f'{repo}/a.py', 'claude-s9', [row, claude])
 
 
 def test_tell_tool_sends_ask_envelope(cfg):

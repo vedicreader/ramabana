@@ -17,7 +17,7 @@ from fastcore.basics import patch
 from shalya import acts, err
 from .core import agent_err
 from .agent import TurnResult, model_title
-from .peers import (CONTROL, Envelope, _atomic_write, _rows, all_peers, answer, control_call, is_partner, limit_refusal, next_hops, peer_lines, peer_text,
+from .peers import (CONTROL, Envelope, _atomic_write, _rows, all_peers, answer, control_call, guard_of, is_partner, limit_refusal, next_hops, peer_lines, peer_text,
                             peers_dir, take, together_off, together_state, tell as send)
 from .peer_report import save_report
 
@@ -155,7 +155,7 @@ class Control:
         return {'running': running, 'queued': queued, 'session': self.agent.session_id,
                 'last': asdict(self.last) if self.last is not None else None,
                 'name': session_name(self.agent, at), 'folder': roots[0] if roots else '', 'at': at,
-                'kind': 'ramabana', 'key': f'ramabana-{self.agent.session_id}', 'folders': roots, 'approve': ap.mode if ap is not None else '',
+                'kind': 'ramabana', 'key': f'ramabana-{self.agent.session_id}', 'folders': roots, 'guard': guard_of(roots), 'approve': ap.mode if ap is not None else '',
                 'state': 'waiting for approval' if ap is not None and ap.waiting else 'working' if running else 'idle'}
 
     def do_events(self, offset=0):

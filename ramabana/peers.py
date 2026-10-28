@@ -7,14 +7,15 @@ Docs: https://vedicreader.github.io/ramabana/peers.html.md"""
 # %% auto #0
 __all__ = ['HOP_MAX', 'PEER_BUDGET', 'TOGETHER_HOURS', 'CONTROL', 'PEER_ASK', 'PEER_NOTE', 'peers_dir', 'Envelope', 'log',
            'read_log', 'post', 'take', 'wait_take', 'pid_alive', 'register', 'unregister', 'registered', 'agent_pid',
-           'git_top', 'git_root', 'add_folder', 'together_on', 'together_off', 'together_state', 'together_end',
-           'is_partner', 'limit_refusal', 'match_peer', 'folder_denial', 'split_proof', 'control_call', 'socket_peers',
-           'all_peers', 'peer_lines', 'me', 'answer', 'next_hops', 'tell', 'peer_text', 'peers_cli']
+           'git_top', 'git_root', 'guard_of', 'add_folder', 'together_on', 'together_off', 'together_state',
+           'together_end', 'is_partner', 'limit_refusal', 'match_peer', 'folder_denial', 'split_proof', 'control_call',
+           'socket_peers', 'all_peers', 'peer_lines', 'me', 'answer', 'next_hops', 'tell', 'peer_text', 'peers_cli']
 
 # %% ../nbs/23_peers.ipynb #d3f55a39
 import argparse, fcntl, json, os, re, socket, subprocess, sys, tempfile, time, uuid
 from dataclasses import dataclass, field, asdict, fields
 from contextlib import suppress
+from functools import cache
 from datetime import datetime, timedelta
 from pathlib import Path
 from fastcore.basics import ifnone
@@ -187,6 +188,14 @@ def git_top(path):
 def git_root(path):
     "The git top folder of `path`, else `path` resolved."
     return git_top(path) or str(Path(path).resolve())
+
+@cache
+def _tops(folders): return tuple(dict.fromkeys(filter(None, map(git_top, folders))))
+
+def guard_of(folders):
+    "The folders a session in `folders` guards: the git top folder of each one in git, without `$HOME` and the folders above it. Kept per process."
+    home = Path.home().resolve()
+    return [t for t in _tops(tuple(map(str, folders))) if not home.is_relative_to(t)]
 
 def add_folder(d, key, path):
     "Add the folder `path` to the `folders` and `guard` of registration `key`; returns the new row."

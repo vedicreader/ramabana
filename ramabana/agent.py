@@ -47,7 +47,7 @@ from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, Too
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background, Slots, SUB_MAX_STEPS, SUB_STEP_CEILING, SUB_TIMEOUT, SUB_READ_ONLY, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
 from .monitor import _counts, _rel, Monitors, POB_READER, beat_notes, beat_notice, beat_problems, pob, pob_path, review_notice
-from .peers import all_peers, folder_denial, peer_text
+from .peers import all_peers, folder_denial, guard_of, peer_text
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
 MAX_DETAIL = 4000     # chars of a result kept for the fold
@@ -1790,7 +1790,7 @@ def peer_denial(self:Agent, name, args):
     if time.monotonic() - self._peer_rows_at > PEER_ROWS_EVERY:
         self._peer_rows, self._peer_rows_at = all_peers(self.cfg, self.session_id, PEER_ROWS_WAIT), time.monotonic()
     me = f'ramabana-{self.session_id}'
-    rows = [*self._peer_rows, {'key': me, 'folders': [str(r) for r in self.host.roots]}]
+    rows = [*self._peer_rows, {'key': me, 'folders': [str(r) for r in self.host.roots], 'guard': guard_of(self.host.roots)}]
     return next(filter(None, (folder_denial(_full(self.host, p), me, rows) for p in paths)), '')
 
 @patch

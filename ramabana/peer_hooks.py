@@ -13,7 +13,7 @@ import fcntl, json, os, re, shlex, subprocess, sys, time, traceback
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
-from .peers import (agent_pid, all_peers, answer, folder_denial, git_top, is_partner, limit_refusal, log, peer_lines, peer_text, peers_dir,
+from .peers import (agent_pid, all_peers, answer, folder_denial, git_root, guard_of, is_partner, limit_refusal, log, peer_lines, peer_text, peers_dir,
                             pid_alive, post, register, take, together_end, together_off, together_state, unregister, wait_take)
 from .peer_report import report_path
 
@@ -88,8 +88,7 @@ NO_SESSION_ENV = 'Your agent does not give your session id to commands. Add `--s
 def _start(ad, d, data, cfg):
     "Register the session, with its git root as the folder it guards, and brief the agent."
     cwd = data.get('cwd') or '.'
-    top = git_top(cwd)
-    row = register(d, ad.kind, data['session_id'], [top or str(Path(cwd).resolve())], agent_pid(), guard=[top] if top else [], wakes=ad.wakes)
+    row = register(d, ad.kind, data['session_id'], [git_root(cwd)], agent_pid(), guard=guard_of([cwd]), wakes=ad.wakes)
     text = BRIEF.format(name=row['name'], key=row['key'], peers=peer_lines(all_peers(cfg, exclude=row['key'], timeout=1)) or 'none', s=_flag(ad, data))
     return _context('SessionStart', text + ('' if ad.session_env else '\n' + NO_SESSION_ENV.format(session=data['session_id'])))
 
