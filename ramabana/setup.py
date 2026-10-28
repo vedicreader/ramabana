@@ -7,8 +7,9 @@ Docs: https://vedicreader.github.io/ramabana/setup.html.md"""
 # %% ../nbs/19_setup.ipynb #6c9acc6f
 from __future__ import annotations
 
-import hashlib, importlib, importlib.util, json, os, platform, re, shlex, shutil, subprocess, sys, time, uuid
+import difflib, hashlib, importlib, importlib.util, json, os, platform, re, shlex, shutil, subprocess, sys, time, uuid
 
+from contextlib import suppress
 from fastcore.basics import ifnone, patch, store_attr
 from fastcore.xtras import Path
 
@@ -18,12 +19,13 @@ __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN'
            'EARLY', 'FLAGS', 'LAUNCHED', 'CLI_FROM_CONFIG', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'PANE_LINGER',
            'THEME_NAMES', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE',
            'SETUP_USAGE', 'HISTORY_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP',
-           'env_prefixes', 'installed', 'need', 'follow_cmd', 'tmux_version', 'tmux_conf', 'Setup', 'refusal',
-           'launch_args', 'bare_resume', 'run_cli', 'config_path', 'keys_path', 'load_keys', 'save_key', 'load_config',
-           'setting', 'model_setting', 'env_names', 'set_setting', 'set_table', 'config_defaults', 'config_template',
-           'config_show', 'config_set', 'config_cli', 'config_reset', 'history_cli', 'setup_cli', 'kosha_env_db',
-           'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate', 'save_index', 'log_index',
-           'last_index']
+           'PEER_CMD', 'PEER_START', 'PEER_END', 'env_prefixes', 'installed', 'need', 'follow_cmd', 'tmux_version',
+           'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path', 'keys_path',
+           'load_keys', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting', 'set_table',
+           'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset',
+           'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
+           'index_gate', 'save_index', 'log_index', 'last_index', 'merge_hooks', 'peer_skill', 'setup_peers',
+           'peers_status']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -643,7 +645,7 @@ def config_set(key, raw, path=None):
         from ramabana.core import forget_forced_tags
         forget_forced_tags()
     return f'{shown} = {_toml(v)}'
-SETUP_USAGE = 'usage: ramabana setup [--provider P --name N --model-id M --endpoint URL --region R --key-env VAR --api-name A --jobs turn,summary]'
+SETUP_USAGE = 'usage: ramabana setup [--provider P --name N --model-id M --endpoint URL --region R --key-env VAR --api-name A --jobs turn,summary] | ramabana setup peers [--agent claude|codex|all] [--remove] [--yes]'
 
 def config_cli(argv=()):
     "`ramabana config`: `show` what is in effect, `init` a commented config.toml, print its `path`, `set` one key, or list the `models`."
@@ -711,7 +713,8 @@ def _flags(argv):
     return out
 
 def setup_cli(argv=(), ask=input, isatty=None, out=print):
-    "`ramabana setup`: add a provider's model to config.toml, as the turn when no model runs here yet (`--jobs` names others). Asks only on a terminal; never writes a key."
+    "`ramabana setup peers` installs the peer hooks; `ramabana setup`: add a provider's model to config.toml, as the turn when no model runs here yet (`--jobs` names others). Asks only on a terminal; never writes a key."
+    if argv[:1] == ['peers']: return setup_peers(argv[1:], ask, out)
     from ramabana.core import AZURE_KEY_ENV, JOBS, PROVIDERS, azure_base, needs_setup, provider_ready, ready_turn, setup_guide
     f = _flags(argv)
     if f is None: print(SETUP_USAGE, file=sys.stderr); return 2
@@ -908,6 +911,105 @@ def last_index(cfg):
     try: return (Path(cfg)/KOSHA_LOG).read_text().splitlines()[-1]
     except (OSError, IndexError): return ''
 
+# %% ../nbs/19_setup.ipynb #61cafae5
+PEER_CMD = 'ramabana peer-hook'
+PEER_START, PEER_END = '<!-- ramabana peer-work start -->', '<!-- ramabana peer-work end -->'
+
+def _ours(g): return any(h.get('command', '').startswith(PEER_CMD) for h in g.get('hooks', []))
+
+def merge_hooks(cfg, block):
+    "`cfg` with our hook groups set to `block` (by event) where ours stood; empty `block` removes them."
+    hooks, new = cfg.get('hooks', {}), {}
+    for ev in dict.fromkeys([*hooks, *block]):
+        old = hooks.get(ev, [])
+        k = sum(not _ours(g) for g in old[:next((i for i, g in enumerate(old) if _ours(g)), len(old))])
+        rest = [g for g in old if not _ours(g)]
+        if groups := rest[:k] + block.get(ev, []) + rest[k:]: new[ev] = groups
+    return {**cfg, 'hooks': new} if new else {k: v for k, v in cfg.items() if k != 'hooks'}
+
+# %% ../nbs/19_setup.ipynb #57d40267
+def peer_skill(kind):
+    "The peer-work text for agent `kind`: a Claude Code skill file, or the marked section of Codex's `AGENTS.md`."
+    from ramabana import peer_work
+    doc = inspect.cleandoc(peer_work.__doc__).rsplit('\n\nDocs:', 1)[0]
+    if kind == 'claude': return f"---\nname: peer-work\ndescription: {doc.splitlines()[0]}\n---\n\n{doc}\n"
+    return f'{PEER_START}\n## Peer work\n\n{doc}\n{PEER_END}\n'
+
+def _section(text, new):
+    "`text` with our marked section set to `new`, or removed when `new` is ''."
+    mark = f'{re.escape(PEER_START)}.*?{re.escape(PEER_END)}\\n?'
+    if not new: return re.sub(rf'(?:(?<=\n)\n)?{mark}', '', text, flags=re.S)
+    if re.search(mark, text, re.S): return re.sub(mark, lambda m: new, text, count=1, flags=re.S)
+    return text + ('\n' if text.endswith('\n') else '\n\n' if text else '') + new
+
+# %% ../nbs/19_setup.ipynb #ef7c5a96
+import argparse
+
+def _at(home, path): return Path(home)/path.removeprefix('~/')
+
+def _read_json(p):
+    "The hooks config in `p`, `{}` when there is none; a ValueError names `p` when it is not a JSON object of hook groups."
+    try: cfg = json.loads(p.read_text() or '{}') if p.exists() else {}
+    except ValueError: cfg = None
+    hooks = cfg.get('hooks', {}) if isinstance(cfg, dict) else None
+    if not isinstance(hooks, dict) or not all(isinstance(g, dict) for v in hooks.values() if isinstance(v, list) for g in v) or not all(isinstance(v, list) for v in hooks.values()):
+        raise ValueError(f'{p} is not valid JSON with a hooks table')
+    return cfg
+
+def _text(p): return p.read_text() if p.exists() else None
+
+def _plan(ad, home, remove):
+    "The changes for agent `ad`: `(path, text now, text after)` for each file; a ValueError names a config that is not valid."
+    from ramabana.peer_hooks import hook_block
+    cp, sp = _at(home, ad.config), _at(home, ad.skill_path)
+    cfg = _read_json(cp)
+    after = json.dumps(merge_hooks(cfg, {} if remove else hook_block(ad.kind)), indent=2, ensure_ascii=False) + '\n'
+    now = _text(sp)
+    sk = _section(now or '', '' if remove else peer_skill('codex')) if ad.kind == 'codex' else None if remove else peer_skill('claude')
+    return [(cp, _text(cp), None if remove and not cp.exists() else after), (sp, now, sk if sk and sk.strip() else None)]
+
+def _diff(p, now, after):
+    "The unified diff from text `now` to text `after` of `p`."
+    return '\n'.join(difflib.unified_diff((now or '').splitlines(), (after or '').splitlines(), f'{p} (now)', f'{p} (after)', lineterm=''))
+
+def _write(p, text):
+    "Write `text` to `p`, making its folders; delete `p` when `text` is None."
+    if text is None:
+        p.unlink(missing_ok=True)
+        with suppress(OSError): p.parent.rmdir()
+        return
+    p.parent.mkdir(parents=True, exist_ok=True); p.write_text(text)
+
+def setup_peers(argv, ask=input, out=print, home=None):
+    "`ramabana setup peers [--agent claude|codex|all] [--remove] [--yes]`: show each file's diff, write after a yes; 0, or 1 when something was refused."
+    from ramabana.peer_hooks import ADAPTERS
+    a = argparse.ArgumentParser(prog='ramabana setup peers')
+    a.add_argument('--agent', choices=[*ADAPTERS, 'all'], default='all'); a.add_argument('--remove', action='store_true'); a.add_argument('--yes', action='store_true')
+    a = a.parse_args(argv)
+    home, code = home or Path.home(), 0
+    for ad in (ADAPTERS.values() if a.agent == 'all' else [ADAPTERS[a.agent]]):
+        try: todo = [c for c in _plan(ad, home, a.remove) if c[1] != c[2]]
+        except ValueError as e: out(f'{ad.kind}: {e}; nothing written for {ad.kind}'); code = 1; continue
+        if not todo: out(f'{ad.kind}: up to date, nothing to change'); continue
+        for p, now, after in todo: out(_diff(p, now, after))
+        try: yes = a.yes or ask('Write these changes? [y/N] ').strip().lower() in ('y', 'yes')
+        except (EOFError, KeyboardInterrupt): yes = False
+        if not yes: out(f'{ad.kind}: nothing written'); code = 1; continue
+        for p, _, after in todo: _write(p, after)
+        out(f'{ad.kind}: wrote {", ".join(str(p) for p, *_ in todo)}')
+        if ad.kind == 'codex' and not a.remove: out('Codex will ask you to trust the new hooks the next time it starts.')
+    return code
+
+# %% ../nbs/19_setup.ipynb #01566d29
+def peers_status(home=None):
+    "One line for each agent: whether its config has the peer hooks, or how to install them."
+    from ramabana.peer_hooks import ADAPTERS, hook_block
+    def ok(ad):
+        try: cfg = _read_json(_at(home or Path.home(), ad.config))
+        except ValueError: return False
+        return merge_hooks(cfg, hook_block(ad.kind)) == cfg
+    return [f'peers: {k} hooks installed' if ok(ad) else f'peers: {k} hooks not installed: run ramabana setup peers --agent {k}' for k, ad in ADAPTERS.items()]
+
 # %% ../nbs/19_setup.ipynb #883f4a12
 @patch
 def doctor(self:Setup):
@@ -921,7 +1023,7 @@ def doctor(self:Setup):
           f'config: {conf}' + ('' if conf.exists() else ', written by the first session'),
           f'ramabana-pane: {pane}' if pane else 'ramabana-pane: not on PATH; the pane runs python -m ramabana.pane',
           f"extras: {', '.join(miss)} missing: pip install 'ramabana[{','.join(miss)}]'" if miss else 'extras: all installed',
-          f'kosha: {last_index(self.cfg) or f"no decision yet; the first session writes {self.cfg/KOSHA_LOG}"}', sep='\n')
+          f'kosha: {last_index(self.cfg) or f"no decision yet; the first session writes {self.cfg/KOSHA_LOG}"}', *peers_status(self.environ.get('HOME')), sep='\n')
     from ramabana.core import checklist, getting_started
     print('', 'getting started:', checklist(getting_started()), sep='\n')
     if not v: self.offer_install(force=True)
