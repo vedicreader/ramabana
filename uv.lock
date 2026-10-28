@@ -12,6 +12,29 @@ resolution-markers = [
 overrides = [{ name = "python-fastllm", specifier = ">=0.0.45" }]
 
 [[package]]
+name = "abhyasa"
+version = "0.0.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fastcore" },
+    { name = "ipywidgets" },
+    { name = "python-fasthtml" },
+    { name = "rishi" },
+    { name = "rupaka" },
+    { name = "vidyut" },
+    { name = "vishalakshi" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/05/aa/762c090d0d933eca4b9c1fb7a33764bafffa5ce3e069acff7d220a72c2a1/abhyasa-0.0.10.tar.gz", hash = "sha256:b70eae0e81c42864f3a08c551c08a583ef58dad48ddb4d4c04a0ef0281bdcb1a", size = 1068209, upload-time = "2026-10-27T02:11:52.995Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/d2/7e8bbb404b0b5a0f710d383604ef99ef35ec3b7adcd9b0b906fe1820ed43/abhyasa-0.0.10-py3-none-any.whl", hash = "sha256:20d98bb580653adc5cc36f869c7fcbdb32d972cce0e6073f76f188e3d0db6bc2", size = 1109637, upload-time = "2026-10-27T02:11:50.942Z" },
+]
+
+[package.optional-dependencies]
+tick = [
+    { name = "pobblebonk" },
+]
+
+[[package]]
 name = "adhara"
 version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1704,6 +1727,22 @@ wheels = [
 ]
 
 [[package]]
+name = "ipywidgets"
+version = "8.1.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "comm" },
+    { name = "ipython" },
+    { name = "jupyterlab-widgets" },
+    { name = "traitlets" },
+    { name = "widgetsnbextension" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c9/7c/6db60eddf38547353b06d57941f5eee22a990640ce30479fd71a810507f2/ipywidgets-8.1.9.tar.gz", hash = "sha256:bcccba38a6ec3253f7a39c943cea5b9ad01999ce071396171adbc51c6a6a8613", size = 117252, upload-time = "2026-08-18T08:54:24.123Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c3/55/298e9b3b864a198234997e87a1471c1b17d7f3546ace6d18fb5cf1ce24b2/ipywidgets-8.1.9-py3-none-any.whl", hash = "sha256:f2b8cbcaae10252b809fbe4d7470db75c09b769a32cbf816d20e5ca6d3c5a79d", size = 140101, upload-time = "2026-08-18T08:54:22.339Z" },
+]
+
+[[package]]
 name = "isoduration"
 version = "20.11.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1971,6 +2010,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d6/2c/90153f189e421e93c4bb4f9e3f59802a1f01abd2ac5cf40b152d7f735232/jupyterlab_server-2.28.0.tar.gz", hash = "sha256:35baa81898b15f93573e2deca50d11ac0ae407ebb688299d3a5213265033712c", size = 76996, upload-time = "2025-10-22T13:59:18.37Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/07/a000fe835f76b7e1143242ab1122e6362ef1c03f23f83a045c38859c2ae0/jupyterlab_server-2.28.0-py3-none-any.whl", hash = "sha256:e4355b148fdcf34d312bbbc80f22467d6d20460e8b8736bf235577dd18506968", size = 59830, upload-time = "2025-10-22T13:59:16.767Z" },
+]
+
+[[package]]
+name = "jupyterlab-widgets"
+version = "3.0.17"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/8b/e739cf9066ad5037a2d4b0a403f06da374fdccb9748221661c8b492d3dbc/jupyterlab_widgets-3.0.17.tar.gz", hash = "sha256:6e61fe21ca8a66039180a5cc52a433e07279d2fee79c8be963e00d55193f17a8", size = 213919, upload-time = "2026-08-18T08:52:17.511Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/ef/6d27fc118f58cb24886da413545a7efb0853d405fddbfd8b2d9ac09fbed4/jupyterlab_widgets-3.0.17-py3-none-any.whl", hash = "sha256:40ac1e9955acf116c4d995d9bfa082d86ad9ec6d91c4f134827cf5e0a5eb75e0", size = 217292, upload-time = "2026-08-18T08:52:15.47Z" },
 ]
 
 [[package]]
@@ -3341,15 +3389,15 @@ wheels = [
 
 [[package]]
 name = "pobblebonk"
-version = "0.0.5"
+version = "0.0.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastcore" },
     { name = "honker" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/96/6c/751023bf7bc650360fb2f4827d94d4c1aac72147cfd1dd90948827876780/pobblebonk-0.0.5.tar.gz", hash = "sha256:61b96f40f5259338b94230512822846f45764adffddef3c404768cb5d43eac16", size = 15581, upload-time = "2026-10-20T05:33:18.02Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0c/15/26c16ab7f09a06c4c5c4fc9465dcd527a8666a3a1fd781323f8d36261a0e/pobblebonk-0.0.6.tar.gz", hash = "sha256:c0310a21b7c0c3432c8f824e06ed4b601eae4c8dad08aebcfd3e04073af213d7", size = 15603, upload-time = "2026-10-26T05:34:21.737Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/bf/64e804e61a57dcabaf0d7988e7668144addb1b7cd29f48ec0f9abe69ded7/pobblebonk-0.0.5-py3-none-any.whl", hash = "sha256:93e30ae142a627acf4a94b82d965682ff7a96ad4b4531697a885a7db4882bb92", size = 17175, upload-time = "2026-10-20T05:33:16.667Z" },
+    { url = "https://files.pythonhosted.org/packages/02/af/903f61e5794e07c7acc7d7c5fbe56e5ef51199d8f478971719995a02d9d6/pobblebonk-0.0.6-py3-none-any.whl", hash = "sha256:d56a38041cac7539e0f65377e009db43749bfd1df5efea11d8d5480f049cf195", size = 17199, upload-time = "2026-10-26T05:34:20.244Z" },
 ]
 
 [[package]]
@@ -3932,6 +3980,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+abhyasa = [
+    { name = "abhyasa", extra = ["tick"] },
+]
 all = [
     { name = "agent-client-protocol" },
     { name = "dhrishti" },
@@ -4012,6 +4063,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "abhyasa", extras = ["tick"], marker = "extra == 'abhyasa'", specifier = ">=0.0.10" },
     { name = "agent-client-protocol", marker = "extra == 'all'", specifier = ">=0.12.1" },
     { name = "agent-client-protocol", marker = "extra == 'dev'", specifier = ">=0.12.1" },
     { name = "agent-client-protocol", marker = "extra == 'serve'", specifier = ">=0.12.1" },
@@ -4068,7 +4120,7 @@ requires-dist = [
     { name = "rich", marker = "extra == 'python'", specifier = ">=15.0.0" },
     { name = "rishi", specifier = ">=0.1.56" },
     { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.56" },
-    { name = "shalya", specifier = ">=0.1.22" },
+    { name = "shalya", specifier = ">=0.1.23" },
     { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.21" },
     { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.21" },
     { name = "shalya", extras = ["tmux"], marker = "extra == 'dev'", specifier = ">=0.1.21" },
@@ -4081,7 +4133,7 @@ requires-dist = [
     { name = "vishalakshi", marker = "extra == 'dev'", specifier = ">=0.1.35" },
     { name = "vishalakshi", marker = "extra == 'search'", specifier = ">=0.1.35" },
 ]
-provides-extras = ["all", "cli", "dev", "dhrona", "python", "search", "serve"]
+provides-extras = ["abhyasa", "all", "cli", "dev", "dhrona", "python", "search", "serve"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "ramabana", extras = ["dev"] }]
@@ -4364,6 +4416,18 @@ wheels = [
 ]
 
 [[package]]
+name = "rupaka"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fastcore" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/92/6a/e92e0d8ad1e73137d702bb96268ba3dd7a5e2e0d8af01ffad9c6b7e955eb/rupaka-0.0.1.tar.gz", hash = "sha256:832f670e2a4626319018a5d11901213f9aef7f7d690891552bf140252034049c", size = 290285, upload-time = "2026-10-26T00:54:37.701Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/f1/ff44d254de23192343782bd91039a0b0d0e8af59a5e9ff74de00b5c074a8/rupaka-0.0.1-py3-none-any.whl", hash = "sha256:6deef0ff9ea6b6c182bcb046ac2f74f5535da2213044ef25d546c6286b567b9d", size = 317631, upload-time = "2026-10-26T00:54:35.892Z" },
+]
+
+[[package]]
 name = "safepyrun"
 version = "0.2.7"
 source = { registry = "https://pypi.org/simple" }
@@ -4479,7 +4543,7 @@ wheels = [
 
 [[package]]
 name = "shalya"
-version = "0.1.22"
+version = "0.1.23"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dhrishti" },
@@ -4492,9 +4556,9 @@ dependencies = [
     { name = "litesearch" },
     { name = "vishalakshi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/00/56/f8a32f907d5a2f2119c65aa72998eaa104f4ab03fc83fc143eec85c23d73/shalya-0.1.22.tar.gz", hash = "sha256:b7c56843fc57bfb39fa04149deca52e5af2a308796c71e1b71207c36ea698347", size = 64446, upload-time = "2026-10-25T08:07:03.061Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0e/fc/c76a836ac5becb77fb0e5fab9cbf2b68ec68a1ccad03ff2add5ab4150153/shalya-0.1.23.tar.gz", hash = "sha256:451ad177e2735f7d3b9acfe1fa73b0fbe9670ec356756052e363f0dbc4f0e17e", size = 64610, upload-time = "2026-10-27T23:58:19.225Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/10/b8c0a72d3572d291277b628359efd0bf3b82b07d41f32f76517c0084fac5/shalya-0.1.22-py3-none-any.whl", hash = "sha256:12a7069f2cf751a3d5892447757599f840d820eb28b72f181930c9b729dec3dc", size = 68045, upload-time = "2026-10-25T08:07:01.858Z" },
+    { url = "https://files.pythonhosted.org/packages/90/e8/27b21908f1eda1e93cbb542482ac01b3fd90ed6b78b51af6cbc54e70cc45/shalya-0.1.23-py3-none-any.whl", hash = "sha256:7b3fbaf47a2ec7963a7ec665ac136886673c0244ff40ae01645ff1d1744698d2", size = 68215, upload-time = "2026-10-27T23:58:17.82Z" },
 ]
 
 [package.optional-dependencies]
@@ -5361,6 +5425,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d0/20/50ed6bdf27dec98b568a8ae25dc599f35baa3d9709f9e83fd1edb56b9a90/wheel-0.48.0.tar.gz", hash = "sha256:94800765601e9171bf5d58d066e640662842bcedcbab982b2c90787a2c987322", size = 66471, upload-time = "2026-08-11T22:02:27.327Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2e/29/69cfbb602cd91690c55d38ba9fe53e6a7e76a6fa647bf38f19c138d25449/wheel-0.48.0-py3-none-any.whl", hash = "sha256:3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab", size = 33320, upload-time = "2026-08-11T22:02:26.1Z" },
+]
+
+[[package]]
+name = "widgetsnbextension"
+version = "4.0.16"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/60/bc7a980fc78837d6ef8f5940cca4cadc433364503a4c4d42e2a7a0de3231/widgetsnbextension-4.0.16.tar.gz", hash = "sha256:adeea0ae78f0856ee4945f413299801b82a0a01416303301f39a704282a37b73", size = 1111094, upload-time = "2026-08-18T08:52:55.859Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/34/95/40e17e20046b7bc820d29d09ae84ec157ec8dd6e6f6cd722626292c31b2e/widgetsnbextension-4.0.16-py3-none-any.whl", hash = "sha256:a31a8774885b96fe825462f5d6496166f0c7cae111195b6465c801d230eb5a4e", size = 2225148, upload-time = "2026-08-18T08:52:53.736Z" },
 ]
 
 [[package]]
