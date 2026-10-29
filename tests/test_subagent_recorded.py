@@ -28,7 +28,7 @@ def _ask(old):
     "`delegate_search` to gpt-4.1-mini beside a 16k default sub-agent model; `old` sizes its tools for the default, as before 0.2.67."
     root = Path(tempfile.gettempdir())/'ramabana-recorded-subagent'   # a fixed root: tool descriptions are part of the key
     a = Agent(FullHost(pages={URL: f'# Release note\n\nThe release codename is {FACT}.'}, root=root),
-              model='gpt-4.1-mini', extensions=False, profile='full')
+              model='gpt-4.1-mini', extensions=False, profile='full', drop_tools=())   # the recording holds the full tool list
     a.inbox_key = 'recorded'   # a fresh nonce per session; it is in the sub-agent's briefing, so in the key
     real_spec = a.spec_or_none
     a.spec_or_none = lambda job='turn': TINY if job == 'subagent' else real_spec(job)

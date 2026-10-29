@@ -47,18 +47,6 @@ wheels = [
 ]
 
 [[package]]
-name = "agent-client-protocol"
-version = "0.12.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/95/2c28ca34e545ce0282e88272aa3a8abdf8f3f926a0492f567ea11acd071b/agent_client_protocol-0.12.1.tar.gz", hash = "sha256:9963ccb590ed96d7dc542c9c023e90676fc76b1c6562e21a9ee112f4fbcb0095", size = 130605, upload-time = "2026-08-16T14:08:22.545Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/61/0a2186c8ca53cf464767d4c4fb7fd9e23f48ce4547c2fa0d1c83a4d52410/agent_client_protocol-0.12.1-py3-none-any.whl", hash = "sha256:aaf3cc301ed87d9e2c4ccb91adfe1cd58784355f6ce7e513f50e7ca2391862ef", size = 85929, upload-time = "2026-08-16T14:08:21.307Z" },
-]
-
-[[package]]
 name = "aidialog"
 version = "0.0.22"
 source = { registry = "https://pypi.org/simple" }
@@ -1005,7 +993,7 @@ wheels = [
 
 [[package]]
 name = "dhrona"
-version = "0.1.19"
+version = "0.1.23"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
@@ -1016,9 +1004,9 @@ dependencies = [
     { name = "shalya" },
     { name = "uraiyadal" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/44/da/392d597f7c7344e8ec2355fdfc485e9a1b059924b1a80efd8aaa6b6ff3cb/dhrona-0.1.19.tar.gz", hash = "sha256:a30eacc5eed17803d342715b283efd4d7018a101d95f401a8d642f72238f9a1d", size = 51482, upload-time = "2026-10-26T02:41:49.441Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/dc/05a3bc35e945117e2aa31664f47c29f7ab9ea3a6eab94e399c6b14508328/dhrona-0.1.23.tar.gz", hash = "sha256:9b7f7a91c0dd68368682006e2121295da738fbf5d5894da9393ea8ffa1035bcb", size = 53343, upload-time = "2026-10-29T23:02:52.195Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/8c/cbb3cd5432c99a973f1a1922afdb8c89fcfde56aefc9a759a3744941ebdb/dhrona-0.1.19-py3-none-any.whl", hash = "sha256:240a1198532c7a50fe0f3b467c5094b7ae6086098c5d8917dae18477f81cbba3", size = 57291, upload-time = "2026-10-26T02:41:47.932Z" },
+    { url = "https://files.pythonhosted.org/packages/14/2f/96b1e1c54bebd0bcb0c04765fd5361fd124a739229faa04630d6fccd469e/dhrona-0.1.23-py3-none-any.whl", hash = "sha256:022aa4a144dbc81fbe84dbe2901dcf48c4b810e21988961305f92824a82a775c", size = 59062, upload-time = "2026-10-29T23:02:50.588Z" },
 ]
 
 [[package]]
@@ -3984,12 +3972,9 @@ abhyasa = [
     { name = "abhyasa", extra = ["tick"] },
 ]
 all = [
-    { name = "agent-client-protocol" },
-    { name = "dhrishti" },
     { name = "dhrona" },
     { name = "fastpylight" },
     { name = "fossick" },
-    { name = "jupyter-client" },
     { name = "koshas" },
     { name = "litesearch" },
     { name = "mcp" },
@@ -4001,10 +3986,8 @@ all = [
     { name = "vishalakshi" },
 ]
 cli = [
-    { name = "dhrishti" },
     { name = "fastpylight" },
     { name = "fossick" },
-    { name = "jupyter-client" },
     { name = "koshas" },
     { name = "litesearch" },
     { name = "pyghostty" },
@@ -4015,12 +3998,9 @@ cli = [
     { name = "vishalakshi" },
 ]
 dev = [
-    { name = "agent-client-protocol" },
-    { name = "dhrishti" },
     { name = "dhrona" },
     { name = "fastpylight" },
     { name = "fossick" },
-    { name = "jupyter-client" },
     { name = "koshas" },
     { name = "litesearch" },
     { name = "mcp" },
@@ -4039,11 +4019,6 @@ dev = [
 dhrona = [
     { name = "dhrona" },
 ]
-python = [
-    { name = "dhrishti" },
-    { name = "jupyter-client" },
-    { name = "rich" },
-]
 search = [
     { name = "fossick" },
     { name = "koshas" },
@@ -4052,7 +4027,6 @@ search = [
     { name = "vishalakshi" },
 ]
 serve = [
-    { name = "agent-client-protocol" },
     { name = "mcp" },
 ]
 
@@ -4064,16 +4038,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "abhyasa", extras = ["tick"], marker = "extra == 'abhyasa'", specifier = ">=0.0.10" },
-    { name = "agent-client-protocol", marker = "extra == 'all'", specifier = ">=0.12.1" },
-    { name = "agent-client-protocol", marker = "extra == 'dev'", specifier = ">=0.12.1" },
-    { name = "agent-client-protocol", marker = "extra == 'serve'", specifier = ">=0.12.1" },
-    { name = "dhrishti", marker = "extra == 'all'", specifier = ">=0.1.11" },
-    { name = "dhrishti", marker = "extra == 'cli'", specifier = ">=0.1.11" },
-    { name = "dhrishti", marker = "extra == 'dev'", specifier = ">=0.1.11" },
-    { name = "dhrishti", marker = "extra == 'python'", specifier = ">=0.1.11" },
-    { name = "dhrona", marker = "extra == 'all'", specifier = ">=0.1.19" },
-    { name = "dhrona", marker = "extra == 'dev'", specifier = ">=0.1.19" },
-    { name = "dhrona", marker = "extra == 'dhrona'", specifier = ">=0.1.19" },
+    { name = "dhrona", marker = "extra == 'all'", specifier = ">=0.1.23" },
+    { name = "dhrona", marker = "extra == 'dev'", specifier = ">=0.1.23" },
+    { name = "dhrona", marker = "extra == 'dhrona'", specifier = ">=0.1.23" },
     { name = "exhash", specifier = ">=0.4.11" },
     { name = "fastcore", specifier = ">=2.2.19" },
     { name = "fastpylight", marker = "extra == 'all'", specifier = ">=0.1.18" },
@@ -4085,10 +4052,6 @@ requires-dist = [
     { name = "fossick", marker = "extra == 'dev'", specifier = ">=0.1.22" },
     { name = "fossick", marker = "extra == 'search'", specifier = ">=0.1.22" },
     { name = "gheasy", specifier = ">=0.0.15" },
-    { name = "jupyter-client", marker = "extra == 'all'", specifier = ">=8.10.0" },
-    { name = "jupyter-client", marker = "extra == 'cli'", specifier = ">=8.10.0" },
-    { name = "jupyter-client", marker = "extra == 'dev'", specifier = ">=8.10.0" },
-    { name = "jupyter-client", marker = "extra == 'python'", specifier = ">=8.10.0" },
     { name = "koshas", marker = "extra == 'all'", specifier = ">=0.1.18" },
     { name = "koshas", marker = "extra == 'cli'", specifier = ">=0.1.18" },
     { name = "koshas", marker = "extra == 'dev'", specifier = ">=0.1.18" },
@@ -4117,13 +4080,12 @@ requires-dist = [
     { name = "rich", marker = "extra == 'all'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'dev'", specifier = ">=15.0.0" },
-    { name = "rich", marker = "extra == 'python'", specifier = ">=15.0.0" },
     { name = "rishi", specifier = ">=0.1.57" },
     { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.57" },
-    { name = "shalya", specifier = ">=0.1.24" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.24" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.24" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'dev'", specifier = ">=0.1.24" },
+    { name = "shalya", specifier = ">=0.1.25" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.25" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.25" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'dev'", specifier = ">=0.1.25" },
     { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.4,<0.1.5" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.4,<0.1.5" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.4,<0.1.5" },
@@ -4133,7 +4095,7 @@ requires-dist = [
     { name = "vishalakshi", marker = "extra == 'dev'", specifier = ">=0.1.35" },
     { name = "vishalakshi", marker = "extra == 'search'", specifier = ">=0.1.35" },
 ]
-provides-extras = ["abhyasa", "all", "cli", "dev", "dhrona", "python", "search", "serve"]
+provides-extras = ["abhyasa", "all", "cli", "dev", "dhrona", "search", "serve"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "ramabana", extras = ["dev"] }]
@@ -4543,7 +4505,7 @@ wheels = [
 
 [[package]]
 name = "shalya"
-version = "0.1.24"
+version = "0.1.25"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dhrishti" },
@@ -4557,9 +4519,9 @@ dependencies = [
     { name = "litesearch" },
     { name = "vishalakshi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0d/8b/a24e4806d1e9cc779ee8c766febe9bf07ee7c78b61491b2deab5504a3410/shalya-0.1.24.tar.gz", hash = "sha256:8f95162f2248583587326d0d79def044aee141f0281d82c307e1996664a96cc6", size = 65000, upload-time = "2026-10-28T03:16:49.638Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/8c/9883979478b00d33e62c0b76d5ff93e4916682031d9c33b82cb0afef7424/shalya-0.1.25.tar.gz", hash = "sha256:d6117486f9415bdf7a47c5084a5ccf7f19831ea41edc09cf43496f7ff73d7ca2", size = 65238, upload-time = "2026-10-29T23:01:11.471Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/32/42/3cb6b2c090a8d9d71c9a7a2ed0cf4e1031c67ab8591e24179415d34aea42/shalya-0.1.24-py3-none-any.whl", hash = "sha256:19e593df067f08714dda46f455bb5aa5172103912917c8364bcf427896ceb78d", size = 68593, upload-time = "2026-10-28T03:16:48.107Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/67/3882f49f8b5e2de163896e3b5f6211e6929d4809f022b96839621361d9d9/shalya-0.1.25-py3-none-any.whl", hash = "sha256:429299c33545e6314de63590d1a42b1356c39249e25d2b8735f4c03eb14a27f0", size = 68834, upload-time = "2026-10-29T23:01:09.931Z" },
 ]
 
 [package.optional-dependencies]

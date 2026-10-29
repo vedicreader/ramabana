@@ -315,10 +315,9 @@ def test_config_set_writes_runtime_subagents_and_model_tables(tmp_path):
 def test_every_tool_the_model_sees_describes_every_parameter(tmp_path):
     from urai import mk_toolspec
     from ramabana.agent import _result_tool, note_tools, plan_tools
-    from ramabana.shop import cart_tools
     from ramabana.tools import status_tool
     a, _ = fake_agent(cfg=tmp_path)
-    tools = [*a.tools, *note_tools(lambda *a, **k: ''), *plan_tools(list), status_tool(None), _result_tool({'type': 'object'}, {}), *cart_tools(None)]
+    tools = [*a.tools, *note_tools(lambda *a, **k: ''), *plan_tools(list), status_tool(None), _result_tool({'type': 'object'}, {})]
     bare = [(f['name'], k) for f in (mk_toolspec(t)['function'] for t in tools) for k, v in f['parameters'].get('properties', {}).items() if not v.get('description')]
     assert not bare, bare
 

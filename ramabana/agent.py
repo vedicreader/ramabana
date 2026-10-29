@@ -11,20 +11,21 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'PERSON_ONLY', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'DATED_CONTEXT', 'PICTURE_RULE',
            'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'MASKED_NOTE',
            'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES',
-           'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'GIT_SHELL', 'RAHASYA_SECRETS',
-           'MORE_SECRETS', 'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE', 'PEER_ROWS_EVERY', 'PEER_ROWS_WAIT',
-           'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE',
-           'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST',
-           'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK',
-           'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP',
-           'BRANCH_POLICIES', 'MAX_SPANS', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
-           'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
-           'request_text', 'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons',
-           'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family',
-           'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial',
-           'shell_denial', 'generated_denial', 'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult',
-           'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
-           'compact_history', 'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
+           'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'DROP_TOOLS', 'COMPACT_RETRY',
+           'GIT_SHELL', 'RAHASYA_SECRETS', 'MORE_SECRETS', 'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE',
+           'PEER_ROWS_EVERY', 'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE',
+           'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING',
+           'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP',
+           'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'PII_READS',
+           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
+           'never', 'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt',
+           'prompt_directives', 'project_context', 'dated_lessons', 'learned_context', 'work_rules', 'skill_catalogue',
+           'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent',
+           'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial', 'generated_denial',
+           'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing',
+           'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy', 'compact_history',
+           'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -39,7 +40,7 @@ from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import DFLT_TURN, needs_setup, accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
 from .setup import PANE_LINGER, config_path, follow_cmd, config_reset, config_set, config_show, load_config, set_table, setting
-from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block
+from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block, done_items
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
@@ -57,7 +58,7 @@ MAX_CHECKPOINTS = 20  # turn boundaries kept for `fork`
 POLL_EVERY = 900      # seconds between `Host.poll` ticks
 SHELL_SNAPSHOT = 32_000_000
 
-ICONS = {'search': '🔍', 'view': '📄', 'edit': '✏️', 'web': '🌐', 'run': '▶️','skill': '📚', 'delegate': '🤝', 'memory': '🧠', 'watch': '⏰', 'cart': '🛒', 'ask': '🔐', 'tool': '🔧'}
+ICONS = {'search': '🔍', 'view': '📄', 'edit': '✏️', 'web': '🌐', 'run': '▶️','skill': '📚', 'delegate': '🤝', 'memory': '🧠', 'watch': '⏰', 'ask': '🔐', 'tool': '🔧'}
 
 _GROUP_KIND = {'code': 'search', 'file': 'view', 'notebook': 'view', 'session': 'run',
                'shell': 'run', 'web': 'web', 'memory': 'memory', 'ask': 'memory',
@@ -66,8 +67,6 @@ _KIND = {
     'edit_file': 'edit', 'replace_text': 'edit', 'create_file': 'edit', 'edit_cell': 'edit',
     'add_cell': 'edit', 'read_terminal': 'view', 'remember': 'memory',
     'delegate_search': 'delegate', 'delegate_async': 'delegate', 'delegate_result': 'delegate', 'delegate_cancel': 'delegate', 'delegate_tell': 'delegate',
-    'cart_stores': 'cart', 'cart_open': 'cart', 'cart_find': 'cart',
-    'cart_add': 'cart', 'cart_show': 'cart', 'cart_remove': 'cart',
 }
 
 def _kind_of(name): return _KIND.get(name) or _GROUP_KIND.get(group_of(name), 'tool')
@@ -1194,6 +1193,9 @@ _STEP_MIN, _STEP_MAX = 8, 80
 SUB_DEPTH_MAX = 2   #: most levels of sub-agents that may delegate again
 TREE_SPENT = ('Tool-call budget for delegated work is exhausted. Stop calling tools and '
               'answer with the evidence you have.')
+#: tools a session leaves out of the model's schema unless `drop_tools` says otherwise: rarely called, and each costs schema tokens on every call
+DROP_TOOLS = frozenset({'generate_image', 'watch', 'list_watches', 'cancel_watch', 'memory_forget', 'ask_memory'})
+COMPACT_RETRY = 20_000   #: tokens a conversation grows by before a compaction that failed is tried again
 
 def _sub_steps(n): return 'auto' if str(n).strip().lower() == 'auto' else max(1, min(SUB_STEP_CEILING, int(n)))
 def _sub_timeout(s): return max(0., float(s or 0))
@@ -1209,6 +1211,7 @@ class Agent:
                  sp=None,                   # override the whole briefing
                  extra_sp='',               # text added after the briefing, which stays
                  global_skills=True,        # read skills from `~/.agents/skills` too
+                 drop_tools=DROP_TOOLS,     # tool names left out of the model's schema
                  approvals=None,            # an `Approvals`; None gates nothing
                  cfg=None,                  # config dir, for skills and extensions
                  compact=None,              # compact automatically at the threshold; None reads config.toml's `compaction.auto`, else True
@@ -1279,9 +1282,11 @@ class Agent:
         self.local_multimodal = bool(local_multimodal)
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
         self._sp, self.extra_sp, self.global_skills = sp, extra_sp, bool(global_skills)
+        self.drop_tools = frozenset(drop_tools)
         self.compactor = Compactor(auto=ifnone(compact, setting('compaction.auto', True)), strategy=ifnone(compact_strategy, setting('compaction.strategy', 'summary')),
                                    kernel_alive=kernel_alive, on_compact=on_compact)
         self.fresh_hint = fresh_hint
+        self._compactions, self._compact_retry = [], 0   # compactions and handoffs since the last log row; the size a failed one waits for
         self.activity = Activity(on_change=on_activity)
         self.activity.tap = self._act_event
         self._nested = contextvars.ContextVar('delegating', default=())   # per context; a fan-out's workers inherit it
@@ -1865,7 +1870,7 @@ def subagent_budget(self:Agent):
 def _catalog_for(self:Agent, budget, full=True, profile='full'):
     "Build one catalog for each schema budget and profile. The foreground and sub-agents take policy views of it."
     small = profile == 'small'
-    key = (budget.tool_max, tuple(budget.drop), bool(full), small)
+    key = (budget.tool_max, tuple(budget.drop), bool(full), small, self.drop_tools)
     if key not in self._catalogs:
         extra = [t for t in self.registry.tools if not small or getattr(t, 'small', False)]
         if not small and 'memory' not in self.host.provides: extra += note_tools(self.note_memory, lambda: self.learning)
@@ -1876,6 +1881,7 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
                           drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
+        built = [t for t in built if getattr(t, '__name__', '') not in self.drop_tools]
         if small:
             keep = set(SMALL_TOOLS) | {getattr(t, '__name__', '') for t in extra} | {getattr(t, '__name__', '') for name in self.optin for t in OPTIN[name](self.host, budget.tool_max)}
             built = [t for t in built if getattr(t, '__name__', '') in keep]
@@ -1998,7 +2004,8 @@ def tools(self:Agent):
             self.approvals.tools = self.approvals.tools | view.writes
             self.approvals.prune()
         root = lambda: r if (r := current_run()) is self.run() else None
-        self._tools = view.map(lambda f: _inboxed(self._record(f), root, self._heard_steer, mx=lambda: self.budget.tool_max)).tools + ([status_tool(root)] if self._quiet else [])
+        self._tools = view.map(lambda f: _inboxed(self._record(f), root, self._heard_steer, mx=lambda: self.budget.tool_max,
+                                                  notice=self.background_notice)).tools + ([status_tool(root)] if self._quiet else [])
     return self._tools
 
 
@@ -3083,7 +3090,12 @@ def _fit(self:Agent, outgoing, tail=0):
     "Make `outgoing` fit the turn model's window. Oversized content is cut to an excerpt, and the whole text is kept in a file. Raises `ContextFull` only when the briefing and tools alone are too large."
     b = self._be('turn')
     cold = math.ceil(margin()*b.count_tokens(b.sp)) if b.chat is None else 0   # an unstarted chat counts nothing yet, its briefing included
-    if not b.spec.ctx or b.fits(outgoing, reserve=min(1024, max(128, b.spec.ctx // 4)) + cold): return outgoing
+    if not b.spec.ctx or b.fits(outgoing, reserve=min(1024, max(128, b.spec.ctx // 4)) + cold):
+        if self.compactor.auto and b.chat is not None and b.used_tokens >= self._compact_retry:   # a message that does not fit takes the path below, which cuts before it compacts
+            try: done = self.compact() if self.compactor.due(b) else self.handoff() if self.compactor.soft_due(b) and self._at_boundary() else None
+            except Exception as e: done, self.note = '', f'compaction skipped: {agent_err(e)}'   # it is optional here: the message fits
+            if done is not None: self._compact_retry = 0 if done else b.used_tokens + COMPACT_RETRY
+        return outgoing
     if b.start() is None: return outgoing   # a model that cannot start says so when the turn goes out
     b.spill, b.how = self._spill, self._how()
     limit = max(1, b.spec.ctx - min(1024, max(128, b.spec.ctx // 4)))   # `fits`'s line
@@ -3354,7 +3366,9 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
             'prompt': prompt_text(prompt), 'steered': list(self._steered), 'reply': text, 'error': error,
             'plan': dict(getattr(self, '_turn_plan', {})),
             'usage': self.turn_use.dict(), 'usage_label': repr(self.turn_use),
+            'context': dict(used=(b := self._be('turn')).used_tokens, pct=round(b.pct_full, 3), events=list(self._compactions)),
             'activity': self.activity.rows(mark=self.activity._mark)}
+    self._compactions = []
     self.history.append(turn)
     del self.history[:-HISTORY_TURNS]
     if (p := self.history_path) is not None:
@@ -3787,7 +3801,8 @@ def summarise(self:Agent, text, sp='Summarise concisely. Output only the summary
 
 # %% ../nbs/03_agent.ipynb #b4fe8a31
 @patch
-def compact(self:Agent, extra=''):
+def compact(self:Agent, extra='',
+            fresh=False):  # summarise everything and keep no recent messages, as `handoff` does
     "Compact the conversation now. Returns the summary text, or `''` with `compactor.note` set."
     b = self._be('turn')
     if b.chat is None:
@@ -3808,11 +3823,31 @@ def compact(self:Agent, extra=''):
         if small: raise AgentError(f'the window of {small[0]} is too small for this summary')
         why = [d for n, d in self.routing.down.items() if n in routes]
         raise AgentError(max(why, key=lambda d: d[1])[0] if why else 'the summary model answered nothing')
+    before, n = b.used_tokens, self.compactor.count
     text = self.compactor.compact(
         b, summary_of, extra, summary_ctx=summary_backend.spec.ctx, summary_output=summary_output,
-        summary_count=summary_backend.count_tokens)
+        summary_count=summary_backend.count_tokens, fresh=fresh)
     if text: self.registry.fire('compact', self, text)
+    if self.compactor.count > n:   # a summary whose history could not be replaced changed nothing
+        self._compactions.append(dict(kind='handoff' if fresh else 'compact', before=before, after=b.used_tokens, note=self.compactor.note))
     self.note = self.compactor.note
+    return text
+
+@patch
+def _at_boundary(self:Agent):
+    "Whether the last turn ended cleanly with nothing left open: it made a commit, or the plan has no unfinished step."
+    if not self.history or self.history[-1].get('state') != 'complete': return False
+    if any(a.get('tool') == 'git_commit' and a.get('ok') in (True, 'True') for a in self.history[-1].get('activity') or []): return True
+    return not (self.plan.active() or self.plan.pending())
+
+@patch
+def handoff(self:Agent):
+    "Hand the conversation to a fresh context: summarise all of it, keep its finished work as a project memory note, and go on from the summary alone."
+    n = self.compactor.count
+    text = self.compact(fresh=True)
+    if self.compactor.count > n and (done := done_items(text)) not in ('', '(none)'):
+        try: self.note_memory(done, title=f'finished in {self.session_id}', key=f'handoff-{self.session_id}')   # a later summary keeps earlier Done items, so it replaces this note
+        except OSError as e: self.note = f'{self.compactor.note}; the Done list was not kept ({e})'
     return text
 
 # %% ../nbs/03_agent.ipynb #37dccdda
@@ -3981,6 +4016,9 @@ def command(self:Agent, line):
     if name == 'cost': return repr(self.use)
     if name == 'compact':
         t = self.compact(arg)
+        return f'{self.compactor.note}\n\n{t}' if t else self.compactor.note
+    if name == 'handoff':
+        t = self.handoff()
         return f'{self.compactor.note}\n\n{t}' if t else self.compactor.note
     if name == 'skills': return '\n'.join(f'{s.name:16} {s.source:8} {s.description[:90]}' for s in self.skills) or 'no skills found'
     if name == 'skill': return clip(_skill_text(self.skills, arg))
@@ -4447,7 +4485,7 @@ def unwatch(self:Agent, target='all'):
 @patch
 def commands(self:Agent):
     "Every command name, built-in and registered, for a help line or an autocomplete."
-    return sorted({'config', 'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'skills', 'skill', 'tools', 'extensions', 'reload',
+    return sorted({'config', 'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'handoff', 'skills', 'skill', 'tools', 'extensions', 'reload',
                    'subagents', 'plan', 'planmode', 'todos', 'todo', 'rewind', 'branches', 'branch', 'commit', 'pr', 'learned', *self.registry.commands})
 
 # %% ../nbs/03_agent.ipynb #8fd374fe
@@ -5189,7 +5227,7 @@ def mk_agent(roots=('.',),
              pii_ner=False,           # gate titled names too, not only patterns
              host_kw=None,            # to `mk_host`: `index` (off: `sync_index` runs it after the model), `warm`, `vault=<path>`
              read_roots=(),           # folders the read tools search and no write touches
-             python='host',           # 'host' runs `run_python` in this process, 'off' withholds it, or a Dhrishti URL runs it in that kernel
+             python='host',           # 'host' runs `run_python` in this process, 'off' withholds it
              rules_path=None,         # saved allow/deny rules; None shares `<cfg>/approvals.json` with every session on that cfg
              timeout=None,            # seconds an ask waits for an answer; None waits forever
              no_listener='refuse',    # an ask with nobody listening: 'refuse', or 'wait' for a listener
@@ -5202,9 +5240,6 @@ def mk_agent(roots=('.',),
                    **{'index': False, **({'read_roots': read_roots} if read_roots else {}), **(host_kw or {})})
     if approvals is not None: approvals.host = host
     if python == 'off': host.without = frozenset(host.without) | {'session'}   # run_python, inspect_python, restart_kernel, read_terminal
-    elif python != 'host':
-        from .pyrepl import use_kernel
-        use_kernel(host, python)
     agent = Agent(host, model=model, approvals=approvals, **kw)
     if host.model_local is None: host.model_local = agent.model_local
     agent.lend_model()   # else `--vault` loads a second runtime

@@ -14,14 +14,14 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW',
            'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'TASK_ROWS', 'BELL_IDLE', 'REASK_EVERY',
            'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'HINTS', 'TIPS_USAGE',
-           'DIFF_LEXERS', 'BLOCK_START', 'PYREPL_MODULES', 'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'BG_WAIT',
-           'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE', 'ALIVE_EVERY',
-           'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg',
-           'light_rgb', 'is_light', 'reply_light', 'fgbg_light', 'auto_theme', 'set_theme', 'plan_text', 'key_text',
-           'key_names', 'help_text', 'keymap_doc', 'keymap_dir', 'write_keymap', 'key_card', 'guide_text',
-           'kitty_graphics', 'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note',
-           'file_refs', 'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'task_order', 'task_age',
-           'TaskMenu', 'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural',
+           'DIFF_LEXERS', 'BLOCK_START', 'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'BG_WAIT', 'CLI_FRESH', 'REF_AT',
+           'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE', 'ALIVE_EVERY', 'REOPEN_EVERY',
+           'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'light_rgb',
+           'is_light', 'reply_light', 'fgbg_light', 'auto_theme', 'set_theme', 'plan_text', 'key_text', 'key_names',
+           'help_text', 'keymap_doc', 'keymap_dir', 'write_keymap', 'key_card', 'guide_text', 'kitty_graphics',
+           'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs',
+           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'task_order', 'task_age', 'TaskMenu',
+           'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural',
            'stretch_summary', 'Row', 'Stretch', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang',
            'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to',
            'stderr_log', 'pick_session', 'loop_error', 'query_background', 'can_ask_background', 'amain',
@@ -395,8 +395,8 @@ FLASH_FOR = 2.0   # seconds a flash stays up
 MAX_GROUP_ROWS = 8
 DIFF_OPEN = 20    #: diff lines a finished call shows until the reader opens it
 MOUSE_ON, MOUSE_OFF = '\x1b[?1000;1006h', '\x1b[?1000;1006l'
-SURFACE_COMMANDS = ('agent', 'agent_proxy', 'approve', 'attach', 'calm', 'copy', 'detach', 'exit', 'guide', 'help',
-                    'join', 'kernels', 'login', 'mouse', 'pane', 'paste', 'peers', 'promote', 'python', 'quit', 'root', 'talk', 'tasks', 'tell', 'theme', 'tips', 'together', 'vars')
+SURFACE_COMMANDS = ('approve', 'attach', 'calm', 'copy', 'detach', 'exit', 'guide', 'help',
+                    'login', 'mouse', 'pane', 'paste', 'peers', 'quit', 'root', 'talk', 'tasks', 'tell', 'theme', 'tips', 'together')
 
 _TODO_RE = re.compile(r'^(\[[ x▸\-]\])\s+(`[^`]*`)?\s*(.*)$')
 
@@ -423,7 +423,7 @@ def plan_text(md):
 # %% ../nbs/05_cli.ipynb #bb9288c9
 CONTEXTS = (dict(id='idle', label='Waiting for you'), dict(id='typing', label='Typing a message'),
             dict(id='running', label='While a turn runs'), dict(id='waiting', label='Messages waiting for the turn'),
-            dict(id='approval', label='Asking for approval'), dict(id='python', label='Python mode'),
+            dict(id='approval', label='Asking for approval'),
             dict(id='transcript', label='Browsing the transcript'), dict(id='tasks', label='The background task list'))
 
 TASKS_KEY = 'ctrl+l'   #: opens the list of background tasks, as does `/tasks`
@@ -452,7 +452,7 @@ KEYMAP = [
     _key('plan', 'ctrl+t', 'show or hide the plan', 'Turn', 'normal'),
     _key('stop', 'ctrl+c', 'stop the turn, keeping what is queued and typed', 'Turn', 'normal', context='running'),
     _key('clear', 'ctrl+c', 'clear the line', 'Composer', 'normal', context='typing'),
-    _key('quit', 'ctrl+d', 'quit, on an empty prompt', 'Composer', 'normal', context=['idle', 'running', 'waiting', 'python']),
+    _key('quit', 'ctrl+d', 'quit, on an empty prompt', 'Composer', 'normal', context=['idle', 'running', 'waiting']),
     _key('fold', 'ctrl+o', 'fold or open the working rows', 'Turn', 'timeline'),
     _key('fold_all', 'alt+o', "fold or open every turn's working rows", 'Turn', 'timeline'),
     _key('open_call', [f'alt+{i}' for i in range(1, 10)], 'open one tool call in full', 'Turn', 'timeline', range='1-9'),
@@ -491,14 +491,6 @@ KEYMAP = [
     _key('stricter', 'ctrl+g', 'one step stricter', 'Turn', 'approvals'),
     _cmd('cmd_approve', '/approve off|ask|edits|auto', 'sets the approval mode', 'approvals'),
     _cmd('cmd_shell', '!COMMAND', "runs it in the first open folder, in agent mode; the output stays out of the model's context", 'shell'),
-    _cmd('cmd_python', '/python', 'takes the line', 'python', group='Python'),
-    _cmd('cmd_agent', '/agent', 'hands it back', 'python', group='Python'),
-    _cmd('cmd_agent_proxy', '/agent_proxy', 'exposes the owner agent', 'python', group='Python'),
-    _key('run_code', 'enter', 'run what compiles, else add a line', 'Python', 'python', context='python'),
-    _key('complete_name', 'tab', 'complete names', 'Python', 'python', context='python'),
-    _key('interrupt', 'ctrl+c', 'interrupt the cell', 'Python', 'python', context='python'),
-    _cmd('cmd_vars', '/vars', 'lists the names the agent has bound', 'python', group='Python'),
-    _cmd('cmd_promote', '/promote NAME', "adopts one of the agent's variables into your namespace", 'python', group='Python'),
     _cmd('cmd_planmode', '/planmode on|off', 'withholds every tool that acts and asks for a plan', 'plan'),
     _cmd('cmd_plan', '/plan', 'shows the plan', 'plan'),
     _cmd('cmd_todo', '/todo TEXT', 'adds a step', 'plan'),
@@ -565,7 +557,7 @@ CARD = dict(
     transcript=('', ''), edit=('', ''), media=('drop or paste a path to attach', ''), memory=('', ''),
     copy=('select with the mouse', ''), approve=('', 'anything else re-asks'), approvals=('', ''),
     options=("↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line", ''),
-    shell=('', 'ctrl+c interrupts it, twice kills it'), python=('', ''), plan=('', 'the plan survives stop and /resume'),
+    shell=('', 'ctrl+c interrupts it, twice kills it'), plan=('', 'the plan survives stop and /resume'),
     setup=('', ''), extra=('', ''), subagent=('', 'each with --save to keep it · tab completes them'),
     talk=('', 'tab completes main and the running ids'), peers=('', 'a typed line ends work together mode'), tasks=('', ''),
     api=('start with --spec · then api_load URL-or-path · api_ops · api_call', ''))
@@ -652,16 +644,10 @@ VERSION = f'{__version__}+{BUILD}' if BUILD else __version__
 # %% ../nbs/05_cli.ipynb #guide01
 GUIDE = """START
   ramabana ["question"]   interactive session or one turn
-  --python                    start a protected Python prompt
-  --attach NAME  --kernels     join or list live dhrishti sessions
   --theme auto|NAME            the palette; auto follows the terminal
   --tmux auto|on|off           read and run commands in tmux panes
   --pane auto|on|off           the now pane; auto opens it in tmux
   --doctor                     check tmux and the now pane
-MODES
-  /python  /agent  /vars  /promote NAME
-  Python enter runs complete code; tab completes; ctrl+c interrupts.
-  The agent reads your namespace but writes only to its own overlay.
 READING A TURN
   Narration, calls and the answer land in the order they happened.
   ctrl+o folds or opens all the working; alt+1..9 opens one entry.
@@ -974,8 +960,6 @@ def close_done_shells(host):
 async def run_turn(ui, prompt):
     "One turn, streamed into the transcript."
     loop, q = asyncio.get_running_loop(), asyncio.Queue()
-    source, ui._source = ui._source, 'user'
-    ui.log_cell(f'**{source}**\n\n' + prompt, cell_type='markdown')
     ui._reply, ui._seg, ui._seg_blk, ui._rendered = '', '', None, ''
     ui._plan_blk, ui._plan_row, ui._stretch = None, None, None
     ui._turn_at, ui._turn_from = time.monotonic(), max(ui.comp.blocks, default=0)
@@ -998,7 +982,6 @@ async def run_turn(ui, prompt):
         finally: post(None)
     threading.Thread(target=pump, daemon=True).start()
     blk, run = None, None
-    received = []
     try:
         while True:
             ui.mark_read()
@@ -1009,7 +992,6 @@ async def run_turn(ui, prompt):
                 continue
             if chunk is None:break
             run = run or ui.agent.run()
-            received.append(chunk)
             blk = ui.stream(blk, chunk)
             if run is not None and run.cancelled:break
     finally:
@@ -1028,7 +1010,6 @@ async def run_turn(ui, prompt):
         ui.ring()
         ui.touch(now=True)
         ui.paint()
-        if received: ui.log_cell('**assistant**\n\n' + ''.join(received), cell_type='markdown')
     return blk
 
 # %% ../nbs/05_cli.ipynb #02201508
@@ -1113,7 +1094,7 @@ class Ui:
         self._typed = ''   #: what the last Enter took from the composer, for a refused turn to give back
         self._queued_typed = ''   #: what was typed for a queued command, which carries no prompt
         self._prompt = None
-        self._source, self._wake_pending = 'user', False
+        self._wake_pending = False
         self._flash = None
         self._queued_echo = []
         self._steered = []
@@ -1134,18 +1115,11 @@ class Ui:
         self.hints = bool(setting('cli.hints', True))   #: `hints = false` under [cli] in config.toml, or --no-hints, hides the hint row
         self.tips = bool(setting('cli.tips', True))   #: `tips = false` under [cli] in config.toml, `--no-tips` or `/tips off` hides the tip in the working rows
         self.turn_no = 0   #: turns started this session; it picks the tip, so a tip stays for the whole turn
-        self.mode = 'agent'
-        self.kernel = None
         self.shell_proc = None   #: the running `!` command
-        self.attached = ''
-        self.agent_bridge = None
-        self.proxy_url = ''
         from ramabana.runtime import TokenLogger
         TokenLogger.sink = self._usage_line
         from ramabana.runtime import Backend
         Backend.on_notice = self._usage_line
-        self._join_ask = ''
-        self._suggesting = False
         self.desc = []
         self.attachments = []
         self.pics = {}
@@ -1264,8 +1238,6 @@ class Ui:
         if self.agent.use.total: bits.append(s['usage'])
         if s['problems']: bits.append(f"{len(s['problems'])} problems")
         out.append('  ' + ' · '.join(bits), style=GRUVBOX['gray'])
-        if self.kernel is not None:
-            out.append(f'  · {self.mode}', style=GRUVBOX['aqua'] if self.mode == 'python' else GRUVBOX['blue'])
         return out
 
     def turn_blocks(self):
@@ -1357,32 +1329,18 @@ class Ui:
         except Exception: return   # a snapshot that fails must never stop the animate loop
         self._now_busy = self.agent.busy
 
-    ASKING, PY_LABEL, CONT = 'approve? [y/n/a · n: reason] ', 'python › ', '...      '
+    ASKING = 'approve? [y/n/a · n: reason] '
 
     def prompt(self):
         "The input line: an approval question when one is pending, otherwise the prompt."
         if self.ask is not None:
             return Text(self.ASKING, style=f"bold {GRUVBOX['yellow']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
-        if self.mode == 'python':
-            from ramabana.pyrepl import hl
-            body = Text('\n' + self.CONT, style=GRUVBOX['fg0']).join(hl(self.buf.text).split('\n', allow_blank=True))
-            return Text(self.PY_LABEL, style=f"bold {GRUVBOX['aqua']}") + body
         return Text('▌ ', style=f"bold {GRUVBOX['blue']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
 
     def _prefixed(self, text):
         "`text` with what precedes it on screen, as `tail` measures it."
         if self.ask is not None: return self.ASKING + text
-        if self.mode == 'python': return self.PY_LABEL + text.replace('\n', '\n' + self.CONT)
         return '▌ ' + text
-
-    def _suggest_soon(self):
-        "Start a kernel completion for the token being typed."
-        if self.mode != 'python' or self.kernel is None or self._suggesting: return
-        if self.turn is not None or self.ask is not None: return
-        tok = re.split(r'[^\w.]', self.buf.text[:self.buf.cursor])[-1]
-        if len(tok) < 2 or tok.endswith('..'): return
-        self._suggesting = True
-        self.comp.spawn(self._suggest(), name='suggest')
 
     def overlay(self):
         "Transient rows above the tail, drawn over the transcript while they last: options or slash completion."
@@ -1629,7 +1587,6 @@ class Ui:
         if not (p := self.agent.wake_prompt()): return
         self.note('↻ background work finished · continuing')
         self.ring()
-        self._source = 'background'
         self.start_turn(run_turn(self, p), prompt=p)
 
     def take_back_one(self):
@@ -1939,29 +1896,13 @@ class Ui:
 
     def submit(self):
         "Handle the typed line. Returns a coroutine for a turn, `'quit'`, or None when handled here."
-        src, line = self.buf.text, self.buf.text.strip()
+        line = self.buf.text.strip()
         self.complete, self.desc = None, []
         self._echoed = []
         self.buf.clear()
         if not line:
             if not self._hold: self.steer_queued()
             return None
-        if line in ('/agent_proxy', '/agent-proxy'): return self.enable_agent_proxy()
-        if line in ('/python', '/py'): return self.enter_python()
-        if line in ('/agent', '/a'):
-            self.mode = 'agent'
-            return self.note('agent mode' if self.kernel is not None else 'agent mode; no kernel is running')
-        if line in ('/vars', '/v'):
-            try: return self.note(self.agent.host.list_vars() or '(nothing bound yet)')
-            except Exception as e: return self.note(agent_err(e), 'error')
-        if (parts := line.split())[0] in ('/promote', '/adopt'):
-            if len(parts) != 2: return self.note('usage: /promote NAME')
-            return self._promote(parts[1])
-        if self.mode == 'python' and not line.startswith('/'):
-            from ramabana.pyrepl import hl
-            # raw buffer: an indented paste keeps its first row
-            self._echo(hl(src), 'user', source=src)
-            return self.run_code(src)
         if line.startswith('!'):
             self._echo(Text(line), 'user', pad=True)
             return self.run_shell_line(line[1:].strip())
@@ -1970,15 +1911,6 @@ class Ui:
             return None
         self._echo(Text(line), 'user', pad=True)
         if line in ('/quit', '/exit', '/q'): return 'quit'
-        if line == '/kernels':
-            from ramabana.pyrepl import sessions
-            return self.note(sessions())
-        if (bits := line.split())[0] == '/join':
-            if len(bits) != 2:
-                from ramabana.pyrepl import sessions
-                self.note(sessions())
-                return self.note('usage: /join NAME-or-URL')
-            return self._join(bits[1])
         if line in ('/help', '/?'): return self.show_keys()
         if line == '/guide':
             self.say(guide_text(g := self.guide()), 'note', fold=None, source=g)
@@ -2023,26 +1955,6 @@ class Ui:
     def on_key(self, k):
         "One keystroke. Returns a coroutine to spawn, `'quit'`, or None."
         self._key_at = time.monotonic()
-        if self.mode == 'python' and self.ask is None and not self.buf.text.lstrip().startswith('/'):
-            if (k.name == 'tab' and self.complete is None and self.turn is None
-                    and self.buf.text): return self.complete_python()
-            if k.name == 'shift+enter' and self.menu is None:
-                self.buf.insert('\n')
-                return self.paint()
-            if (k.name == 'enter' and self.menu is None and self.buf.text.strip()
-                    and not self.buf.text.endswith('\n\n')):
-                from ramabana.pyrepl import _syntax_note, code_state
-                state = code_state(self.buf.text)
-                if state == 'incomplete':
-                    self.buf.insert('\n')
-                    return self.paint()
-                if state == 'invalid':
-                    self.say(Text(f'incomplete or invalid: {_syntax_note(self.buf.text)}'), 'error', fold=None)
-                    return self.paint()
-            if k.name == 'ctrl+c' and self.turn is not None:
-                self.comp.spawn(self.kernel.interrupt(), name='interrupt')
-                self.buf.clear()
-                return self.paint()
         self.desc = []
         if self.menu is not None:
             done, choice = self.menu.choose(k.name)
@@ -2115,7 +2027,6 @@ class Ui:
         if self.buf.text.startswith('/'): self._refresh_complete()
         else:
             self.complete, self.desc = None, []
-            self._suggest_soon()
         self.paint()
 
     def reply(self, text):
@@ -2320,7 +2231,6 @@ def _plan_rows(self:Ui, rows):
 HINTS = {state: hint.format_map(key_names()) for state, hint in dict(
     idle='{keys} keys · / commands · @ files · {transcript} transcript · {tasks} tasks',
     typing='{send} sends · {complete} completes /commands and @paths · {cut_line} cuts the line',
-    python='{run_code} runs what compiles, else adds a line · {complete_name} completes · {cmd_agent} goes back',
     running='{send} steers · {queue} queues · {stop} stops · {tasks} tasks',
     waiting='{recall_one} edits newest waiting · {recall_all} takes them back · \u21aa after this call · \u23f3 after the turn',
     approval='y approve · n refuse · n: REASON \u23ce says why · {approve_all} approve all · {always_allow} always allow',
@@ -2334,7 +2244,6 @@ def context(self:Ui, browsing=True):
     if self.ask is not None: return 'approval'
     if self._queued is not None or self.unread_steered(): return 'waiting'
     if self.turn is not None and not self._turn_over(): return 'running'
-    if self.mode == 'python': return 'python'
     return 'typing' if self.buf.text else 'idle'
 
 @patch
@@ -2548,159 +2457,6 @@ def compact_md(text):
 def reply(self:Ui, text):
     "A model reply as Markdown in this palette, prose compacted."
     return Reply(compact_md(text), code_theme=code_theme(), style=GRUVBOX['fg1'])
-
-# %% ../nbs/05_cli.ipynb #pymode01
-PYREPL_MODULES = EXTRAS['python']
-
-@patch
-def log_cell(self:Ui, source, outputs=None, cell_type='code'):
-    "Write one cell to the session notebook, when the host keeps one."
-    log = getattr(getattr(self.agent.host, 'kernel', None), 'log_cell', None)
-    if log is not None: log(source, outputs, cell_type)
-
-@patch
-def use_host(self:Ui, host):
-    "Move the agent onto `host`, re-briefing the running turn backend with its tools."
-    self.agent.host = host
-    if self.agent.approvals is not None: self.agent.approvals.host = host
-    self.agent.refresh()
-
-@patch
-async def enter_python(self:Ui):
-    "Take the line for Python, starting the kernel once and pointing the agent at it."
-    try:
-        if self.kernel is None:
-            if self.attached:
-                self.attached = ''
-                self.note('left the attached session; starting a kernel of your own')
-            if missing := [m for m in PYREPL_MODULES if not installed(m)]:
-                return self.note(f"python mode needs {' and '.join(missing)}: pip install 'ramabana[python]'", 'error')
-            from ramabana.pyrepl import Kernel, use_kernel
-            self.note('starting a kernel')
-            try: self.kernel = await Kernel(self.agent.host.roots[0]).start()
-            except Exception as e:
-                self.kernel = None
-                return self.note(f'no kernel: {agent_err(e)}', 'error')
-            self.use_host(use_kernel(self.agent.host, self.kernel.base))
-        self.mode = 'python'
-        return self.note('python mode · /agent hands the line back')
-    finally:
-        self.turn = None
-        self.paint()
-
-#| export
-@patch
-def proxy_label(self:Ui):
-    "A kernel-unique name for this session's agent."
-    sid = re.sub(r'\W+', '_', str(getattr(self.agent, 'session_id', '') or '')).strip('_')
-    return sid[-16:] or 'local'
-
-@patch
-async def enable_agent_proxy(self:Ui):
-    "Bind this session's agent at the Python prompt and in the agent's layer."
-    await self.enter_python()
-    if self.kernel is None: return None
-    from ramabana.pyrepl import AgentBridge, agent_proxy_code, inject_agent_proxy, output_text
-    if self.agent_bridge is None:
-        self.agent_bridge = AgentBridge(self.agent, dispatch=self._as_owner)
-        self.proxy_url = await self.agent_bridge.start()
-    label, token = self.proxy_label(), self.agent_bridge.token
-    out = inject_agent_proxy(self.agent.host, self.proxy_url, token, label)
-    if out != '(ok)': return self.note(f'the agent proxy did not bind for the agent: {out}', 'error')
-    held = await self.kernel.execute(agent_proxy_code(self.proxy_url, token, label))
-    if not held.ok:
-        return self.note('the agent proxy did not bind at the prompt: '
-                         f'{held.error or output_text(held.outputs)}', 'error')
-    whose = f'the agent of {self.attached}' if self.attached else 'the agent'
-    return self.note(f'ramabana_agent [{label}] is bound for {whose} and python mode · '
-                     '.usage() .turn_usage() .chat_usage() .callbacks() .attach_callback(name) · '
-                     'ramabana_agents holds every agent bound in this namespace')
-
-
-@patch
-async def attach_session(self:Ui, name):
-    "Point the agent's Python at someone else's dhrishti session."
-    from ramabana.pyrepl import find_session, use_kernel
-    base = find_session(name)
-    self.use_host(use_kernel(self.agent.host, base))
-    self.attached = base
-    return base
-
-@patch
-async def run_code(self:Ui, code):
-    "Run one owner-typed Python cell, streaming its outputs into blocks."
-    result = None
-    try:
-        result = await self.kernel.execute(code, on_output=self.on_output)
-        if not result.ok and not result.outputs: self.say(Text(result.error or 'execution failed'), 'error')
-    finally:
-        self.turn = None
-        self.paint()
-    if result is not None: self.log_cell(code, result.outputs)
-
-@patch
-def on_output(self:Ui, output):
-    "Print one nbformat output as the block it means."
-    from ramabana.pyrepl import _text
-    kind = output.get('output_type')
-    if kind == 'stream':
-        if text := _text(output.get('text')).rstrip('\n'): self.say(Text(text), 'note')
-    elif kind in ('execute_result', 'display_data'):
-        data = output.get('data') or {}
-        if 'text/plain' in data: self.say(Text(_text(data['text/plain'])), 'reply')
-        elif 'text/markdown' in data: self.say(Text(_text(data['text/markdown'])), 'reply')
-        elif data: self.say(Text('display: ' + ', '.join(data)), 'note')
-    elif kind == 'error':
-        body = '\n'.join(output.get('traceback') or [])
-        self.say(Text.from_ansi(body or f"{output.get('ename')}: {output.get('evalue')}"), 'error')
-
-@patch
-async def _complete(self:Ui, insert):
-    "List the kernel's completions; only `insert` (tab) may edit the buffer."
-    from ramabana.pyrepl import annotate
-    identity = (self.buf.text, self.buf.cursor)   # typing is not gated during the awaits
-    def stale(): return (self.buf.text, self.buf.cursor) != identity
-    matches, start = await self.kernel.complete(self.buf.text, self.buf.cursor)
-    if not matches or stale():
-        if not stale(): self.complete, self.desc = None, []
-        return
-    m = CompletionMenu(self.buf, list(matches), start=start, show=8)
-    if insert and m.insert_common(): identity = (self.buf.text, self.buf.cursor)
-    if insert and len(matches) == 1: return
-    self.complete, self.desc = m, []
-    self.paint()
-    described = await asyncio.to_thread(self.agent.host.describe)
-    if stale() or self.complete is not m: return
-    self.desc = [x for x in annotate(matches, described) if ' -> ' in x][:4]
-
-@patch
-async def complete_python(self:Ui):
-    "Tab: complete as far as the candidates agree, and leave the menu up to cycle."
-    try: await self._complete(insert=True)
-    finally:
-        self.turn = None
-        self.paint()
-
-@patch
-async def _suggest(self:Ui):
-    "Kernel completions triggered by typing; never touches the buffer or `turn`."
-    try: await self._complete(insert=False)
-    except Exception: self.complete, self.desc = None, []
-    finally:
-        self._suggesting = False
-        self.paint()
-
-@patch
-async def _promote(self:Ui, name):
-    "Adopt one agent variable, off the loop thread."
-    from ramabana.pyrepl import promote
-    if self.attached:
-        return self.note(f'{self.attached} belongs to whoever started it, so promoting is theirs to '
-                         'do. The agent works in its own layer here and cannot write into the kernel.')
-    self.say(Text(await asyncio.to_thread(promote, self.kernel.base if self.kernel else '', name)),
-             'note', fold=None)
-    self.turn = None
-    self.paint()
 
 # %% ../nbs/05_cli.ipynb #5285d36c
 #: what `main` adds to an interactive session's briefing about `!` lines
@@ -2955,7 +2711,7 @@ def can_ask_background():
     "Whether to ask the terminal for its background: stdin and stdout are a terminal, and not under tmux, whose answer need not be the outer terminal's."
     return sys.stdin.isatty() and sys.stdout.isatty() and not os.environ.get('TMUX')
 
-async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell=True, pane='auto',
+async def amain(agent, hint='', bell=True, pane='auto',
                 resumed=False,   # draw the resumed session's turns before the first prompt
                 first='',   # what the session says before anything else: the welcome, or the model it moved to
                 cold=False,   # no model runs here, so none is warmed
@@ -3006,12 +2762,7 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
             ui.show_plan = True
         else: ui.say(Text('tab completes /commands · ctrl+t toggles the plan · /help for keys', style=GRUVBOX['gray']), 'note', fold=None)
         if first: ui.say(Text(first), 'note', fold=None)
-        if attach or python or agent_proxy: await ui.warm_up()   # the kernel's host replaces this one, on a started model
-        elif not cold: ui.begin()
-        if attach: ui.hint = f'{hint} · attached to {await ui.attach_session(attach)}'
-        elif python or agent_proxy:
-            await ui.enter_python()
-            if agent_proxy: await ui.enable_agent_proxy()
+        if not cold: ui.begin()
         if cold: ui.open_guide()
         else: ui.start_pane(pane)
         ui.paint()
@@ -3030,8 +2781,6 @@ async def amain(agent, hint='', python=False, attach='', agent_proxy=False, bell
         tty.restore()
         if ui is not None: ui.closed = True
         agent.close()
-        if ui is not None and ui.agent_bridge is not None: await ui.agent_bridge.close()
-        if ui is not None and ui.kernel is not None: await ui.kernel.shutdown()
 
 # %% ../nbs/05_cli.ipynb #b6d74293
 def headless_prompt(prompt):
@@ -3069,7 +2818,7 @@ def main(
     web: bool = True,                    # --no-web takes the web tools offline
     read_outside: bool = False,          # reads reach any path; writes need --root
     subagent_writes: bool = True,       # --no-subagent-writes restricts delegates to read-only tools
-    vault: bool = False,                 # vishalakshi vault for reads; not in python mode
+    vault: bool = False,                 # vishalakshi vault for reads
     pii: str = PII_OFF,                  # off | redact | refuse PII from the vault, and from shell, Python and web reads a hosted model gets
     pii_ner: bool = False,               # --pii also gates titled names
     spec: bool = False,                  # enable OpenAPI, Azure and Google Discovery tools
@@ -3080,10 +2829,6 @@ def main(
     cfg: str = '~/.config/ramabana',     # config dir: skills, extensions, resumable history
     resume: str = '',                    # saved session id/prefix, or 'latest'; bare --resume lists this folder's sessions to pick from
     all_folders: bool = False,           # with a bare --resume, list sessions from every folder
-    python: bool = False,                # start in python mode, on a kernel of your own
-    attach: str = '',                    # join a live session; --kernels lists them
-    agent_proxy: bool = False,           # expose a restricted agent proxy in PyREPL
-    kernels: bool = False,               # list live sessions and exit
     json: bool = False,                  # with a prompt: print the full result as JSON
     bell: bool = True,                   # --no-bell silences turn-end and approval bells
     hints: bool = True,                  # --no-hints hides the row of keys under the status bar
@@ -3099,29 +2844,16 @@ def main(
     profile: str = 'auto',               # auto | small | full: small suits ≤32k local models
     learned: bool = True,                # --no-learned starts without <cfg>/learned, the lessons Dhrona keeps
 ):
-    "Run Ramabana as a terminal agent or Python prompt. Name every folder it may work on: --root .,~/notes"
+    "Run Ramabana as a terminal agent. Name every folder it may work on: --root .,~/notes"
     read_outside = read_outside and not no_read_outside
     vault = vault and not no_vault
     if doctor: return Setup(cfg).doctor()
-    if (kernels or python or attach or agent_proxy) and (msg := need('python')):
-        print(msg, file=sys.stderr)
-        return 2
-    if kernels:
-        from ramabana.pyrepl import sessions
-        print(sessions())
-        return 0
-    if (msg := refusal(tmux, pane, profile, pii, vault, python, attach, agent_proxy, warm, no_warm)):
+    if (msg := refusal(tmux, pane, profile, pii, vault, warm, no_warm)):
         print(msg, file=sys.stderr)
         return 2
     prompt = headless_prompt(prompt)
     if prompt and approve == 'ask':
         print('one-shot runs have nobody to ask, so every write will be refused · pass --approve auto', file=sys.stderr)
-    if attach:
-        from ramabana.pyrepl import find_session
-        try: attach = find_session(attach)
-        except RuntimeError as e:
-            print(e, file=sys.stderr)
-            return 2
     if not setup.LAUNCHED: Setup(cfg).launch(prompt, json, tmux)
     roots = [r.strip() for r in str(root).split(',') if r.strip()]
     try: set_theme(theme)
@@ -3151,10 +2883,9 @@ def main(
             return 2
         if (was := getattr(agent, 'resumed_roots', None)):
             print(f'that session had also opened {", ".join(was)} · /root add PATH to open again', file=sys.stderr)
-    own = python or attach   # the kernel's or the attached session's model, not this one's
-    try: moved = '' if own else agent.settle()
+    try: moved = agent.settle()
     except Exception as e: moved = f'could not move the turn to a model that runs here: {agent_err(e)}'
-    cold = not own and bool(needs_setup(agent.routing))
+    cold = bool(needs_setup(agent.routing))
     if cold and (prompt or not sys.stdin.isatty()):   # nobody is there to read a welcome
         print(setup_guide(agent.routing), file=sys.stderr)
         return 1
@@ -3166,7 +2897,7 @@ def main(
     if setup.CLI_FROM_CONFIG: hint += f" · from config.toml: {', '.join(setup.CLI_FROM_CONFIG)}"
     log = stderr_log(agent)
     try:
-        with stderr_to(log): asyncio.run(amain(agent, hint, python=python, attach=attach, agent_proxy=agent_proxy, bell=bell, hints=hints, tips=tips, pane=pane, resumed=bool(resume), theme=theme,
+        with stderr_to(log): asyncio.run(amain(agent, hint, bell=bell, hints=hints, tips=tips, pane=pane, resumed=bool(resume), theme=theme,
                                                first=welcome(agent.routing) if cold else moved, cold=cold))
     except KeyboardInterrupt: pass
     if log.exists() and log.stat().st_size: print(f'library output from the session is in {log}', file=sys.stderr)
@@ -3250,7 +2981,7 @@ def _ref_listing(self:Ui, d):
 @patch
 def _file_matches(self:Ui):
     "Completion for the `@` reference under the cursor as `(start, matches, why none)`, or None when there is none."
-    if self.mode == 'python' or (m := REF_AT.search(self.buf.text[:self.buf.cursor])) is None: return None
+    if (m := REF_AT.search(self.buf.text[:self.buf.cursor])) is None: return None
     q = m.group(1).lstrip('"')
     d, sep, n = q.rpartition('/')
     d, low, note = d + sep, n.lower(), ''
@@ -3285,7 +3016,7 @@ def arg_words(cmd, before, models=(), ids=()):
 @patch
 def _arg_matches(self:Ui):
     "`(start, matches)` for the argument of `/subagents`, `/model`, `/learned` or `/talk` under the cursor, or None."
-    if self.mode == 'python' or not (m := re.match(r'/(subagents|model|learned|talk) +(.*)$', self.buf.text[:self.buf.cursor])): return None
+    if not (m := re.match(r'/(subagents|model|learned|talk) +(.*)$', self.buf.text[:self.buf.cursor])): return None
     *before, cur = m.group(2).split(' ')
     def names():
         try: return [r['value'] for r in available_models()]
@@ -3319,8 +3050,8 @@ def _refresh_complete(self:Ui):
 
 @patch
 def _in_ref(self:Ui):
-    "Whether the cursor is in an `@` reference, outside Python mode, where `@` is a decorator."
-    return self.ask is None and self.mode != 'python' and REF_AT.search(self.buf.text[:self.buf.cursor]) is not None
+    "Whether the cursor is in an `@` reference."
+    return self.ask is None and REF_AT.search(self.buf.text[:self.buf.cursor]) is not None
 
 _core_on_key_files = Ui.on_key
 @patch
@@ -3583,7 +3314,7 @@ _ui_on_key = Ui.on_key
 def on_key(self:Ui, k):
     "Ctrl-C stops without wiping the composer; alt+up pulls queued text back into it; `?` on an empty composer prints the key card; `TASKS_KEY` lists the background tasks."
     if isinstance(self.menu, TaskMenu): return self.task_key(k)
-    if (k.name == '?' and not self.buf.text and self.mode != 'python' and self.menu is None
+    if (k.name == '?' and not self.buf.text and self.menu is None
             and self.ask is None and not self.transcript.active):
         self.show_keys()
         return self.paint()
@@ -3594,7 +3325,7 @@ def on_key(self:Ui, k):
         if not self.take_back(): self.flash('nothing queued to take back')
         self.paint()
         return None
-    if (k.name == 'ctrl+c' and self.mode != 'python' and self.ask is None
+    if (k.name == 'ctrl+c' and self.ask is None
             and (self.turn is not None or self._stop_count)):
         return self.stop()
     return _ui_on_key(self, k)
@@ -3662,7 +3393,7 @@ def submit(self:Ui):
     if line == '/talk' or line.startswith('/talk '):
         self.buf.clear()
         return self.talk(line[len('/talk'):])
-    if self.target and line and not line.startswith('/') and self.ask is None and self.mode == 'agent':
+    if self.target and line and not line.startswith('/') and self.ask is None:
         self.remember(line)
         self.buf.clear()
         said = self.agent.tell(self.target, line)
@@ -3766,7 +3497,6 @@ def start_control(ui):
 def peer_prompt(self:Ui, text):
     "Start `text` from a peer as a turn, or hold it behind the running one as a queued line is held, shown as from a peer. Returns what `Control.do_prompt` returns."
     if self.closed: raise RuntimeError('the session is closing')
-    if self.turn is None: self._source = 'peer'
     self._echo(Text(f'⇠ from a peer: {text}'), 'user', pad=True, source=text)
     was = len(self._queued_text)
     if self.start_turn(self._turn(text)): out = {'started': True}
@@ -3874,7 +3604,7 @@ def submit(self:Ui):
         if n in ('', 'main') or n.isdigit() or find_peer(self.peer_list, n) is not None:
             self.buf.clear()
             return self.tell_peer(line[len('/tell'):])
-    if self.peer and line and not line.startswith('/') and self.ask is None and self.mode == 'agent':
+    if self.peer and line and not line.startswith('/') and self.ask is None:
         self.remember(line)
         self.buf.clear()
         self.comp.spawn(self.send_typed(self.peer, line), name='tell')

@@ -21,8 +21,7 @@ def test_the_context_names_the_state_the_hint_row_shows():
     async def body(u, agent, tty):
         seen = {'idle': u.context()}
         u.buf.insert('fix the'); seen['typing'] = u.context()
-        u.buf.clear(); agent_mode, u.mode = u.mode, 'python'; seen['python'] = u.context()
-        u.mode = agent_mode
+        u.buf.clear()
         u.menu = cli.TaskMenu(lambda: [dict(kind='watch', id='w1', label='src', state='running', detail='x')])
         seen['tasks'] = u.context()
         u.menu = None; u.enter_transcript(); seen['transcript'] = u.context()

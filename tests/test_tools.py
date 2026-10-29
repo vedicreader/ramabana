@@ -124,29 +124,3 @@ def test_a_sub_agent_sized_like_its_parent_is_not_handed_an_empty_list():
     assert {t.__name__ for t in a._sub_plain()} == warm, 'and it does not change once warm'
 
 
-# ---- entering python mode keeps every group the host already had -------------------------
-
-class _Kernel:
-    "The shape `LocalHost` expects of a kernel. `/python` attaches one of these."
-    scopes, kind = ('isolated', 'overlay'), 'ipykernel'
-    def run(self, code): return 'ran'
-    def inspect(self, code, scope='isolated'): return 'inspected'
-    def list_vars(self): return ''
-
-
-def test_entering_python_mode_keeps_every_tool_the_host_already_had(tmp_path):
-    """`/python` used to build a replacement host from four attributes of the old one.
-
-    A session started with `--vault --spec` lost fifteen tools and gained none, because every
-    group the old host had and `LocalHost` does not went with the host it replaced. A kernel is
-    a backend on the host now, so there is nothing to copy and nothing to drop.
-    """
-    from ramabana.cli import mk_host
-    host = mk_host(roots=(str(tmp_path),), vault=True, spec=True)
-    before = {t.__name__ for t in tools_for(host)}
-    assert {'memory_read', 'api_load', 'list_watches'} <= before, sorted(before)
-    host.kernel = _Kernel()                       # what `use_kernel` does
-    after = {t.__name__ for t in tools_for(host)}
-    assert before == after, f'lost {sorted(before - after)}, gained {sorted(after - before)}'
-
-

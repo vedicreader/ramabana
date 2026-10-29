@@ -105,10 +105,9 @@ def test_every_tool_named_a_write_is_also_marked_one():
     names shalya has never heard of. Nothing failed when they disagreed."""
     from shalya.core import is_write
     from ramabana.testing import FullHost, fake_agent
-    from ramabana.shop import Cart, cart_tools
     from ramabana.tools import WRITE_TOOLS, tools_for
 
-    built = list(tools_for(FullHost())) + list(cart_tools(Cart()))
+    built = list(tools_for(FullHost()))
     a, _ = fake_agent()
     built += [t for t in a.tools if t.__name__ not in {x.__name__ for x in built}]
     by = {t.__name__: t for t in built}

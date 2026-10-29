@@ -14,15 +14,9 @@ from ramabana.tools import Background, subagent_tools, tools_for
 
 
 def every_tool():
-    """One of every tool a fully capable agent can be given, its own and the toolset's.
-
-    The trolley is an extension rather than a host group, so it is built by hand here; nothing
-    else reaches it, and a summary it never got is exactly what this file is for.
-    """
-    from ramabana.shop import Cart, cart_tools
+    "One of every tool a fully capable agent can be given, its own and the toolset's."
     out = list(tools_for(FullHost()))
     out += list(subagent_tools(lambda: None, lambda: [], None, None, background=Background()))
-    out += list(cart_tools(Cart()))
     a, _ = fake_agent()
     out += [t for t in a.tools if t.__name__ not in {x.__name__ for x in out}]
     return out

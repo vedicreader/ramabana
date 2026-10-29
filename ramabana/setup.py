@@ -36,8 +36,7 @@ def env_prefixes():
 
 #: the modules of each extra that ramabana imports
 EXTRAS = dict(search=('vishalakshi', 'litesearch', 'kosha', 'rgapi', 'fossick'),
-              python=('dhrishti', 'jupyter_client'),
-              serve=('mcp', 'acp'),
+              serve=('mcp',),
               cli=('teleprint', 'fastpylight'),
               dhrona=('dhrona',))
 
@@ -52,7 +51,7 @@ def need(extra, *mods):
     return f"{', '.join(miss)} not installed: pip install 'ramabana[{extra}]'" if miss else ''
 
 #: console scripts besides `run_cli`: the module whose `main` runs, its extra, and the modules it needs
-SCRIPTS = dict(run_mcp=('mcp', 'serve', ('mcp',)), run_acp=('racp', 'serve', ('acp',)),
+SCRIPTS = dict(run_mcp=('mcp', 'serve', ('mcp',)),
                run_pane=('pane', 'cli', ('teleprint', 'rich')))
 
 def follow_cmd(log,      # a run's transcript
@@ -169,11 +168,10 @@ CHANNELS = {'native': 'native', 'tags': 'tags', 'text': 'tags'}   #: what a pers
 PII_OFF = 'off'
 PII_MODES = (PII_OFF, 'redact', 'refuse')
 
-def refusal(tmux='auto', pane='auto', profile='auto', pii=PII_OFF, vault=False, python=False, attach='', agent_proxy=False,
+def refusal(tmux='auto', pane='auto', profile='auto', pii=PII_OFF, vault=False,
             warm=False, no_warm=False):
     "Why `main` refuses these options before starting anything, or ''."
     if warm and no_warm: return '--warm and --no-warm contradict each other; pass one'
-    if vault and (python or attach or agent_proxy): return 'there is no vault-backed host for a dhrishti session; drop --vault'
     for name, v, ok in (('tmux', tmux, TMUX_MODES), ('pane', pane, PANE_MODES), ('profile', profile, PROFILES), ('pii', pii, PII_MODES)):
         if v not in ok: return f"unknown --{name} {v!r}; choose one of {', '.join(ok)}"
     if pii != PII_OFF and not vault: return '--pii gates what a vault returns; add --vault'
@@ -181,9 +179,9 @@ def refusal(tmux='auto', pane='auto', profile='auto', pii=PII_OFF, vault=False, 
 
 #: the `ramabana` options that take a value; every other option is a flag
 VALUED = ('--root', '--model', '--approve', '--pii', '--theme', '--max-tool-calls', '--max-steps', '--cfg', '--resume',
-          '--attach', '--tmux', '--pane', '--optin', '--profile')
-#: options after which `main` returns before `launch`, or checks the python extra first
-EARLY = ('-h', '--help', '--json', '--doctor', '--kernels', '--python', '--attach', '--agent-proxy')
+          '--tmux', '--pane', '--optin', '--profile')
+#: options after which `main` returns before `launch`
+EARLY = ('-h', '--help', '--json', '--doctor')
 #: the flags `refusal` reads
 FLAGS = ('--vault', '--warm', '--no-warm')
 LAUNCHED = False   # set when `run_cli` has run `launch`; `main` then skips it
@@ -242,14 +240,13 @@ def run_cli():
     defaults = {k[4:]: v for k, v in load_config()[0].items() if k.startswith('cli.')}
     if (cfg := explicit.get('cfg')) is not None and Path(cfg).expanduser().resolve() != Path('~/.config/ramabana').expanduser().resolve():
         for k in ('read_outside', 'vault', 'pii'): defaults.pop(k, None)
-    if any(explicit.get(k) for k in ('python', 'attach', 'agent_proxy')): defaults.pop('vault', None)
     p.set_defaults(**defaults)   # a flag given still wins
     args = vars(p.parse_args())
     for k in ('pdb', 'xtra'): args.pop(k, None)
     for k in ('read_outside', 'vault'):
         if k in args: args[k] = args[k] and not args[f'no_{k}']
     pii_cfg = 'pii' in defaults and explicit.get('pii') == PII_OFF   # config.toml set it and no --pii did; `--pii off` leaves it off either way
-    if pii_cfg and not args.get('vault'): args['pii'] = PII_OFF   # skipped, as cli.vault is for --python, where the flag is refused
+    if pii_cfg and not args.get('vault'): args['pii'] = PII_OFF   # `--pii` gates what a vault returns, so it is skipped, not refused, when the vault is off
     CLI_FROM_CONFIG = tuple(k for k in ('read_outside', 'vault') if k in defaults and args.get(k) and not explicit.get(k)) + (('pii',) if pii_cfg and args['pii'] != PII_OFF else ())
     return main(**args)
 
@@ -344,6 +341,8 @@ KEYS = {
     'window.local_ctx': Key(int, 'LOCAL_CTX', '', "the window every local model runs with; 0 keeps each model's own"),
     'compaction.auto': Key(bool, '', '', 'compact on crossing the reserve; false compacts only on /compact or when a turn cannot fit'),
     'compaction.strategy': Key(str, '', '', 'summary asks the summary model; surgical keeps a digest made without a model', ('summary', 'surgical')),
+    'compaction.soft': Key(int, '', '', 'tokens past which the next turn that starts at a clean boundary hands off to a fresh context'),
+    'compaction.hard': Key(int, '', '', 'tokens past which the conversation compacts, or at the window reserve when that is lower'),
     'runtime.effort': Key(str, 'EFFORT', '', 'the reasoning effort a Claude turn asks for'),
     'runtime.tool_channel': Key(str, 'TOOL_CHANNEL', '', 'native sends tool schemas on the wire, tags (or text) in the prompt; empty decides per model', ('', *CHANNELS)),
     'runtime.litert_backend': Key(str, 'LITERT_BACKEND', '', 'the engine a LiteRT model runs on; empty lets LiteRT choose', ('', 'cpu', 'gpu')),
@@ -354,7 +353,7 @@ KEYS = {
     'cli.approve': Key(str, '', '--approve', 'which actions the terminal session asks about', ('ask', 'edits', 'auto', 'off', 'none')),
     'cli.theme': Key(str, '', '--theme', "the terminal palette; auto follows the terminal's background", ('auto', *THEME_NAMES)),
     'cli.read_outside': Key(bool, '', '--no-read-outside', 'allow reads outside the opened folders; writes stay inside them'),
-    'cli.vault': Key(bool, '', '--no-vault', 'use the vishalakshi vault for reads; ignored in Python, attach and agent-proxy sessions'),
+    'cli.vault': Key(bool, '', '--no-vault', 'use the vishalakshi vault for reads'),
     'cli.pii': Key(str, '', '--pii', 'mask or withhold personal data in vault reads, and in shell, Python and web reads a hosted model gets; needs cli.vault, and is skipped without it', PII_MODES),
     'cli.tmux': Key(str, '', '--tmux', 'whether the terminal session runs in tmux panes', ('auto', 'on', 'off')),
     'cli.pane': Key(str, '', '--pane', 'whether the terminal session opens the now pane', ('auto', 'on', 'off')),
@@ -543,10 +542,10 @@ from itertools import groupby
 def config_defaults():
     "Every key's built-in default, read from the module that owns it."
     from ramabana.core import AZURE_KEY_ENV, DEFAULT_POLICY, DFLT_IMAGE, DFLT_TURN, DFLT_VIDEO
-    from ramabana.runtime import CLAUDE_EFFORT, EST_MARGIN, IMG_TOKENS, KEEP_RECENT, RESERVE
+    from ramabana.runtime import CLAUDE_EFFORT, EST_MARGIN, HARD_LINE, IMG_TOKENS, KEEP_RECENT, RESERVE, SOFT_LINE
     d = {'learning': True, 'pane_close_done': True, 'calm': False, 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
          'window.margin': EST_MARGIN, 'window.image_tokens': IMG_TOKENS, 'window.reserve': RESERVE, 'window.keep_recent': KEEP_RECENT,
-         'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'summary', 'runtime.effort': CLAUDE_EFFORT,
+         'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'summary', 'compaction.soft': SOFT_LINE, 'compaction.hard': HARD_LINE, 'runtime.effort': CLAUDE_EFFORT,
          'runtime.tool_channel': '', 'runtime.litert_backend': '', 'subagents.effort': '', 'subagents.tool_channel': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'jobs.image': DFLT_IMAGE, 'jobs.video': DFLT_VIDEO}
     try:
         from ramabana.cli import main

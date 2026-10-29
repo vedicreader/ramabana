@@ -91,8 +91,8 @@ def test_finished_queue_does_not_absorb_the_next_message(at_handoff):
 
 
 def test_this_surfaces_own_work_cannot_evict_a_waiting_message(ui):
-    """A `/python` or `/promote` typed during a turn used to take the slot the message was in, run
-    itself when the turn ended, and leave the line gone with nothing saying so."""
+    """A surface command that starts work of its own, typed during a turn, used to take the slot the
+    message was in, run itself when the turn ended, and leave the line gone with nothing saying so."""
     ran = []
     async def slow(): await asyncio.sleep(.05)
     async def my_message(): ran.append('my message')
@@ -294,16 +294,6 @@ def test_up_with_a_draft_does_not_recall_waiting_text():
         u.on_key(Key('up'))
         assert u.buf.text == 'draft' and u._queued_prompt == 'waiting'
         u.take_back()
-    _scene(body)
-
-
-def test_a_refused_slash_command_stays_in_the_composer():
-    "The line was cleared from the buffer before the loop learned the slot was taken, so its text was lost."
-    async def body(u, agent):
-        u.start_turn(_slow())
-        _type(u, 'first', 'alt+enter')
-        assert _type(u, '/python') is not None
-        assert u.buf.text == '/python' and u._queued_prompt == 'first'
     _scene(body)
 
 
