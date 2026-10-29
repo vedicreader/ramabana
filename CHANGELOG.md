@@ -2,6 +2,16 @@
 
 <!-- do not remove -->
 
+## 0.2.91
+- Compaction has two absolute lines: soft at 150,000 tokens and hard at 250,000, set with `compaction.soft` and `compaction.hard`. A model works best well below its window, and each call re-reads the whole conversation.
+- Past the hard line, or the window's own threshold when that is lower, the conversation compacts. Before, automatic compaction ran only when a message no longer fitted the window, which on a 1M window was almost never.
+- Between the lines, a turn that starts at a clean boundary hands off to a fresh context. A clean boundary is a last turn that completed and made a commit or left no open plan step. The summary model summarises the whole conversation, the Done list becomes one project memory note per session, and the conversation goes on from the summary. `/handoff` starts one by hand.
+- Each turn's history row has `context`: the tokens in use, how full the window is, and any compaction or handoff.
+- A finished background sub-agent's answer arrives with the next tool result of the running turn. The model no longer polls `delegate_result` or sleeps.
+- `DROP_TOOLS` leaves `generate_image`, `watch`, `list_watches`, `cancel_watch`, `memory_forget` and `ask_memory` out of the model's tools. Each tool's schema is sent on every call. `Agent(drop_tools=())` offers them again.
+- Removed: the ACP server (`ramabana-acp`, `racp`), the `shop` module, and Python mode (`--python`, `/python`, `/vars`, `/promote`, `--attach`, `--kernels`, agent-proxy) with the `python` extra. `mk_agent(python=)` takes `'host'` or `'off'`.
+- Needs shalya 0.1.25, whose `grep` searches a skipped folder such as `.venv` when `path_filter` names it. The `dhrona` extra needs dhrona 0.1.23, for the nightly efficiency check.
+
 ## 0.2.90
 - A Claude Code turn stops in time at its dollar limit. Claude Code reports cost only when a run ends, after ramabana's budget check can act. ramabana now gives each Claude Code turn its limit as Claude Code's own `max_budget_usd`: the turn limit `max_cost`, or what is left of `session_max_cost`, whichever is smaller. It sets this again at the start of each turn. Before, one nightly replay spent $28.49 against an $8 limit.
 - A turn that Claude Code stops at its budget is recorded with the state `budget`, and its cost counts in the session's use.
