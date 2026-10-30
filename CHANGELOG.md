@@ -2,6 +2,19 @@
 
 <!-- do not remove -->
 
+## 0.2.96
+- `Agent(max_cost=, max_tokens=, est_rate=)` sets spending caps. A turn that goes past a cap stops with `state='budget'` and names the cap. One-shots and streams add to the same totals and raise `BudgetExceeded`. Parallel calls can go past a cap by the calls that already run.
+- A runtime that reports no cost is priced with `est_rate`, else 10 USD per million tokens. `TurnResult.estimated` and `Agent.estimated` show an estimate.
+- `only_tools` takes tool names. `only_tools=[]` gives no tool at all: no `submit_result`, no Claude built-in tool and no MCP server. `ask(schema=...)` raises `ValueError` before any model call when the list does not hold `submit_result`.
+- New `ramabana.guard`: `outgoing` masks secrets in text for each model, local models too. `Agent.oneshot(prepare=)` runs a guard on each route. An Ollama model counts as local only when its host is on the local machine.
+- `oneshot(deadline=)` raises `OneshotTimeout` on Claude. Other backends refuse it before any call.
+- New `Agent.oneshot_stream` yields text as it arrives. It tries another route only before the first chunk. Calls on different routes run in parallel.
+- New `Agent.warm_backend(job)` starts a backend without a model request.
+- New `ramabana.history.History` reads sessions and memory and changes nothing. Importing it makes no file.
+- In the message box, Shift+Enter starts a new line and Enter sends. Ctrl+A and Cmd+A select the message, Shift+arrows extend the selection, and a mouse drag selects text.
+- Peer limits: a session can send 80 notes and asks in 12 hours. Before, it was 40. Set `RAMABANA_PEER_MESSAGES`, `RAMABANA_PEER_ASKS` or `RAMABANA_PEER_HOPS` before the process starts to change a limit. A value must be a positive integer. A bad value, such as `lots` or `0`, stops ramabana with an error that names the variable.
+- Ramabana requires shalya 0.1.27, rishi 0.1.62 and gheasy 0.0.19.
+
 ## 0.2.95
 - A click on a sub-agent row in the `now` pane no longer aims the main prompt at that sub-agent. Before, a line typed in the main pane went to the sub-agent. The click opens the sub-agent's transcript pane, and the main prompt still talks to the main agent.
 - A transcript pane has an input line on its last row. Enter sends the line to the sub-agent, as `/talk` does. The cursor rests on that line only while the sub-agent runs, so only the pane tmux has focused shows a cursor.
