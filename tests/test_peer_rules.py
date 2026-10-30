@@ -1,5 +1,5 @@
 "Peer rules: registration, work together mode, limits, targets and the folder guard."
-import os, time
+import os, subprocess, sys, time
 from datetime import datetime
 
 import pytest
@@ -30,10 +30,31 @@ def test_expired_together_ends_and_logs(tmp_path):
     assert read_log(tmp_path)[-1]['event'] == 'together_end'
 
 def test_hop_and_budget_refusals(tmp_path):
-    assert 'hop' in limit_refusal(tmp_path, 'k', Envelope('reply', 'x', {}, hops=6))
+    assert 'hop' in limit_refusal(tmp_path, 'k', Envelope('reply', 'x', {}, hops=HOP_MAX))
     together_on(tmp_path, 'k')
-    for i in range(40): log(tmp_path, Envelope('note', str(i), {'key': 'k'}).dict())
+    for i in range(PEER_BUDGET['messages'] - 1): log(tmp_path, Envelope('note', str(i), {'key': 'k'}).dict())
+    assert limit_refusal(tmp_path, 'k', Envelope('note', 'x', {'key': 'k'})) == ''
+    log(tmp_path, Envelope('note', 'last', {'key': 'k'}).dict())
     assert 'budget' in limit_refusal(tmp_path, 'k', Envelope('note', 'x', {'key': 'k'}))
+
+def test_peer_limits_environment_overrides():
+    code = r'''
+from tempfile import TemporaryDirectory
+from ramabana.peers import *
+assert HOP_MAX == 9 and PEER_BUDGET == dict(messages=2, turns=3)
+with TemporaryDirectory() as d:
+    for i in range(2): log(d, Envelope('note', str(i), {'key': 'k'}).dict())
+    assert '2 of 2' in limit_refusal(d, 'k', Envelope('note', 'x', {'key': 'k'}))
+    assert limit_refusal(d, 'k', Envelope('reply', 'x', {}, hops=8)) == ''
+    assert 'hop' in limit_refusal(d, 'k', Envelope('reply', 'x', {}, hops=9))
+'''
+    env = dict(os.environ, RAMABANA_PEER_MESSAGES='2', RAMABANA_PEER_ASKS='3', RAMABANA_PEER_HOPS='9')
+    result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    env['RAMABANA_PEER_MESSAGES'] = '0'
+    result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True)
+    assert result.returncode != 0 and 'Peer limits must be positive integers' in result.stderr
+
 
 def test_match_peer_by_number_id_and_repo():
     rows = [{'session': 'a1', 'key': 'claude-a1', 'folders': ['/r/sanketa']}, {'session': 'b2', 'key': 'ramabana-b2', 'folders': ['/r/leela']}]
@@ -63,16 +84,16 @@ def test_registered_skips_corrupt_files(tmp_path):
 
 def test_rolling_cap_outside_together_mode(tmp_path):
     for i in range(PEER_BUDGET['messages']): log(tmp_path, Envelope('note', str(i), {'key': 'k'}).dict())
-    assert 'budget: 40 of 40 messages sent in 12 h' == limit_refusal(tmp_path, 'k', Envelope('note', 'x', {'key': 'k'}))
+    assert f"budget: {PEER_BUDGET['messages']} of {PEER_BUDGET['messages']} messages sent in 12 h" == limit_refusal(tmp_path, 'k', Envelope('note', 'x', {'key': 'k'}))
     assert limit_refusal(tmp_path, 'o', Envelope('note', 'x', {'key': 'o'})) == '', 'the cap is per sender'
 
-def test_exactly_20_asks_run(tmp_path):
+def test_exactly_the_configured_asks_run(tmp_path):
     together_on(tmp_path, 'k', now=time.time() - 1)
     ran = 0
-    for i in range(25):
+    for i in range(PEER_BUDGET['turns'] + 5):
         log(tmp_path, (e := Envelope('ask', str(i), {'key': 'o'}, to='k')).dict())
         ran += not limit_refusal(tmp_path, 'k', e)
-    assert ran == PEER_BUDGET['turns'] == 20
+    assert ran == PEER_BUDGET['turns']
 
 def test_guard_skips_home_and_its_parents(tmp_path, monkeypatch):
     monkeypatch.setenv('HOME', str(tmp_path/'home'))
