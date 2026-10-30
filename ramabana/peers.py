@@ -120,10 +120,16 @@ def wait_take(d, key, timeout, pred=None, alive=lambda: True, poll=.5):
     return got
 
 # %% ../nbs/23_peers.ipynb #edd4f05d
-HOP_MAX, TOGETHER_HOURS = int(os.environ.get('RAMABANA_PEER_HOPS', 6)), 12
-PEER_BUDGET = dict(messages=int(os.environ.get('RAMABANA_PEER_MESSAGES', 80)),
-                   turns=int(os.environ.get('RAMABANA_PEER_ASKS', 20)))
-if min(HOP_MAX, *PEER_BUDGET.values()) < 1: raise ValueError('Peer limits must be positive integers')
+def _env_limit(name, default):
+    "The positive integer in environment variable `name`, else `default`; a bad value raises `ValueError` that names the variable."
+    v = os.environ.get(name, str(default))
+    try: n = int(v)
+    except ValueError: n = 0
+    if n < 1: raise ValueError(f'{name} must be a positive integer, not {v!r}')
+    return n
+
+HOP_MAX, TOGETHER_HOURS = _env_limit('RAMABANA_PEER_HOPS', 6), 12
+PEER_BUDGET = dict(messages=_env_limit('RAMABANA_PEER_MESSAGES', 80), turns=_env_limit('RAMABANA_PEER_ASKS', 20))
 
 def pid_alive(pid):
     "True when a process with id `pid` exists."

@@ -53,7 +53,11 @@ with TemporaryDirectory() as d:
     assert result.returncode == 0, result.stderr
     env['RAMABANA_PEER_MESSAGES'] = '0'
     result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True)
-    assert result.returncode != 0 and 'Peer limits must be positive integers' in result.stderr
+    assert result.returncode != 0 and "RAMABANA_PEER_MESSAGES must be a positive integer, not '0'" in result.stderr
+    env['RAMABANA_PEER_MESSAGES'] = 'lots'
+    result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True)
+    assert result.returncode != 0 and "RAMABANA_PEER_MESSAGES must be a positive integer, not 'lots'" in result.stderr
+    assert 'invalid literal' not in result.stderr
 
 
 def test_match_peer_by_number_id_and_repo():
