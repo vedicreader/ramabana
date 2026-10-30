@@ -1372,7 +1372,7 @@ wheels = [
 
 [[package]]
 name = "gheasy"
-version = "0.0.15"
+version = "0.0.19"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cyclopts" },
@@ -1381,9 +1381,9 @@ dependencies = [
     { name = "ruamel-yaml" },
     { name = "tomlkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/46/5f0651146b9ea46d86a87100f4e8ae9651e7f413f7b5b18e8a6f47a59451/gheasy-0.0.15.tar.gz", hash = "sha256:41502c4de173502a0fb7a3c6a32d3abecdee5aec29234561da9a556d2c2091be", size = 64222, upload-time = "2026-10-24T21:22:53.438Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/e7/cd8b3f304bcc4210e437cb3c24d6dc3eb46939ca5210286aa710a61cd2c1/gheasy-0.0.19.tar.gz", hash = "sha256:74297abd5f96422029dc57e92f64f9afe4a4ae9e2391d3207485b9f979959e74", size = 64908, upload-time = "2026-10-30T08:30:42.03Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/3a/5d5fe84fc42f6c3502b25c5da8cb3921426724605bf7fc4ffda5195aa8b9/gheasy-0.0.15-py3-none-any.whl", hash = "sha256:7f620752218a891a7f15d5d3c0fdd945a1985d6c91800455a24d56e695cf9838", size = 66436, upload-time = "2026-10-24T21:22:52.114Z" },
+    { url = "https://files.pythonhosted.org/packages/40/51/94f6a60431040cb2492504de002e0b860c2d1a5784efc1ad2378c54d48be/gheasy-0.0.19-py3-none-any.whl", hash = "sha256:fa0c1bf94e67a6cc21852624117fbbb2192c2e1b164bbab5940765c499cec5eb", size = 67187, upload-time = "2026-10-30T08:30:40.807Z" },
 ]
 
 [[package]]
@@ -4051,7 +4051,7 @@ requires-dist = [
     { name = "fossick", marker = "extra == 'cli'", specifier = ">=0.1.22" },
     { name = "fossick", marker = "extra == 'dev'", specifier = ">=0.1.22" },
     { name = "fossick", marker = "extra == 'search'", specifier = ">=0.1.22" },
-    { name = "gheasy", specifier = ">=0.0.15" },
+    { name = "gheasy", specifier = ">=0.0.19" },
     { name = "koshas", marker = "extra == 'all'", specifier = ">=0.1.18" },
     { name = "koshas", marker = "extra == 'cli'", specifier = ">=0.1.18" },
     { name = "koshas", marker = "extra == 'dev'", specifier = ">=0.1.18" },
@@ -4080,12 +4080,12 @@ requires-dist = [
     { name = "rich", marker = "extra == 'all'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=15.0.0" },
     { name = "rich", marker = "extra == 'dev'", specifier = ">=15.0.0" },
-    { name = "rishi", specifier = ">=0.1.61" },
-    { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.61" },
-    { name = "shalya", specifier = ">=0.1.26" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.26" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.26" },
-    { name = "shalya", extras = ["tmux"], marker = "extra == 'dev'", specifier = ">=0.1.26" },
+    { name = "rishi", specifier = ">=0.1.62" },
+    { name = "rishi", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.1.62" },
+    { name = "shalya", specifier = ">=0.1.27" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'all'", specifier = ">=0.1.27" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'cli'", specifier = ">=0.1.27" },
+    { name = "shalya", extras = ["tmux"], marker = "extra == 'dev'", specifier = ">=0.1.27" },
     { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.4,<0.1.5" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.4,<0.1.5" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.4,<0.1.5" },
@@ -4241,7 +4241,7 @@ wheels = [
 
 [[package]]
 name = "rishi"
-version = "0.1.61"
+version = "0.1.62"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
@@ -4257,9 +4257,9 @@ dependencies = [
     { name = "truststore" },
     { name = "uraiyadal" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/6a/d3e35bea6371dde62ab5db0335145e3f3e9f2d82a9bc52a8693e25f89e80/rishi-0.1.61.tar.gz", hash = "sha256:39bfcd20263ff631c2f19c18c5c77b47970aa2112ea81ad0d1f94a6b8d6d2a81", size = 93168, upload-time = "2026-10-30T03:42:05.86Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/80/ef8609abc4b98dbe9e38d9218ba5991f9548c38d5bd5580627ac9025a422/rishi-0.1.62.tar.gz", hash = "sha256:209522fe3efce864e9a6bab83fd0c7b7b5b54c597298953307e0c5029db63479", size = 98311, upload-time = "2026-10-30T09:11:13.639Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/27/002564a3146b6d9ad006588fce1481effe15187d7ea4812526c434aa6a82/rishi-0.1.61-py3-none-any.whl", hash = "sha256:22a92b1737a993bb1cf4eae9f39a4086a9ba83a411a633ffbab171c81ade3dfe", size = 102169, upload-time = "2026-10-30T03:42:03.956Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/47/5ccd8b736c927f868eb1a2217c7319bca56a0e64c15c375faa800c449975/rishi-0.1.62-py3-none-any.whl", hash = "sha256:fe98acafc34c354ebad6f97b05499ffa4a540daa402dbd3b931784729695c023", size = 107408, upload-time = "2026-10-30T09:11:12.012Z" },
 ]
 
 [package.optional-dependencies]
@@ -4505,7 +4505,7 @@ wheels = [
 
 [[package]]
 name = "shalya"
-version = "0.1.26"
+version = "0.1.27"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dhrishti" },
@@ -4519,9 +4519,9 @@ dependencies = [
     { name = "litesearch" },
     { name = "vishalakshi" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/67/04/48ec1542b847ba9c764a4f6bdd0bed3efc0db851e4465c22070d90ab1b99/shalya-0.1.26.tar.gz", hash = "sha256:a8597beda4441123c0d1a55e5e76eec0614d236dd2850fe97f21f8cc4fc7daf9", size = 66036, upload-time = "2026-10-30T04:13:33.552Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8e/68/db318006c1682f7a0ee5ed6ceac3fcacc2170ebca0b27cf721ed4ac372dc/shalya-0.1.27.tar.gz", hash = "sha256:7c580b889cf95f613ab33eca9f8156b9911566848006052b8dd283f9302a4c90", size = 66202, upload-time = "2026-10-30T09:09:19.407Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/c4/756b9805f092000b6d06c72b525fdb3bac88bd56860b7a9515123c39f1d6/shalya-0.1.26-py3-none-any.whl", hash = "sha256:2c4897f62ab74d7b093c11377f7e48eefdd00eb85f31dcd00f1ef1d5f06ee76e", size = 69627, upload-time = "2026-10-30T04:13:32.101Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/06/04efbde2a990a29efd3d473cc7829b227031b77dc352ffe5ce93ff2492d0/shalya-0.1.27-py3-none-any.whl", hash = "sha256:9d51d97fcf2c90d3a0b427887b7de703e29d98624905131034f6718a652c5026", size = 69809, upload-time = "2026-10-30T09:09:18.011Z" },
 ]
 
 [package.optional-dependencies]
