@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.2.92
+- Work together mode ends only on a prompt that the user typed in the Claude Code session. A sub-agent hand-back, a message from another session and a task notification no longer end it. Claude Code starts each of these prompts with its own frame, and the hook reads that frame. Before, only a task notification was skipped.
+
 ## 0.2.91
 - Compaction has two absolute lines: soft at 150,000 tokens and hard at 250,000, set with `compaction.soft` and `compaction.hard`. A model works best well below its window, and each call re-reads the whole conversation.
 - Past the hard line, or the window's own threshold when that is lower, the conversation compacts. Before, automatic compaction ran only when a message no longer fitted the window, which on a 1M window was almost never.
