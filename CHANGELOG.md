@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.94
+- A session keeps every tool by default. Before, `DROP_TOOLS` left out `generate_image`, `watch`, `list_watches`, `cancel_watch`, `memory_forget` and `ask_memory`. `DROP_TOOLS` is gone.
+- `drop_tools` in config.toml names the tools to leave out of the model's schema, for example `drop_tools = ["watch", "generate_image"]`. An `Agent(drop_tools=...)` argument beats it. Sub-agents use the same list as their session.
+
 ## 0.2.93
 - `delegate_async` tells the model that the answer arrives by itself in a later tool result, and that it must keep working. Before, its reply said "Collect it with delegate_result", and the model then polled `delegate_result`. `delegate_result` still shows the state of a run and pages a long answer.
 

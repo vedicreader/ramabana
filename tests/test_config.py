@@ -139,6 +139,40 @@ def test_a_problem_in_the_file_is_one_of_the_agents_problems():
     assert any('margin = 0 is ignored' in p for p in a.problems)
 
 
+def _schema(**kw):
+    "An `Agent` on a `FullHost` and the names of its tools."
+    from ramabana.agent import Agent
+    from ramabana.core import register_model
+    from ramabana.testing import FullHost
+    register_model('drop-model', 'openai/drop-model', 'remote', 32_768)   # the 1k `SPEC` window would drop the memory group
+    a = Agent(FullHost(pages={'https://example.test/a': '# a'}), model='drop-model', extensions=False, global_skills=False, **kw)
+    return a, {t.__name__ for t in a.tools}
+
+
+def test_with_no_drop_tools_every_tool_is_in_the_schema():
+    a, names = _schema()
+    assert 'memory_forget' in names and names == _schema(drop_tools=())[1]
+
+
+def test_drop_tools_in_the_file_leaves_those_tools_out():
+    from ramabana.tools import image_available
+    _write('drop_tools = ["memory_forget"]\n')
+    a, names = _schema()
+    assert 'memory_forget' not in names and 'memory_forget' not in {t.__name__ for t in a._sub_plain()}, 'sub-agents follow the session'
+    _write('drop_tools = []\n')
+    a, names = _schema()
+    assert names == _schema(drop_tools=())[1] and not a.problems
+    if image_available(): assert 'generate_image' in names
+    assert 'remember' not in _schema(drop_tools={'remember'})[1], 'the argument beats the file'
+
+
+def test_a_drop_tools_that_is_not_a_list_is_reported_and_takes_the_default():
+    _write('drop_tools = "watch"\n')
+    a, names = _schema()
+    assert any("drop_tools = 'watch' is ignored: it must be a list of strings" in p for p in a.problems), a.problems
+    assert 'memory_forget' in names and names == _schema(drop_tools=())[1]
+
+
 def test_learning_moves_from_settings_json_and_leaves_that_file_alone(tmp_path):
     cfg = tmp_path/'leela'; cfg.mkdir()
     shared = {'editor': {'tabSize': 2}, 'theme': 'dusk', 'learning': 'off'}

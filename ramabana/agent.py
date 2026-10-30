@@ -11,21 +11,20 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'PERSON_ONLY', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'DATED_CONTEXT', 'PICTURE_RULE',
            'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'MASKED_NOTE',
            'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES',
-           'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'DROP_TOOLS', 'COMPACT_RETRY',
-           'GIT_SHELL', 'RAHASYA_SECRETS', 'MORE_SECRETS', 'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE',
-           'PEER_ROWS_EVERY', 'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE',
-           'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING',
-           'FRESH_HINT', 'REPLAYED', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP',
-           'RESULT_ASK', 'RESULT_AGAIN', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
-           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'PII_READS',
-           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
-           'never', 'applied', 'apply', 'note', 'inline_for', 'request_text', 'prompt_text', 'turn_prompt',
-           'prompt_directives', 'project_context', 'dated_lessons', 'learned_context', 'work_rules', 'skill_catalogue',
-           'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent',
-           'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial', 'generated_denial',
-           'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing',
-           'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy', 'compact_history',
-           'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
+           'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'COMPACT_RETRY', 'GIT_SHELL',
+           'RAHASYA_SECRETS', 'MORE_SECRETS', 'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE', 'PEER_ROWS_EVERY',
+           'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'SHOWN_CHANNEL',
+           'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED',
+           'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN',
+           'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER',
+           'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md',
+           'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
+           'request_text', 'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons',
+           'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family',
+           'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial',
+           'shell_denial', 'generated_denial', 'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult',
+           'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
+           'compact_history', 'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -1193,8 +1192,6 @@ _STEP_MIN, _STEP_MAX = 8, 80
 SUB_DEPTH_MAX = 2   #: most levels of sub-agents that may delegate again
 TREE_SPENT = ('Tool-call budget for delegated work is exhausted. Stop calling tools and '
               'answer with the evidence you have.')
-#: tools a session leaves out of the model's schema unless `drop_tools` says otherwise: rarely called, and each costs schema tokens on every call
-DROP_TOOLS = frozenset({'generate_image', 'watch', 'list_watches', 'cancel_watch', 'memory_forget', 'ask_memory'})
 COMPACT_RETRY = 20_000   #: tokens a conversation grows by before a compaction that failed is tried again
 
 def _sub_steps(n): return 'auto' if str(n).strip().lower() == 'auto' else max(1, min(SUB_STEP_CEILING, int(n)))
@@ -1211,7 +1208,7 @@ class Agent:
                  sp=None,                   # override the whole briefing
                  extra_sp='',               # text added after the briefing, which stays
                  global_skills=True,        # read skills from `~/.agents/skills` too
-                 drop_tools=DROP_TOOLS,     # tool names left out of the model's schema
+                 drop_tools=None,           # tool names left out of the model's schema; None reads config.toml's `drop_tools`, else keeps every tool
                  approvals=None,            # an `Approvals`; None gates nothing
                  cfg=None,                  # config dir, for skills and extensions
                  compact=None,              # compact automatically at the threshold; None reads config.toml's `compaction.auto`, else True
@@ -1282,7 +1279,7 @@ class Agent:
         self.local_multimodal = bool(local_multimodal)
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
         self._sp, self.extra_sp, self.global_skills = sp, extra_sp, bool(global_skills)
-        self.drop_tools = frozenset(drop_tools)
+        self.drop_tools = frozenset(ifnone(drop_tools, setting('drop_tools', ())))
         self.compactor = Compactor(auto=ifnone(compact, setting('compaction.auto', True)), strategy=ifnone(compact_strategy, setting('compaction.strategy', 'summary')),
                                    kernel_alive=kernel_alive, on_compact=on_compact)
         self.fresh_hint = fresh_hint

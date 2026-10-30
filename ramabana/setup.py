@@ -330,6 +330,7 @@ KEYS = {
     'learning': Key(bool, '', '--no-learned', "learning: the learned briefing and skills, lessons, start.json and Dhrona's nightly batch"),
     'pane_close_done': Key(bool, '', '', "close a sub-agent's transcript pane a few seconds after the run ends; false leaves it open"),
     'calm': Key(bool, '', '', 'calm mode: the conversation shows only your text, the narration and the replies, and each stretch of tool calls folds into one summary row; /calm switches it for a session'),
+    'drop_tools': Key(list, '', '', "tool names to leave out of the model's schema, such as [\"watch\", \"generate_image\"]; each tool's schema costs tokens on every call; empty keeps every tool"),
     'jobs.turn': Key(str, 'MODEL', '--model', 'the model each turn runs on'),
     **{f'jobs.{j}': Key(str, f'MODEL_{j.upper()}', '', _JOB.format(j)) for j in ('oneshot', 'inline', 'completion', 'classify', 'summary', 'subagent')},
     'jobs.image': Key(str, 'MODEL_IMAGE', '', 'the OpenAI-compatible image model generate_image draws with, such as a [model."NAME"] on Azure'),
@@ -543,7 +544,7 @@ def config_defaults():
     "Every key's built-in default, read from the module that owns it."
     from ramabana.core import AZURE_KEY_ENV, DEFAULT_POLICY, DFLT_IMAGE, DFLT_TURN, DFLT_VIDEO
     from ramabana.runtime import CLAUDE_EFFORT, EST_MARGIN, HARD_LINE, IMG_TOKENS, KEEP_RECENT, RESERVE, SOFT_LINE
-    d = {'learning': True, 'pane_close_done': True, 'calm': False, 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
+    d = {'learning': True, 'pane_close_done': True, 'calm': False, 'drop_tools': [], 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
          'window.margin': EST_MARGIN, 'window.image_tokens': IMG_TOKENS, 'window.reserve': RESERVE, 'window.keep_recent': KEEP_RECENT,
          'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'summary', 'compaction.soft': SOFT_LINE, 'compaction.hard': HARD_LINE, 'runtime.effort': CLAUDE_EFFORT,
          'runtime.tool_channel': '', 'runtime.litert_backend': '', 'subagents.effort': '', 'subagents.tool_channel': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'jobs.image': DFLT_IMAGE, 'jobs.video': DFLT_VIDEO}
