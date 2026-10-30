@@ -1324,7 +1324,7 @@ class Ui:
             self._now_dirty = True
             return
         self._now_at, self._now_dirty = t, False
-        try: write_snapshot(self.agent, p, target=self.target or 'main', chat_pane=getattr(_tmux_pane(self.agent.host), 'id', ''),
+        try: write_snapshot(self.agent, p, target=self.target or 'main', chat_pane=getattr(_tmux_pane(self.agent.host), 'id', ''), control=str(getattr(self.control, 'path', '')),
                                   close_done=bool(setting('pane_close_done', True)), theme=ACTIVE_THEME, palette=GRUVBOX)
         except Exception: return   # a snapshot that fails must never stop the animate loop
         self._now_busy = self.agent.busy

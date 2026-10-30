@@ -222,7 +222,7 @@ def _click(v, key):
 
 
 def test_a_click_aims_the_terminal_through_the_talk_mark_and_opens_the_transcript_left_of_the_chat(tmp_path):
-    "Clicking `main` writes `main`; clicking a sub-agent writes its id and splits its log left of the chat pane, once."
+    "Clicking `main` writes `main`; clicking a sub-agent leaves the talk mark alone and splits its log left of the chat pane, once."
     from ramabana.pane import talk_mark
     from test_pane_close import FakeTmux
     now, log = time.time(), tmp_path/'run_aaa.log'
@@ -234,12 +234,59 @@ def test_a_click_aims_the_terminal_through_the_talk_mark_and_opens_the_transcrip
     assert next(k for k, _ in v.rows if k) == ('main', 'main'), 'main is the first row with a key'
     _click(v, ('main', 'main'))
     assert talk_mark(p).read_text() == 'main' and tmux.ran('split-window') == []
+    talk_mark(p).unlink()   # as the CLI does once it has read it
     _click(v, ('sub', 'run_aaa'))
-    assert talk_mark(p).read_text() == 'run_aaa'
+    assert not talk_mark(p).exists(), 'the main prompt stays aimed where it was'
     (cmd,) = tmux.ran('split-window')
     assert cmd[:5] == ('split-window', '-h', '-b', '-P', '-F') and cmd[-2] == '%7' and str(log) in cmd[-1]
     _click(v, ('sub', 'run_aaa'))
     assert len(tmux.ran('split-window')) == 1, 'its transcript is already open'
+
+
+def test_after_a_sub_agent_click_the_main_prompt_talks_to_main_and_the_transcript_pane_to_the_sub_agent(tmp_path):
+    "A click on a sub-agent row used to aim the main prompt at it, so a line typed in the main pane went to the sub-agent. The click opens its transcript pane, a line typed there reaches the sub-agent through the session's control socket, and the main prompt still runs the main agent."
+    import asyncio
+    from teleprint.compositor import Compositor
+    from teleprint.testing import EmuTty
+    from ramabana import cli
+    from ramabana.agent import _run_store
+    from ramabana.pane import Follower
+    from ramabana.runtime import Run
+    from test_pane_close import FakeTmux
+    from test_peers import _cfg, _until
+    agent, be = fake_agent(cfg=_cfg(), replies=['from main'])
+    kid = Run('run_kid123', 'background', 'survey', log=agent.runs_dir/'run_kid123.log')
+    _run_store(agent)[kid.id] = kid
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    async def go():
+        await comp.start()
+        u = cli.Ui(comp, agent, loop=asyncio.get_running_loop())
+        ctl = cli.start_control(u)
+        def listed():
+            "The session's own snapshot, with `kid` listed as `now_snapshot` lists a running sub-agent."
+            u.write_now(force=True)
+            sub = {**_board(time.time())['subs'][0], 'id': kid.id, 'log': str(kid.log)}
+            p.write_text(json.dumps({**json.loads(p.read_text()), 'chat_pane': '%7', 'subs': [sub]}))
+        try:
+            p = cli._now_file(agent)
+            listed()
+            v = Viewer(p, Tty()); v.tmux = FakeTmux('%7'); v.tick()
+            _click(v, ('sub', kid.id))
+            assert v.pane['run'] == kid.id, 'the click opens its transcript pane'
+            u.poll_talk()
+            u.buf.insert('a line for main')
+            if (turn := u.submit()) is not None: u.start_turn(turn)
+            await _until(lambda: u.turn is None and be.sent, 'the main turn')
+            assert 'a line for main' in str(be.sent[0]) and kid.drain_inbox() == []
+            listed()
+            f = Follower(kid.log, p)
+            f.tick(40)
+            await asyncio.to_thread(f.feed, b'look at b.py too\r')
+            assert kid.drain_inbox() == ['look at b.py too'] and f.buf.text == '', f.said
+        finally: ctl.close()
+    try: asyncio.run(go())
+    finally: tty.close()
 
 
 def _sgr(colour, layer=38):

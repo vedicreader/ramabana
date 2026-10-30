@@ -22,7 +22,7 @@ from .peers import (CONTROL, Envelope, _atomic_write, _rows, all_peers, answer, 
 from .peer_report import save_report
 
 # %% ../nbs/20_control.ipynb #9c6353b2
-METHODS = ('prompt', 'steer', 'cancel', 'asks', 'answer', 'status', 'events', 'message')
+METHODS = ('prompt', 'steer', 'tell', 'cancel', 'asks', 'answer', 'status', 'events', 'message')
 SOCKET_MAX = 100   #: bytes a Unix socket path may take; macOS allows 104
 REQUEST_MAX = 1_000_000   #: bytes one request line may take
 EVENTS_MAX = 1_000_000    #: bytes of the event file one `events` call returns
@@ -129,6 +129,7 @@ class Control:
         return {'started': True}
 
     def do_steer(self, text): return {'told': self.agent.steer(text)}
+    def do_tell(self, run_id, text): return self.agent.tell(run_id, text)
     def do_cancel(self):
         "Stop the running turn, and drop the prompts queued behind it."
         with self._lock:

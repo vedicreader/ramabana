@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.95
+- A click on a sub-agent row in the `now` pane no longer aims the main prompt at that sub-agent. Before, a line typed in the main pane went to the sub-agent. The click opens the sub-agent's transcript pane, and the main prompt still talks to the main agent.
+- A transcript pane has an input line on its last row. Enter sends the line to the sub-agent, as `/talk` does. The cursor rests on that line only while the sub-agent runs, so only the pane tmux has focused shows a cursor.
+- The control socket has a `tell(run_id, text)` method that queues a message for a running sub-agent. Each `now.json` snapshot carries the socket's path as `control`.
+
 ## 0.2.94
 - A session keeps every tool by default. Before, `DROP_TOOLS` left out `generate_image`, `watch`, `list_watches`, `cancel_watch`, `memory_forget` and `ask_memory`. `DROP_TOOLS` is gone.
 - `drop_tools` in config.toml names the tools to leave out of the model's schema, for example `drop_tools = ["watch", "generate_image"]`. An `Agent(drop_tools=...)` argument beats it. Sub-agents use the same list as their session.

@@ -7,20 +7,22 @@ Docs: https://vedicreader.github.io/ramabana/pane.html.md"""
 # %% ../nbs/18_pane.ipynb #dcfdb8be
 from __future__ import annotations
 
-import collections, io, json, os, re, select, shlex, shutil, signal, subprocess, sys, textwrap, time, weakref
+import collections, io, json, os, re, select, shlex, signal, subprocess, sys, textwrap, time, weakref
 from pathlib import Path
 
 from fastcore.basics import first
 from fastcore.script import call_parse
 from rich.console import Console, Group
 from rich.text import Text
-from teleprint.keys import Key, Mouse, Parser
+from teleprint.buffer import Buffer
+from teleprint.keys import Key, Mouse, Parser, Paste
 from teleprint.tty import RealTty
 
 from shalya.core import clip, diff_text, one_line as _1
 
 from .hl import HL_THEMES, diff_rich
 from .monitor import _counts, _rel
+from .peers import control_call
 from .setup import PANE_LINGER, follow_cmd
 
 # %% auto #0
@@ -360,17 +362,18 @@ class Viewer:
             if self.pane is not None: self.retry = now + 1
 
     def talk(self, key):
-        "Aim the terminal at the row `key` through the `talk_mark`; a running sub-agent's transcript shows in one pane left of the chat, and `main` closes that pane."
+        "`main` aims the terminal at the main agent through the `talk_mark` and closes the transcript pane; a running sub-agent's transcript shows in one pane left of the chat, where typed lines go to it."
         kind, rid = key
-        talk_mark(self.path).write_text(rid)
-        if kind == 'main': return self.close_transcript()
+        if kind == 'main':
+            talk_mark(self.path).write_text(rid)
+            return self.close_transcript()
         if kind != 'sub': return
         s = next((s for s in (self.snap or {}).get('subs', []) if s['id'] == rid), None)
         if s is None or not s.get('log') or s['state'] in _DONE: return
         self.show(s, (self.snap or {}).get('chat_pane'))
 
     def pick(self, key):
-        "A click or Enter on `key`: a main or sub-agent row aims the terminal at it, and a sub-agent row also opens."
+        "A click or Enter on `key`: the main row aims the terminal at it, and a sub-agent row opens and shows its transcript pane."
         if key[0] in ('main', 'sub'): self.talk(key)
         if key[0] != 'main': self.toggle(key)
 
@@ -476,10 +479,11 @@ def transcript_ansi(lines, P=PALETTE, width=80):
 def _bg(P): return '\x1b[48;2;' + ';'.join(str(int(P['bg0'][i:i + 2], 16)) for i in (1, 3, 5)) + 'm'
 
 class Follower:
-    "What a transcript pane has read of `log` and drawn: the last `keep` whole lines, the partial line after them, and the palette of the snapshot at `path`."
+    "What a transcript pane has read of `log` and drawn: the last `keep` whole lines, the partial line after them, the snapshot at `path` with its palette, and the line typed to the sub-agent."
     def __init__(self, log, path='', keep=200):
         self.log, self.path, self.lines, self.part, self.pos = Path(log), path, collections.deque(maxlen=keep), b'', 0
-        self.P, self.at, self.shown = PALETTE, None, None
+        self.P, self.at, self.shown, self.snap = PALETTE, None, None, None
+        self.parser, self.buf, self.said = Parser(), Buffer(), ''
 
     def read(self):
         "The whole lines written to the log since the last read; a log shorter than what was read starts over."
@@ -494,10 +498,44 @@ class Follower:
         return new
 
     def palette(self):
-        "Read the snapshot's palette again when its file changed; a missing or bad snapshot keeps the last."
+        "Read the snapshot and its palette again when its file changed; a missing or bad snapshot keeps the last."
         try: at = os.stat(self.path).st_mtime_ns if self.path else None
         except OSError: return
-        if at != self.at and (s := read_snapshot(self.path)) is not None: self.at, self.P = at, palette_of(s)
+        if at != self.at and (s := read_snapshot(self.path)) is not None: self.at, self.P, self.snap = at, palette_of(s), s
+
+    @property
+    def run(self):
+        "The id of the running sub-agent the snapshot lists with this `log`; '' when none, and then the pane takes no input."
+        return next((s['id'] for s in (self.snap or {}).get('subs', []) if s.get('log') == str(self.log) and s['state'] not in _DONE), '')
+
+    def feed(self, data):
+        "Edit the input line with the keys in `data`, an empty read flushing a lone escape; Enter sends the line."
+        for ev in self.parser.feed(data) if data else self.parser.flush():
+            if isinstance(ev, Paste): self.buf.insert(ev.text)
+            elif isinstance(ev, Key) and ev.name == 'enter': self.send()
+            elif isinstance(ev, Key) and self.buf.handle(ev): self.said = ''
+
+    def send(self):
+        "Tell the sub-agent the typed line through the session's control socket, as `/talk` does; a refusal stays on the input line beside the text."
+        if not (text := self.buf.text.strip()): return
+        self.palette()
+        rid, sock = self.run, (self.snap or {}).get('control')
+        if not (rid and sock): self.said = 'no running sub-agent listens here'; return
+        try: self.said = control_call(sock, 'tell', timeout=5, run_id=rid, text=text)
+        except (OSError, RuntimeError) as e: self.said = str(e)
+        if self.said.startswith('told'): self.buf.clear(); self.said = ''
+
+    def prompt(self, width, height):
+        "Terminal text for the last row: the input line with the cursor in it while a sub-agent listens, else that row blank and the cursor hidden."
+        P, at = self.P, f'\x1b[{height};1H'
+        if not self.run: return at + _bg(P) + '\x1b[2K\x1b[?25l'
+        shown = self.buf.text.replace('\n', ' ')
+        t = Text('▌ ', style=f"bold {P['blue']}") + Text(shown, style=P['fg0'])
+        if self.said: t.append('  ' + self.said, style=P['red'])
+        con = Console(file=io.StringIO(), width=width, force_terminal=True, color_system='truecolor', highlight=False)
+        with con.capture() as cap: con.print(_fill(_cut(t, width), width, P), end='')
+        col = min(Text('▌ ' + shown[:self.buf.cursor]).cell_len, width - 1) + 1
+        return at + cap.get() + f'\x1b[{height};{col}H\x1b[?25h'
 
     def tick(self, width):
         "Terminal text for what changed since the last tick: the new lines, or every kept line again under a new palette or width."
@@ -509,12 +547,20 @@ class Follower:
             return _bg(self.P) + '\x1b[H\x1b[2J' + transcript_ansi(self.lines, self.P, width) + rest
         return transcript_ansi(new, self.P, width) + rest if new else ''
 
-def follow(log, path='', every=0.2, keep=200):
-    "Draw a `Follower` of `log` on the terminal every `every` seconds."
-    f = Follower(log, path, keep)
-    while True:
-        if (out := f.tick(shutil.get_terminal_size().columns)): sys.stdout.write(out); sys.stdout.flush()
-        time.sleep(every)
+def follow(log, path='', every=0.2, keep=200, tty=None):
+    "Draw a `Follower` of `log` on `tty` above its input line, waiting up to `every` seconds for keys, until the end of input."
+    f, tty, size, row = Follower(log, path, keep), tty or PaneTty(), None, None
+    try:
+        while (data := tty.read(every)) is not None:
+            f.feed(data)
+            if tty.size != size:
+                size, f.shown = tty.size, None
+                tty.write(f'\x1b[1;{size[1] - 1}r\x1b7')   # the transcript scrolls above the last row, which holds the input line
+            out, p = f.tick(size[0]), f.prompt(*size)
+            if out or p != row: tty.write(('\x1b8' + out + '\x1b7' if out else '') + p); row = p
+    finally:
+        tty.write('\x1b[r\x1b[0m\x1b[?25h')
+        tty.restore()
 
 # %% ../nbs/18_pane.ipynb #7f9d2673
 @call_parse
