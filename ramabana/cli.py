@@ -10,21 +10,21 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'ACTIVE_THEME', 'OSC11', 'OSC11_END', 'OSC11_RGB', 'TERM_BG', 'MARKDOWN_THEME', 'GUTTERS', 'FOLD',
            'FOLD_TOOL', 'STRETCH_ENDS', 'FOLD_RUNNING', 'ACT_EVERY', 'FOLD_STEP', 'STREAM_EVERY', 'ACT_TAIL',
            'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS',
-           'CONTEXTS', 'TASKS_KEY', 'NOT_SENT', 'KEYMAP', 'CARD', 'HELP', 'TIPS', 'BUILD', 'VERSION', 'GUIDE',
-           'KITTY_ENV', 'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW',
-           'IMG_CHROME', 'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'TASK_ROWS', 'BELL_IDLE', 'REASK_EVERY',
-           'YES', 'NO', 'NOT_ANSWER', 'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'HINTS', 'TIPS_USAGE',
-           'DIFF_LEXERS', 'BLOCK_START', 'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'BG_WAIT', 'CLI_FRESH', 'REF_AT',
-           'REF_CAP', 'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE', 'ALIVE_EVERY', 'REOPEN_EVERY',
-           'QUICK_DEATH', 'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'light_rgb',
-           'is_light', 'reply_light', 'fgbg_light', 'auto_theme', 'set_theme', 'plan_text', 'key_text', 'key_names',
-           'help_text', 'keymap_doc', 'keymap_dir', 'write_keymap', 'key_card', 'guide_text', 'kitty_graphics',
-           'png_size', 'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs',
-           'FileAttachment', 'file_note', 'Option', 'options_for', 'ChoiceMenu', 'task_order', 'task_age', 'TaskMenu',
+           'CONTEXTS', 'TASKS_KEY', 'KEYMAP', 'CARD', 'HELP', 'TIPS', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV',
+           'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
+           'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'TASK_ROWS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO',
+           'NOT_ANSWER', 'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'HINTS', 'TIPS_USAGE', 'DIFF_LEXERS',
+           'BLOCK_START', 'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'BG_WAIT', 'CLI_FRESH', 'REF_AT', 'REF_CAP',
+           'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH',
+           'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'light_rgb', 'is_light',
+           'reply_light', 'fgbg_light', 'auto_theme', 'set_theme', 'plan_text', 'key_text', 'key_names', 'help_text',
+           'keymap_doc', 'keymap_dir', 'write_keymap', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
+           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
+           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'task_order', 'task_age', 'TaskMenu',
            'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural',
-           'stretch_summary', 'Row', 'Stretch', 'OpenDiff', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang',
-           'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to',
-           'stderr_log', 'pick_session', 'loop_error', 'query_background', 'can_ask_background', 'amain',
+           'stretch_summary', 'Row', 'Stretch', 'OpenDiff', 'MessageBuffer', 'Ui', 'parse_answer', 'ask_pattern',
+           'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty',
+           'stderr_to', 'stderr_log', 'pick_session', 'loop_error', 'query_background', 'can_ask_background', 'amain',
            'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'guide_cmd', 'pane_cmd',
            'UiControl', 'start_control', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media',
            'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment',
@@ -41,7 +41,8 @@ from urllib.parse import unquote, urlparse
 from rich.text import Text
 from rich.markdown import CodeBlock, Markdown
 from rich.syntax import Syntax
-from rich.cells import cell_len
+from rich.cells import cell_len, split_graphemes
+from rich.style import Style
 from rich.theme import Theme
 from rich.table import Table
 from rich.padding import Padding
@@ -115,13 +116,14 @@ _MOK_RE = re.compile(rb'\A\x1b\[27;(\d+);(\d+)~')
 def ext_key(code, mods=1, event=1):
     "The `Key` for a kitty or modifyOtherKeys report, or None."
     m = (mods - 1) & ~0xc0
+    sup, m = 'mod+' if m & 8 else '', m & ~8
     if event == 3 or m > 7: return None
-    if m == 4 and code in EXT_CTRL: return Key(EXT_CTRL[code])
+    if m == 4 and code in EXT_CTRL: return Key(sup + EXT_CTRL[code])
     if m == 1 and code in (32, 127): m = 0
     name = EXT_NAMES.get(code) or (chr(code) if 32 < code < 0x110000 and not 0xd800 <= code < 0xf900 else None)
     if name is None: return None
-    if len(name) == 1 and not m: return Key(name, name)
-    return Key(_mod('space' if name == ' ' else name, m + 1))
+    if len(name) == 1 and not m and not sup: return Key(name, name)
+    return Key(sup + _mod('space' if name == ' ' else name, m + 1))
 
 def _patch_teleprint_keys():
     "Decode kitty and modifyOtherKeys reports; True if the patch was needed."
@@ -427,7 +429,6 @@ CONTEXTS = (dict(id='idle', label='Waiting for you'), dict(id='typing', label='T
             dict(id='transcript', label='Browsing the transcript'), dict(id='tasks', label='The background task list'))
 
 TASKS_KEY = 'ctrl+l'   #: opens the list of background tasks, as does `/tasks`
-NOT_SENT = {'shift+enter'}   #: chords Leela's terminal and a default tmux never pass on: a row keeps one as an alternative, the card never names it
 
 def _key(action, chords, label, group, card, **kw):
     "One `KEYMAP` row: `chords` is one chord or a list; `kw` holds the keymap format's `context`, `command` and `range`."
@@ -440,7 +441,10 @@ def _cmd(action, text, label, card, group='Commands', **kw):
 KEYMAP = [
     _key('keys', '?', 'on an empty prompt, show every key', 'Help', 'normal', context='idle'),
     _key('send', 'enter', 'send, or steer mid-turn', 'Composer', 'normal'),
-    _key('queue', ['alt+enter', 'shift+enter'], 'queue for after this turn', 'Composer', 'normal', context='running'),
+    _key('queue', 'alt+enter', 'queue for after this turn', 'Composer', 'normal', context='running'),
+    _key('newline', 'shift+enter', 'start a new message line (extended-key terminals)', 'Composer', 'edit', context='typing'),
+    _key('select_all', ['ctrl+a', 'mod+a'], 'select the whole message (mod is Command)', 'Editing', 'edit', context='typing'),
+    _key('select_move', ['shift+left', 'shift+right', 'shift+up', 'shift+down', 'shift+home', 'shift+end'], 'extend the selection', 'Editing', 'edit', context='typing'),
     _key('steer_queued', 'enter', 'on an empty line, steer the queued message in', 'Composer', 'normal', context='waiting'),
     _key('recall_one', 'up', 'take back the newest waiting message', 'Composer', 'normal', context='waiting'),
     _key('recall_all', 'alt+up', 'take every waiting message back into the composer', 'Composer', 'normal', context='waiting'),
@@ -465,7 +469,7 @@ KEYMAP = [
     _key('copy_block', 'y', 'copy this block', 'Transcript', 'transcript', context='transcript'),
     _key('tr_compose', 'i', 'write in the composer', 'Transcript', 'transcript', context='transcript'),
     _key('tr_leave', 'escape', 'leave', 'Transcript', 'transcript', context='transcript'),
-    _key('line_ends', ['ctrl+a', 'ctrl+e'], 'go to the start or end of the line', 'Editing', 'edit', context='typing'),
+    _key('line_ends', ['home', 'end', 'ctrl+e'], 'go to the start or end of the message', 'Editing', 'edit', context='typing'),
     _key('cut_line', ['ctrl+u', 'ctrl+k'], 'cut to the start or end of the line', 'Editing', 'edit', context='typing'),
     _key('cut_word', 'ctrl+w', 'cut the word before the cursor', 'Editing', 'edit', context='typing'),
     _key('yank', 'ctrl+y', 'paste back what was cut', 'Editing', 'edit', context='typing'),
@@ -565,13 +569,12 @@ CARD = dict(
 _SHOWN = dict(up='↑', down='↓', left='←', right='→', pageup='pgup', pagedown='pgdn', escape='esc')
 
 def key_text(row):
-    "How the card, hints and tips name a row's keys: typed text as written, a range as `alt+1..9`, else every chord outside `NOT_SENT`, a shared modifier written once."
+    "How the card, hints and tips name a row's keys: typed text as written, a range as `alt+1..9`, else every chord, a shared modifier written once."
     cs = row['chords']
     if row.get('command'): return ' or '.join(cs)
     if 'range' in row: return cs[0][:-1] + row['range'].replace('-', '..')
     runs = []
     for c in cs:
-        if c in NOT_SENT: continue
         mods, _, base = c.rpartition('+')
         if not mods: base = _SHOWN.get(base, base)
         if runs and runs[-1][0] == mods: runs[-1][1].append(base)
@@ -1075,6 +1078,47 @@ class OpenDiff:
         yield Text('\n').join(self.rows[:DIFF_OPEN])
         yield Text(f'… +{len(self.rows) - DIFF_OPEN} lines · click or ctrl+r opens', style='dim')
 
+# %% ../nbs/05_cli.ipynb #45fae43a
+class MessageBuffer(Buffer):
+    "Editable message text with an anchored selection."
+    def __init__(self, text=''):
+        self.anchor = None
+        super().__init__(text)
+    @property
+    def text(self): return self._text
+    @text.setter
+    def text(self, value):
+        self._text, self.anchor = value, None
+    def selection(self):
+        if self.anchor is None or self.anchor == self.cursor: return None
+        return tuple(sorted((max(0, min(self.anchor, len(self.text))), self.cursor)))
+    def clear(self):
+        self.anchor = None
+        super().clear()
+    def _delete_selection(self):
+        selected = self.selection()
+        self.anchor = None
+        if selected is None: return False
+        a, b = selected
+        self.text, self.cursor = self.text[:a] + self.text[b:], a
+        return True
+    def insert(self, text):
+        self._delete_selection()
+        super().insert(text)
+    def handle(self, key):
+        if key.name in ('ctrl+a', 'mod+a'):
+            self.anchor, self.cursor = 0, len(self.text)
+            return True
+        if key.name.startswith('shift+') and key.name[6:] in ('left', 'right', 'up', 'down', 'home', 'end'):
+            if self.anchor is None: self.anchor = self.cursor
+            return super().handle(Key(key.name[6:]))
+        if key.name in ('backspace', 'delete', 'ctrl+d') and self._delete_selection(): return True
+        if key.name in ('left', 'right') and (selected := self.selection()):
+            self.cursor, self.anchor = selected[key.name == 'right'], None
+            return True
+        if key.char is None: self.anchor = None
+        return super().handle(key)
+
 # %% ../nbs/05_cli.ipynb #2874a64d
 def _now_file(agent): return None if (d := agent.runs_dir) is None else d/'now.json'
 
@@ -1084,7 +1128,8 @@ class Ui:
     def __init__(self, comp, agent, loop=None):
         self.comp, self.agent, self.loop = comp, agent, loop
         comp.console.push_theme(MARKDOWN_THEME)
-        self.buf = Buffer()
+        self.buf = MessageBuffer()
+        self._compose_drag = False   #: a mouse drag over the composer is open
         self.ask = None
         self._asked_at = 0.0
         self.turn = None
@@ -1332,10 +1377,16 @@ class Ui:
     ASKING = 'approve? [y/n/a · n: reason] '
 
     def prompt(self):
-        "The input line: an approval question when one is pending, otherwise the prompt."
-        if self.ask is not None:
-            return Text(self.ASKING, style=f"bold {GRUVBOX['yellow']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
-        return Text('▌ ', style=f"bold {GRUVBOX['blue']}") + Text(self.buf.text, style=GRUVBOX['fg0'])
+        "The input line: an approval question when one is pending, otherwise the prompt, with the selection reversed."
+        ask = self.ask is not None
+        out = Text(self.ASKING if ask else '▌ ', style=f"bold {GRUVBOX['yellow' if ask else 'blue']}")
+        selected = self.buf.selection()
+        for i, end, _ in split_graphemes(self.buf.text)[0]:
+            style = Style(color=GRUVBOX['fg0'], meta={'compose': i})
+            if selected and selected[0] <= i < selected[1]: style += Style(reverse=True)
+            out.append(self.buf.text[i:end], style)
+        out.append(' ', Style(meta={'compose': len(self.buf.text)}))
+        return out
 
     def _prefixed(self, text):
         "`text` with what precedes it on screen, as `tail` measures it."
@@ -1353,6 +1404,10 @@ class Ui:
 
     def paint(self):
         "Repaint the live tail, and the browsing view when it is up."
+        if not self.transcript.active:
+            drafting = bool(self.buf.text)
+            for mode, on in ((1000, drafting or self.mouse), (1006, drafting or self.mouse), (1002, drafting)):
+                if (mode in self.comp._modes) != on: self.comp.set_modes(mode, on=on)
         self.announce_context()
         rows, cursor = self.tail()
         self.comp.set_tail(*rows, cursor=cursor, over=self.overlay())
@@ -1998,8 +2053,13 @@ class Ui:
             self.buf.clear()
             if self.turn is not None: return self.stop()
             return self.paint()
-        if k.name in ('enter', 'shift+enter', 'alt+enter'):
-            self._hold = k.name != 'enter'
+        if k.name == 'shift+enter':
+            if not self.transcript.active or self.transcript.composing:
+                self.complete = None
+                self.buf.insert('\n')
+            return self.paint()
+        if k.name in ('enter', 'alt+enter'):
+            self._hold = k.name == 'alt+enter'
             self._typed = self.buf.text.strip()   # `submit` clears the buffer; a refused turn gives this back
             coro = self.submit()
             self._hold = False
@@ -2354,14 +2414,52 @@ def set_tips(self:Ui, arg=''):
     return f'{said} · saved in {config_path()}'
 
 @patch
+def _compose_at(self:Ui, x, y):
+    "The message offset under the cell `x`, `y` of the painted composer; None away from it."
+    screen = self.comp._screen
+    if not 0 <= y < len(screen) or screen[y] is None: return None
+    tagged = [s.style.meta['compose'] for s in screen[y][1] if s.style and 'compose' in s.style.meta]
+    if not tagged:
+        above = next((j for j in range(y - 1, -1, -1) if screen[j] and any(s.style and 'compose' in s.style.meta for s in screen[j][1])), None)
+        below = any(row and any(s.style and 'compose' in s.style.meta for s in row[1]) for row in screen[y + 1:])
+        if above is None or not below: return None
+        offset = max(s.style.meta['compose'] for s in screen[above][1] if s.style and 'compose' in s.style.meta)
+        for _ in range(y - above):
+            newline = self.buf.text.find('\n', offset)
+            if newline < 0: return None
+            offset = newline + 1
+        return offset
+    col, end = 0, None
+    for segment in screen[y][1]:
+        offset = segment.style.meta.get('compose') if segment.style else None
+        if offset is not None:
+            end = offset + len(segment.text)
+            if x < col + segment.cell_length: return offset
+        elif x < col + segment.cell_length and end is None: return tagged[0]
+        col += segment.cell_length
+    return min(end, len(self.buf.text))
+
+@patch
 def on_mouse(self:Ui, ev):
-    "Route a mouse event to the browsing view, or here when `/mouse` is on."
+    "Route a mouse event: a drag over the draft selects it, the wheel browses the transcript, and the browsing view takes everything while it is up."
     if self.transcript.active: return self.transcript.on_mouse(ev)
-    if not self.mouse: return True
-    if ev.press and ev.btn == 64:
+    if self.buf.text:
+        offset = self._compose_at(ev.x, ev.y)
+        if not ev.press and self._compose_drag:
+            self._compose_drag = False
+            if offset is not None: self.buf.cursor = offset
+            self.paint()
+            return True
+        if offset is not None and ev.btn in (0, 32):
+            if ev.press and ev.btn == 0: self.buf.anchor, self._compose_drag = offset, True
+            if self._compose_drag:
+                self.buf.cursor = offset
+                self.paint()
+                return True
+    if ev.press and ev.btn == 64 and (self.mouse or self.buf.text):
         self.enter_transcript()
         return True
-    return ev.press and ev.btn == 65
+    return not self.mouse or (ev.press and ev.btn == 65)
 
 @patch
 def on_key(self:Ui, k):

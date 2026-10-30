@@ -1,5 +1,5 @@
 "A terminal session listens on its control socket: a peer's prompt runs through its Ui, and the user and the agent reach other live sessions with /peers, /tell, peers() and tell()."
-import asyncio, os, tempfile, time
+import asyncio, os, tempfile, threading, time
 from pathlib import Path
 
 from teleprint.compositor import Compositor
@@ -26,6 +26,18 @@ def _slow_agent(cfg, replies, pause=.3, **kw):
     be.pause = pause
     a._be = a._be_or_none = lambda job='turn': be
     return a, be
+
+
+class EventGatedFakeBackend(FakeBackend):
+    "A backend whose `_send` sets `entered`, then waits for `gate`, so a test decides when a turn may finish."
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.entered, self.gate = threading.Event(), threading.Event()
+        self.gate.set()
+    def _send(self, msg, **kw):
+        self.entered.set()
+        self.gate.wait(30)
+        return super()._send(msg, **kw)
 
 
 class PipeTty(EmuTty):
@@ -124,7 +136,9 @@ def _until_sync(cond, what, n=200):
 
 def test_peers_and_tell_between_two_agents_in_one_process():
     d = _cfg()
-    other, obe = _slow_agent(d, ['the other reply', 'after the steer'], pause=1, host=MemHost(root='/other'), approvals=Approvals(tools=WRITE_TOOLS, mode='ask'))
+    other, _ = fake_agent(cfg=d, host=MemHost(root='/other'), approvals=Approvals(tools=WRITE_TOOLS, mode='ask'))
+    obe = EventGatedFakeBackend(replies=['the other reply', 'after the steer'])
+    other._be = other._be_or_none = lambda job='turn': obe
     me, _ = fake_agent(cfg=d, approvals=Approvals(tools=WRITE_TOOLS, mode='auto'))
     other.events_to(other.runs_dir/'events.jsonl')   # as a terminal session does
     ctls = [Control(other).start(), Control(me).start()]
@@ -136,11 +150,13 @@ def test_peers_and_tell_between_two_agents_in_one_process():
         assert refused.startswith('refused:') and 'nothing is listening' in refused and obe.sent == [], 'an ask into another session asks its user first'
         together_on(peers_dir(d), f'ramabana-{other.session_id}')
         assert 'the other reply' in tell(1, 'what are you working on?', kind='ask', wait=10)
+        obe.gate.clear(); obe.entered.clear()
         control_call(control_path(other), 'prompt', text='a long job')
-        _until_sync(other.run, 'the long job to start')   # a note steers only a turn that is running
+        assert obe.entered.wait(10), 'the long job to reach the backend'   # a note steers only a turn that is running
         assert tell(other.session_id, 'turn left', wait=0).startswith('told')
         _until_sync(lambda: any('turn left' in m for m in getattr(other.run(), 'inbox', [])), 'a note to steer the running turn')
     finally:
+        obe.gate.set()
         for c in ctls: c.close()
 
 

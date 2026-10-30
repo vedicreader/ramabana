@@ -13,21 +13,22 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES',
            'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'COMPACT_RETRY', 'GIT_SHELL',
            'RAHASYA_SECRETS', 'MORE_SECRETS', 'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE', 'PEER_ROWS_EVERY',
-           'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'HISTORY_TAIL', 'HISTORY_TURNS', 'PLAN_NOTE', 'SHOWN_CHANNEL',
-           'SUBAGENTS_USAGE', 'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED',
+           'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS',
+           'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'SOFT_CAPS', 'HARD_CAPS',
            'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN',
-           'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER',
-           'LEGACY_GAP', 'BRANCH_POLICIES', 'MAX_SPANS', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md',
-           'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
-           'request_text', 'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons',
-           'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family',
-           'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial',
-           'shell_denial', 'generated_denial', 'note_tools', 'hydrate_turns', 'repo_state', 'SessionBusy', 'TurnResult',
-           'TurnFailed', 'ResultMissing', 'Completer', 'request_body', 'request_title', 'model_title', 'HistoryBusy',
-           'compact_history', 'masking_guard', 'guard_reads', 'mk_host', 'mk_agent']
+           'EST_RATE', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE',
+           'CTX_AFTER', 'BRANCH_POLICIES', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
+           'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
+           'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons', 'learned_context',
+           'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
+           'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
+           'generated_denial', 'note_tools', 'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed',
+           'ResultMissing', 'token_rate', 'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard',
+           'guard_reads', 'mk_host', 'mk_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS',
+           'hydrate_turns', 'request_text', 'request_body', 'request_title']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
-import ast, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
+import ast, contextlib, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
 from glob import escape as glob_escape
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -39,7 +40,7 @@ from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import DFLT_TURN, needs_setup, accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
 from .setup import PANE_LINGER, config_path, follow_cmd, config_reset, config_set, config_show, load_config, set_table, setting
-from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block, done_items
+from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block, done_items, OneshotTimeout, deadline_hit, cancel_hit, BudgetExceeded, cap_breach
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
@@ -48,6 +49,13 @@ from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, Too
                             tools_for, Background, Slots, SUB_MAX_STEPS, SUB_STEP_CEILING, SUB_TIMEOUT, SUB_READ_ONLY, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
 from .monitor import _counts, _rel, Monitors, POB_READER, beat_join, beat_notes, beat_notice, beat_problems, pob, pob_path, review_notice
 from .peers import all_peers, folder_denial, guard_of, peer_text
+from .history_core import (HISTORY_TAIL, HISTORY_TURNS, LEGACY_GAP, MAX_SPANS, _log_turn,
+    hydrate_turns, request_text, request_body, _cut_title, request_title, _add_span, _join_spans,
+    _set_spans, _index_from_log, _index_from_history)
+
+# %% ../nbs/03_agent.ipynb #c11f09db
+#: the names `history_core` now defines, kept in `from ramabana.agent import *`
+_all_ = ['HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title']
 
 # %% ../nbs/03_agent.ipynb #2df0c05f
 MAX_DETAIL = 4000     # chars of a result kept for the fold
@@ -663,13 +671,6 @@ def inline_for(inline, names):
     return tuple(s for s in inline if s != 'exhash' or not names or 'edit_file' in names)
 
 # %% ../nbs/03_agent.ipynb #23d3d109
-def request_text(prompt):
-    """The person's request, without the notebook or screen context composed around it."""
-    text = prompt[-1] if isinstance(prompt, (list, tuple)) and prompt else prompt
-    text = str(text or '')
-    matches = list(re.finditer(r'<user-request>\n?(.*?)\n?</user-request>', text, re.S))
-    return matches[-1].group(1) if matches else text
-
 def prompt_text(prompt):
     "A prompt as log text. A picture becomes `[image]` and a sound becomes `[audio]`, never the repr of its bytes."
     if not isinstance(prompt, (list, tuple)): return str(prompt or '')
@@ -1230,6 +1231,8 @@ class Agent:
                  max_tokens=None,           # tokens the turn model may spend in one turn; None has no limit
                  session_max_cost=None,     # dollars the whole session may spend, earlier turns included
                  session_max_tokens=None,   # tokens the whole session may spend, earlier turns included
+                 est_rate=None,             # dollars a token costs when a model reports no cost: a number, or a callable given the `ModelSpec`; None takes `token_rate`
+                 only_tools=None,           # the names of the only tools the model is offered, tools `add_tool` adds later included; None offers every tool, [] none; `add_tool` refuses any other name, and an `ask` with a `schema` needs `submit_result` named
                  local_multimodal=False,       # load LiteRT vision/audio encoders for local models
                  tool_max_len=None,           # None scales the result cap to the model window
                  on_compact=None,
@@ -1275,6 +1278,9 @@ class Agent:
         self.sub_slots = Slots()   # one bound on sub-agents at once, across every delegation tree
         self.readonly, self.readonly_calls, self.plan_mode = bool(readonly), readonly_calls, False
         self.max_cost, self.max_tokens, self.session_max_cost, self.session_max_tokens = max_cost, max_tokens, session_max_cost, session_max_tokens
+        if est_rate is not None and not callable(est_rate): _rate_of(est_rate, 'est_rate')
+        if isinstance(only_tools, str): raise ValueError(f'only_tools is a list of tool names, not the name {only_tools!r}')
+        self.est_rate, self.only_tools = est_rate, None if only_tools is None else frozenset(only_tools)
         if any(v is not None for v in (max_cost, max_tokens, session_max_cost, session_max_tokens)):
             self._chat_callbacks = {'budget': _budget_callback(self)}
         self.local_multimodal = bool(local_multimodal)
@@ -1305,8 +1311,11 @@ class Agent:
         self._scoped = None      # the folders the live snapshot covers, or None for every root
         self._scope_big = set()  # scopes whose text is over `SHELL_SNAPSHOT`, which commands do not re-read
         self._tool_calls_turn = 0
+        self._budget_hit, self._budget_cap = '', None   # why a budget stopped this turn, and which cap: 'cost', 'tokens', 'tool_calls' or 'steps'
+        self._rates = {}         # dollars a token each model costs this turn, by `ModelSpec` name
         self.max_tool_calls = 80
         self.use = Usage()       # session total, across every model
+        self.estimated = 0.      # dollars of `use.cost` that `est_rate` estimated rather than a model reported
         self.turn_use = Usage()  # the last foreground turn; persisted with history
         self._usage_seen = {}
         self.note = 'not started'
@@ -1326,6 +1335,7 @@ class Agent:
                                  get_steps=lambda: self.subagent_steps)
         self._panes, self._pane_done = {}, {}
         self.lock = threading.Lock()
+        self._use_lock = threading.Lock()   # guards each update of `use`, `turn_use` and `estimated`; nothing slow runs while it is held
 
     @property
     def approvals(self): return self._approvals
@@ -1465,6 +1475,11 @@ def _be_or_none(self:Agent, job='turn'):
     finally:
         while (news := getattr(self.routing, 'news', None)): self.host.note(news.pop(0))
 
+@patch
+def warm_backend(self:Agent, job='turn'):
+    "Start the backend `job` routes to and return it, or None with the reason in `routing.notes[job]`. It sends no prompt, so it costs nothing."
+    return self._be_or_none(job)
+
 # %% ../nbs/03_agent.ipynb #0358c91a
 @patch
 def _cloud_backend_or_none(self:Agent, model):
@@ -1476,7 +1491,7 @@ def _cloud_backend_or_none(self:Agent, model):
             return self._be_or_none('subagent') if str(model) == sub.rsplit('/', 1)[-1] else None
         if spec.local or missing_runtime(spec): return None
         key = (spec.backend, spec.model_id)
-        if key not in self._backends: self._backends[key] = make_backend(spec)
+        if key not in self._backends: self._backends[key] = make_backend(spec, **self._only_kw(spec))
         backend = self._backends[key]
         return backend if backend.start() is not None else None
     except Exception: return None
@@ -1503,7 +1518,7 @@ def _named_backend(self:Agent, name):
     key = (spec.backend, spec.model_id)
     with self._be_lock:
         if spec.local and key not in self._backends: raise AgentError(f"{name} is a local model this session has not loaded; a sub-agent runs on a local model only when it is the session's own")
-        if key not in self._backends: self._backends[key] = make_backend(spec)
+        if key not in self._backends: self._backends[key] = make_backend(spec, **self._only_kw(spec))
         if (b := self._backends[key]).start() is None: raise AgentError(b.note)
     return b
 
@@ -1526,6 +1541,7 @@ def _sub_backend(self:Agent, model='', effort=''):
     if b is None: raise AgentError('no model is available to delegate to' + (f" ({n})" if (n := self.routing.notes.get('subagent')) else ''))
     spec, kw, note = b.spec, {}, ''
     if (ch := tool_channel(spec, scope='subagent', session=self.sub_channel)) != tool_channel(spec): kw['tool_mode'] = ch
+    kw.update(self._only_kw(spec))
     if (lvl := self.sub_effort_level(effort)):
         if effort_support(spec): note = f'effort {lvl} is not supported on {spec.name} ({spec.runtime}); it ran at its default'
         else: kw['effort'] = lvl
@@ -1629,6 +1645,7 @@ def _record(self:Agent, f):
         if getattr(current_run(), 'kind', 'root') == 'root':
             self._tool_calls_turn += 1
             if self.max_tool_calls is not None and self._tool_calls_turn > self.max_tool_calls:
+                if not self._budget_hit: self._over('tool_calls', f'stopped by its budget: {self._tool_calls_turn:,} tool calls this turn, past {self.max_tool_calls:,}')
                 return ('Tool-call budget exhausted for this turn. Stop calling tools and '
                         'summarise the evidence and unfinished work now.')
         elif not self._draw(): return TREE_SPENT
@@ -1866,12 +1883,17 @@ def subagent_budget(self:Agent):
 
 # %% ../nbs/03_agent.ipynb #6318c147
 @patch
+def _offered(self:Agent, name):
+    "Whether `only_tools` lets the model have the tool `name`."
+    return self.only_tools is None or name in self.only_tools
+
+@patch
 def _catalog_for(self:Agent, budget, full=True, profile='full'):
     "Build one catalog for each schema budget and profile. The foreground and sub-agents take policy views of it."
     small = profile == 'small'
-    key = (budget.tool_max, tuple(budget.drop), bool(full), small, self.drop_tools)
+    key = (budget.tool_max, tuple(budget.drop), bool(full), small, self.drop_tools, self.only_tools)
     if key not in self._catalogs:
-        extra = [t for t in self.registry.tools if not small or getattr(t, 'small', False)]
+        extra = [t for t in self.registry.tools if not small or getattr(t, 'small', False) or self.only_tools is not None and self._offered(getattr(t, '__name__', ''))]
         if not small and 'memory' not in self.host.provides: extra += note_tools(self.note_memory, lambda: self.learning)
         if full and not small:
             if self.subagents:
@@ -1880,7 +1902,7 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
             extra += plan_tools(lambda: self.plan, save=self._save_plan)
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
                           drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
-        built = [t for t in built if getattr(t, '__name__', '') not in self.drop_tools]
+        built = [t for t in built if getattr(t, '__name__', '') not in self.drop_tools and self._offered(getattr(t, '__name__', ''))]
         if small:
             keep = set(SMALL_TOOLS) | {getattr(t, '__name__', '') for t in extra} | {getattr(t, '__name__', '') for name in self.optin for t in OPTIN[name](self.host, budget.tool_max)}
             built = [t for t in built if getattr(t, '__name__', '') in keep]
@@ -1940,7 +1962,7 @@ def _sub_tools(self:Agent, depth=0, spec=None):
     "The tools of a sub-agent `depth` levels below the root, on `spec`'s model: the `_sub_plain` tools, observed, plus `delegate_search` while `depth < subagent_depth`."
     tools = self._sub_plain() if spec is None else self._sub_plain(spec)
     tools = tools if self._sub_writes else [self._observe(t) for t in tools]
-    if not self.subagents or depth >= self.subagent_depth: return tools
+    if not self.subagents or depth >= self.subagent_depth or not self._offered('delegate_search'): return tools
     # this sub-agent reads what it delegates; its own model sets how much of an answer comes back
     nest = first(t for t in self._delegation_tools(lambda: self._sub_tools(depth + 1), get_max=lambda: self._sub_budget(spec).tool_max,
                                           get_tools_for=lambda s: self._sub_tools(depth + 1, s)) if t.__name__ == 'delegate_search')
@@ -2004,7 +2026,7 @@ def tools(self:Agent):
             self.approvals.prune()
         root = lambda: r if (r := current_run()) is self.run() else None
         self._tools = view.map(lambda f: _inboxed(self._record(f), root, self._heard_steer, mx=lambda: self.budget.tool_max,
-                                                  notice=self.background_notice)).tools + ([status_tool(root)] if self._quiet else [])
+                                                  notice=self.background_notice)).tools + ([status_tool(root)] if self._quiet and self._offered('status') else [])
     return self._tools
 
 
@@ -2100,6 +2122,11 @@ def note_tools(note, learning=lambda: True):
 
 # %% ../nbs/03_agent.ipynb #00efc09f
 @patch
+def _only_kw(self:Agent, spec):
+    "The backend options `only_tools` needs on `spec`'s route: with no tools of its own, Claude Code would bring back its default set."
+    return {'claude_tools': []} if spec.runtime == 'claude' and self.only_tools is not None else {}
+
+@patch
 def _be(self:Agent, job='turn'):
     "The backend for `job`, applying registered turn callbacks when it is first built."
     with self._be_lock:
@@ -2108,6 +2135,7 @@ def _be(self:Agent, job='turn'):
         if key not in self._backends:
             is_turn = key == (lambda s: (s.backend, s.model_id))(self.routing.spec('turn'))
             kw = {'multimodal': self.local_multimodal} if spec.runtime == 'litert' else {}
+            kw.update(self._only_kw(spec))
             if is_turn:
                 kw.update(sp=self.system_prompt(), tools=self.tools, tool_max_len=self.budget.tool_max,
                           approve=(self.approvals.gate if self.approvals is not None else None))
@@ -2129,10 +2157,6 @@ def _claude_budget(self:Agent, backend):
     chat.set_opts(max_budget_usd=max(min(left), 0.01) if left else None)
 
 # %% ../nbs/03_agent.ipynb #1b4fa81d
-#: the log is read back up to `HISTORY_TAIL` bytes and `HISTORY_TURNS` turns; whichever limit is reached first applies
-HISTORY_TAIL = 8_000_000
-HISTORY_TURNS = 2000
-
 @patch
 def _load_history(self:Agent):
     "Load the tail of the history log."
@@ -2147,30 +2171,6 @@ def _load_history(self:Agent):
         self.history = [t for t in map(_log_turn, lines) if t is not None][-HISTORY_TURNS:]
     except OSError: self.history = []
 
-def _log_turn(line):
-    "One log line as a turn, or `None` when it is blank or not JSON."
-    if not line.strip(): return None
-    try: return json.loads(line.decode('utf-8', 'replace'))
-    except ValueError: return None
-
-def hydrate_turns(cfg, turns):
-    "Restore whole results and prompts to the rows that sent them to a details file. A missing or torn file leaves the clipped text."
-    files = {}
-    for t in turns:
-        ref = t.get('details')
-        if cfg is None or not isinstance(ref, str) or Path(ref).is_absolute() or len(parts := Path(ref).parts) != 2 or '..' in parts: continue
-        if ref not in files:
-            got, prompts = files[ref] = {}, {}
-            try: raw = (cfg/ref).read_bytes()
-            except OSError: continue
-            for d in map(_log_turn, raw.split(b'\n')):
-                if not isinstance(d, dict): continue
-                if isinstance(d.get('details'), dict): got.update(d['details'])
-                if isinstance(d.get('prompt'), str): prompts[d.get('turn_id', '')] = d['prompt']
-        got, prompts = files[ref]
-        if got: t['activity'] = [a | {'detail': got[a['id']]} if isinstance(a, dict) and a.get('id') in got else a for a in t.get('activity') or ()]
-        if t.get('turn_id', '') in prompts: t['prompt'] = prompts[t.get('turn_id', '')]
-    return turns
 
 # %% ../nbs/03_agent.ipynb #d8f9fcfe
 @patch
@@ -2370,7 +2370,8 @@ def set_plan_mode(self:Agent, on):
 
 @patch
 def add_tool(self:Agent, f):
-    "Add one tool to this agent now, and re-brief a running backend."
+    "Add one tool to this agent now, and re-brief a running backend. Raises `ValueError` for a tool `only_tools` does not name."
+    if not self._offered(name := getattr(f, '__name__', '')): raise ValueError(f'{name!r} is not in only_tools ({", ".join(sorted(self.only_tools)) or "empty"}); name it there to offer it')
     self.registry.tool(f)
     self.refresh()
     return f
@@ -2944,7 +2945,7 @@ def _begin_turn(self:Agent, run=None):
     if rid and getattr(self, '_begun', None) == rid: return self.current_turn_id
     self._begun = rid
     self.turn_use = Usage()
-    self._budget_hit = ''
+    self._budget_hit, self._budget_cap, self._rates = '', None, {}
     self._tool_calls_turn = 0
     self._steered = []
     self.turn_seq += 1
@@ -3175,7 +3176,7 @@ def session_added_roots(self:Agent, session_id):
     out = []
     for turn in self.session_turns(session_id):
         # a turn not replayed opens no folder
-        if turn.get('state', 'complete') not in REPLAYED: continue
+        if not replays(turn): continue
         for row in (turn.get('activity') or []):
             if row.get('tool') != 'add_root' or not row.get('ok', True): continue
             p = (row.get('args') or {}).get('path')
@@ -3185,8 +3186,8 @@ def session_added_roots(self:Agent, session_id):
 # %% ../nbs/03_agent.ipynb #9a62f465
 @patch
 def replayed_turns(self:Agent, sid):
-    "The turns of session `sid` a resume gives back: finished, failed, stopped, or cut off when their process ended."
-    return [t for t in self.session_turns(sid) if t.get('state', 'complete') in (*REPLAYED, 'cancelled', 'interrupted')]
+    "The turns of session `sid` a resume gives back: finished, failed, ended by a tool-call or step budget, stopped, or cut off when their process ended. A turn a cost or token budget stopped is not given back."
+    return [t for t in self.session_turns(sid) if replays(t) or t.get('state') in ('cancelled', 'interrupted')]
 
 def _as_messages(turns):
     "Turns as the text of a conversation: each prompt and what was sent during it, then the reply, its calls clipped."
@@ -3245,6 +3246,13 @@ def resume_session(self:Agent, selector='latest',
 
 # %% ../nbs/03_agent.ipynb #3fd8838b
 REPLAYED = ('complete', 'failed')
+SOFT_CAPS = ('tool_calls', 'steps')   #: budgets that stop the tool calls and leave a finished reply
+HARD_CAPS = ('cost', 'tokens')        #: budgets that stop the model mid-turn and leave an unfinished reply
+
+def replays(turn):
+    "Whether a resume gives `turn` back whole: it completed or failed, or only a `SOFT_CAPS` budget ended its tool calls."
+    state = turn.get('state', 'complete')
+    return state in REPLAYED or state == 'budget' and turn.get('budget') in SOFT_CAPS
 
 def _replaced(f, p):
     "Whether `p` is no longer the file `f` holds open: another process renamed a new one over it."
@@ -3364,7 +3372,7 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
             'model': self._be('turn').spec.name,
             'prompt': prompt_text(prompt), 'steered': list(self._steered), 'reply': text, 'error': error,
             'plan': dict(getattr(self, '_turn_plan', {})),
-            'usage': self.turn_use.dict(), 'usage_label': repr(self.turn_use),
+            'usage': self.turn_use.dict(), 'usage_label': repr(self.turn_use), 'budget': self._budget_cap if state == 'budget' else None,
             'context': dict(used=(b := self._be('turn')).used_tokens, pct=round(b.pct_full, 3), events=list(self._compactions)),
             'activity': self.activity.rows(mark=self.activity._mark)}
     self._compactions = []
@@ -3383,19 +3391,36 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
     if (d := getattr(self, 'runs_dir', None)) is not None: (d/PENDING).unlink(missing_ok=True)
 
 # %% ../nbs/03_agent.ipynb #728d1a4e
+def _steps_over(b):
+    "`(steps, max_steps)` when the chat of backend `b` refused a tool call because its turn had used `max_steps` steps, else None. urai also sets `_budget_exceeded` to recover a full window, which this reads as a step stop once `_steps` has reached `max_steps`."
+    c = getattr(b, 'chat', None)
+    if (m := getattr(c, 'max_steps', None)) is not None and getattr(c, '_budget_exceeded', False) and (n := getattr(c, '_steps', 0)) >= m: return n, m
+
 @patch
-def _finish(self:Agent, text, prompt=''):
+def _fold_use(self:Agent):
+    "Add what each backend spent since the last fold to `turn_use` and `use`, once at the end of a turn. Tokens a backend reports no cost for are priced at `_rate`, and that cost is marked `estimated`. A reported cost is never replaced."
     b = self._be('turn')
-    turn_use = Usage(model=b.use.model)
+    turn_use, estimated = Usage(model=b.use.model), 0.
     backends = list(self._backends.items())
     if all(backend is not b for _, backend in backends): backends.append(((b.spec.backend, b.spec.model_id), b))
     for key, backend in backends:
-        previous = self._usage_seen.get(key, Usage(model=backend.use.model))
-        turn_use = turn_use + (backend.use - previous)
+        d = backend.use - self._usage_seen.get(key, Usage(model=backend.use.model))
+        if d.total and not d.cost:
+            try: est = d.total * self._rate(backend.spec)
+            except Exception as e: est, self.note = 0, f'est_rate failed ({agent_err(e)}); the turn is not priced'   # a bad rate never costs the turn its row
+            if est: d.cost, d.estimated, estimated = est, True, estimated + est
+        turn_use = turn_use + d
         self._usage_seen[key] = Usage(**backend.use.dict())
     turn_use.model = b.use.model or b.spec.model_id
-    self.turn_use = turn_use
-    self.use = self.use + turn_use
+    with self._use_lock:
+        self.turn_use = self.turn_use + turn_use
+        self.use = self.use + turn_use
+        self.estimated += estimated
+
+@patch
+def _finish(self:Agent, text, prompt=''):
+    b = self._be('turn')
+    self._fold_use()
     self.last_verify = self._verify(cmd) if self.changes() and (cmd := self.verify_command()) and not self._verified() else ''
     if self.last_verify: text += '\n\n' + self.last_verify
     if unsaved := self._checkpoint(): text += '\n\n' + unsaved
@@ -3404,7 +3429,10 @@ def _finish(self:Agent, text, prompt=''):
     self.registry.fire('after_turn', self, text)
     if self.current_turn_id in self.checkpoints: self.checkpoints[self.current_turn_id]['after'] = b.snapshot_hist()
     err = getattr(b, 'turn_error', '') or ''   # the backend caught a model failure and returned its note as the text
-    self._remember(prompt, text, err, state='budget' if getattr(b, 'turn_budget', False) else 'failed' if err else 'complete')
+    if getattr(b, 'turn_budget', False) and self._budget_cap not in HARD_CAPS: self._over('cost', err or 'stopped by its budget')
+    elif not self._budget_hit and (s := _steps_over(b)): self._over('steps', f'stopped by its budget: {s[0]:,} tool-call steps this turn, the most it may take')
+    state = 'budget' if self._budget_cap in HARD_CAPS else 'failed' if err else 'budget' if self._budget_hit else 'complete'   # a provider error outranks a soft cap
+    self._remember(prompt, text, err or self._budget_hit, state=state)
     return text
 
 # %% ../nbs/03_agent.ipynb #10069f98
@@ -3629,7 +3657,7 @@ def conversation_parts(self:Agent, sid=None):
     "A stored conversation as ordered, editable parts, rebuilt from the turn log."
     sid = sid or self.session_id
     out = []
-    for turn in [t for t in self.session_turns(sid) if t.get('state', 'complete') in REPLAYED]:
+    for turn in [t for t in self.session_turns(sid) if replays(t)]:
         tid = str(turn.get('turn_id') or '')
         group = 0
         def part(kind, text, editable, extra=None):
@@ -3769,20 +3797,132 @@ def revise(self:Agent, turn_id, text, branch_id=''):
     return branch
 
 # %% ../nbs/03_agent.ipynb #2741493e
+def _check_deadline(deadline):
+    "`ValueError` unless `deadline` is None or a positive, finite number of seconds."
+    if deadline is not None and (isinstance(deadline, bool) or not isinstance(deadline, (int, float)) or not math.isfinite(deadline) or deadline <= 0):
+        raise ValueError(f'deadline is a positive number of seconds, not {deadline!r}')
+
+@patch
+def _capped(self:Agent):
+    "Whether any of the four budgets is set."
+    return any(v is not None for v in (self.max_cost, self.max_tokens, self.session_max_cost, self.session_max_tokens))
+
+@patch
+def _one_rate(self:Agent, spec):
+    "`_price` of `spec`, worked out for one one-shot. Unlike `_rate` it leaves the turn's `_rates` alone, and a failure is not remembered, so the next one-shot prices again. A failing rate raises while a dollar budget is set, and otherwise leaves this one-shot unpriced, with a `note`."
+    try: return self._price(spec)
+    except Exception as e:
+        if self.max_cost is not None or self.session_max_cost is not None: raise
+        self.note = f'est_rate failed ({agent_err(e)}); the one-shot is not priced'
+        return 0.
+
+@patch
+def _one_check(self:Agent, tok=0, cost=0., at=False, estimated=False):
+    "The `BudgetExceeded` for a one-shot that has spent `tok` tokens and `cost` dollars more than `use` holds, when that is past a budget, or with `at` at one. None otherwise. A turn stops on the same four budgets, each against its own total. A one-shot has no turn, so each is held to the whole of `use`."
+    with self._use_lock: u, est = self.use, self.estimated
+    t, c = u.total + tok, u.cost + cost
+    row = cap_breach((('max_tokens', self.max_tokens, t), ('max_cost', self.max_cost, c),
+                      ('max_tokens', self.session_max_tokens, t), ('max_cost', self.session_max_cost, c)), at)
+    if row is not None: return BudgetExceeded(row[0], row[1], row[2], estimated or (row[0] == 'max_cost' and est > 0))
+
+@patch
+def _one_fold(self:Agent, spent, rate):
+    "Add what a one-shot spent, the `Usage` in the list `spent` its backend filled, to `use`. Tokens with no reported cost are priced at `rate` and marked `estimated`; a reported cost is never replaced. `turn_use` and `_usage_seen` belong to the turn and stay as they are. Returns that spend, or None when the backend reported none."
+    if not spent: return None
+    u = spent[0]
+    if u.total and not u.cost and rate: u.cost, u.estimated = u.total * rate, True
+    with self._use_lock:
+        self.use = self.use + u
+        if u.estimated: self.estimated += u.cost
+    return u
+
 @patch
 def oneshot(self:Agent, prompt, sp='', job='oneshot', max_tokens=None,
-            fits=None):   # `fits(backend)`; a route it refuses ends the search with '' and is not set aside
-    "A question on whichever model `job` routes to, in a conversation that is thrown away. A cloud model that fails or answers nothing is set aside, and the question goes to `job`'s next route."
-    tried = set()
+            fits=None,    # `fits(backend)`; a route it refuses ends the search with '' and is not set aside
+            prepare=None, # `prepare(prompt, sp, backend)` returns the text for each route; a raised refusal stops the search
+            deadline=None, # seconds the whole call may take, routing, `prepare` and fitting included
+):
+    "A question on whichever model `job` routes to, in a conversation that is thrown away. A cloud model that fails or answers nothing is set aside, and the question goes to `job`'s next route. Past `deadline` it raises `OneshotTimeout` and tries no other route. `prepare` is not interrupted: the deadline is checked when it returns. A route that cannot hold a `deadline` raises `DeadlineUnsupported` before it is asked."
+    _check_deadline(deadline)
+    began, tried = time.monotonic(), set()
     while (b := self._be_or_none(job)) is not None and b.spec.name not in tried:
         if fits is not None and not fits(b): return ''
         tried.add(b.spec.name)
         before = b.note
-        out = b.oneshot(prompt, sp, max_tokens, job=job, if_busy=None)
+        text, briefing = (prompt, sp) if prepare is None else prepare(prompt, sp, b)
+        left = None if deadline is None else deadline - (time.monotonic() - began)
+        if left is not None and left <= 0: raise OneshotTimeout(b.spec.name, time.monotonic() - began, True)
+        rate = self._one_rate(b.spec)
+        if (over := self._one_check(at=True)) is not None: raise over
+        out, got = '', []
+        try: out = b.oneshot(text, briefing, max_tokens, job=job, if_busy=None, spent=got, **({} if left is None else {'deadline': left}))
+        except Exception as e:
+            if deadline_hit(e) and not isinstance(e, OneshotTimeout): raise OneshotTimeout(b.spec.name, time.monotonic() - began, e.stopped) from e
+            raise
+        finally:
+            self._one_fold(got, rate)
+        if out is not None and (over := self._one_check()) is not None: raise over
         if out is None or out or b.spec.local: return out or ''
         why = b.note.removeprefix(f'{b.spec.name} ') if b.note != before else 'answered nothing'
         self.routing.down[b.spec.name] = (why, time.time())
     return ''
+
+@patch
+def oneshot_stream(self:Agent, prompt, sp='', job='oneshot', max_tokens=None,
+                   fits=None,    # `fits(backend)`; a route it refuses ends the search with nothing yielded and is not set aside
+                   prepare=None, # `prepare(prompt, sp, backend)` returns the text for each route; a raised refusal stops the search
+                   deadline=None, # seconds the whole call may take, routing, `prepare` and fitting included
+):
+    "The text of `oneshot`'s reply as the model sends it, one chunk at a time. The next route is tried only while no text has come: a route that fails or says nothing is set aside, and one that has spoken is never followed by another. A timeout, a cancel, a failure after text and a budget stop are raised. Closing the iterator closes the model's stream. A route that cannot stream raises `StreamUnsupported`, and one that cannot hold a `deadline` raises `DeadlineUnsupported`, before it is asked. Different backends can run in parallel. Budgets are soft spend caps, not billing ceilings. Parallel calls can overshoot by the calls already in flight."
+    _check_deadline(deadline)
+    return self._one_stream(prompt, sp, job, max_tokens, fits, prepare, deadline)
+
+@patch
+def _one_stream(self:Agent, prompt, sp, job, max_tokens, fits, prepare, deadline):
+    "The routes of `oneshot_stream`. With a budget set it counts the text as it comes and stops the stream once that count passes a budget: an estimate from the text, not the provider's own billing cap."
+    began, tried, capped = time.monotonic(), set(), self._capped()
+    while (b := self._be_or_none(job)) is not None and b.spec.name not in tried:
+        if fits is not None and not fits(b): return
+        tried.add(b.spec.name)
+        before = b.note
+        text, briefing = (prompt, sp) if prepare is None else prepare(prompt, sp, b)
+        left = None if deadline is None else deadline - (time.monotonic() - began)
+        if left is not None and left <= 0: raise OneshotTimeout(b.spec.name, time.monotonic() - began, True)
+        rate = self._one_rate(b.spec)
+        if (over := self._one_check(at=True)) is not None: raise over
+        got = []
+        it = b.oneshot_stream(text, briefing, max_tokens, job=job, if_busy=None, spent=got, **({} if left is None else {'deadline': left}))
+        said, busy, stopped, over, heard = False, False, True, None, []
+        tin = b.oneshot_input_tokens(text, briefing, max_tokens) if capped else 0
+        try:
+            while True:
+                try: chunk = next(it)
+                except StopIteration as end: busy = end.value is None; break
+                if capped:
+                    heard.append(chunk)
+                    now, out = (got[0] if got and (got[0].total or got[0].input) else None), b.count_tokens(''.join(heard))
+                    n = tin + out if now is None else max(now.total, now.input + out)
+                    paid = now is not None and now.cost > 0
+                    if (over := self._one_check(n, now.cost if paid else n * rate, estimated=not paid)) is not None: break
+                said = True
+                yield chunk
+        except Exception as e:
+            if deadline_hit(e) and not isinstance(e, OneshotTimeout): raise OneshotTimeout(b.spec.name, time.monotonic() - began, e.stopped) from e
+            raise
+        finally:
+            try: it.close()
+            except Exception as e:
+                if over is None or not cancel_hit(e): raise
+                stopped = e.stopped
+            finally:
+                self._one_fold(got, rate)
+        if over is not None:
+            over.stopped = stopped
+            raise over
+        if (over := self._one_check()) is not None: raise over
+        if said or busy or b.spec.local: return
+        why = b.note.removeprefix(f'{b.spec.name} ') if b.note != before else 'answered nothing'
+        self.routing.down[b.spec.name] = (why, time.time())
 
 # %% ../nbs/03_agent.ipynb #7b71fdf3
 @patch
@@ -4121,6 +4261,8 @@ class TurnResult:
     result: object = None     # what `submit_result` received, validated against the `schema`
     session: str = ''
     turn_id: str = ''
+    budget: str|None = None   # the cap that stopped a 'budget' turn: 'cost', 'tokens', 'tool_calls' or 'steps'; None for any other turn
+    estimated: bool = False   # whether `usage['cost']` holds an estimate from the tokens, for a model that reported no cost
 
 class TurnFailed(Exception):
     "A strict `ask` whose turn did not complete. `result` is its `TurnResult`."
@@ -4168,7 +4310,7 @@ def _turn_result(self:Agent, out, got):
     state = row.get('state') or ('complete' if isinstance(out, str) else 'cancelled')
     return TurnResult(reply=str(row.get('reply') or (out if isinstance(out, str) else '')), state=state,
                       error=str(row.get('error') or ''), usage=dict(row.get('usage') or {}), result=got.get('value'),
-                      session=self.session_id, turn_id=self.current_turn_id)
+                      session=self.session_id, turn_id=self.current_turn_id, budget=row.get('budget'), estimated=bool((row.get('usage') or {}).get('estimated')))
 
 @patch
 def ask(self:Agent, prompt,
@@ -4178,6 +4320,8 @@ def ask(self:Agent, prompt,
         **kw):
     "One registered turn. A stopped turn is recorded and not replayed. Without `schema`, `result` or `strict`, it returns the reply text, a dict when the turn was stopped, or a failure note."
     if schema is None and not result and not strict: return self._ask_once(prompt, **kw)
+    if schema is not None and not self._offered('submit_result'):
+        raise ValueError("an `ask` with a `schema` hands its result back through the `submit_result` tool, which `only_tools` leaves out; add 'submit_result' to `only_tools`")
     if (r := self.run()) is not None and not r.terminal: raise RuntimeError('the assistant is already running')   # before the running turn is handed a tool
     got, tool = {}, None
     if schema is not None:
@@ -4204,17 +4348,67 @@ def _budget_callback(agent):
         def after_response(self): agent._spend(self.chat.use)
     return BudgetCallback
 
+EST_RATE = 10 / 1e6   #: dollars a token of a hosted model costs when it reports no cost and fastllm has no price for it
+
+def token_rate(spec):
+    "Dollars a token of `spec`'s model costs, as an estimate: fastllm's price with no cache reads for a hosted model, `EST_RATE` for one fastllm cannot price, and 0 for a local model."
+    if spec.local: return 0.
+    v, _, m = spec.model_id.partition('/')
+    if spec.runtime == 'claude': v, m = 'anthropic', spec.model_id
+    try:
+        from fastllm.types import approx_pricing
+        return approx_pricing(m or v, {'codex': 'openai'}.get(v, v) if m else None, out=10, cache=0, inp=90) / 1e6
+    except Exception: return EST_RATE
+
+def _rate_of(v, who):
+    "`v` as dollars a token, or `ValueError` naming `who` when it is not a finite number of zero or more."
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
+        raise ValueError(f'{who} gave {v!r}; est_rate is a finite number of dollars a token, zero or more')
+    return v
+
+@patch
+def _price(self:Agent, spec):
+    "Dollars a token of `spec`'s model costs when it reports no cost: `est_rate`, else `token_rate`. A callable `est_rate` that returns None gives `EST_RATE`. Raises `ValueError` for any other result that is not a finite number of zero or more."
+    r = self.est_rate
+    if r is None: return token_rate(spec)
+    v = r(spec) if callable(r) else r
+    return EST_RATE if v is None else _rate_of(v, f'est_rate for {spec.name}')
+
+@patch
+def _rate(self:Agent, spec):
+    "`_price` of `spec`'s model, worked out once a turn: the check before the provider, each step and the fold share it."
+    if spec.name not in self._rates: self._rates[spec.name] = self._price(spec)
+    return self._rates[spec.name]
+
+@patch
+def _check_rate(self:Agent, spec):
+    "Raise before a turn reaches the provider when a dollar budget needs `est_rate` and it gives `spec` no valid rate."
+    if self.est_rate is not None and (self.max_cost is not None or self.session_max_cost is not None): self._rate(spec)
+
+@patch
+def _over(self:Agent, cap, why):
+    "Record that the turn went past its `cap` budget, and `why`, for the row of the turn."
+    self._budget_cap, self._budget_hit = cap, why
+
 @patch
 def _spend(self:Agent, use):
-    "Stop the turn once it, or the session with it, is past a budget. The reason waits for the row of the turn."
+    "Stop the turn once it, or the session with it, is past a budget. Tokens `use` reports no cost for are priced at `_rate`, and a dollar budget the rate cannot price stops the turn. The first cap crossed is the one recorded. The reason waits for the row of the turn."
+    if self._budget_cap in HARD_CAPS: return
     tok, cost = getattr(use, 'total_tokens', 0) or 0, getattr(use, 'cost', 0.) or 0.
-    for limit, spent, what in ((self.max_tokens, tok, 'tokens this turn'), (self.max_cost, cost, 'dollars this turn'),
-                               (self.session_max_tokens, self.use.total + tok, 'tokens this session'),
-                               (self.session_max_cost, self.use.cost + cost, 'dollars this session')):
-        if limit is not None and spent > limit:
-            self._budget_hit = f'stopped by its budget: {spent:,.4g} {what}, past {limit:,.4g}'
+    dollars = 'dollars'
+    if tok and not cost and (self.max_cost is not None or self.session_max_cost is not None):
+        try: cost, dollars = tok * self._rate(self._be('turn').spec), 'estimated dollars'
+        except Exception as e:
+            self._over('cost', f'stopped by its budget: a dollar budget is set and the tokens cannot be priced ({agent_err(e)})')
             if (run := current_run()) is not None: run.request_cancel()
             return
+    row = cap_breach((('tokens', self.max_tokens, tok, 'tokens this turn'), ('cost', self.max_cost, cost, f'{dollars} this turn'),
+                      ('tokens', self.session_max_tokens, self.use.total + tok, 'tokens this session'),
+                      ('cost', self.session_max_cost, self.use.cost + cost, f'{dollars} this session')))
+    if row is not None:
+        cap, limit, spent, what = row
+        self._over(cap, f'stopped by its budget: {spent:,.4g} {what}, past {limit:,.4g}')
+        if (run := current_run()) is not None: run.request_cancel()
 
 @patch
 def queue(self:Agent, prompt):
@@ -4246,9 +4440,10 @@ def _ask_once(self:Agent, prompt, **kw):
     prompt = self._with_unread(prompt)
     run, kept = self._new_run(prompt), [False]
     def keep(state, text='', error=''):
-        "Write the row once, however the turn ended. A stop that a budget made is recorded as `budget`."
+        "Write the row once, however the turn ended. A stop that a cost or token budget made is recorded as `budget`; a cancel by the user stays `cancelled`."
         if kept[0]: return
-        if state == 'cancelled' and getattr(self, '_budget_hit', ''): state, error = 'budget', self._budget_hit
+        if state == 'cancelled' and self._budget_cap in HARD_CAPS: state, error = 'budget', self._budget_hit
+        self._fold_use()
         self._remember(prompt, text, error, state=state)
         kept[0] = True
     try:
@@ -4256,6 +4451,7 @@ def _ask_once(self:Agent, prompt, **kw):
         if self.start() is None:
             run.finish('failed'); keep('failed', self.note, self.note); return self.note
         backend = self._be('turn')
+        self._check_rate(backend.spec)
         self._claude_budget(backend)
         if not run.start(backend): keep('cancelled'); return run.dict()
         with run_context(run):
@@ -4285,9 +4481,10 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
     prompt = self._with_unread(prompt)
     run, out, kept = self._new_run(prompt), [], [False]
     def keep(state, text='', error=''):
-        "Write the row once, however the turn ended. A stop that a budget made is recorded as `budget`."
+        "Write the row once, however the turn ended. A stop that a cost or token budget made is recorded as `budget`; a cancel by the user stays `cancelled`."
         if kept[0]: return
-        if state == 'cancelled' and getattr(self, '_budget_hit', ''): state, error = 'budget', self._budget_hit
+        if state == 'cancelled' and self._budget_cap in HARD_CAPS: state, error = 'budget', self._budget_hit
+        self._fold_use()
         self._remember(prompt, text, error, state=state)
         kept[0] = True
     try:
@@ -4297,6 +4494,7 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
             keep('failed', self.note, self.note)
             yield self.note; return
         backend = self._be('turn')
+        self._check_rate(backend.spec)
         self._claude_budget(backend)
         if not run.start(backend): keep('cancelled'); return
         if on_registered is not None: on_registered(run)
@@ -4658,24 +4856,7 @@ def close(self:Agent):
 # %% ../nbs/03_agent.ipynb #d29d008a
 _HISTORY_LOCKS, _HISTORY_LOCKS_LOCK = {}, threading.RLock()
 _SESSION_META_VERSION = 3
-LEGACY_GAP = 1800
 _SESSION_DEFAULTS = {'title': '', 'title_turns': 0, 'muted': False, 'manual': False, 'roots': ()}
-
-_HARNESS = re.compile(r'<(system-reminder|notebook|background-results|watch-results|sent_mid_turn)\b[^>]*>.*?</\1>', re.S)
-
-def request_body(prompt):
-    "`request_text` without the harness's blocks, or a `<user-request>` tag a prompt cut short kept."
-    return _HARNESS.sub(' ', re.sub(r'</?user-request>', ' ', request_text(prompt))).strip()
-
-def _cut_title(text, n):
-    "`text` in at most `n` characters, cut at a word with an ellipsis."
-    return text if len(text) <= n else text[:n - 1].rsplit(' ', 1)[0].rstrip(',;:') + '…'
-
-def request_title(prompt, n=80):
-    "A session's title from its first request: the first sentence of `request_body`, in at most `n` characters."
-    text = ' '.join(request_body(prompt).split()).lstrip('▌│┆┃ ')
-    if (m := re.match(r'(.+?[.?!])(\s|$)', text)): text = m.group(1)
-    return _cut_title(text, n)
 
 _TITLE_LABEL = re.compile(r'^(?:conversation\s+)?title\s*:\s*', re.I)
 
@@ -4806,27 +4987,6 @@ def _index_turn(agent, turn, start, end):
     _write_session_rows(agent, rows)
 
 _INDEX_KEYS = ('turns', 'first_at', 'first_offset', 'first_title', 'last_at', 'last_offset', 'model', 'spans')
-MAX_SPANS = 256   #: byte ranges an index row lists; past this a session is read from its first turn to its last
-
-def _add_span(spans, start, end):
-    "`spans` with `[start, end]` added. The range joins the last one when they touch. Returns None past `MAX_SPANS` or without `spans`."
-    if spans is None: return None
-    out = [list(s) for s in spans]
-    if out and out[-1][1] == start: out[-1][1] = end
-    else: out.append([start, end])
-    return out if len(out) <= MAX_SPANS else None
-
-def _join_spans(a, b):
-    "The ranges of `a` then `b`, or None when either is missing or the sum is too many."
-    if a is None or b is None: return None
-    for s, e in b:
-        if (a := _add_span(a, s, e)) is None: return None
-    return a
-
-def _set_spans(row, spans):
-    if spans is None: row.pop('spans', None)
-    else: row['spans'] = spans
-
 def _index_start(agent, rows):
     "Where the log has to be read from: None when the index covers it, 0 to rebuild, else where the index ends."
     # a title set before any turn names no bytes, so only rows with turns say what is indexed
@@ -4842,45 +5002,6 @@ def _legacy_seed(rows):
     n = max((int(s[7:]) for s in rows if s.startswith('legacy-') and s[7:].isdigit()), default=0)
     return n, (float(rows[f'legacy-{n}'].get('last_at') or 0) if n else None)
 
-def _index_from_log(p, offset=0, legacy_n=0, legacy_last=None):
-    "Stream the log from `offset` a line at a time and describe every conversation in it, with its byte range."
-    found = {}
-    with p.open('rb') as f:
-        f.seek(offset)
-        for raw in f:
-            if not raw.endswith(b'\n'): break  # still being written: the next catch-up reads it
-            start, offset = offset, offset + len(raw)
-            line = raw.decode('utf-8', 'replace').strip()
-            if not line: continue
-            try: turn = json.loads(line)
-            except Exception: continue
-            sid, at = turn.get('session') or '', float(turn.get('at') or 0)
-            if not sid:
-                if legacy_last is None or at - legacy_last > LEGACY_GAP: legacy_n += 1
-                sid, legacy_last = f'legacy-{legacy_n}', at
-            if sid not in found:
-                found[sid] = {'turns': 0, 'first_at': at, 'first_offset': start, 'first_title': request_title(turn.get('prompt', '')), 'spans': []}
-            row = found[sid]
-            row['turns'] += 1
-            row['last_at'], row['last_offset'] = at, offset
-            _set_spans(row, _add_span(row.get('spans'), start, offset))
-            row['model'] = turn.get('model', '')
-    return found
-
-def _index_from_history(agent):
-    "The same index for in-memory turns, without offsets."
-    found, legacy_n, legacy_last = {}, 0, None
-    for turn in agent.history:
-        sid, at = turn.get('session') or '', float(turn.get('at') or 0)
-        if not sid:
-            if legacy_last is None or at - legacy_last > LEGACY_GAP: legacy_n += 1
-            sid, legacy_last = f'legacy-{legacy_n}', at
-        if sid not in found: found[sid] = {'turns': 0, 'first_at': at, 'first_title': request_title(turn.get('prompt', ''))}
-        row = found[sid]
-        row['turns'] += 1
-        row['last_at'], row['model'] = at, turn.get('model', '')
-    return found
-
 @patch
 def rebuild_index(self:Agent, force=False):
     "Index the log's conversations with byte ranges, or in-memory turns without a log."
@@ -4892,7 +5013,7 @@ def rebuild_index(self:Agent, force=False):
         start = _index_start(self, rows) if logged and not force else 0
         if start is None: return rows
         if start and not (found := _index_from_log(p, start, *_legacy_seed(rows))): return rows
-        if not start: found = _index_from_log(p) if logged else _index_from_history(self)
+        if not start: found = _index_from_log(p) if logged else _index_from_history(self.history)
         for sid, row in found.items():
             if start and (old := rows.get(sid) or {}).get('turns'):
                 found[sid] = old | row | {k: old[k] for k in ('first_at', 'first_offset', 'first_title') if k in old} | {'turns': int(old['turns']) + row['turns']}

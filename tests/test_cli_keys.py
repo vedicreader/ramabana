@@ -1,4 +1,4 @@
-"Extended keys: kitty and modifyOtherKeys decode to teleprint's names, shift+enter queues, shift+tab cycles approvals."
+"Extended keys: kitty and modifyOtherKeys decode to teleprint's names, shift+enter starts a line, shift+tab cycles approvals."
 import asyncio, os, select, sys, threading, time
 
 import pytest
@@ -252,7 +252,14 @@ def _keys_scene(body):
     async def go():
         await comp.start()
         u = Ui(comp, agent); u.loop = asyncio.get_running_loop()
-        await body(u, agent, tty)
+        comp.on_key = lambda k: asyncio.iscoroutine(out := u.on_key(k)) and u.start_turn(out)
+        comp.on_paste, comp.on_mouse = u.paste, u.on_mouse
+        try: await body(u, agent, tty)
+        finally:
+            if u._queued is not None: u._queued.close(); u._queued = None
+            if isinstance(u.turn, asyncio.Task):
+                u.turn.cancel()
+                await asyncio.gather(u.turn, return_exceptions=True)
     try: asyncio.run(go())
     finally: tty.close()
 
@@ -295,6 +302,135 @@ def test_a_question_mark_on_an_empty_composer_shows_the_keys_and_after_text_type
         assert u.buf.text == '' and list(u.comp.blocks.values())[-1].source == HELP and 'api_call' in screen
         u.buf.insert('why'); u.on_key(Key('?', '?'))
         assert u.buf.text == 'why?'
+    _keys_scene(body)
+
+
+def test_the_composer_takes_newlines_and_edits_a_selection():
+    "shift+enter starts a line and never sends, even mid-turn; ctrl+a, cmd+a and shift+arrows select; typing or deleting replaces the selection."
+    async def body(u, agent, tty):
+        comp = u.comp
+        comp.on_bytes(b'one\x1b[13;2utwo')
+        assert u.buf.text == 'one\ntwo' and u.turn is None and u.history == []
+        u.start_turn(_slow())
+        comp.on_bytes(b'\x1b[27;2;13~three')
+        assert u.buf.text == 'one\ntwo\nthree' and u._queued_text == [], 'shift+enter mid-turn neither steers nor queues'
+        comp.on_bytes(b'\x01z')
+        assert u.buf.text == 'z', 'ctrl+a selects everything and typing replaces it'
+        comp.on_bytes(b'abc\x01\x7f')
+        assert u.buf.text == ''
+        comp.on_bytes(b'kept\x1b[97;9u')
+        assert u.buf.text == 'kept' and u.buf.selection() == (0, 4), 'cmd+a selects and types nothing'
+        comp.on_bytes(b'\x1b[3~')
+        assert u.buf.text == ''
+        comp.on_bytes(b'abcd\x1b[1;2D\x1b[1;2DX')
+        assert u.buf.text == 'abX'
+        comp.on_bytes(b'\x1b[1;2D\x1b[D')
+        assert u.buf.selection() is None and u.buf.cursor == 2, 'a plain move ends the selection'
+        comp.on_bytes(b'\r')
+        assert u.buf.text == '', 'enter still sends'
+        if u.turn is not None:
+            u.turn.cancel()
+            await asyncio.gather(u.turn, return_exceptions=True)
+        u.enter_transcript()
+        u.transcript.composing = True
+        comp.on_bytes(b'first\x1b[13;2usecond')
+        assert u.buf.text == 'first\nsecond' and u.transcript.active
+        u.buf.clear()
+        u.leave_transcript()
+    _keys_scene(body)
+
+
+def test_a_drag_over_a_wrapped_draft_selects_by_cell_and_typing_replaces_it():
+    "The mouse is the terminal's until there is a draft; a drag over wrapped, wide text selects what it covers, scrolled or not."
+    from rich.cells import cell_len
+    async def body(u, agent, tty):
+        comp = u.comp
+        for i in range(30): u.note(f'note {i}')
+        u.paint()
+        assert comp._modes == [2004]
+        text = 'x' * 76 + ' 中文START ' + 'y' * 50 + ' END tail'
+        comp.on_bytes(text.encode())
+        assert {1000, 1002, 1006} <= set(comp._modes), 'a draft takes the mouse for the composer'
+        lines = tty.term.text().splitlines()
+        top = next(i for i, l in enumerate(lines) if l.startswith('▌ xxx'))
+        second = lines[top + 1]
+        assert second.startswith('中文START')
+        start_col = cell_len(second[:second.index('START')])
+        end_col = cell_len(second[:second.index('END')])
+        def mouse(btn, x, y, fin='M'): comp.on_bytes(f'\x1b[<{btn};{x + 1};{y + 1}{fin}'.encode())
+        mouse(0, 10, top)
+        mouse(32, start_col, top + 1)
+        assert u.buf.selection() == (8, text.index('START')), 'a wide character takes two cells'
+        mouse(32, end_col, top + 1); mouse(0, end_col, top + 1, 'm')
+        assert u.buf.selection() == (8, text.index('END'))
+        lit = [text[s.start - 2:s.end - 2] for s in u.prompt().spans if 'reverse' in str(s.style)]
+        assert ''.join(lit) == text[8:text.index('END')], 'the selection paints in reverse video'
+        comp.on_bytes(b'Q')
+        assert u.buf.text == 'x' * 8 + 'QEND tail' and not any(u.kind(b) == 'user' for b in comp.blocks.values())
+        comp.on_bytes(b'\x03')
+        assert comp._modes == [2004], 'an empty composer gives the mouse back'
+    _keys_scene(body)
+
+
+def test_the_wheel_browses_the_transcript_while_a_draft_holds_the_mouse():
+    "A draft takes mouse reporting for dragging, which stops the terminal scrolling itself; the wheel then browses the transcript as `/mouse on` does."
+    async def body(u, agent, tty):
+        comp = u.comp
+        for i in range(60): u.note(f'note {i}')
+        comp.on_bytes(b'a draft')
+        assert 1000 in comp._modes and not u.mouse and not u.transcript.active
+        def wheel(btn): comp.on_bytes(f'\x1b[<{btn};5;5M'.encode())
+        wheel(64)
+        assert u.transcript.active and u.buf.text == 'a draft'
+        entered = u.transcript.top
+        wheel(64)
+        up = u.transcript.top
+        assert up < entered
+        wheel(65)
+        assert u.transcript.top > up
+        u.leave_transcript()
+        assert u.buf.text == 'a draft'
+    _keys_scene(body)
+
+
+def _draft_mouse(u, tty, text):
+    "Put `text` in the composer under one note, and return the row its first line is on and a function that sends a mouse report at a cell."
+    u.note('above')
+    u.buf.insert(text); u.paint()
+    top = next(i for i, l in enumerate(tty.term.text().splitlines()) if l.startswith('▌ a'))
+    def mouse(btn, x, y, fin='M'): u.comp.on_bytes(f'\x1b[<{btn};{x + 1};{y + 1}{fin}'.encode())
+    return top, mouse
+
+
+def test_a_click_on_each_blank_draft_line_lands_on_that_line():
+    "Consecutive blank lines between two lines of text each have their own offset."
+    async def body(u, agent, tty):
+        top, mouse = _draft_mouse(u, tty, 'a\n\n\nb')
+        for row, offset in enumerate((0, 2, 3, 4)):
+            mouse(0, 0, top + row); mouse(0, 0, top + row, 'm')
+            assert u.buf.cursor == offset, (row, offset, u.buf.cursor)
+    _keys_scene(body)
+
+
+def test_a_click_right_of_a_draft_line_lands_after_its_last_character():
+    "Past the text of a row the offset is the end of that row's last character, and a click on a character still lands before it."
+    async def body(u, agent, tty):
+        top, mouse = _draft_mouse(u, tty, 'abc\ndef')
+        for row, x, offset in ((0, 20, 3), (1, 20, 7), (0, 4, 2)):
+            mouse(0, x, top + row); mouse(0, x, top + row, 'm')
+            assert u.buf.cursor == offset, (row, x, offset, u.buf.cursor)
+    _keys_scene(body)
+
+
+def test_a_drag_released_away_from_the_draft_is_over():
+    "A release over the transcript ends the drag, so a later release over the draft does not move the selection."
+    async def body(u, agent, tty):
+        top, mouse = _draft_mouse(u, tty, 'a\n\n\nb')
+        mouse(0, 0, top); mouse(32, 0, top + 3)
+        assert u.buf.selection() == (0, 4)
+        mouse(0, 0, 0, 'm')
+        mouse(0, 0, top + 1, 'm')
+        assert u.buf.selection() == (0, 4)
     _keys_scene(body)
 
 

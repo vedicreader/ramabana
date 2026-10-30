@@ -522,6 +522,16 @@ def local_ctx(name, dflt=DFLT_LOCAL_CTX):
     return model_setting(name).get('max_input_tokens') or setting('window.local_ctx') or _LOCAL_CTX.get(name, dflt)
 
 # %% ../nbs/00_core.ipynb #64093121
+def _ollama_local(opts):
+    "Whether the Ollama daemon `opts` point at is on this machine: its `host`, else `$OLLAMA_HOST`, else the default, read by rishi's `ollama_url` and `is_local`, which `::` and `::1` also pass since `ollama_url` leaves them no readable host. A unix socket, a custom `client`, a host rishi cannot read and a rishi without them all count as remote."
+    if 'client' in opts: return False
+    try:
+        from rishi.ollama import ollama_url, is_local
+        url = ollama_url(opts.get('host'))
+        scheme, _, rest = url.partition('://')
+        return scheme in ('http', 'https') and (is_local(url) or rest.rpartition(':')[0] in ('::', '::1'))
+    except Exception: return False
+
 @dataclass(frozen=True)
 class ModelSpec(urai.ModelSpec):
     "urai's `ModelSpec`, with `backend` and `config` as views of `runtime` and `opts`."
@@ -531,7 +541,9 @@ class ModelSpec(urai.ModelSpec):
     @property
     def config(self): return self.opts
     @property
-    def local(self): return self.rt.local if self.runtime in urai.RUNTIMES else self.runtime not in HOSTED
+    def local(self):
+        if self.runtime == 'ollama': return _ollama_local(self.opts or {})
+        return self.rt.local if self.runtime in urai.RUNTIMES else self.runtime not in HOSTED
 
 def _copilot_ctx(model_id):
     "Context window and a note for a Copilot model."
@@ -794,8 +806,11 @@ def needs(k):
     return f"needs {k}; {'run `codex login`' if k == CODEX_LOGIN else 'set it in the environment'}"
 
 def is_local(name):
-    "Whether `name` names an on-device model, from the tables or its prefix, without resolving it."
-    return (MODELS.get(name) or (str(name).split('/')[0],))[0] in LOCAL_RUNTIMES
+    "Whether `name` names a model that runs on this machine, from the tables or its prefix. An `ollama` model counts only while its daemon does."
+    rt = (MODELS.get(name) or (str(name).split('/')[0],))[0]
+    if rt != 'ollama': return rt in LOCAL_RUNTIMES
+    try: return _spec_for(name).local
+    except Exception: return False
 
 @dataclass
 class Routing:

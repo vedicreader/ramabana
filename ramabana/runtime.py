@@ -8,15 +8,16 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SOFT_LINE', 'HARD_LINE', 'SUMMARY_PREFIX', 'SURGICAL_POLICY',
            'SUMMARISE_SP', 'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE',
            'BTW_NOTICE', 'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM',
-           'ONESHOT_CUT', 'IMG_TOKENS', 'EST_MARGIN', 'TRIMMED', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'ROUTINE_CBS',
-           'STATUS_CHARS', 'CHILD_KEEP', 'NOTE_KEEP', 'AIR_CALLS', 'AIR_CHARS', 'REPEAT_CALLS', 'CHAT_CALLBACKS',
-           'interesting', 'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold', 'should_compact',
-           'done_items', 'serialise', 'split_previous', 'summarise_prompt', 'transcript_runs', 'fold_summary',
-           'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
+           'ONESHOT_CUT', 'IMG_TOKENS', 'EST_MARGIN', 'TRIMMED', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'CLAUDE_GRANTS',
+           'ROUTINE_CBS', 'STATUS_CHARS', 'CHILD_KEEP', 'NOTE_KEEP', 'AIR_CALLS', 'AIR_CHARS', 'REPEAT_CALLS',
+           'CHAT_CALLBACKS', 'interesting', 'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold',
+           'should_compact', 'done_items', 'serialise', 'split_previous', 'summarise_prompt', 'transcript_runs',
+           'fold_summary', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
            'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'oneshot_tokens',
-           'Usage', 'margin', 'img_tokens', 'msg_tokens', 'trim_hist', 'omitted', 'excerpt', 'fit_content', 'Backend',
-           'use_chat', 'RishiBackend', 'make_backend', 'status_line', 'said_before_call', 'Run', 'current_run',
-           'run_context', 'TokenLogger']
+           'Usage', 'margin', 'img_tokens', 'msg_tokens', 'trim_hist', 'omitted', 'excerpt', 'fit_content',
+           'DeadlineUnsupported', 'OneshotTimeout', 'deadline_hit', 'cancel_hit', 'StreamUnsupported', 'BudgetExceeded',
+           'cap_breach', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'status_line', 'said_before_call',
+           'Run', 'current_run', 'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import base64, contextvars, copy, json, math, mimetypes, os, re, sys, threading, time, uuid
@@ -26,7 +27,7 @@ from dataclasses import dataclass
 from fastcore.basics import first, patch
 from urai import resp_text, tool_rows, strip_hist_media, strip_media, is_media
 from .setup import config_path, setting
-from .core import EFFORT_RUNTIMES, EFFORTS, accepts, agent_err, claude_wire, env, force_tags, local_ctx, local_window, model_setting, tool_channel
+from .core import EFFORT_RUNTIMES, EFFORTS, AgentError, accepts, agent_err, claude_wire, env, force_tags, local_ctx, local_window, model_setting, tool_channel
 
 # %% ../nbs/01_runtime.ipynb #3f4f3ba6
 MAX_KEEP = 8_000        # bytes kept per descriptor, from the end of the output
@@ -570,24 +571,24 @@ def oneshot_tokens(ctx):
 
 @dataclass
 class Usage:
-    "Token counts and cost for a turn or a session; values add up."
+    "Token counts and cost for a turn or a session; values add up. `estimated` marks a cost that holds an estimate from the tokens."
     model:str=''; input:int=0; output:int=0; total:int=0; cached:int=0
-    cache_write:int=0; reasoning:int=0; cost:float=0.; turns:int=0
+    cache_write:int=0; reasoning:int=0; cost:float=0.; turns:int=0; estimated:bool=False
     def __add__(self,o):
         if o is None: return self
         fs=('input','output','total','cached','cache_write','reasoning','cost','turns')
-        return Usage(model=o.model or self.model,**{k:getattr(self,k)+getattr(o,k) for k in fs})
+        return Usage(model=o.model or self.model,estimated=self.estimated or o.estimated,**{k:getattr(self,k)+getattr(o,k) for k in fs})
     def __radd__(self,o): return self if o in (None,0) else self+o
     def __sub__(self,o):
         "What this cumulative counter has added since `o`: one turn's delta."
         if o is None: return self
         fs=('input','output','total','cached','cache_write','reasoning','cost','turns')
-        return Usage(model=self.model or o.model, **{k:max(0, getattr(self,k)-getattr(o,k)) for k in fs})
+        return Usage(model=self.model or o.model, estimated=self.estimated, **{k:max(0, getattr(self,k)-getattr(o,k)) for k in fs})
     def __repr__(self):
         p=[f'{self.total:,} tok',f'in {self.input:,}',f'out {self.output:,}']
         if self.cached:p.append(f'cached {100*self.cached/max(self.input,1):.0f}%')
         if self.reasoning:p.append(f'thought {self.reasoning:,}')
-        if self.cost:p.append(f'${self.cost:.4f}')
+        if self.cost:p.append(f'{"~" if self.estimated else ""}${self.cost:.4f}')
         if self.model:p.append(self.model.split('/')[-1])
         return ' · '.join(p)
     def dict(self): return dict(self.__dict__)
@@ -699,9 +700,43 @@ def fit_content(c, room, save, how='', count=None, tail=0):
     return out
 
 # %% ../nbs/01_runtime.ipynb #197644e7
+class DeadlineUnsupported(AgentError):
+    "A one-shot asked for a `deadline` of a backend that cannot hold one. Nothing was sent."
+
+class OneshotTimeout(TimeoutError):
+    "A one-shot outran its `deadline`. `route` names the model it ran on, `elapsed` is the seconds since the one-shot began, and `stopped` is False when the provider call may still finish and spend."
+    def __init__(self,route,elapsed,stopped):
+        self.route,self.elapsed,self.stopped=route,elapsed,stopped
+        super().__init__(f'{route} was still working after {elapsed:.1f}s, the deadline; '+('its call was stopped' if stopped else 'its call may still finish and spend'))
+
+def deadline_hit(e):
+    "Whether `e` is a call that outran its deadline: a `TimeoutError` that says whether the call `stopped`, as rishi's `ClaudeDeadline` does."
+    return isinstance(e,TimeoutError) and hasattr(e,'elapsed') and hasattr(e,'stopped')
+
+def cancel_hit(e):
+    "Whether `e` is rishi's `OneShotCancelled`: a one-shot that `cancel()` ended, or whose stream would not close. Only a loaded rishi can have raised one, so nothing is imported here."
+    one=getattr(sys.modules.get('rishi.core'),'OneShotCancelled',None)
+    return one is not None and isinstance(e,one)
+
+class StreamUnsupported(AgentError):
+    "A one-shot stream asked of a backend that cannot stream one. Nothing was sent, and no whole reply was buffered in its place."
+
+class BudgetExceeded(AgentError):
+    "A one-shot began at, or ended past, a budget. `cap` is 'max_cost' or 'max_tokens', `limit` that budget, `spent` what the agent had spent, `estimated` whether `spent` holds an estimate, and `stopped` is False when the provider call may still finish and spend. This is a soft spend cap, not a billing ceiling. Parallel calls can overshoot by the calls already in flight."
+    def __init__(self,cap,limit,spent,estimated=False,stopped=True):
+        self.cap,self.limit,self.spent,self.estimated,self.stopped=cap,limit,spent,estimated,stopped
+        unit='tokens' if cap=='max_tokens' else 'estimated dollars' if estimated else 'dollars'
+        super().__init__(f'{cap} of {limit:,.4g} reached: {spent:,.4g} {unit} spent'+('' if stopped else '; its call may still finish and spend'))
+
+def cap_breach(rows,at=False):
+    "The first of `rows`, each `(cap, limit, spent, ...)`, whose `spent` is past its `limit`, or with `at` has reached it. A limit of None is never passed. None when no row is."
+    return next((r for r in rows if r[1] is not None and (r[2]>=r[1] if at else r[2]>r[1])),None)
+
 class Backend:
     "The contract a model engine meets: start, send or stream a turn, count tokens, and replace history."
     kind='?'
+    supports_deadline=False   # whether `oneshot` can hold a `deadline`
+    supports_stream=False   # whether `oneshot_stream` yields text as the model sends it
     narrates=True   # the text before each tool call reaches `hist` or the stream; see `QUIET_RUNTIMES`
     _tag_reminded=False
     turn_error=''   # why the last `send` or `stream` gave a failure note instead of a reply; '' when it answered
@@ -809,7 +844,9 @@ class Backend:
                             self.use,self.turn_budget=self._usage(),bool(getattr(e,'budget',False))
                             self.turn_error=agent_err(e); return self._failed('failed',e)
                         tried.add(why)
-            finally:self.run=None
+            finally:
+                if run is not None and run.cancelled:self.use=self._usage()   # a stopped run was paid for too
+                self.run=None
     def stream(self,msg,run=None,**kw):
         self.turn_error,self.turn_budget='',False
         if self.start() is None:self.turn_error=self.note; yield self.note; return
@@ -844,7 +881,9 @@ class Backend:
                             self.use,self.turn_budget=self._usage(),bool(getattr(e,'budget',False))
                             self.turn_error=agent_err(e); yield f'\n\n{self._failed("failed",e)}'; return
                         tried.add(why)
-            finally:self.run=None
+            finally:
+                if run is not None and run.cancelled:self.use=self._usage()
+                self.run=None
     def _recover(self,e):
         "Fix what made `e` happen and return its cause, retried once per cause in a turn. False by default."
         return False
@@ -871,13 +910,94 @@ class Backend:
             body=body[-max(1,int(len(body)*room*.95/n)):]
         return ONESHOT_CUT+body
 
-    def oneshot(self,prompt,sp='',max_tokens=None,job='one-shot',if_busy=''):
-        "Ask one question in a throwaway conversation; `job` names a failure, and `if_busy` is the answer while another call holds the backend."
+    def oneshot(self,prompt,sp='',max_tokens=None,job='one-shot',if_busy='',deadline=None,spent=None):
+        "Ask one question in a throwaway conversation; `job` names a failure, and `if_busy` is the answer while another call holds the backend. `deadline` is the seconds the whole call may take, starting the backend and fitting the prompt included. A backend that cannot hold one raises `DeadlineUnsupported` before anything is sent, and a call that outruns it raises its timeout error, which no retry follows. When the backend reports a spend, `spent` (a list) holds that call's `Usage` once the call ends, whatever ended it."
+        began=time.monotonic()
         if self.start() is None:return ''
+        if deadline is not None and not self.supports_deadline: raise DeadlineUnsupported(f'{self.spec.name} cannot hold a one-shot deadline')
         if not self.lock.acquire(False):return if_busy
-        try:return answer_only(self._oneshot(self._fit_oneshot(prompt,sp,max_tokens),sp,max_tokens) or '')
-        except Exception as e:self._failed(f'{job} failed',e); return ''
-        finally:self.lock.release()
+        text=out=''
+        sent=False
+        try:
+            text=self._fit_oneshot(prompt,sp,max_tokens)
+            if deadline is None: kw={}
+            elif (left:=deadline-(time.monotonic()-began))>0: kw={'deadline':left}
+            else: raise OneshotTimeout(self.spec.name,time.monotonic()-began,True)
+            sent=True
+            out=answer_only(self._oneshot(text,sp,max_tokens,**kw) or '')
+            return out
+        except Exception as e:
+            if deadline_hit(e) or cancel_hit(e):raise
+            self._failed(f'{job} failed',e)
+            return ''
+        finally:
+            try:
+                if spent is not None and (u:=self._spent(text,sp,out,False,sent)) is not None: spent[:]=[u]
+            finally:self.lock.release()
+
+    def oneshot_stream(self,prompt,sp='',max_tokens=None,job='one-shot',if_busy='',deadline=None,spent=None):
+        "Yield one reply to `prompt` as the model sends it, in a throwaway conversation. A backend that cannot stream raises `StreamUnsupported`, and one that cannot hold a `deadline` raises `DeadlineUnsupported`, both before anything is sent. The iterator returns `if_busy` when another call holds the backend, and '' otherwise. A failure before the first text is noted and ends the stream empty; after text it is raised. A timeout or `cancel()` is always raised. Closing the iterator closes the model's stream and frees the backend. When the backend reports a spend, `spent` (a list) holds the `Usage` reported so far while the stream runs, and the call's whole `Usage` once it ends, whatever ended it."
+        began=time.monotonic()
+        ready=self.start() is not None
+        if ready and not self.supports_stream: raise StreamUnsupported(f'{self.spec.name} cannot stream a one-shot')
+        if ready and deadline is not None and not self.supports_deadline: raise DeadlineUnsupported(f'{self.spec.name} cannot hold a one-shot deadline')
+        return self._stream_run(ready,prompt,sp,max_tokens,job,if_busy,deadline,began,spent)
+
+    def oneshot_input_tokens(self,prompt,sp='',max_tokens=None):
+        "The tokens a one-shot of `prompt` and `sp` sends once `oneshot` has cut the prompt to the window."
+        return self.count_tokens(self._fit_oneshot(prompt,sp,max_tokens))+self.count_tokens(sp)
+
+    def _stream_run(self,ready,prompt,sp,max_tokens,job,if_busy,deadline,began,spent):
+        if not ready:return ''
+        if not self.lock.acquire(False):return if_busy
+        text,said,it,done,sent='',[],None,False,False
+        try:
+            text=self._fit_oneshot(prompt,sp,max_tokens)
+            if deadline is None: kw={}
+            elif (left:=deadline-(time.monotonic()-began))>0: kw={'deadline':left}
+            else: raise OneshotTimeout(self.spec.name,time.monotonic()-began,True)
+            it=self._oneshot_stream(text,sp,max_tokens,**kw)
+            sent=True
+            for chunk in it:
+                if chunk:
+                    said.append(chunk)
+                    if spent is not None and (r:=self._report_max(spent[0] if spent else None)) is not None: spent[:]=[r]
+                    yield chunk
+            done=True
+            return ''
+        except Exception as e:
+            if deadline_hit(e) or cancel_hit(e):raise
+            self._failed(f'{job} failed',e)
+            if said:raise
+            return ''
+        finally:
+            try:
+                if it is not None:it.close()
+            finally:
+                try:
+                    if spent is not None and (u:=self._spent(text,sp,''.join(said),not done,sent,spent[0] if spent else None)) is not None: spent[:]=[u]
+                finally:self.lock.release()
+
+    def _report_max(self,held=None):
+        "The largest counters reported during this call; a missing or smaller report never erases spend."
+        current=self._reported()
+        if held is None:return current
+        if current is None:return held
+        names=('input','output','total','cached','cache_write','reasoning','cost','turns')
+        return Usage(model=current.model or held.model,estimated=current.estimated or held.estimated,
+                     **{name:max(getattr(current,name),getattr(held,name)) for name in names})
+
+    def _spent(self,prompt,sp,text,partial,sent,held=None):
+        "What the call that just ended spent, as a `Usage` from `_reported`, else the report `held` from while it ran. A call whose request was `sent`, with no cost reported, has the tokens of `prompt`, `sp` and `text` counted and marked `estimated` when the model reported no tokens, and for a `partial` reply when it reported fewer output tokens than the `text` it sent. A call that never sent a request, such as a busy, unsupported or timed-out one, spent nothing. None when this backend reports no spend."
+        if not sent or (u:=self._report_max(held)) is None:return None
+        u.total=u.total or u.input+u.output
+        if not u.cost:
+            out=self.count_tokens(text) if text else 0
+            if not u.total:
+                u.input,u.output,u.estimated=self.count_tokens(prompt)+self.count_tokens(sp),out,True
+                u.total=u.input+u.output
+            elif partial and out>u.output: u.total,u.output,u.estimated=u.total+out-u.output,out,True
+        return u
     
     def spawn(self,sp='',tools=(),**kw): raise NotImplementedError
     def replace_hist(self,summary,keep=()):
@@ -985,6 +1105,8 @@ class Backend:
     def _send(self,msg,**kw):raise NotImplementedError
     def _stream(self,msg,**kw):raise NotImplementedError
     def _oneshot(self,prompt,sp,max_tokens):raise NotImplementedError
+    def _oneshot_stream(self,prompt,sp,max_tokens):raise NotImplementedError
+    def _reported(self):return None
     def _replace_hist(self,summary,keep):raise NotImplementedError
     def _usage(self):return self.use
     def _refresh(self):raise NotImplementedError
@@ -1003,6 +1125,8 @@ QUIET_RUNTIMES = frozenset({'litert'})   #: they run the tool loop inside the en
 
 CLAUDE_EFFORT = 'high'   #: what a Claude turn asks for; Claude Code otherwise runs the model's default, medium on Opus 5.5
 
+CLAUDE_GRANTS = ('claude_server_tools','mcp_servers','mcp_tools','allowed_tools','tools','plugins','agents','extra_args')   #: options that hand Claude Code tools beside `claude_tools`
+
 ROUTINE_CBS = frozenset({'ToolReminderCallback','_ToolReminderCallback','SlidingWindowCallback'})   #: rishi's defaults (litert has its own reminder): a nag on every message, and a window that forgets with no summary
 
 class RishiBackend(Backend):
@@ -1010,7 +1134,7 @@ class RishiBackend(Backend):
     kind='rishi'
     effort,_no_effort,_sent='',False,''   # the level the chat was built with; set once a refusal took it away; the level this call sent
     def __init__(self,*a,max_steps=MAX_STEPS,**kw):
-        self.max_steps,self._prefill,self._seen_use=max_steps,None,None; super().__init__(*a,**kw)
+        self.max_steps,self._prefill,self._seen_use,self._one_seen=max_steps,None,None,None; super().__init__(*a,**kw)
     @property
     def prefilled_think(self):
         "Whether this model's template opens a thinking block the model has to close."
@@ -1033,6 +1157,9 @@ class RishiBackend(Backend):
         own=model_setting(self.spec.name,self.spec.model_id).get('effort')
         if rt=='claude': eff=eff or env('EFFORT') or own or setting('runtime.effort') or CLAUDE_EFFORT
         if rt in EFFORT_RUNTIMES and (eff:=eff or own) and not self._no_effort: kw['effort']=eff
+        if rt=='claude' and kw.get('claude_tools')==[]:   # a strict allowlist: no configured server, tool or SDK option adds to it
+            for k in CLAUDE_GRANTS: kw.pop(k,None)
+            if isinstance(kw.get('opts'),dict): kw['opts']={k:v for k,v in kw['opts'].items() if k not in CLAUDE_GRANTS}
         if rt=='claude':
             kw.setdefault('on_stall',self.notice)
             kw.setdefault('timeout_hint',f'timeout under [model."{self._cfg_name()}"] in {config_path()}')
@@ -1080,8 +1207,9 @@ class RishiBackend(Backend):
     def spawn(self,sp='',tools=(),**kw):
         if self.start() is None:raise RuntimeError(self.note)
         shared={'engine':self.chat.engine} if self.spec.local and hasattr(self.chat,'engine') else {}
+        strict={'claude_tools':self.kw['claude_tools']} if 'claude_tools' in self.kw else {}   # an allowlist holds for every child, whoever spawns it
         return type(self)(self.spec,sp=sp,tools=tools,tool_max_len=self.tool_max_len,
-                          max_steps=self.max_steps,shared=True,**shared,**kw)
+                          max_steps=self.max_steps,shared=True,**shared,**{**strict,**kw})
     def _turn_kw(self, kw):
         "This turn's generation controls: its `reasoning_effort` becomes the chat's `effort` for this call only, on a runtime that takes one."
         kw = dict(kw or {})
@@ -1153,10 +1281,32 @@ class RishiBackend(Backend):
         if f.thought and not f.answer:
             self.problem(f'{self.spec.name} spent the whole turn thinking ({f.thought} characters) '
                          'and never answered; route `turn` to a larger model, or raise its output cap')
-    def _oneshot(self,prompt,sp,max_tokens):
+    @property
+    def supports_deadline(self):
+        "Whether `oneshot` can hold a `deadline`: a chat that sets `oneshot_deadline_ok`. A recorded or replayed chat leaves it False."
+        return bool(getattr(self.chat,'oneshot_deadline_ok',False))
+    @property
+    def supports_stream(self):
+        "Whether `oneshot_stream` yields as the model sends text: a chat that sets `oneshot_stream_ok`. A recorded or replayed chat leaves it False."
+        return bool(getattr(self.chat,'oneshot_stream_ok',False))
+    def _oneshot_stream(self,prompt,sp,max_tokens,deadline=None):
+        if max_tokens is None: max_tokens=oneshot_tokens(self.spec.ctx)
+        self._one_mark()
+        return self.chat.oneshot_stream(prompt,sp,think=False,max_tokens=max_tokens,**({} if deadline is None else {'deadline':deadline}))
+    def _reported(self):
+        "What the chat's latest one-shot has reported so far, which `chat.use` leaves out. None when the chat holds what it held before the call began, whether it replaces that object or fills it in, so a chat that never reports counts nothing."
+        if (u:=getattr(self.chat,'oneshot_use',None)) is None: return None
+        r=self._as_usage(u)
+        return None if self._one_seen is not None and u is self._one_seen[0] and r==self._one_seen[1] else r
+    def _one_mark(self):
+        "Note what the chat reports before a one-shot begins."
+        u=getattr(self.chat,'oneshot_use',None)
+        self._one_seen=None if u is None else (u,self._as_usage(u))
+    def _oneshot(self,prompt,sp,max_tokens,deadline=None):
+        self._one_mark()
         if max_tokens is None: max_tokens=oneshot_tokens(self.spec.ctx)
         if self.spec.runtime!='mlx':
-            return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens)
+            return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens,**({} if deadline is None else {'deadline':deadline}))
         if getattr(self,'_oneshot_chat',None) is None:
             if not hasattr(self.chat,'engine'):   # a replayed chat has no engine
                 return self.chat.oneshot(prompt,sp,think=False,max_tokens=max_tokens)
@@ -1175,7 +1325,10 @@ class RishiBackend(Backend):
         "Cumulative, as `Backend.send` expects, though rishi's `Chat` starts a fresh `use` on every call."
         if (u:=getattr(self.chat,'use',None)) is None: return Usage(model=self.spec.model_id)
         if u is not self._seen_use: self._seen_use,self._use_base=u,self.use
-        return self._use_base+Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
+        return self._use_base+self._as_usage(u)
+    def _as_usage(self,u):
+        "One of rishi's `UsageStats` as a `Usage`."
+        return Usage(model=u.model or self.spec.model_id,input=u.prompt_tokens,output=u.completion_tokens,
                      total=u.total_tokens,cached=u.cached_tokens,cache_write=u.cache_creation_tokens,
                      reasoning=u.reasoning_tokens,cost=u.cost,turns=u.n)
     def _refresh(self): self.chat.reconfigure(sp=self.sp,tools=self.tools)

@@ -1,4 +1,4 @@
-"One key table: the key card, the tips and Sanketa's keymap file come from `KEYMAP`, every chord in it is handled, and the card names only keys that reach ramabana in Leela and tmux."
+"One key table: the key card, the tips and Sanketa's keymap file come from `KEYMAP`, every chord in it is handled, and the card names the keys of the composer's controls."
 import asyncio, inspect, json, os, re, threading
 
 from teleprint.compositor import Compositor
@@ -41,7 +41,7 @@ def test_the_card_and_the_keymap_file_follow_the_table(monkeypatch):
 
 
 # keys teleprint handles below the surface: the transcript view's moves, and the composer's line editing
-TELEPRINT_KEYS = {'pageup', 'pagedown', 'ctrl+a', 'ctrl+e', 'ctrl+u', 'ctrl+k', 'ctrl+w', 'ctrl+y'}
+TELEPRINT_KEYS = {'pageup', 'pagedown', 'home', 'end', 'ctrl+a', 'ctrl+e', 'ctrl+u', 'ctrl+k', 'ctrl+w', 'ctrl+y', 'mod+a', 'shift+left', 'shift+right', 'shift+up', 'shift+down', 'shift+home', 'shift+end'}
 KNOWN = {'alt+enter', 'alt+up', 'up', 'ctrl+c', 'ctrl+l', 'ctrl+o', 'ctrl+r', 'ctrl+t', 'shift+tab', '?'}
 
 
@@ -83,11 +83,12 @@ def test_every_chord_in_the_table_is_handled_and_every_handled_chord_has_a_row()
     _keys_scene(body)
 
 
-def test_the_card_names_alt_enter_to_queue_and_never_shift_enter():
+def test_the_card_names_alt_enter_to_queue_and_shift_enter_for_a_new_line():
     queue = next(r for r in cli.KEYMAP if r['action'] == 'queue')
-    assert queue['chords'] == ['alt+enter', 'shift+enter'], 'shift+enter still queues where a terminal sends it, after alt+enter'
+    assert queue['chords'] == ['alt+enter']
+    assert next(r for r in cli.KEYMAP if r['action'] == 'newline')['chords'] == ['shift+enter']
     assert 'alt+enter queue' in cli.HELP and 'alt+enter queues' in cli.HINTS['running']
-    for text in (cli.HELP, cli.GUIDE, *cli.HINTS.values(), *cli.TIPS): assert 'shift+enter' not in text, text
+    assert 'shift+enter start a new message line' in cli.HELP
 
 
 def _start(monkeypatch):

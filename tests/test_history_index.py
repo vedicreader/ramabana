@@ -25,6 +25,12 @@ def write(a, rows):
     a.refresh_history()
 
 
+def test_agent_still_lists_the_history_names_it_handed_to_history_core():
+    import ramabana.agent as agent
+    moved = {'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title'}
+    assert moved <= set(agent.__all__), moved - set(agent.__all__)
+
+
 def test_sessions_names_a_conversation_entirely_outside_the_tail(tmp_path, monkeypatch):
     """The fault a tail read introduces on its own: `sessions` derived the list from `history`, so
     every conversation older than the window vanished from the picker."""
