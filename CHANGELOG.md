@@ -6,6 +6,9 @@
 - A click on a sub-agent row in the `now` pane no longer aims the main prompt at that sub-agent. Before, a line typed in the main pane went to the sub-agent. The click opens the sub-agent's transcript pane, and the main prompt still talks to the main agent.
 - A transcript pane has an input line on its last row. Enter sends the line to the sub-agent, as `/talk` does. The cursor rests on that line only while the sub-agent runs, so only the pane tmux has focused shows a cursor.
 - The control socket has a `tell(run_id, text)` method that queues a message for a running sub-agent. Each `now.json` snapshot carries the socket's path as `control`.
+- The agent can merge, rebase and settle conflicts with the git tools `git_sync` and `git_conflicts`. They need approval and give an `undo` token, like the other git writes. The agent is never offered a reset.
+- `run_shell` refuses `git merge` and `git rebase`, and names `git_sync`.
+- Ramabana requires shalya 0.1.26 and rishi 0.1.61. With rishi 0.1.61, text that a model writes after its last tool call no longer reaches the agent. That text was often an invented result.
 
 ## 0.2.94
 - A session keeps every tool by default. Before, `DROP_TOOLS` left out `generate_image`, `watch`, `list_watches`, `cancel_watch`, `memory_forget` and `ask_memory`. `DROP_TOOLS` is gone.

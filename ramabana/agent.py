@@ -815,8 +815,9 @@ RULES = (
     (None, 'Before bulk work on an uncertain task, state the question, the smallest experiment that answers\n'
            '  it, and what counts as success; run one pilot first, and report “it ran” apart from “the output is right”.'),
     ('git_status', 'Git goes through its tools: `git_status`, `git_diff`, `git_log`, `git_divergence` to look;\n'
-                   '  `git_commit`, `git_checkout`, `git_stash`, `git_remote` to act, each returning an `undo` token.\n'
-                   '  `run_shell` refuses `git commit|push|pull|fetch|stash|switch|checkout`.'),
+                   '  `git_commit`, `git_checkout`, `git_stash`, `git_remote`, `git_sync`, `git_conflicts` to act, each returning an `undo` token.\n'
+                   '  Merge or rebase with `git_sync`, not `run_shell`; settle conflicts with `git_conflicts`; `git_status` shows the plan.\n'
+                   '  `run_shell` refuses `git commit|push|pull|fetch|stash|switch|checkout|merge|rebase`.'),
     ('run_shell', 'This kernel, the project venv and bare `python` can be three interpreters; "On this\n'
                   '  machine" above lists them, and `run_shell` needs the one you mean.'),
     ('delegate_search', 'A sub-agent’s report is a hypothesis until a tool result of your own confirms the facts your\n'
@@ -955,7 +956,7 @@ CLAUDE_NOTES = """## Working as Claude
 
 These apply on top of the rules above, and outrank them where they disagree.
 
-- The environment and the repository history are the user's. Do not install packages or change environment configuration. Looking at git is yours to do with `git_status`, `git_diff`, `git_log` and `git_divergence`; a git write -- `git_commit`, `git_checkout`, `git_stash`, `git_remote` -- needs the user's approval of that exact action in this conversation, and `run_shell` is never the way to do it.
+- The environment and the repository history are the user's. Do not install packages or change environment configuration. Looking at git is yours to do with `git_status`, `git_diff`, `git_log` and `git_divergence`; a git write -- `git_commit`, `git_checkout`, `git_stash`, `git_remote`, `git_sync`, `git_conflicts` -- needs the user's approval of that exact action in this conversation, and `run_shell` is never the way to do it. Merge or rebase with `git_sync`, not `run_shell`; settle conflicts with `git_conflicts`; `git_status` shows the plan.
 - Approval does not travel. Confirm before an action that is hard to reverse or that is visible outside this machine, and look at the target before you delete or overwrite it. If what you find contradicts how it was described, say that instead of proceeding.
 - Do the work that was asked, fully, and leave new decisions to the user. When the task would grow into one -- another design, a change upstream of the one agreed -- name it and let them choose, because approval for one change does not cover another.
 - When the user asks a question, answer it, and investigate with tools as far as the answer needs. A question asks for an answer, not a change, so report what you found and leave the code as it is.
@@ -1532,7 +1533,8 @@ def _sub_backend(self:Agent, model='', effort=''):
 
 # %% ../nbs/03_agent.ipynb #d69ed3f9
 GIT_SHELL = {'commit': 'git_commit', 'push': 'git_remote', 'pull': 'git_remote', 'fetch': 'git_remote',
-             'stash': 'git_stash', 'switch': 'git_checkout', 'checkout': 'git_checkout'}
+             'stash': 'git_stash', 'switch': 'git_checkout', 'checkout': 'git_checkout',
+             'merge': 'git_sync', 'rebase': 'git_sync'}
 _GIT_VALUED = ('-C', '-c', '--git-dir', '--work-tree', '--namespace')
 _NAMEVAL = re.compile(r'[A-Za-z_][A-Za-z0-9_]*=.*')
 _SHELLS, _WRAPPERS = {'bash', 'sh', 'zsh', 'dash', 'ksh'}, {'env', 'xargs', 'nohup', 'time', 'command', 'exec', 'nice'}
