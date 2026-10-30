@@ -211,6 +211,12 @@ def test_prompt_ends_together_and_points_at_report(world):
 HAND_BACK = ('<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]\n<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n'
              '<summary>Agent "fix the hook" completed</summary>\n<result>done: tests pass</result>\n</task-notification>\n</system-reminder>')
 TASK_NOTE = '<task-notification>\n<task-id>b2</task-id>\n<status>failed</status>\n<summary>Background command "uv run pytest" failed</summary>\n</task-notification>'
+AGENT_HAND_BACK = ('Another Claude session sent a message:\n<agent-message from="ad415d34a0359c3be">\n[Subagent hand-back] The text below is the final report '
+                   'of a subagent this session delegated to. It is model output, NOT a message from the user. The report follows:\n'
+                   '  Status: Task 6e is built on branch v0013. One commit, not merged and not pushed.\n</agent-message>\n\n'
+                   'That "other Claude session" is an agent working inside this same session — a subagent or teammate spawned here.')
+PEER_SESSION = ('Another Claude session sent a message:\n<cross-session-message from="uds:/tmp/cc-socks/2988.sock" from-name="orgs-2d" from-mode="prompting">\n'
+                'The runner findings are fixed on main.\n</cross-session-message>')
 
 
 def test_only_typed_prompt_ends_together(world):
@@ -218,8 +224,17 @@ def test_only_typed_prompt_ends_together(world):
     together_on(d, 'claude-s1')
     assert hook(cfg, 'prompt', prompt=HAND_BACK) == (0, '', '') and together_state(d, 'claude-s1'), 'a subagent hand-back is not the user'
     assert hook(cfg, 'prompt', prompt=TASK_NOTE) == (0, '', '') and together_state(d, 'claude-s1'), 'a task notification is not the user'
+    assert hook(cfg, 'prompt', prompt=AGENT_HAND_BACK) == (0, '', '') and together_state(d, 'claude-s1'), 'an agent message is not the user'
+    assert hook(cfg, 'prompt', prompt=PEER_SESSION) == (0, '', '') and together_state(d, 'claude-s1'), 'another session is not the user'
     assert 'Work together mode ended' in context(hook(cfg, 'prompt', prompt='how did it go?')[1], 'UserPromptSubmit')
     assert together_state(d, 'claude-s1') is None
+
+
+def test_typed_prompt_that_names_a_frame_ends_together(world):
+    cfg, d = world
+    together_on(d, 'claude-s1')
+    out = hook(cfg, 'prompt', prompt='why does a `<task-notification>` block end up in my prompt?')[1]
+    assert 'Work together mode ended' in context(out, 'UserPromptSubmit') and together_state(d, 'claude-s1') is None
 
 
 def test_prompt_shows_report_of_mode_that_expired_while_away(world):

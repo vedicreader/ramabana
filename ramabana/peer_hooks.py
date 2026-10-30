@@ -112,9 +112,15 @@ def _report_note(since, cfg):
     if p.exists(): return f'Work together mode ended. Show the user this report, saved at {p}:\n\n{p.read_text()}'
     return f'Work together mode ended. Run `{shlex.quote(sys.executable)} -m ramabana.peer_report --since {since}` and show the user the report.'
 
+_FRAME = re.compile(r'^(?:Another Claude session sent a message|A peer session sent a message|<task-notification>|<(?:agent|cross-session|teammate)-message\b)', re.M)
+
+def _typed(prompt):
+    "Whether a human typed `prompt`: a prompt Claude Code makes itself has a line that opens with one of its frames."
+    return not _FRAME.search(prompt or '')
+
 def _prompt(ad, d, data, cfg):
     "End work together mode on a typed prompt, and give the agent its unread messages and the report of the mode that ended."
-    since = None if '<task-notification>' in data.get('prompt', '') else _ended(d, _key(ad, data))
+    since = _ended(d, _key(ad, data)) if _typed(data.get('prompt')) else None
     text = _messages(ad, d, data, take(d, _key(ad, data)))
     parts = [*([text] if text else []), *([_report_note(since, cfg)] if since is not None else [])]
     return _context('UserPromptSubmit', '\n\n'.join(parts)) if parts else (0, '', '')
