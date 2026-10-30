@@ -781,7 +781,7 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
                        approve=_approve() if writes else None, run=r, images=pics, spawn=spawn, **kw) + _noted(said), child)
         except Exception as e: return err('could not start the delegation', e)
         asked = 'with write tools' if writes else 'read-only'
-        return f'started {rid} ({asked}). Collect it with delegate_result({rid!r}).' + note
+        return f'started {rid} ({asked}). Its answer arrives by itself in a later tool result; keep working. delegate_result({rid!r}) shows its state or pages a long answer.' + note
 
     @acts
     @summary(lambda a: f'Collect delegation {a["run_id"]}' if a.get('run_id') else 'List the background delegations')

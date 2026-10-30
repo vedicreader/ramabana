@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.2.93
+- `delegate_async` tells the model that the answer arrives by itself in a later tool result, and that it must keep working. Before, its reply said "Collect it with delegate_result", and the model then polled `delegate_result`. `delegate_result` still shows the state of a run and pages a long answer.
+
 ## 0.2.92
 - Work together mode ends only on a prompt that the user typed in the Claude Code session. A sub-agent hand-back, a message from another session and a task notification no longer end it. Claude Code starts each of these prompts with its own frame, and the hook reads that frame. Before, only a task notification was skipped.
 
