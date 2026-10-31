@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.97
+- A new agent tool, `work_together(on=True, partners='', until='')`, turns work together mode on or off for the session. The agent calls it when you tell it to work with peers. In `auto` approval mode it runs without a question. `ask` and `edits` ask you, and `off` refuses it. While the mode is on, an ask from a partner runs without a question to you.
+- A turn that a peer message reached cannot call `work_together`. A peer message reaches a turn as its prompt, as a note kept for the next prompt, steered into the running turn, or as the reply a `tell(..., wait=N)` waited for. `Agent.peer_turn` records it for each turn.
+- A line you type in a terminal session no longer ends work together mode. `/together off`, `work_together(on=False)` or the end time ends it. A typed line still shows the report of a mode that ended while you were away. In Claude Code and Codex sessions, a typed prompt still ends the mode.
+- `peer_tools(agent)` returns three tools: `peers`, `tell` and `work_together`.
+
 ## 0.2.96
 - `Agent(max_cost=, max_tokens=, est_rate=)` sets spending caps. A turn that goes past a cap stops with `state='budget'` and names the cap. One-shots and streams add to the same totals and raise `BudgetExceeded`. Parallel calls can go past a cap by the calls that already run.
 - A runtime that reports no cost is priced with `est_rate`, else 10 USD per million tokens. `TurnResult.estimated` and `Agent.estimated` show an estimate.
