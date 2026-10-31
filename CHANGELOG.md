@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.2.102
+- The tmux client again has the Ramabana command line in its arguments. This reverts the argument change in 0.2.99. Sanketa finds Ramabana in the arguments of the tmux client. Without them, Sanketa 0.2.6 showed no Ramabana layer in a Kaku tab. `Setup.wrap` passes the command line to tmux, and the pane wrapper `HOLD` no longer reads `$RAMABANA_ARGV`. `prune_sockets` and the `set -m` start of `HOLD` are unchanged.
+
 ## 0.2.101
 - Sanketa now shows Ramabana above tmux in a terminal tab. Before, it showed `bash`. The pane wrapper `HOLD` now starts with `set -m`. Job control puts Ramabana in its own process group, and that group is the foreground group of the pane. A tool that reads the foreground process group leader, such as Sanketa, now finds Ramabana.
 
