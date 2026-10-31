@@ -35,7 +35,7 @@ def script(tmp_path):
 
 def mk(tmp_path, box=None, environ=None, tty=True, argv=None):
     box, argv = box or Box(), argv or (script(tmp_path), '--model', 'x')
-    s = Setup(tmp_path/'cfg', environ={'HOME': '/h', 'PATH': '/bin'} if environ is None else environ, argv=list(argv),
+    s = Setup(tmp_path/'cfg', environ={'HOME': '/h', 'PATH': '/bin', 'TMUX_TMPDIR': str(tmp_path)} if environ is None else environ, argv=list(argv),
               cwd='/work', which=box.which, system=lambda: box.system, run=box.run, execvpe=box.execvpe,
               ask=box.ask, isatty=lambda: tty)
     return s, box

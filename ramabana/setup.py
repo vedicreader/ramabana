@@ -7,7 +7,7 @@ Docs: https://vedicreader.github.io/ramabana/setup.html.md"""
 # %% ../nbs/19_setup.ipynb #6c9acc6f
 from __future__ import annotations
 
-import difflib, hashlib, importlib, importlib.util, json, os, platform, re, shlex, shutil, subprocess, sys, time, uuid
+import difflib, hashlib, importlib, importlib.util, json, os, platform, re, shlex, shutil, socket, subprocess, sys, time, uuid
 
 from contextlib import suppress
 from fastcore.basics import ifnone, patch, store_attr
@@ -20,9 +20,9 @@ __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN'
            'THEME_NAMES', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE',
            'SETUP_USAGE', 'HISTORY_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP',
            'PEER_MARKS', 'PEER_START', 'PEER_END', 'env_prefixes', 'installed', 'need', 'follow_cmd', 'tmux_version',
-           'tmux_conf', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path', 'keys_path',
-           'load_keys', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting', 'set_table',
-           'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset',
+           'tmux_conf', 'prune_sockets', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path',
+           'keys_path', 'load_keys', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting',
+           'set_table', 'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset',
            'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
            'index_gate', 'save_index', 'log_index', 'last_index', 'merge_hooks', 'peer_skill', 'setup_peers',
            'hook_check', 'peers_status', 'path_check']
@@ -99,7 +99,22 @@ def tmux_conf(version):
     return TMUX_CONF + ''.join(f'{l}\n' for v, l in VERSIONED.items() if version >= v)
 
 # %% ../nbs/19_setup.ipynb #579428a9
-HOLD = r'"$@" || { s=$?; printf "\nramabana exited with status %s · enter closes this\n" $s; read _; exit $s; }'
+HOLD = r'eval "set -- $RAMABANA_ARGV"; "$@" || { s=$?; printf "\nramabana exited with status %s · enter closes this\n" $s; read _; exit $s; }'
+
+def prune_sockets(
+    folder,              # a tmux socket folder, `$TMUX_TMPDIR/tmux-<uid>`
+    prefix=f'{SOCKET}-', # only sockets whose names start with this
+    age=5,               # keep sockets younger than this many seconds: their server may still be starting
+):
+    "Remove the sockets in `folder` that start with `prefix` and refuse a connection; return their names."
+    gone = []
+    for p in sorted(Path(folder).glob(f'{prefix}*')):
+        with suppress(OSError), socket.socket(socket.AF_UNIX) as s:
+            if not p.is_socket() or time.time() - p.stat().st_mtime < age: continue
+            try: s.connect(str(p))
+            except ConnectionRefusedError: p.unlink(); gone.append(p.name)
+    return gone
+
 WHY = {'none': 'no tmux, and no brew, apt-get or dnf to install it', 'no': 'no tmux', '': 'no tmux', 'failed': 'tmux did not install'}
 
 class Setup:
@@ -143,10 +158,10 @@ class Setup:
         return [*me, *args]
 
     def wrap(self):
-        "The `execvpe` arguments that rerun `command` on a tmux server of its own."
-        env = {**self.environ, env_prefixes()[0]+'WRAPPED': '1'}
+        "The `execvpe` arguments that rerun `command` on a tmux server of its own, with `command` in `$RAMABANA_ARGV`."
+        env = {**self.environ, env_prefixes()[0]+'WRAPPED': '1', 'RAMABANA_ARGV': shlex.join(self.command())}
         return self.tmux, ['tmux', '-L', f'{SOCKET}-{uuid.uuid4().hex[:8]}', '-f', str(self.conf()), 'new-session', '-s', SOCKET,
-                           '-c', self.cwd, 'sh', '-c', HOLD, 'ramabana', *self.command()], env
+                           '-c', self.cwd, 'sh', '-c', HOLD, 'ramabana'], env
 
     def launch(self,
         prompt='',     # a one-shot question stays in this terminal
@@ -157,6 +172,7 @@ class Setup:
         if prompt or as_json or not self.isatty() or 'off' in (tmux, self._env('TMUX')): return
         if self.environ.get('TMUX'): return self.ext_keys()
         if self._env('WRAPPED') or not (self.tmux or self.offer_install()) or (self.version() or (0,)) < WRAP_MIN: return
+        prune_sockets(Path(self.environ.get('TMUX_TMPDIR') or '/tmp')/f'tmux-{os.getuid()}')
         self.execvpe(*self.wrap())
 
 # %% ../nbs/19_setup.ipynb #d30426c2
