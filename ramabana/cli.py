@@ -2521,7 +2521,7 @@ class ThemedCode(CodeBlock):
         code, lang = str(self.text).rstrip(), fence_lang(self.lexer_name)
         try: t = None if lang is None else diff_rich(code) if lang == 'diff' else hl_text(code, lang)
         except Exception: t = None
-        if t is None: yield Syntax(code, self.lexer_name, theme=code_theme(), background_color=code_bg(), word_wrap=True, padding=(0, 1))
+        if t is None or lang in hl.FAILED_LANGS: yield Syntax(code, self.lexer_name, theme=code_theme(), background_color=code_bg(), word_wrap=True, padding=(0, 1))
         else: yield Padding(t, (0, 1), style=f'on {code_bg()}', expand=True)
 
 class Reply(Markdown):
