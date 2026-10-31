@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.2.101
+- Sanketa now shows Ramabana above tmux in a terminal tab. Before, it showed `bash`. The pane wrapper `HOLD` now starts with `set -m`. Job control puts Ramabana in its own process group, and that group is the foreground group of the pane. A tool that reads the foreground process group leader, such as Sanketa, now finds Ramabana.
+
 ## 0.2.100
 - A Swift file no longer prints a panic on each redraw. fastpylight 0.1.19 fails to start its Swift highlighter; after the first failure, each later call printed `LazyLock instance has previously been poisoned`. Ramabana now remembers a language whose tokenizer raises `RuntimeError` and stops calling it. The first panic still prints once.
 - `tokens(code, lang)` keeps the failed languages in `FAILED_LANGS`. A diff in a failed language uses plain line colour. A chat code fence in a failed language uses pygments. An unknown language still raises `ValueError`.
