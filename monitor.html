@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.20">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Folder watches checked between turns, with a standing review that runs when files change.">
+
+<title>monitor – ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-17888a1159294d3eb470f19f6f52f5a5.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-66a38d7287321bc50e069add96f8c30e.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="monitor – ramabana">
+<meta property="og:description" content="Folder watches checked between turns, with a standing review that runs when files change.">
+<meta property="og:site_name" content="ramabana">
+<meta name="twitter:title" content="monitor – ramabana">
+<meta name="twitter:description" content="Folder watches checked between turns, with a standing review that runs when files change.">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./monitor.html">monitor</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./history_core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">History core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./history.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">history</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peers</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_work.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Peer work</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_hooks.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peer_hooks</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_report.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peer_report</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./guard.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">guard</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#folder-reviews" id="toc-folder-reviews" class="nav-link active" data-scroll-target="#folder-reviews">Folder reviews</a></li>
+  <li><a href="#change-detection" id="toc-change-detection" class="nav-link" data-scroll-target="#change-detection">Change detection</a></li>
+  <li><a href="#reviewer" id="toc-reviewer" class="nav-link" data-scroll-target="#reviewer">Reviewer</a></li>
+  <li><a href="#the-beat" id="toc-the-beat" class="nav-link" data-scroll-target="#the-beat">The beat</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="monitor.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">monitor</h1>
+</div>
+
+<div>
+  <div class="description">
+    Folder watches checked between turns, with a standing review that runs when files change.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<p>This module runs two kinds of work outside the turn you are typing in. A folder review reads changes that someone else made to a watched folder and reports on them at the start of your next turn. The beat runs scheduled work on a timer, with or without an open session. The beat section is at the end of the page.</p>
+<section id="folder-reviews" class="level2">
+<h2 class="anchored" data-anchor-id="folder-reviews">Folder reviews</h2>
+<p>A folder watch is a standing request to review changes under a folder. You ask the agent to watch a folder and give it instructions such as “check each change for correctness”. Whenever files under that folder change, a reviewer reads the diff and follows the instructions. The report appears in your next turn.</p>
+<p>The model opens a watch with the shalya <code>watch</code> tool: <code>watch(target, kind='folder', instructions=..., pattern=...)</code>. <code>pattern</code> is one string of globs separated by commas or spaces, such as <code>*.py,*.md</code>. A glob matches a file name or a whole posix path. An empty <code>pattern</code> matches every file. The tool stores the watch as a row in the vault, beside the scheduled page, search and reminder watches. <code>list_watches</code> and <code>cancel_watch</code> also see the row.</p>
+<p><a href="https://vedicreader.github.io/ramabana/monitor.html#monitors"><code>Monitors</code></a> does the reviewing. <a href="https://vedicreader.github.io/ramabana/monitor.html#monitors.sync"><code>Monitors.sync</code></a> copies the vault’s folder rows into the session. <a href="https://vedicreader.github.io/ramabana/monitor.html#monitors.check"><code>Monitors.check</code></a> calls <code>sync</code> first and picks up any folder watch the model opened since the last check. A host without a vault gives the model no tool to open a folder watch. Code can open one with <a href="https://vedicreader.github.io/ramabana/monitor.html#monitors.add"><code>Monitors.add</code></a>.</p>
+<p>A new folder watch takes a baseline: a snapshot of the folder at that moment. Only later changes are reviewed. The reviewer receives the watch’s instructions and the changes. It receives nothing from the conversation that created the watch. The instructions must say everything the reviewer needs. <code>add</code> refuses a watch with empty instructions.</p>
+<p>Each completed review goes into a queue. <a href="https://vedicreader.github.io/ramabana/monitor.html#monitors.drain"><code>Monitors.drain</code></a> empties the queue, and the agent adds the drained reviews to its next prompt with <a href="https://vedicreader.github.io/ramabana/monitor.html#review_notice"><code>review_notice</code></a>. The queue holds <code>PENDING_MAX</code> reviews and drops the oldest. Each review is also noted to the user. A review that has text is filed in memory under the key <code>folder-review:</code> plus the watch id. A newer review of the same folder replaces the older one. The agent runs <a href="https://vedicreader.github.io/ramabana/monitor.html#monitors.check"><code>Monitors.check</code></a> in a daemon thread between turns.</p>
+</section>
+<section id="change-detection" class="level2">
+<h2 class="anchored" data-anchor-id="change-detection">Change detection</h2>
+<p><a href="https://vedicreader.github.io/ramabana/monitor.html#snapshot"><code>snapshot</code></a> records the text of every readable file under the watched folder that matches the pattern. <a href="https://vedicreader.github.io/ramabana/monitor.html#changed"><code>changed</code></a> compares two snapshots and returns the files added, edited or removed. <a href="https://vedicreader.github.io/ramabana/monitor.html#report"><code>report</code></a> lists the changed files with their added and removed line counts, then appends the unified diffs. <a href="https://vedicreader.github.io/ramabana/monitor.html#summarise"><code>summarise</code></a> returns a one-line count such as <code>1 added, 1 edited</code>. A file larger than <code>SNAP_MAX_BYTES</code> is recorded as its size alone. A change to it shows as a changed size with no diff.</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Constant</th>
+<th>Value</th>
+<th>Limit</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>SNAP_MAX_FILES</code></td>
+<td>2000</td>
+<td>Files in one snapshot. Later files in sorted order are ignored.</td>
+</tr>
+<tr class="even">
+<td><code>SNAP_MAX_BYTES</code></td>
+<td>400,000</td>
+<td>Characters of one file.</td>
+</tr>
+<tr class="odd">
+<td><code>REVIEW_MAX_CHARS</code></td>
+<td>24,000</td>
+<td>Characters of change report in one review prompt. Also the clip for <a href="https://vedicreader.github.io/ramabana/monitor.html#review_notice"><code>review_notice</code></a> and <a href="https://vedicreader.github.io/ramabana/monitor.html#beat_notice"><code>beat_notice</code></a>.</td>
+</tr>
+<tr class="even">
+<td><code>PENDING_MAX</code></td>
+<td>20</td>
+<td>Queued reviews.</td>
+</tr>
+<tr class="odd">
+<td><code>DFLT_SETTLE</code></td>
+<td><code>'20s'</code></td>
+<td>Settle window of a new folder watch.</td>
+</tr>
+</tbody>
+</table>
+<p>A folder watch’s settle window is the least time between two reviews of one folder. Changes that arrive inside the window wait and go into the next review together. A burst of saves produces one review. <code>check(force=True)</code> ignores the window.</p>
+</section>
+<section id="reviewer" class="level2">
+<h2 class="anchored" data-anchor-id="reviewer">Reviewer</h2>
+<p>The reviewer is a read-only sub-agent. It has the session’s read tools and no write tools. <code>REVIEW_SP</code> is its system prompt. Reviews use the session’s sub-agent step setting. Under <code>auto</code>, each review gets <code>SUB_MAX_STEPS</code> (80). A numeric setting gives each review that many steps, up to <code>SUB_STEP_CEILING</code> (400). <a href="https://vedicreader.github.io/ramabana/monitor.html#monitors"><code>Monitors</code></a> reads <code>get_steps</code> before each review. Without that callback, it uses <code>auto</code>. The budget is passed to the backend as <code>max_steps</code>. Urai counts each approved tool call as one step, including calls in a batch. A quiet backend gets twice that budget to allow for status calls. A separate read-tool allowance permits four calls per requested step. The reviewer cannot edit the watched folder. It describes any fix instead of making it. Without a backend to run it on, the change is recorded with status <code>unreviewed</code>. A review that raises an error is recorded with status <code>error</code>. The baseline moves forward on every review attempt, including a failed one. A change is never reviewed twice.</p>
+<div id="742ab905" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.568025+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.621536+00:00&quot;,&quot;total&quot;:0.05351824699999952}}" data-execution_count="5">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L40" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="secs" class="level3">
+<h3 class="anchored" data-anchor-id="secs">secs</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> secs(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    every</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Seconds from <code>'30s'</code>, <code>'5m'</code>, <code>'1h'</code>, or a number.</em></p>
+</section>
+</div>
+<div id="fd30123a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.634048+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.645761+00:00&quot;,&quot;total&quot;:0.011719865000003438}}" data-execution_count="7">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L74" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="changed" class="level3">
+<h3 class="anchored" data-anchor-id="changed">changed</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> changed(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    before, after</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>{path: (before, after)}</code> for every file added, edited or removed between two snapshots.</em></p>
+</section>
+</div>
+<div id="40e0fc63" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.645941+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.658236+00:00&quot;,&quot;total&quot;:0.012299759000001131}}" data-execution_count="8">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L64" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="snapshot" class="level3">
+<h3 class="anchored" data-anchor-id="snapshot">snapshot</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> snapshot(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    host, folder, pattern:<span class="bu">str</span><span class="op">=</span><span class="st">''</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>{path: text}</code> for every watched file as it is now.</em></p>
+</section>
+</div>
+<div id="49024a12" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.658384+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.669237+00:00&quot;,&quot;total&quot;:0.010858350999995992}}" data-execution_count="9">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L58" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="files_under" class="level3">
+<h3 class="anchored" data-anchor-id="files_under">files_under</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> files_under(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    host, folder, pattern:<span class="bu">str</span><span class="op">=</span><span class="st">''</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Sorted paths of the files under <code>folder</code> that match <code>pattern</code>, at most <code>SNAP_MAX_FILES</code>.</em></p>
+</section>
+</div>
+<div id="4f0cb821" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.686485+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.702357+00:00&quot;,&quot;total&quot;:0.015878489000016316}}" data-execution_count="11">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L112" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="report" class="level3">
+<h3 class="anchored" data-anchor-id="report">report</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> report(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    changes, folder:<span class="bu">str</span><span class="op">=</span><span class="st">''</span>, mx:<span class="bu">int</span><span class="op">=</span><span class="dv">24000</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Summarize changed files and clip their unified diffs.</em></p>
+</section>
+</div>
+<div id="8516bd10" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.702517+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.707777+00:00&quot;,&quot;total&quot;:0.005264213999993217}}" data-execution_count="12">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L106" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="summarise" class="level3">
+<h3 class="anchored" data-anchor-id="summarise">summarise</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> summarise(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    changes</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>One line: how many files were added, edited and removed.</em></p>
+</section>
+</div>
+<div id="32acae04" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.710550+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.716225+00:00&quot;,&quot;total&quot;:0.0056788059999917095}}" data-execution_count="14">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L139" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="review_notice" class="level3">
+<h3 class="anchored" data-anchor-id="review_notice">review_notice</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> review_notice(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    recs, mx:<span class="bu">int</span><span class="op">=</span><span class="dv">24000</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Reviews since the last turn, as a prompt block.</em></p>
+</section>
+</div>
+<div id="0d18b3cb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.716364+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.723884+00:00&quot;,&quot;total&quot;:0.007523714999990716}}" data-execution_count="15">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L130" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="review_prompt" class="level3">
+<h3 class="anchored" data-anchor-id="review_prompt">review_prompt</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> review_prompt(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    instructions, changes, folder:<span class="bu">str</span><span class="op">=</span><span class="st">''</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The question a reviewer gets: the instructions, then the changes.</em></p>
+</section>
+</div>
+<div id="f2ac9dc3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.726361+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.732381+00:00&quot;,&quot;total&quot;:0.0060243779999780145}}" data-execution_count="17">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L148" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="folderwatch" class="level3">
+<h3 class="anchored" data-anchor-id="folderwatch">FolderWatch</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> FolderWatch(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    folder, <span class="co"># folder or file to watch, inside the roots</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    instructions, <span class="co"># the reviewer's brief, verbatim</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    pattern:<span class="bu">str</span><span class="op">=</span><span class="st">''</span>, <span class="co"># globs to limit it to; empty for all</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    settle:<span class="bu">str</span><span class="op">=</span><span class="st">'20s'</span>, <span class="co"># least time between two reviews</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    note:<span class="bu">str</span><span class="op">=</span><span class="st">''</span>, <span class="co"># why it is being watched</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>One monitored folder: its target, instructions and last snapshot.</em></p>
+</section>
+</div>
+<div id="6b51ccd7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.736849+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.742916+00:00&quot;,&quot;total&quot;:0.006070924999988847}}" data-execution_count="19">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L169" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="monitors" class="level3">
+<h3 class="anchored" data-anchor-id="monitors">Monitors</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> Monitors(</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    host, get_backend:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable returning the review backend, or `None`</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    get_tools:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable returning the reviewer's read tools</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    on_review:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable(record) per completed review</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    log_dir:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable returning the folder for transcripts and `monitors.log`, or `None`</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    get_steps:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># callable returning the sub-agent step setting; `None` uses `auto`</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Folder watches and reviews: <code>check</code> looks, <code>drain</code> hands reviews to the next turn.</em></p>
+</section>
+</div>
+<div id="3fd1f9e5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.752564+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.758645+00:00&quot;,&quot;total&quot;:0.006085612999982004}}" data-execution_count="21">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L219" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="monitors.check" class="level3">
+<h3 class="anchored" data-anchor-id="monitors.check">Monitors.check</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> check(</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    force:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># look even inside a watch's settle window</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    block:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, <span class="co"># wait for a running check; when False, return `None` at once</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>One record per changed folder, or <code>None</code> if another check runs and <code>block</code> is off.</em></p>
+</section>
+</div>
+<div id="357efe43" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.762283+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.769465+00:00&quot;,&quot;total&quot;:0.007186066999992136}}" data-execution_count="23">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L301" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="monitors.sync" class="level3">
+<h3 class="anchored" data-anchor-id="monitors.sync">Monitors.sync</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> sync():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Mirror the host’s folder watches: add new vault rows, drop removed ones.</em></p>
+</section>
+</div>
+<div id="18d373a8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.769598+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.770383+00:00&quot;,&quot;total&quot;:0.0007888069999921754}}" data-execution_count="24">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.testing <span class="im">import</span> FakeBackend, MemHost, SPEC</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The example watches a two-file project that <a href="https://vedicreader.github.io/ramabana/testing.html#memhost"><code>MemHost</code></a> holds in memory. <a href="https://vedicreader.github.io/ramabana/testing.html#fakebackend"><code>FakeBackend</code></a> replaces the reviewer’s model and answers every question with <code>sub answer</code>. The first check returns an empty list because no files have changed since <code>add</code>. After one file is edited, the check returns one record. The record holds the summary, the review and the diff.</p>
+<div id="bb8793fa" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>h <span class="op">=</span> MemHost({<span class="st">'/proj/a.py'</span>: <span class="st">'def a(): return 1</span><span class="ch">\n</span><span class="st">'</span>, <span class="st">'/proj/notes.md'</span>: <span class="st">'hello</span><span class="ch">\n</span><span class="st">'</span>})</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> Monitors(h, get_backend<span class="op">=</span><span class="kw">lambda</span>: FakeBackend(SPEC))</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>w <span class="op">=</span> m.add(<span class="st">'/proj'</span>, <span class="st">'Review each change for correctness.'</span>)</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(w.snap), <span class="dv">2</span>)</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>test_eq(m.check(), [])</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>h.write(<span class="st">'/proj/a.py'</span>, <span class="st">'def a(): return 2</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>rec, <span class="op">=</span> m.check()</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>test_eq((rec[<span class="st">'status'</span>], rec[<span class="st">'files'</span>], rec[<span class="st">'summary'</span>]), (<span class="st">'ok'</span>, <span class="dv">1</span>, <span class="st">'1 edited'</span>))</span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>test_eq(rec[<span class="st">'review'</span>].split(<span class="st">'</span><span class="ch">\n</span><span class="st">state:'</span>)[<span class="dv">0</span>], <span class="st">'sub answer'</span>)</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">'-def a(): return 1'</span> <span class="kw">in</span> rec[<span class="st">'changes'</span>] <span class="kw">and</span> <span class="st">'+def a(): return 2'</span> <span class="kw">in</span> rec[<span class="st">'changes'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Folder reviews use the sub-agent step setting. Under <code>auto</code>, a review gets 80 steps. A numeric setting applies to the next review. The read-tool allowance is four calls per step, not one. This example exhausts that allowance without calling a model.</p>
+<div id="review-budget-check" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> review_read(index: <span class="bu">int</span>): <span class="cf">return</span> <span class="bu">str</span>(index)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>review_backend <span class="op">=</span> FakeBackend(SPEC)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>review_host <span class="op">=</span> MemHost({<span class="st">"/proj/a.py"</span>: <span class="st">"one"</span>})</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>review_monitor <span class="op">=</span> Monitors(review_host, get_backend<span class="op">=</span><span class="kw">lambda</span>: review_backend, get_tools<span class="op">=</span><span class="kw">lambda</span>: [review_read])</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>review_monitor.add(<span class="st">"/proj"</span>, <span class="st">"Review changes."</span>)</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>review_host.write(<span class="st">"/proj/a.py"</span>, <span class="st">"two"</span>)</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> review_monitor.check(force<span class="op">=</span><span class="va">True</span>)[<span class="dv">0</span>][<span class="st">"status"</span>] <span class="op">==</span> <span class="st">"ok"</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>review_tool <span class="op">=</span> review_backend.spawned[<span class="op">-</span><span class="dv">1</span>].tools[<span class="dv">0</span>]</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">all</span>(review_tool(i) <span class="op">==</span> <span class="bu">str</span>(i) <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">80</span> <span class="op">*</span> <span class="dv">4</span>))</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> review_tool(<span class="dv">320</span>) <span class="op">!=</span> <span class="st">"320"</span></span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>review_monitor.get_steps <span class="op">=</span> <span class="kw">lambda</span>: <span class="dv">2</span></span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>review_host.write(<span class="st">"/proj/a.py"</span>, <span class="st">"three"</span>)</span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> review_monitor.check(force<span class="op">=</span><span class="va">True</span>)[<span class="dv">0</span>][<span class="st">"status"</span>] <span class="op">==</span> <span class="st">"ok"</span></span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>review_tool_capped <span class="op">=</span> review_backend.spawned[<span class="op">-</span><span class="dv">1</span>].tools[<span class="dv">0</span>]</span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">all</span>(review_tool_capped(i) <span class="op">==</span> <span class="bu">str</span>(i) <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">2</span> <span class="op">*</span> <span class="dv">4</span>))</span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> review_tool_capped(<span class="dv">8</span>) <span class="op">!=</span> <span class="st">"8"</span></span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>review_monitor.<span class="bu">all</span>()[<span class="dv">0</span>].last_status</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A file added inside the settle window waits. The plain check returns an empty list, and <code>force=True</code> reviews the file. A removed file shows as removed. Each check queues its record. <code>drain</code> returns all queued records once and empties the queue. The agent calls it before its next turn.</p>
+<div id="2c96d9af" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>h.write(<span class="st">'/proj/b.py'</span>, <span class="st">'def b(): pass</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>test_eq(m.check(), [])</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>rec, <span class="op">=</span> m.check(force<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>test_eq((rec[<span class="st">'summary'</span>], rec[<span class="st">'status'</span>]), (<span class="st">'1 added'</span>, <span class="st">'ok'</span>))</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="kw">del</span> h.files[<span class="st">'/proj/notes.md'</span>]</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>test_eq(m.check(force<span class="op">=</span><span class="va">True</span>)[<span class="dv">0</span>][<span class="st">'summary'</span>], <span class="st">'1 removed'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="07540e1b" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(m.drain()), <span class="dv">3</span>)</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>test_eq(m.drain(), [])</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>test_eq(review_notice([]), <span class="st">''</span>)</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>test_eq(_globs(<span class="st">'*.py, *.ipynb'</span>), [<span class="st">'*.py'</span>, <span class="st">'*.ipynb'</span>])</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>test_eq(summarise({<span class="st">'a'</span>: (<span class="st">''</span>, <span class="st">'x'</span>), <span class="st">'b'</span>: (<span class="st">'x'</span>, <span class="st">'y'</span>)}), <span class="st">'1 added, 1 edited'</span>)</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: m.add(<span class="st">'/proj'</span>, <span class="st">'  '</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>check(block=False)</code> returns <code>None</code> at once when another check is running. The default <code>check()</code> waits for it. The agent’s background thread uses the default.</p>
+<div id="1e835bb6" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>h.write(<span class="st">'/proj/a.py'</span>, <span class="st">'def a(): return 3</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>m.checking.acquire()</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>: test_eq(m.check(block<span class="op">=</span><span class="va">False</span>), <span class="va">None</span>)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>: m.checking.release()</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>test_eq(m.check(force<span class="op">=</span><span class="va">True</span>)[<span class="dv">0</span>][<span class="st">'summary'</span>], <span class="st">'1 edited'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The same flow runs through the model’s tools. <code>VaultLike</code> stands in for a vault host. It stores watches as rows and keeps filed notes in a list. The <code>watch</code> tool opens a folder watch. The next check picks it up through <code>sync</code> and takes its baseline. An edit then produces a review filed under the key <code>folder-review:w1</code>. After <code>cancel_watch</code>, the next check removes the watch from <a href="https://vedicreader.github.io/ramabana/monitor.html#monitors"><code>Monitors</code></a>.</p>
+<div id="153a79d3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.775326+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.782210+00:00&quot;,&quot;total&quot;:0.006888056000008191}}" data-execution_count="25">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.tools <span class="im">import</span> MemoryHost, WatchHost, watch_tools</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> VaultLike(MemHost, MemoryHost, WatchHost):</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">"A host whose watches table is a list and whose memory is the notes it was handed."</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, files): <span class="bu">super</span>().<span class="fu">__init__</span>(files)<span class="op">;</span> <span class="va">self</span>.rows, <span class="va">self</span>.notes <span class="op">=</span> [], []</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> watch(<span class="va">self</span>, target, action<span class="op">=</span><span class="st">'remind'</span>, every<span class="op">=</span><span class="st">'1d'</span>, note<span class="op">=</span><span class="va">None</span>, <span class="op">**</span>params):</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>        w <span class="op">=</span> <span class="bu">dict</span>(<span class="bu">id</span><span class="op">=</span><span class="ss">f'w</span><span class="sc">{</span><span class="bu">len</span>(<span class="va">self</span>.rows)<span class="op">+</span><span class="dv">1</span><span class="sc">}</span><span class="ss">'</span>, kind<span class="op">=</span>action, target<span class="op">=</span>target, every<span class="op">=</span><span class="dv">86400</span>, note<span class="op">=</span>note, runs<span class="op">=</span><span class="dv">0</span>, last_status<span class="op">=</span><span class="st">''</span>, <span class="op">**</span>params)</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.rows.append(w)<span class="op">;</span> <span class="cf">return</span> w</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> watches(<span class="va">self</span>, due_only<span class="op">=</span><span class="va">False</span>): <span class="cf">return</span> <span class="bu">list</span>(<span class="va">self</span>.rows)</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> unwatch(<span class="va">self</span>, wid): <span class="va">self</span>.rows <span class="op">=</span> [r <span class="cf">for</span> r <span class="kw">in</span> <span class="va">self</span>.rows <span class="cf">if</span> r[<span class="st">'id'</span>] <span class="op">!=</span> wid]<span class="op">;</span> <span class="cf">return</span> <span class="va">True</span></span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> poll(<span class="va">self</span>): <span class="cf">return</span> {<span class="st">'checked'</span>: <span class="dv">0</span>, <span class="st">'ran'</span>: <span class="dv">0</span>, <span class="st">'results'</span>: []}</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> remember(<span class="va">self</span>, text, title<span class="op">=</span><span class="va">None</span>, tags<span class="op">=</span>(), key<span class="op">=</span><span class="st">''</span>): <span class="va">self</span>.notes.append((title, key, text))<span class="op">;</span> <span class="cf">return</span> <span class="bu">dict</span>(doc_id<span class="op">=</span><span class="st">'d1'</span>, title<span class="op">=</span>title)</span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> memory_search(<span class="va">self</span>, query, limit<span class="op">=</span><span class="dv">8</span>): <span class="cf">return</span> []</span>
+<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> memory_tree(<span class="va">self</span>, document<span class="op">=</span><span class="st">''</span>): <span class="cf">return</span> []</span>
+<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> memory_read(<span class="va">self</span>, node_id): <span class="cf">return</span> {}</span>
+<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> memory_forget(<span class="va">self</span>, doc_id): <span class="cf">return</span> <span class="va">False</span></span>
+<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a>    watch_actions <span class="op">=</span> (<span class="st">'url'</span>, <span class="st">'remind'</span>, <span class="st">'web'</span>, <span class="st">'folder'</span>)</span>
+<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>vh <span class="op">=</span> VaultLike({<span class="st">'/proj/a.py'</span>: <span class="st">'one</span><span class="ch">\n</span><span class="st">'</span>})</span>
+<span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a>vm <span class="op">=</span> Monitors(vh, get_backend<span class="op">=</span><span class="kw">lambda</span>: FakeBackend(SPEC))</span>
+<span id="cb19-21"><a href="#cb19-21" aria-hidden="true" tabindex="-1"></a>wt <span class="op">=</span> {t.<span class="va">__name__</span>: t <span class="cf">for</span> t <span class="kw">in</span> watch_tools(vh)}</span>
+<span id="cb19-22"><a href="#cb19-22" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(wt[<span class="st">'watch'</span>](<span class="st">'/proj'</span>, kind<span class="op">=</span><span class="st">'folder'</span>, instructions<span class="op">=</span><span class="st">'Review each change.'</span>))</span>
+<span id="cb19-23"><a href="#cb19-23" aria-hidden="true" tabindex="-1"></a>test_eq(vm.check(force<span class="op">=</span><span class="va">True</span>), [])</span>
+<span id="cb19-24"><a href="#cb19-24" aria-hidden="true" tabindex="-1"></a>test_eq([w.<span class="bu">id</span> <span class="cf">for</span> w <span class="kw">in</span> vm.<span class="bu">all</span>()], [<span class="st">'w1'</span>])</span>
+<span id="cb19-25"><a href="#cb19-25" aria-hidden="true" tabindex="-1"></a>vh.write(<span class="st">'/proj/a.py'</span>, <span class="st">'two</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb19-26"><a href="#cb19-26" aria-hidden="true" tabindex="-1"></a>rec, <span class="op">=</span> vm.check(force<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb19-27"><a href="#cb19-27" aria-hidden="true" tabindex="-1"></a>test_eq((rec[<span class="st">'watch_id'</span>], rec[<span class="st">'review'</span>].split(<span class="st">'</span><span class="ch">\n</span><span class="st">state:'</span>)[<span class="dv">0</span>]), (<span class="st">'w1'</span>, <span class="st">'sub answer'</span>))</span>
+<span id="cb19-28"><a href="#cb19-28" aria-hidden="true" tabindex="-1"></a>test_eq(vh.notes[<span class="op">-</span><span class="dv">1</span>][:<span class="dv">2</span>], (<span class="st">'folder review: proj: 1 edited'</span>, <span class="st">'folder-review:w1'</span>))</span>
+<span id="cb19-29"><a href="#cb19-29" aria-hidden="true" tabindex="-1"></a>wt[<span class="st">'cancel_watch'</span>](<span class="st">'w1'</span>)</span>
+<span id="cb19-30"><a href="#cb19-30" aria-hidden="true" tabindex="-1"></a>test_eq(vm.check(), [])</span>
+<span id="cb19-31"><a href="#cb19-31" aria-hidden="true" tabindex="-1"></a>test_eq(vm.<span class="bu">all</span>(), [])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>watching folder /proj as w1, every 1d</code></pre>
+</div>
+</div>
+</section>
+<section id="the-beat" class="level2">
+<h2 class="anchored" data-anchor-id="the-beat">The beat</h2>
+<p>Some work must run on a timer with or without an open session, such as a nightly job that learns from the day’s sessions. pobblebonk does the timing. It is a small scheduler that installs one job with the operating system’s scheduler (cron, launchd or Windows Task Scheduler). It keeps its schedules, the work they fired and the notes that work left in a SQLite database.</p>
+<p>A schedule is a name, an interval and a callback. The callback runs when the schedule fires. A beat is one pass over the schedules. It runs every schedule that has come due. A note is a short title and body that a callback leaves for the next reader. Several readers can share one database. Each reader sees each note once.</p>
+<p>This module holds the Ramabana side of that arrangement. <code>on_tick(name)</code> registers the callback for a schedule from Python. <a href="https://vedicreader.github.io/ramabana/monitor.html#pob"><code>pob</code></a> opens the shared database, or returns <code>None</code> when pobblebonk is not installed. <a href="https://vedicreader.github.io/ramabana/monitor.html#beat_notes"><code>beat_notes</code></a> returns the notes that a reader has not seen yet. <a href="https://vedicreader.github.io/ramabana/monitor.html#beat_notice"><code>beat_notice</code></a> wraps them in a <code>&lt;beat&gt;</code> block, which the agent adds to its next prompt. <a href="https://vedicreader.github.io/ramabana/monitor.html#beat_notes"><code>beat_notes</code></a> reads under the reader name <code>POB_READER</code> by default. A session reads under <code>POB_READER</code> plus a colon and its session id. <a href="https://vedicreader.github.io/ramabana/monitor.html#beat_join"><code>beat_join</code></a> starts the session’s reader at the newest note. Every open session therefore sees every note made after it began. Packages that define recurring work own their schedules. Ramabana runs them.</p>
+<div id="878a9674" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.786986+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.793219+00:00&quot;,&quot;total&quot;:0.006235887000002549}}" data-execution_count="27">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L368" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="beat_notice" class="level3">
+<h3 class="anchored" data-anchor-id="beat_notice">beat_notice</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> beat_notice(</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    notes, mx:<span class="bu">int</span><span class="op">=</span><span class="dv">24000</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Beat notes since the last look, as a prompt block.</em></p>
+</section>
+</div>
+<div id="26cc5adf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.793348+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.799933+00:00&quot;,&quot;total&quot;:0.00659035500001437}}" data-execution_count="28">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L358" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="beat_join" class="level3">
+<h3 class="anchored" data-anchor-id="beat_join">beat_join</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> beat_join(</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    db, reader:<span class="bu">str</span><span class="op">=</span><span class="st">'ramabana'</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Start <code>reader</code> at the newest note if it has never read; a reader that has read keeps its place.</em></p>
+</section>
+</div>
+<div id="bd3c0a07" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.800064+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.805537+00:00&quot;,&quot;total&quot;:0.0054783079999936035}}" data-execution_count="29">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L351" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="beat_notes" class="level3">
+<h3 class="anchored" data-anchor-id="beat_notes">beat_notes</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> beat_notes(</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    db, reader:<span class="bu">str</span><span class="op">=</span><span class="st">'ramabana'</span>, limit:<span class="bu">int</span><span class="op">=</span><span class="dv">20</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Beat notes <code>reader</code> has not read; empty on no beat or any error.</em></p>
+</section>
+</div>
+<div id="2c162c4f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.805669+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.811497+00:00&quot;,&quot;total&quot;:0.005833918999996968}}" data-execution_count="30">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L344" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="pob" class="level3">
+<h3 class="anchored" data-anchor-id="pob">pob</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> pob(</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    path:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The database the beat and this session share, or None without pobblebonk.</em></p>
+</section>
+</div>
+<div id="8c35ce7c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.811645+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.820314+00:00&quot;,&quot;total&quot;:0.008675545999977885}}" data-execution_count="31">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L342" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="pob_path" class="level3">
+<h3 class="anchored" data-anchor-id="pob_path">pob_path</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> pob_path():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</div>
+<div id="443ff9e0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.820457+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.825738+00:00&quot;,&quot;total&quot;:0.005285495000009632}}" data-execution_count="32">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L327" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="on_tick" class="level3">
+<h3 class="anchored" data-anchor-id="on_tick">on_tick</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> on_tick(</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    name</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Register the callback a fire of schedule <code>name</code> runs.</em></p>
+</section>
+</div>
+<p><a href="https://vedicreader.github.io/ramabana/monitor.html#tick"><code>tick</code></a> is the <code>ramabana-tick</code> command. Run without options, it registers the callbacks, runs one beat, prints how many schedules ran of those that fired (<code>N ran of M fired</code>, unless <code>--quiet</code>) and exits. With no schedules registered it does nothing and exits with status 0. <code>--install</code> schedules <code>ramabana-tick --quiet</code> in pobblebonk to run every <code>--every</code> seconds. <code>--uninstall</code> removes it. <a href="https://vedicreader.github.io/ramabana/monitor.html#beat_command"><code>beat_command</code></a> builds that command line and quotes the path for the platform’s shell. <a href="https://vedicreader.github.io/ramabana/monitor.html#heartbeat"><code>heartbeat</code></a> returns the pobblebonk scheduler module, or <code>None</code>.</p>
+<p>launchd and cron start a job on <code>/usr/bin:/bin</code>. That <code>PATH</code> holds neither <code>claude</code> in <code>~/.local/bin</code> nor Homebrew’s <code>git-lfs</code>. Off Windows, <a href="https://vedicreader.github.io/ramabana/monitor.html#beat_command"><code>beat_command</code></a> runs the beat through <code>/usr/bin/env</code> with the <code>PATH</code> of the shell that installed it. <code>--install</code> prints that <code>PATH</code>. The beat carries only <code>PATH</code>. A key exported in a shell profile does not reach the beat. After you install a tool in a new folder, run <code>ramabana-tick --install</code> again to make the beat find it.</p>
+<p><code>--install</code> warns on stderr when its <code>PATH</code> is the launchd default, or when it cannot find one of <code>BEAT_TOOLS</code> (<code>claude</code>, <code>git</code>, <code>git-lfs</code>) or the <code>ramabana-tick</code> it schedules. The warning names what is missing (<a href="https://vedicreader.github.io/ramabana/monitor.html#beat_missing"><code>beat_missing</code></a>). A <code>claude</code> that starts with <code>#!/usr/bin/env node</code> also needs <code>node</code> on that <code>PATH</code>. <code>--install</code> still installs. The warning tells you to run it again from a terminal whose shell finds the missing items.</p>
+<p><a href="https://vedicreader.github.io/ramabana/monitor.html#beat_problems"><code>beat_problems</code></a> reads the launcher that the scheduler runs. It reports four problems, each with the command that fixes it. The problems are a launcher written before the <code>PATH</code> was carried, a tool that this shell finds and the launcher’s <code>PATH</code> does not, a <code>ramabana-tick</code> that is gone, and a <code>beat.env</code> that other users can read. A session adds these lines to its first beat note. <code>ramabana-tick --check</code> prints them and exits with status 1 when there are any.</p>
+<p>Never put keys in the launcher. Any user can read it. Put keys in <code>beat.env</code> beside <code>config.toml</code> (<code>~/.config/ramabana/beat.env</code>), one <code>NAME=value</code> per line, and run <code>chmod 600</code> on it. Each beat loads <code>beat.env</code> with python-dotenv before any schedule runs. It sets only the names that its environment lacks. It refuses a file that other users can read. The <code>api_key_env</code> setting in <code>config.toml</code> names a variable, and <code>beat.env</code> supplies its value. An <code>ANTHROPIC_API_KEY</code> in <code>beat.env</code> makes Claude Code bill the API instead of the subscription.</p>
+<p>launchd starts no second beat while one runs. A hung fire stops every schedule. A beat stops itself after <code>--limit</code> seconds. When <code>--limit</code> is 0, <code>BEAT_LIMIT</code> applies (six hours). Every schedule in that beat shares the limit. Off Windows, a SIGALRM raises <a href="https://vedicreader.github.io/ramabana/monitor.html#beattimeout"><code>BeatTimeout</code></a> in the running fire. The SIGTERM that launchd sends when it replaces the job does the same. pobblebonk records the exception as that fire’s failure, and the beat claims no further fire. A watchdog thread ends the process a minute later if the fire is stuck where no signal reaches. On Windows the watchdog is the only bound. <code>--install --limit N</code> writes the limit into the launcher. Task Scheduler on Windows gives a job the user’s environment. The Windows command therefore does not carry <code>PATH</code>.</p>
+<p>An installed package registers a callback through a <code>ramabana.ticks</code> entry point (<code>TICK_GROUP</code>). The entry point’s name is the schedule’s name and its value is the callback. The beat imports the package only when that schedule fires. A slow or broken package costs nothing until then. A package that fails to import fails that one fire. pobblebonk retries the fire or leaves a note. An <a href="https://vedicreader.github.io/ramabana/monitor.html#on_tick"><code>on_tick</code></a> callback with the same name replaces the entry point’s callback. A schedule named in <code>LEARNING_TICKS</code> (<code>dhrona</code>) does nothing while learning is off and leaves the note <code>learning is off</code>. Dhrona registers its nightly job this way:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[project.entry-points."</span><span class="dt">ramabana.ticks"</span><span class="kw">]</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="dt">dhrona</span> <span class="op">=</span> <span class="st">"dhrona.improve:nightly"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="ea8ae858" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.848405+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.859107+00:00&quot;,&quot;total&quot;:0.01070795699999394}}" data-execution_count="34">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L485" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="tick" class="level3">
+<h3 class="anchored" data-anchor-id="tick">tick</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> tick(</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>    db:<span class="bu">str</span><span class="op">=</span><span class="st">''</span>, <span class="co"># the shared database; pobblebonk's own by default</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    quiet:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># say nothing on success</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>    install:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># schedule this command instead of running one beat</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    uninstall:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># stop the scheduled beat</span></span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    every:<span class="bu">int</span><span class="op">=</span><span class="dv">60</span>, <span class="co"># seconds between installed beats, whole minutes</span></span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    limit:<span class="bu">int</span><span class="op">=</span><span class="dv">0</span>, <span class="co"># seconds a beat may run before it stops itself; `BEAT_LIMIT` when 0</span></span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>    check:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># say what is wrong with the installed beat</span></span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>One beat: run the schedules that are due and leave what they found as notes.</em></p>
+</section>
+</div>
+<div id="b32a9b57" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.859268+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.864322+00:00&quot;,&quot;total&quot;:0.005057994999987159}}" data-execution_count="35">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L462" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="beattimeout" class="level3">
+<h3 class="anchored" data-anchor-id="beattimeout">BeatTimeout</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> BeatTimeout(</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>args, <span class="op">**</span>kwargs</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The beat ran past its limit, or was told to stop.</em></p>
+</section>
+</div>
+<div id="3f30c00d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.864470+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.869322+00:00&quot;,&quot;total&quot;:0.004856676000002835}}" data-execution_count="36">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L456" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="heartbeat" class="level3">
+<h3 class="anchored" data-anchor-id="heartbeat">heartbeat</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> heartbeat():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>pobblebonk’s scheduler seam, or None when it is not installed.</em></p>
+</section>
+</div>
+<div id="57389804" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.869457+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.879343+00:00&quot;,&quot;total&quot;:0.009890155999983108}}" data-execution_count="37">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L432" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="beat_problems" class="level3">
+<h3 class="anchored" data-anchor-id="beat_problems">beat_problems</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> beat_problems(</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>    hb:NoneType<span class="op">=</span><span class="va">None</span>, tools:<span class="bu">tuple</span><span class="op">=</span>(<span class="st">'claude'</span>, <span class="st">'git'</span>, <span class="st">'git-lfs'</span>)</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Problems with the installed beat, each with the fix to run; empty on Windows or when no beat is installed.</em></p>
+</section>
+</div>
+<div id="801cab95" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.879486+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.887088+00:00&quot;,&quot;total&quot;:0.007608884999996235}}" data-execution_count="38">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L419" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="load_beat_env" class="level3">
+<h3 class="anchored" data-anchor-id="load_beat_env">load_beat_env</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> load_beat_env(</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>    path:NoneType<span class="op">=</span><span class="va">None</span></span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Load <code>beat.env</code>, then <code>keys.env</code>, under names not already set; returns only the names set from <code>beat.env</code>.</em></p>
+</section>
+</div>
+<div id="f9051032" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.887244+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.892094+00:00&quot;,&quot;total&quot;:0.004854061000003185}}" data-execution_count="39">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L412" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="beat_env_path" class="level3">
+<h3 class="anchored" data-anchor-id="beat_env_path">beat_env_path</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> beat_env_path():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The beat’s key file, beside this machine’s config.toml.</em></p>
+</section>
+</div>
+<div id="dad7ff45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.892230+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.897505+00:00&quot;,&quot;total&quot;:0.0052796239999963746}}" data-execution_count="40">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L398" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="beat_missing" class="level3">
+<h3 class="anchored" data-anchor-id="beat_missing">beat_missing</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> beat_missing(</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    path, exe:NoneType<span class="op">=</span><span class="va">None</span>, tools:<span class="bu">tuple</span><span class="op">=</span>(<span class="st">'claude'</span>, <span class="st">'git'</span>, <span class="st">'git-lfs'</span>)</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>What a beat on <code>path</code> cannot find: each of <code>tools</code>, then <code>exe</code> when it is gone.</em></p>
+</section>
+</div>
+<div id="b8023ac1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.897637+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.903251+00:00&quot;,&quot;total&quot;:0.0056195039999806795}}" data-execution_count="41">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/monitor.py#L378" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="beat_command" class="level3">
+<h3 class="anchored" data-anchor-id="beat_command">beat_command</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> beat_command(</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>    exe, path:NoneType<span class="op">=</span><span class="va">None</span>, limit:<span class="bu">int</span><span class="op">=</span><span class="dv">0</span></span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>exe --quiet</code> as the launcher’s shell reads it, quoted; off Windows it runs on <code>path</code>, the installing <code>PATH</code> by default.</em></p>
+</section>
+</div>
+<div id="b2f15cf6" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> sys.platform <span class="op">!=</span> <span class="st">'win32'</span>:</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> beat_command(<span class="st">'/a b/ramabana-tick'</span>, path<span class="op">=</span><span class="st">"/x y/bin:/it's/$HOME:/usr/bin"</span>) <span class="op">==</span> <span class="st">"/usr/bin/env PATH='/x y/bin:/it'</span><span class="ch">\"</span><span class="st">'</span><span class="ch">\"</span><span class="st">'s/$HOME:/usr/bin' '/a b/ramabana-tick' --quiet"</span></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> beat_command(<span class="st">'/x/ramabana-tick'</span>, path<span class="op">=</span><span class="st">''</span>) <span class="op">==</span> <span class="st">'/x/ramabana-tick --quiet'</span></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    test_eq(beat_command(<span class="st">'/x/ramabana-tick'</span>, path<span class="op">=</span><span class="st">''</span>, limit<span class="op">=</span><span class="dv">600</span>), <span class="st">'/x/ramabana-tick --quiet --limit 600'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="d95a4a32" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.904413+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:53.910641+00:00&quot;,&quot;total&quot;:0.006231698999982882}}" data-execution_count="42">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> contextlib, io, tempfile</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> unittest.mock <span class="im">import</span> patch <span class="im">as</span> mpatch</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _tool(d, name, first<span class="op">=</span><span class="st">'#!/bin/sh'</span>): (f <span class="op">:=</span> Path(d)<span class="op">/</span>name).write_text(first <span class="op">+</span> <span class="st">'</span><span class="ch">\n</span><span class="st">'</span>)<span class="op">;</span> f.chmod(<span class="bn">0o755</span>)</span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> sys.platform <span class="op">!=</span> <span class="st">'win32'</span>:</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    d <span class="op">=</span> tempfile.mkdtemp()</span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    _tool(d, <span class="st">'git'</span>)<span class="op">;</span> _tool(d, <span class="st">'claude'</span>, <span class="st">'#!/usr/bin/env node'</span>)</span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    test_eq(beat_missing(d, Path(d)<span class="op">/</span><span class="st">'ramabana-tick'</span>), [<span class="st">'claude'</span>, <span class="st">'git-lfs'</span>, <span class="bu">str</span>(Path(d)<span class="op">/</span><span class="st">'ramabana-tick'</span>)])   <span class="co"># claude needs node on the same PATH</span></span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>    _tool(d, <span class="st">'node'</span>)<span class="op">;</span> _tool(d, <span class="st">'git-lfs'</span>)<span class="op">;</span> _tool(d, <span class="st">'ramabana-tick'</span>)</span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>    test_eq(beat_missing(d, Path(d)<span class="op">/</span><span class="st">'ramabana-tick'</span>), [])</span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">class</span> _hb:</span>
+<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>        <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, script<span class="op">=</span><span class="va">None</span>): <span class="va">self</span>.script, <span class="va">self</span>.cmd <span class="op">=</span> script, <span class="va">None</span></span>
+<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>        <span class="kw">def</span> install(<span class="va">self</span>, cmd, tag, every): <span class="va">self</span>.cmd <span class="op">=</span> cmd<span class="op">;</span> <span class="cf">return</span> Path(d)<span class="op">/</span><span class="st">'ramabana.sh'</span></span>
+<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a>        <span class="kw">def</span> installed(<span class="va">self</span>, tag): <span class="cf">return</span> <span class="va">self</span>.script</span>
+<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a>    hb, err <span class="op">=</span> _hb(), io.StringIO()</span>
+<span id="cb37-15"><a href="#cb37-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> mpatch.<span class="bu">dict</span>(os.environ, PATH<span class="op">=</span>tempfile.mkdtemp()), contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):</span>
+<span id="cb37-16"><a href="#cb37-16" aria-hidden="true" tabindex="-1"></a>        was, heartbeat <span class="op">=</span> heartbeat, (<span class="kw">lambda</span>: hb)   <span class="co"># `tick` looks the scheduler up here</span></span>
+<span id="cb37-17"><a href="#cb37-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">try</span>: test_eq(tick.__wrapped__(install<span class="op">=</span><span class="va">True</span>, limit<span class="op">=</span><span class="dv">900</span>), <span class="dv">0</span>)</span>
+<span id="cb37-18"><a href="#cb37-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">finally</span>: heartbeat <span class="op">=</span> was</span>
+<span id="cb37-19"><a href="#cb37-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">'claude'</span> <span class="kw">in</span> err.getvalue() <span class="kw">and</span> <span class="st">'git-lfs'</span> <span class="kw">in</span> err.getvalue(), err.getvalue()</span>
+<span id="cb37-20"><a href="#cb37-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> hb.cmd.endswith(<span class="st">'--quiet --limit 900'</span>), hb.cmd</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="7d19c4a4" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> sys.platform <span class="op">!=</span> <span class="st">'win32'</span>:</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>    old, new <span class="op">=</span> Path(d)<span class="op">/</span><span class="st">'old.sh'</span>, Path(d)<span class="op">/</span><span class="st">'new.sh'</span></span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>    old.write_text(<span class="ss">f"#!/bin/sh</span><span class="ch">\n</span><span class="ss">exec '</span><span class="sc">{</span>d<span class="sc">}</span><span class="ss">/ramabana-tick' --quiet &gt;&gt; </span><span class="ch">\"</span><span class="sc">{</span>d<span class="sc">}</span><span class="ss">/ramabana.log</span><span class="ch">\"</span><span class="ss"> 2&gt;&amp;1</span><span class="ch">\n</span><span class="ss">"</span>)</span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>    test_eq(_launcher(old.read_text()), (<span class="va">None</span>, <span class="ss">f'</span><span class="sc">{</span>d<span class="sc">}</span><span class="ss">/ramabana-tick'</span>))</span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> mpatch.<span class="bu">dict</span>(os.environ, RAMABANA_CONFIG<span class="op">=</span><span class="ss">f'</span><span class="sc">{</span>d<span class="sc">}</span><span class="ss">/cfg/config.toml'</span>):</span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>        test_eq(beat_problems(_hb()), [])</span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>        test_eq(<span class="bu">len</span>(beat_problems(_hb(<span class="bu">str</span>(old)))), <span class="dv">1</span>)</span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>        bare <span class="op">=</span> tempfile.mkdtemp()<span class="op">;</span> _tool(bare, <span class="st">'git'</span>)</span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>        new.write_text(<span class="ss">f"#!/bin/sh</span><span class="ch">\n</span><span class="ss">exec /usr/bin/env PATH=</span><span class="sc">{</span>bare<span class="sc">}</span><span class="ss"> '</span><span class="sc">{</span>d<span class="sc">}</span><span class="ss">/gone/ramabana-tick' --quiet &gt;&gt; </span><span class="ch">\"</span><span class="sc">{</span>d<span class="sc">}</span><span class="ss">/ramabana.log</span><span class="ch">\"</span><span class="ss"> 2&gt;&amp;1</span><span class="ch">\n</span><span class="ss">"</span>)</span>
+<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> mpatch.<span class="bu">dict</span>(os.environ, PATH<span class="op">=</span>d): got <span class="op">=</span> beat_problems(_hb(<span class="bu">str</span>(new)))</span>
+<span id="cb38-11"><a href="#cb38-11" aria-hidden="true" tabindex="-1"></a>        test_eq(<span class="bu">len</span>(got), <span class="dv">2</span>)</span>
+<span id="cb38-12"><a href="#cb38-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">'claude'</span> <span class="kw">in</span> got[<span class="dv">0</span>] <span class="kw">and</span> <span class="st">'git-lfs'</span> <span class="kw">in</span> got[<span class="dv">0</span>], got[<span class="dv">0</span>]</span>
+<span id="cb38-13"><a href="#cb38-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">'gone/ramabana-tick, which is gone'</span> <span class="kw">in</span> got[<span class="dv">1</span>]</span>
+<span id="cb38-14"><a href="#cb38-14" aria-hidden="true" tabindex="-1"></a>        (Path(d)<span class="op">/</span><span class="st">'cfg'</span>).mkdir()<span class="op">;</span> env <span class="op">=</span> Path(d)<span class="op">/</span><span class="st">'cfg'</span><span class="op">/</span>BEAT_ENV</span>
+<span id="cb38-15"><a href="#cb38-15" aria-hidden="true" tabindex="-1"></a>        env.write_text(<span class="st">'# keys for the beat</span><span class="ch">\n</span><span class="st">export RB_DEMO_KEY=from-file</span><span class="ch">\n</span><span class="st">RB_DEMO_SET=from-file</span><span class="ch">\n</span><span class="st">'</span>)<span class="op">;</span> env.chmod(<span class="bn">0o600</span>)</span>
+<span id="cb38-16"><a href="#cb38-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> mpatch.<span class="bu">dict</span>(os.environ, RB_DEMO_SET<span class="op">=</span><span class="st">'from-shell'</span>):</span>
+<span id="cb38-17"><a href="#cb38-17" aria-hidden="true" tabindex="-1"></a>            test_eq(load_beat_env(), [<span class="st">'RB_DEMO_KEY'</span>])</span>
+<span id="cb38-18"><a href="#cb38-18" aria-hidden="true" tabindex="-1"></a>            test_eq((os.environ[<span class="st">'RB_DEMO_KEY'</span>], os.environ[<span class="st">'RB_DEMO_SET'</span>]), (<span class="st">'from-file'</span>, <span class="st">'from-shell'</span>))</span>
+<span id="cb38-19"><a href="#cb38-19" aria-hidden="true" tabindex="-1"></a>        env.chmod(<span class="bn">0o644</span>)</span>
+<span id="cb38-20"><a href="#cb38-20" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> contextlib.redirect_stderr(io.StringIO()): test_eq(load_beat_env(), [])</span>
+<span id="cb38-21"><a href="#cb38-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">'RB_DEMO_KEY'</span> <span class="kw">not</span> <span class="kw">in</span> os.environ</span>
+<span id="cb38-22"><a href="#cb38-22" aria-hidden="true" tabindex="-1"></a>        test_eq(<span class="bu">len</span>(beat_problems(_hb())), <span class="dv">1</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The example registers a schedule named <code>demo</code> that fires every second. It waits for the schedule to come due and runs one beat against a database in a temporary folder. The callback’s return value becomes the note that <a href="https://vedicreader.github.io/ramabana/monitor.html#beat_notes"><code>beat_notes</code></a> reads back.</p>
+<div id="84e3e2fb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:53.912397+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:55.703123+00:00&quot;,&quot;total&quot;:1.7907337359999929}}" data-execution_count="43">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> contextlib, io, tempfile, time</span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a><span class="at">@on_tick</span>(<span class="st">'demo'</span>)</span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _demo(fire): <span class="cf">return</span> <span class="st">'the beat ran this'</span></span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> <span class="bu">str</span>(Path(tempfile.mkdtemp())<span class="op">/</span><span class="st">'pob.db'</span>)</span>
+<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a>pob(db).add(<span class="st">'demo'</span>, every<span class="op">=</span><span class="st">'1s'</span>)</span>
+<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a>time.sleep(<span class="fl">1.2</span>)</span>
+<span id="cb39-9"><a href="#cb39-9" aria-hidden="true" tabindex="-1"></a>out <span class="op">=</span> io.StringIO()</span>
+<span id="cb39-10"><a href="#cb39-10" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> contextlib.redirect_stdout(out): test_eq(tick.__wrapped__(db<span class="op">=</span>db), <span class="dv">0</span>)</span>
+<span id="cb39-11"><a href="#cb39-11" aria-hidden="true" tabindex="-1"></a>test_eq(beat_notes(pob(db)), [<span class="st">'demo: the beat ran this'</span>])</span>
+<span id="cb39-12"><a href="#cb39-12" aria-hidden="true" tabindex="-1"></a><span class="kw">del</span> TICKS[<span class="st">'demo'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="003ec298" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:55.703765+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.149903+00:00&quot;,&quot;total&quot;:4.446145833999992}}" data-execution_count="44">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> subprocess, textwrap</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> <span class="bu">str</span>(Path(tempfile.mkdtemp())<span class="op">/</span><span class="st">'pob.db'</span>)</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>pob(db).add(<span class="st">'stuck'</span>, every<span class="op">=</span><span class="st">'1s'</span>, retries<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>time.sleep(<span class="fl">1.2</span>)</span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>beat <span class="op">=</span> textwrap.dedent(<span class="ss">f"""</span></span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a><span class="ss">    import time</span></span>
+<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a><span class="ss">    from ramabana.monitor import on_tick, tick</span></span>
+<span id="cb40-8"><a href="#cb40-8" aria-hidden="true" tabindex="-1"></a><span class="ss">    on_tick('stuck')(lambda fire: time.sleep(30))</span></span>
+<span id="cb40-9"><a href="#cb40-9" aria-hidden="true" tabindex="-1"></a><span class="ss">    raise SystemExit(tick.__wrapped__(db=</span><span class="sc">{</span>db<span class="sc">!r}</span><span class="ss">, limit=1))"""</span>)   <span class="co"># a process of its own: signals reach only the main thread</span></span>
+<span id="cb40-10"><a href="#cb40-10" aria-hidden="true" tabindex="-1"></a>t <span class="op">=</span> time.monotonic()</span>
+<span id="cb40-11"><a href="#cb40-11" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> subprocess.run([sys.executable, <span class="st">'-c'</span>, beat], capture_output<span class="op">=</span><span class="va">True</span>, text<span class="op">=</span><span class="va">True</span>, timeout<span class="op">=</span><span class="dv">60</span>)</span>
+<span id="cb40-12"><a href="#cb40-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> time.monotonic() <span class="op">-</span> t <span class="op">&lt;</span> <span class="dv">20</span> <span class="kw">and</span> r.returncode <span class="op">==</span> <span class="dv">0</span>, r</span>
+<span id="cb40-13"><a href="#cb40-13" aria-hidden="true" tabindex="-1"></a>test_eq(beat_notes(pob(db)), [<span class="st">'stuck: gave up after 1 tries. BeatTimeout: the beat ran past its 1s limit'</span>])</span>
+<span id="cb40-14"><a href="#cb40-14" aria-hidden="true" tabindex="-1"></a>got <span class="op">=</span> []</span>
+<span id="cb40-15"><a href="#cb40-15" aria-hidden="true" tabindex="-1"></a>_watchdog(<span class="fl">0.1</span>, exit<span class="op">=</span>got.append)<span class="op">;</span> time.sleep(<span class="fl">0.3</span>)</span>
+<span id="cb40-16"><a href="#cb40-16" aria-hidden="true" tabindex="-1"></a>test_eq(got, [<span class="dv">124</span>])</span>
+<span id="cb40-17"><a href="#cb40-17" aria-hidden="true" tabindex="-1"></a>_watchdog(<span class="fl">0.1</span>, exit<span class="op">=</span>got.append).cancel()<span class="op">;</span> time.sleep(<span class="fl">0.3</span>)</span>
+<span id="cb40-18"><a href="#cb40-18" aria-hidden="true" tabindex="-1"></a>test_eq(got, [<span class="dv">124</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>the beat was still running after 0s; exiting</code></pre>
+</div>
+</div>
+<p>Notes can also be written straight to the database with <code>note(title, body)</code>. A note with an empty body reads as its title alone:</p>
+<div id="93d7511f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.150230+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.170155+00:00&quot;,&quot;total&quot;:0.01992909200001236}}" data-execution_count="45">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>beat <span class="op">=</span> pob(Path(tempfile.mkdtemp())<span class="op">/</span><span class="st">'pob.db'</span>)</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>beat.note(<span class="st">'watches'</span>, <span class="st">'2 of 5 fired'</span>)</span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>beat.note(<span class="st">'nightly'</span>, <span class="st">''</span>)</span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>beat_notes(beat)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="45">
+<pre><code>['watches: 2 of 5 fired', 'nightly']</code></pre>
+</div>
+</div>
+<p>After a reader drains the notes, it gets nothing more. Another reader still sees all of them. <a href="https://vedicreader.github.io/ramabana/monitor.html#beat_notes"><code>beat_notes</code></a> returns an empty list when there is no database or when reading it fails. A locked database never stops a turn.</p>
+<div id="57f0f98c" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>test_eq(beat_notes(beat), [])</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>test_eq(beat_notes(beat, reader<span class="op">=</span><span class="st">'another'</span>), [<span class="st">'watches: 2 of 5 fired'</span>, <span class="st">'nightly'</span>])</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>test_eq(beat_notes(<span class="va">None</span>), [])</span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _Broken:</span>
+<span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> drain(<span class="va">self</span>, reader, limit<span class="op">=</span><span class="dv">20</span>): <span class="cf">raise</span> <span class="pp">RuntimeError</span>(<span class="st">'the database is locked'</span>)</span>
+<span id="cb44-7"><a href="#cb44-7" aria-hidden="true" tabindex="-1"></a>test_eq(beat_notes(_Broken()), [])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A new reader starts at the first note. A session must not, or it shows the notes of jobs that ended days ago. <a href="https://vedicreader.github.io/ramabana/monitor.html#beat_join"><code>beat_join</code></a> starts a reader that has never read at the newest note, so it sees only the notes made after it joined. A reader that has read keeps its place.</p>
+<div id="4d675558" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>beat.note(<span class="st">'dhrona'</span>, <span class="st">'ran'</span>)</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>beat_join(beat, <span class="st">'late'</span>)<span class="op">;</span> beat_join(beat, <span class="st">'another'</span>)</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>test_eq(beat_notes(beat, reader<span class="op">=</span><span class="st">'late'</span>), [])</span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>test_eq(beat_notes(beat, reader<span class="op">=</span><span class="st">'another'</span>), [<span class="st">'dhrona: ran'</span>])</span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a>beat.note(<span class="st">'abhyasa'</span>, <span class="st">'indexed'</span>)</span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a>beat_join(beat, <span class="st">'late'</span>)</span>
+<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a>test_eq(beat_notes(beat, reader<span class="op">=</span><span class="st">'late'</span>), [<span class="st">'abhyasa: indexed'</span>])</span>
+<span id="cb45-8"><a href="#cb45-8" aria-hidden="true" tabindex="-1"></a>beat_join(<span class="va">None</span>, <span class="st">'late'</span>)<span class="op">;</span> beat_join(_Broken(), <span class="st">'late'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

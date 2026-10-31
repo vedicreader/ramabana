@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.20">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Answer.AI coding standards adapted to Ramabana’s tools and nbdev workflow.">
+
+<title>Coding patterns – ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-17888a1159294d3eb470f19f6f52f5a5.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-66a38d7287321bc50e069add96f8c30e.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="Coding patterns – ramabana">
+<meta property="og:description" content="Answer.AI coding standards adapted to Ramabana’s tools and nbdev workflow.">
+<meta property="og:site_name" content="ramabana">
+<meta name="twitter:title" content="Coding patterns – ramabana">
+<meta name="twitter:description" content="Answer.AI coding standards adapted to Ramabana’s tools and nbdev workflow.">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./coding_patterns.html">Coding patterns</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./history_core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">History core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./history.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">history</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peers</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_work.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Peer work</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_hooks.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peer_hooks</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_report.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peer_report</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./guard.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">guard</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#improve-shared-tooling" id="toc-improve-shared-tooling" class="nav-link active" data-scroll-target="#improve-shared-tooling">Improve shared tooling</a></li>
+  <li><a href="#read-before-writing" id="toc-read-before-writing" class="nav-link" data-scroll-target="#read-before-writing">Read before writing</a></li>
+  <li><a href="#every-construct-must-earn-its-place" id="toc-every-construct-must-earn-its-place" class="nav-link" data-scroll-target="#every-construct-must-earn-its-place">Every construct must earn its place</a></li>
+  <li><a href="#prefer-the-fastcore-ecosystem" id="toc-prefer-the-fastcore-ecosystem" class="nav-link" data-scroll-target="#prefer-the-fastcore-ecosystem">Prefer the fastcore ecosystem</a></li>
+  <li><a href="#plain-commands-are-the-contract" id="toc-plain-commands-are-the-contract" class="nav-link" data-scroll-target="#plain-commands-are-the-contract">Plain commands are the contract</a></li>
+  <li><a href="#preserve-docments-and-delegation" id="toc-preserve-docments-and-delegation" class="nav-link" data-scroll-target="#preserve-docments-and-delegation">Preserve docments and delegation</a></li>
+  <li><a href="#raw-strings-by-default" id="toc-raw-strings-by-default" class="nav-link" data-scroll-target="#raw-strings-by-default">Raw strings by default</a></li>
+  <li><a href="#tests-earn-their-place" id="toc-tests-earn-their-place" class="nav-link" data-scroll-target="#tests-earn-their-place">Tests earn their place</a></li>
+  <li><a href="#configuration-and-versioning" id="toc-configuration-and-versioning" class="nav-link" data-scroll-target="#configuration-and-versioning">Configuration and versioning</a></li>
+  <li><a href="#handoffs-events-and-honest-state" id="toc-handoffs-events-and-honest-state" class="nav-link" data-scroll-target="#handoffs-events-and-honest-state">Handoffs, events, and honest state</a></li>
+  <li><a href="#ramabana-workflow" id="toc-ramabana-workflow" class="nav-link" data-scroll-target="#ramabana-workflow">Ramabana workflow</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="coding_patterns.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Coding patterns</h1>
+</div>
+
+<div>
+  <div class="description">
+    Answer.AI coding standards adapted to Ramabana’s tools and nbdev workflow.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<p>This page is one of the five skills that ship with Ramabana. A skill is a piece of markdown that the agent reads when a task calls for it, so that the guidance costs nothing in turns that do not need it. The system prompt lists every skill the session found with a one-line description, the <code>read_skill</code> tool returns one in full, and <code>/skill coding_patterns</code> prints it in a terminal session.</p>
+<p>The skill’s text is this module’s docstring. nbdev builds it from the description line above and the exported markdown cell below, and <code>pyproject.toml</code> registers the module under the <code>pyskills</code> entry point as <code>coding_patterns</code>, so any agent built on shalya can find it once Ramabana is installed. To change what the agent reads, edit the exported cell.</p>
+<p>The agent reads this skill before it writes, reviews or refactors code. When the skill is present, the system prompt tells it to.</p>
+<p>Read this before writing, reviewing, refactoring, or assessing code. These are Answer.AI’s coding standards adapted to Ramabana’s tools and nbdev workflow.</p>
+<section id="improve-shared-tooling" class="level2">
+<h2 class="anchored" data-anchor-id="improve-shared-tooling">Improve shared tooling</h2>
+<p>A finished task helps once. A better tool helps every later task, every later session and every agent, and ergonomics count as much as capability. Most code you have read was written by people who put up with tool friction rather than fix it. The workaround is your default. Here the tools are ours and one edit away. When repository-owned tooling grates, fix it or say so. Never quietly work around it, and do not expand the current task without the user’s agreement.</p>
+</section>
+<section id="read-before-writing" class="level2">
+<h2 class="anchored" data-anchor-id="read-before-writing">Read before writing</h2>
+<p>Use <code>search_code</code> before writing non-trivial code: the answer or the established pattern is usually already in the repository or an installed package. Read the exact source before editing it. Use <code>grep</code> for exhaustive literal audits such as call sites and renames. Match the surrounding design unless the request is specifically to change it.</p>
+</section>
+<section id="every-construct-must-earn-its-place" class="level2">
+<h2 class="anchored" data-anchor-id="every-construct-must-earn-its-place">Every construct must earn its place</h2>
+<p>Readers assume everything present is necessary. Seeing <code>str(x)</code> on something already a <code>str</code>, they stop and wonder what it guards against. When the answer is nothing, they paid for a mystery with no payoff. The same goes for defensive copies, speculative exception handling, redundant coercions, unused parameters, abstractions and compatibility branches. Know why a construct is needed before adding it, and leave it out when you cannot say. The cost doubles in nbdev projects, where the examples are the documentation.</p>
+<p>Knowing why you need a construct does not mean waiting for someone to ask for it. A user who finds a gap concludes the library cannot do it and moves on. Judge a library feature by whether the design calls for it and users would expect it.</p>
+<p>Comments state constraints the code cannot express. Never write one to say where a change came from, what the next line does, or why the change is correct. That comment addresses the reviewer, not the next reader. It becomes noise the moment the change is merged. Add type hints, docstrings and abstractions only where they improve the public contract or the surrounding code consistently uses them. Prefer concise readable code over verbose enterprise boilerplate.</p>
+<p>Make the requested change and no unrelated cleanup. Never discard edits already in the working tree.</p>
+</section>
+<section id="prefer-the-fastcore-ecosystem" class="level2">
+<h2 class="anchored" data-anchor-id="prefer-the-fastcore-ecosystem">Prefer the fastcore ecosystem</h2>
+<p>When choosing dependencies, first check whether <code>fastcore</code> or another existing project dependency already provides the capability. Do not add a dependency where the repository already has an adequate primitive, and do not hand-roll what a dependency already does.</p>
+</section>
+<section id="plain-commands-are-the-contract" class="level2">
+<h2 class="anchored" data-anchor-id="plain-commands-are-the-contract">Plain commands are the contract</h2>
+<p>The bare invocation is the contract: <code>pytest -q</code>, <code>nbdev-export</code>. Project configuration exists precisely so the plain command does the right thing, and then every invocation is short, identical and instantly readable. Use the command the repository documents in its README, <code>pyproject.toml</code> or Makefile.</p>
+<p>A flag, redirect or pipe states that this one call has a requirement the defaults do not cover. Used that way it carries information. The reader stops, asks why, and finds an answer. Sprinkled defensively on every call, decorations destroy that signal. Every command looks exceptional so none is, and the one deliberate flag is indistinguishable from habit. Transcripts compound the damage, since each decorated call teaches later calls to decorate too.</p>
+<ul>
+<li>Wanting the same flag on every run means a missing configuration line. Promote it and go back to the bare command: <code>pytest --timeout 300</code> on every run becomes <code>timeout = 300</code> under <code>[tool.pytest.ini_options]</code>.</li>
+<li>Do not check-then-apply when applying is the goal. Apply formatters when formatting is the goal, and reserve check-only modes for final verification and CI.</li>
+<li>Run commands and read their complete output. Never pipe diagnostics through <code>head</code>, <code>tail</code> or any filter that hides failures. The truncation is decided before the output exists. It hides the surprises worth seeing. Never merge stderr into stdout with <code>2&gt;&amp;1</code>. Separated, a crash is unmissable.</li>
+<li>Where output genuinely cannot come back inline, redirect stdout and stderr to separate files and read both.</li>
+<li>A real one-off requirement gets its flag once, with the reason stated alongside, and disappears again on the next call.</li>
+</ul>
+</section>
+<section id="preserve-docments-and-delegation" class="level2">
+<h2 class="anchored" data-anchor-id="preserve-docments-and-delegation">Preserve docments and delegation</h2>
+<p>Docments are trailing parameter comments used as API documentation, and they are the house signature style here. Never remove them while refactoring. For a signature with docments or many parameters, keep the opening parenthesis on the definition line, put one parameter on each indented line, and put the closing <code>):</code> alone at definition indentation.</p>
+<p>Where <code>**kwargs</code> passes through to a known callable with useful named parameters, use <code>@delegates(callee)</code> and name the collector <code>kwargs</code>, which is what <code>delegates</code> requires. Do not use <code>@delegates</code> where the callee itself exposes only <code>**kwargs</code>.</p>
+</section>
+<section id="raw-strings-by-default" class="level2">
+<h2 class="anchored" data-anchor-id="raw-strings-by-default">Raw strings by default</h2>
+<p>Write any non-trivial string literal as a raw string: regexes, prompt and skill text, code or markup inside strings, paths with escapes, and anything multi-line. In a plain string a stray backslash-n or backslash-d either errors or silently corrupts. Each miss costs a round trip to diagnose and another to fix. The <code>r</code> costs nothing when no escapes are present. Make it the default rather than the exception.</p>
+<p>The exception is a skill body, which is an exported markdown cell and reaches the module as a plain docstring that nbdev writes without the <code>r</code>. Spell escapes out in words there rather than showing them literally.</p>
+</section>
+<section id="tests-earn-their-place" class="level2">
+<h2 class="anchored" data-anchor-id="tests-earn-their-place">Tests earn their place</h2>
+<p>All code costs something to write, maintain and read. Tests cost most. Every test has to keep passing forever, is read by every future contributor, and has to be revised whenever the behaviour it pins changes. Never write a test as a reflex, and do not aim anywhere near full coverage. A test earns its place only when one of three things is true.</p>
+<ul>
+<li>It documents an idea. In nbdev notebooks the examples are the documentation.</li>
+<li>The logic is intricate enough that you had to think carefully to get it right: edge cases, parsing, arithmetic, tricky conditionals, the places a future change could silently break it.</li>
+<li>The code assumes something about an external system, such as a file format, an API’s response shape or another tool’s behaviour, that could change one day and that we want to hear about when it does. These have to exercise the real thing, because a mock merely restates our assumption.</li>
+</ul>
+<p>Wiring and orchestration get no tests: re-exports, delegations, one-line glue, and functions that only sequence calls to other tools. A test there asserts that Python works and pins down internals we may want to change. The strong tell is a test that needs recording fakes or mock collaborators to reach the code, which tests a transcript of the implementation rather than logic. Extract the logic into a small pure function and test that, or do not test at all.</p>
+<p>For a behaviour change, work red-green: write the test first, run it to see it fail, make the change, run it again to see it pass. A regression test has to fail for the reported bug before the fix and pass after it. In notebooks there are no separate test cells. The red-green check applies to the assertion you actually added or revised.</p>
+<ul>
+<li>Prefer as few tests as possible. One test that walks through many checks is more readable and faster than many small ones.</li>
+<li>A check worth keeping goes in a test file or a notebook cell, never left as an ad-hoc command. In a notebook the checks made while exploring often are the narrative. They stay as example cells.</li>
+<li>Assert the logic, not incidentals. Check what the behaviour guarantees, never byte-exact renderings, exact reprs or field order. A test comparing a whole output string locks in formatting decisions that were never the point. Never use a test to lock in behaviour unless that exact behaviour is part of the contract.</li>
+<li>Do not run slow or network-touching suites until finishing a session, or after a change likely to affect them. Run the fast checks while you work; a final verification still runs every slow check the change could affect.</li>
+</ul>
+<p>In nbdev projects the notebook is source, documentation, examples and tests at once. Edit the source notebook rather than the generated Python, preserve docments and explanatory structure, export with the project’s nbdev command, and run the documented tests.</p>
+</section>
+<section id="configuration-and-versioning" class="level2">
+<h2 class="anchored" data-anchor-id="configuration-and-versioning">Configuration and versioning</h2>
+<p>Read from standard locations rather than duplicating configuration: project settings from <code>pyproject.toml</code> under the package’s own table, release notes from <code>.github/release.yml</code>. Infer what can be inferred, such as the package name from <code>[project].name</code>. Bundle data files inside the package and read them with <code>importlib.resources</code>.</p>
+<p>Version bumps belong to a release, never to a change. Bump immediately after releasing. The tree then always carries the next release’s version. A downstream pin is different. It belongs to the change that creates the dependency. When a change makes one package consume another’s new behaviour, stamp the consumer’s pin in the same session. A pin deferred to release time is a forgotten pin.</p>
+</section>
+<section id="handoffs-events-and-honest-state" class="level2">
+<h2 class="anchored" data-anchor-id="handoffs-events-and-honest-state">Handoffs, events, and honest state</h2>
+<ul>
+<li>Treat acceptance of background work as a lifecycle boundary. Register ownership atomically, under the same lock as competing starts and shutdown. Wake both sides on timeout, rejection and shutdown. A worker that registers after a rejection stops and emits no accepted-work event.</li>
+<li>Make replay or terminal completion an explicit state, not a guess from the latest event. A later bookkeeping event must not erase a terminal sequence. Reset it only when the next unit of work is accepted. Keep application errors separate from transport errors, so an application failure does not trigger connection recovery.</li>
+<li>When you move work or response ownership between layers, audit the old producer, every consumer, and both the success and failure paths. Keep every response field callers read. Find and update all callers and tests that expect the old contract.</li>
+<li>Keep the plan truthful. Mark done steps done, keep one step active, and leave the rest pending. A <code>[done]</code> note inside a pending step does not complete it.</li>
+</ul>
+</section>
+<section id="ramabana-workflow" class="level2">
+<h2 class="anchored" data-anchor-id="ramabana-workflow">Ramabana workflow</h2>
+<p>Use Ramabana’s native tools rather than instructions written for another harness:</p>
+<ul>
+<li><code>search_code</code> finds repository and installed-package behaviour.</li>
+<li><code>view_file</code> or the notebook cell tools read the exact source before editing.</li>
+<li><code>replace_text</code> or <code>edit_cell</code> make narrow, auditable changes (<code>edit_file</code> when the exhash group is on).</li>
+<li><code>edits</code> is a list of <code>{"oldText", "newText"}</code> objects and <code>commands</code> a list of lists: send them as structured values, not as a JSON string. A refused edit means nothing changed: fix the payload rather than resending it.</li>
+<li><code>inspect_python</code> reads live state without mutation. <code>run_python</code> performs requested transformations in new bindings.</li>
+<li><code>run_shell</code> verifies edits with the repository’s own commands.</li>
+<li><code>read_skill</code> loads specialized workflows before using them. Read <code>write_docs</code> for the prose that ships with code, <code>write_prose</code> for narrative writing, and <code>theory</code> for the design a codebase is derived from.</li>
+</ul>
+<p>Writing the code does not complete the task. Run the relevant tests or checks, read the result, fix failures, and report exactly what you verified. Never claim a file changed or a check passed without tool evidence from the current session. Before reporting a behaviour change, have an independent subagent review the exact changed files and tests, and check its findings against the real diff and test output.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.20">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Memory that outlives the process: a vishalakshi vault behind the host,">
+
+<title>vault – ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-17888a1159294d3eb470f19f6f52f5a5.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-66a38d7287321bc50e069add96f8c30e.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="vault – ramabana">
+<meta property="og:description" content="Memory that outlives the process: a vishalakshi vault behind the host,">
+<meta property="og:site_name" content="ramabana">
+<meta name="twitter:title" content="vault – ramabana">
+<meta name="twitter:description" content="Memory that outlives the process: a vishalakshi vault behind the host,">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./vault.html">vault</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./history_core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">History core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./history.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">history</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peers</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_work.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Peer work</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_hooks.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peer_hooks</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_report.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peer_report</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./guard.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">guard</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#why-a-vault" id="toc-why-a-vault" class="nav-link active" data-scroll-target="#why-a-vault">Why a vault</a></li>
+  <li><a href="#the-host" id="toc-the-host" class="nav-link" data-scroll-target="#the-host">The host</a></li>
+  <li><a href="#memory" id="toc-memory" class="nav-link" data-scroll-target="#memory">Memory</a></li>
+  <li><a href="#gating-what-memory-returns" id="toc-gating-what-memory-returns" class="nav-link" data-scroll-target="#gating-what-memory-returns">Gating what memory returns</a></li>
+  <li><a href="#federated-search" id="toc-federated-search" class="nav-link" data-scroll-target="#federated-search">Federated search</a></li>
+  <li><a href="#watches-and-reminders" id="toc-watches-and-reminders" class="nav-link" data-scroll-target="#watches-and-reminders">Watches and reminders</a></li>
+  <li><a href="#using-it" id="toc-using-it" class="nav-link" data-scroll-target="#using-it">Using it</a></li>
+  <li><a href="#answering-from-material-the-model-must-not-see" id="toc-answering-from-material-the-model-must-not-see" class="nav-link" data-scroll-target="#answering-from-material-the-model-must-not-see">Answering from material the model must not see</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="vault.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">vault</h1>
+</div>
+
+<div>
+  <div class="description">
+    Memory that outlives the process: a vishalakshi vault behind the host,
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<section id="why-a-vault" class="level2">
+<h2 class="anchored" data-anchor-id="why-a-vault">Why a vault</h2>
+<p><code>LocalHost</code> is the host the terminal runs on. It can read web pages and index the repository, but it keeps neither after the process ends. A page read in one session is gone in the next. The code index and the pages read live in separate stores that never meet.</p>
+<p>A <a href="https://vedicreader.github.io/vishalakshi/">vishalakshi</a> <code>Vault</code> is one SQLite file that holds documents of every kind: notes, web pages and research. <a href="https://vedicreader.github.io/ramabana/vault.html#vaulthost"><code>VaultHost</code></a> puts a vault behind the host. This adds three abilities.</p>
+<ul>
+<li>Memory. <code>LocalHost</code> does not provide the memory group, and <a href="https://vedicreader.github.io/ramabana/tools.html#tools_for"><code>tools_for</code></a> builds no memory tools for it. With a vault, the memory tools appear (<code>memory_search</code>, <code>memory_read</code>, <code>remember</code>, <code>memory_forget</code>) together with <code>ask_memory</code>. They answer from everything the vault has stored.</li>
+<li>One search over everything. <code>search_code</code> asks three indexes at once: the vault for prose, kosha for identifiers and ripgrep for literal text. The three score results on unrelated scales. <code>Vault.federate</code> merges them by rank and ignores the scores.</li>
+<li>Watches. A watch is a standing request that the vault stores. A scheduled watch is a job the vault runs on a schedule, such as re-reading a page every week or filing a reminder. A folder watch is a request to review changes under a folder, and <a href="https://vedicreader.github.io/ramabana/monitor.html#monitors"><code>Monitors</code></a> carries it out. With a vault, the watch tools appear too (<code>watch</code>, <code>list_watches</code>, <code>cancel_watch</code>).</li>
+</ul>
+<div id="cd44f757" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:48.730135+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:48.749497+00:00&quot;,&quot;total&quot;:0.01936746099997322}}" data-execution_count="5">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/vault.py#L27" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="safe_shelf" class="level3">
+<h3 class="anchored" data-anchor-id="safe_shelf">safe_shelf</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> safe_shelf(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    name:NoneType<span class="op">=</span><span class="va">None</span>, dflt:<span class="bu">str</span><span class="op">=</span><span class="st">'store'</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Return a valid SQL table-prefix identifier for a shelf name.</em></p>
+</section>
+</div>
+</section>
+<section id="the-host" class="level2">
+<h2 class="anchored" data-anchor-id="the-host">The host</h2>
+<p><a href="https://vedicreader.github.io/ramabana/vault.html#vaulthost"><code>VaultHost</code></a> is a <code>LocalHost</code> with a vishalakshi vault. The constructor opens the vault in a background thread. Building the tool list never waits for an embedding model to load. The constructor declares the memory, ask and watch groups by taking them out of <code>without</code>, the set of groups a host switches off.</p>
+<p><code>vault</code> is a <code>Vault</code>, a path to one, or <code>None</code> for the shared default at <code>~/.vishalakshi/vault.db</code>. <code>shelf</code> names a separate store inside the vault for this host’s writes. <code>remember_reads</code> files every page that <code>read_url</code> fetches. <code>federate</code> turns on the merged search. <code>pii</code> and <code>pii_ner</code> gate personal data and are covered below. <code>mk_chat</code> builds the chats that the vault uses to answer questions. <code>graph_chat</code> is the chat that builds the vault’s entity graph.</p>
+<p><a href="https://vedicreader.github.io/ramabana/vault.html#workspacehost"><code>WorkspaceHost</code></a>, in the same cell, is the host that <a href="https://vedicreader.github.io/ramabana/agent.html#mk_agent"><code>mk_agent</code></a> builds. It is both a <a href="https://vedicreader.github.io/ramabana/vault.html#vaulthost"><code>VaultHost</code></a> and a <a href="https://vedicreader.github.io/ramabana/spec.html#spechost"><code>SpecHost</code></a>. Both providers are off unless requested. <code>vault=True</code> (or a path, or a <code>Vault</code>) turns memory on. <code>spec=True</code> turns on the API tools from the spec notebook. When a provider is off, its groups stay switched off and calls fall through to <code>LocalHost</code>. <a href="https://vedicreader.github.io/ramabana/vault.html#workspacehost"><code>WorkspaceHost</code></a> adds two calls. <code>add_worktree(repo, branch)</code> makes a git worktree for a job and opens it as a root. <code>run_cmd_bg</code> starts a background command that logs to a file. It does not open a tmux pane.</p>
+<div id="e4f58609" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:48.914144+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:48.920044+00:00&quot;,&quot;total&quot;:0.005904998000005435}}" data-execution_count="8">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/vault.py#L236" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="workspacehost" class="level3">
+<h3 class="anchored" data-anchor-id="workspacehost">WorkspaceHost</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> WorkspaceHost(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    roots:<span class="bu">tuple</span><span class="op">=</span>(<span class="st">'.'</span>,), vault:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># False, True (default vault), a path, or a Vault</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    spec:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># whether Ramabana's API provider is available</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    pii:NoneType<span class="op">=</span><span class="va">None</span>, pii_ner:NoneType<span class="op">=</span><span class="va">None</span>, warm:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, <span class="op">**</span>kwargs</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>One workspace host configured with optional memory and API providers.</em></p>
+</section>
+</div>
+<div id="9a183f70" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:48.922070+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:48.925871+00:00&quot;,&quot;total&quot;:0.0038046159999964857}}" data-execution_count="10">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/vault.py#L342" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="workspacehost.open_index" class="level3">
+<h3 class="anchored" data-anchor-id="workspacehost.open_index">WorkspaceHost.open_index</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> open_index():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Search each root’s index as the last sync left it, loaded by the first search; <a href="https://vedicreader.github.io/ramabana/cli.html#sync_index"><code>sync_index</code></a> skips here when nothing changed.</em></p>
+</section>
+</div>
+<div id="6af6d5ae" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:50:48.925978+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:50:48.929574+00:00&quot;,&quot;total&quot;:0.0036002310000071702}}" data-execution_count="11">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/vault.py#L330" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="lazyindex" class="level3">
+<h3 class="anchored" data-anchor-id="lazyindex">LazyIndex</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> LazyIndex(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    root</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A root’s Kosha index as it stands on disk, opened without a sync on first use.</em></p>
+</section>
+</div>
+<div id="a7c1e0f2" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    h <span class="op">=</span> WorkspaceHost([d], index<span class="op">=</span><span class="va">False</span>, web<span class="op">=</span><span class="va">False</span>).open_index()</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    test_eq((h.index_ready, h.indexed), (<span class="va">True</span>, h.roots))</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    test_eq(h._indexes[<span class="dv">0</span>]._k, <span class="va">None</span>)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="kw">not</span> <span class="bu">any</span>(<span class="bu">hasattr</span>(h, k) <span class="cf">for</span> k <span class="kw">in</span> (<span class="st">'mk_chat'</span>, <span class="st">'pii'</span>, <span class="st">'pii_ner'</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>poll</code> and <code>connect</code> work on a second connection to the vault file. <code>_worker_vault</code> opens it. A background job never shares the connection that a turn uses. The next two cells check that <code>poll</code> gets a connection of its own.</p>
+<div id="bd39d53e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;leela&quot;,&quot;value&quot;:{&quot;execution_ms&quot;:2686.505}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tempfile <span class="im">import</span> TemporaryDirectory</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    host <span class="op">=</span> VaultHost(vault<span class="op">=</span>Path(d)<span class="op">/</span><span class="st">'vault.db'</span>, warm<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    host.vault.add(<span class="st">'A report about polonium.'</span>, title<span class="op">=</span><span class="st">'report'</span>)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    worker <span class="op">=</span> host._worker_vault()</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> worker <span class="kw">is</span> <span class="kw">not</span> host.vault</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> worker.db <span class="kw">is</span> <span class="kw">not</span> host.vault.db</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> worker.doc(<span class="st">'report'</span>)</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    worker.db.conn.close()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Fetching 30 files:   0%|          | 0/30 [00:00&lt;?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+Fetching 30 files:   7%|6         | 2/30 [00:00&lt;00:01, 16.90it/s]
+Fetching 30 files:  20%|##        | 6/30 [00:00&lt;00:00, 26.08it/s]
+Fetching 30 files:  43%|####3     | 13/30 [00:00&lt;00:00, 40.77it/s]
+Fetching 30 files:  70%|#######   | 21/30 [00:00&lt;00:00, 50.94it/s]
+Fetching 30 files:  90%|######### | 27/30 [00:00&lt;00:00, 40.81it/s]
+Fetching 30 files: 100%|##########| 30/30 [00:04&lt;00:00,  6.18it/s]
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/usearch/__init__.py:131: UserWarning: Will download `usearch_sqlite` binary from GitHub.
+  warnings.warn("Will download `usearch_sqlite` binary from GitHub.", UserWarning)</code></pre>
+</div>
+</div>
+<div id="ba9c53e2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:07.781266+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:07.947910+00:00&quot;,&quot;total&quot;:0.16664917500000342}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.testing <span class="im">import</span> no_model</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    host <span class="op">=</span> VaultHost(vault<span class="op">=</span>Path(d)<span class="op">/</span><span class="st">'vault.db'</span>, warm<span class="op">=</span><span class="va">False</span>, graph_chat<span class="op">=</span>no_model())</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    host.watch(<span class="st">'scheduled report'</span>, action<span class="op">=</span><span class="st">'remind'</span>, every<span class="op">=</span><span class="st">'1d'</span>)</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    root <span class="op">=</span> host.vault</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    seen <span class="op">=</span> []</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    original <span class="op">=</span> host._worker_vault</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> worker():</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>        v <span class="op">=</span> original()</span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>        seen.append(v)</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> v</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    host._worker_vault <span class="op">=</span> worker</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>    host.poll()</span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>    host.<span class="ex">connect</span>(wait<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> seen</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> seen[<span class="dv">0</span>] <span class="kw">is</span> <span class="kw">not</span> root</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> seen[<span class="dv">0</span>].db <span class="kw">is</span> <span class="kw">not</span> root.db</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The vault builds its entity graph with <code>graph_chat</code> only. When <code>graph_chat</code> is <code>None</code>, the host builds no graph unless <code>$VISHALAKSHI_MODEL</code> names a model. vishalakshi’s own default would load a local model. <code>mk_chat</code> answers the session’s questions and can be a hosted model. Every chunk in the vault is private material. <code>mk_chat</code> never sees the graph build, and the next cell checks this.</p>
+<div id="graphchat01" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:07.948539+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:08.213647+00:00&quot;,&quot;total&quot;:0.2651141329999973}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.testing <span class="im">import</span> no_model</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _connect_arg(<span class="op">**</span>kw):</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">"What `Vault.connect` was handed as `chat`, by a host built with `kw`."</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> TemporaryDirectory() <span class="im">as</span> d:</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>        h <span class="op">=</span> VaultHost(vault<span class="op">=</span>Path(d)<span class="op">/</span><span class="st">'vault.db'</span>, warm<span class="op">=</span><span class="va">False</span>, <span class="op">**</span>kw)</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>        h.vault.add(<span class="st">'A report about polonium.'</span>, title<span class="op">=</span><span class="st">'report'</span>)</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>        got <span class="op">=</span> []</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>        original <span class="op">=</span> h._worker_vault</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>        <span class="kw">def</span> worker():</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>            v <span class="op">=</span> original()</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>            v.<span class="ex">connect</span> <span class="op">=</span> <span class="kw">lambda</span> <span class="op">*</span>a, <span class="op">**</span>k: got.append(k.get(<span class="st">'chat'</span>))</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> v</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>        h._worker_vault <span class="op">=</span> worker</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>        h.<span class="ex">connect</span>(wait<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> got</span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a>test_eq(_connect_arg(mk_chat<span class="op">=</span><span class="kw">lambda</span> model<span class="op">=</span><span class="va">None</span>, <span class="op">**</span>kw: <span class="va">None</span>), [<span class="va">None</span>])</span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>quiet <span class="op">=</span> no_model()</span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a>test_eq(_connect_arg(graph_chat<span class="op">=</span>quiet), [quiet])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The rest of the page uses a separate vault in a temporary folder. Nothing here touches the real vault.</p>
+<div id="37f67252" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:08.214087+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:08.309140+00:00&quot;,&quot;total&quot;:0.09505869500000586}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>tmp <span class="op">=</span> Path(tempfile.mkdtemp())</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.testing <span class="im">import</span> no_model</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>host <span class="op">=</span> VaultHost(roots<span class="op">=</span>[tmp], vault<span class="op">=</span>tmp<span class="op">/</span><span class="st">'vault.db'</span>, index<span class="op">=</span><span class="va">False</span>, web<span class="op">=</span><span class="va">False</span>, graph_chat<span class="op">=</span>no_model())</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>host.open_vault(wait<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>host.vault.stats()[<span class="st">'encoder'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<pre><code>'model2vec'</code></pre>
+</div>
+</div>
+</section>
+<section id="memory" class="level2">
+<h2 class="anchored" data-anchor-id="memory">Memory</h2>
+<p>Memory search returns whole sections of stored documents, plus related sections found through the vault’s graph. Each section carries its <code>age</code> in seconds and whether it is <code>stale</code>. <code>memory_tree</code> lists the heading tree of each stored document, <code>memory_read</code> returns one section by its node id, and <code>memory_forget</code> deletes a document. These pass straight through to the vault.</p>
+<p><code>remember</code> stores a note. Notes are ordinary documents in the same store as everything else. A conclusion the agent reached comes back in the same search results as the evidence for it. The example stores two notes. A search in different words finds them.</p>
+<div id="d65cbc5d" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>host.remember(<span class="st">'The weekly Coles order is milk, sourdough, eggs, baby spinach and olive oil.'</span>,</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>              title<span class="op">=</span><span class="st">'weekly Coles order'</span>, tags<span class="op">=</span>[<span class="st">'groceries'</span>])</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>host.remember(<span class="st">'Ceres Fair Food delivers a mixed seasonal fruit box on Thursdays.'</span>,</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>              title<span class="op">=</span><span class="st">'Ceres fruit box'</span>, tags<span class="op">=</span>[<span class="st">'groceries'</span>])</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> host.memory_search(<span class="st">'what do I need from the supermarket'</span>, limit<span class="op">=</span><span class="dv">2</span>)</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>[s[<span class="st">'title'</span>] <span class="cf">for</span> s <span class="kw">in</span> r[<span class="st">'results'</span>]], {k: r[<span class="st">'results'</span>][<span class="dv">0</span>][k] <span class="cf">for</span> k <span class="kw">in</span> (<span class="st">'age'</span>, <span class="st">'stale'</span>)}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="c1ce5771" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(host.memory_tree()), <span class="dv">2</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(host.memory_tree(<span class="st">'ceres'</span>)), <span class="dv">1</span>)</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>node <span class="op">=</span> r[<span class="st">'results'</span>][<span class="dv">0</span>][<span class="st">'node_id'</span>]</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="co">'olive oil'</span> <span class="kw">in</span> host.memory_read(node)[<span class="st">'text'</span>] <span class="kw">or</span> <span class="st">'fruit box'</span> <span class="kw">in</span> host.memory_read(node)[<span class="st">'text'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>With a vault behind the host, <a href="https://vedicreader.github.io/ramabana/tools.html#tools_for"><code>tools_for</code></a> offers the memory group. <a href="https://vedicreader.github.io/ramabana/tools.html#nullhost"><code>NullHost</code></a> has no memory group.</p>
+<div id="677e5103" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:08.310304+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:08.487935+00:00&quot;,&quot;total&quot;:0.17763792699997794}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.tools <span class="im">import</span> tools_for, NullHost</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>have <span class="op">=</span> <span class="kw">lambda</span> h: {<span class="bu">getattr</span>(t, <span class="st">'__name__'</span>, <span class="st">''</span>) <span class="cf">for</span> t <span class="kw">in</span> tools_for(h)}</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="st">'memory_search'</span> <span class="kw">in</span> have(NullHost()), <span class="va">False</span>)</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="st">'memory_search'</span> <span class="kw">in</span> have(host), <span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="gating-what-memory-returns" class="level2">
+<h2 class="anchored" data-anchor-id="gating-what-memory-returns">Gating what memory returns</h2>
+<p>Some of what a vault holds is personal data: names, emails and phone numbers. <code>pii</code> sets what happens when a section that the vault returns contains such data. <code>off</code> is the default and returns the section as stored. <code>redact</code> masks the personal parts. <code>refuse</code> withholds the section. <code>pii_ner=True</code> also catches titled names in addition to the pattern matches. vishalakshi does the gating. The host passes the setting into every vault read:</p>
+<ul>
+<li><code>memory_search</code></li>
+<li><code>memory_read</code></li>
+<li><code>memory_tree</code></li>
+<li><code>search</code></li>
+<li><code>research</code></li>
+</ul>
+<p>Either setting can be a function instead of a value. The host calls the function on every read. A settings panel can therefore change the setting during a session. A function that raises counts as <code>off</code>. The hidden cells check each mode against a note that contains an email address and a phone number.</p>
+</section>
+<section id="federated-search" class="level2">
+<h2 class="anchored" data-anchor-id="federated-search">Federated search</h2>
+<p><code>search</code>, the host call behind <code>search_code</code>, asks the vault for prose, kosha for identifiers and ripgrep for literal text, and merges the three lists with <code>litesearch.rrf_all</code> through <code>Vault.federate</code>. If the vault fails to open, the host falls back to <code>LocalHost.search</code>.</p>
+<p>In an empty temporary folder only the vault has anything to find. There is no kosha index, and there is no text file for ripgrep to match. <code>search_note</code> reports how many hits each index returned.</p>
+<div id="da1ef7dc" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>hits <span class="op">=</span> host.search(<span class="st">'seasonal fruit box'</span>, limit<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>host.search_note</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A prose hit’s <code>symbol</code> is its section’s node id. <code>memory_read(hit.symbol)</code> reads the whole section. A repository hit’s <code>symbol</code> is its module name, for use with <code>symbols</code>. One field serves the follow-up call for either kind of hit.</p>
+<div id="c22afad3" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>prose <span class="op">=</span> [h <span class="cf">for</span> h <span class="kw">in</span> hits <span class="cf">if</span> h.symbol.count(<span class="st">'#'</span>) <span class="op">==</span> <span class="dv">1</span>]</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>prose <span class="kw">and</span> host.memory_read(prose[<span class="dv">0</span>].symbol)[<span class="st">'text'</span>][:<span class="dv">60</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>federate=False</code> turns the merging off and keeps <code>LocalHost</code>’s own search. A host also falls back to that search when its vault will not open.</p>
+<div id="8968d3b0" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>plain <span class="op">=</span> VaultHost(roots<span class="op">=</span>[tmp], vault<span class="op">=</span>tmp<span class="op">/</span><span class="st">'vault.db'</span>, index<span class="op">=</span><span class="va">False</span>, web<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>                  federate<span class="op">=</span><span class="va">False</span>, warm<span class="op">=</span><span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="watches-and-reminders" class="level2">
+<h2 class="anchored" data-anchor-id="watches-and-reminders">Watches and reminders</h2>
+<p>Watches live in the vault, so they survive between sessions. <code>poll</code> runs the watches that are due. It does not rebuild the entity graph while a turn waits; when something ran, it starts <code>connect</code>, which rebuilds the graph in the background.</p>
+<p>Each watch has an action and an interval. The simplest action is <code>remind</code>. When a reminder comes due, the vault files the reminder text back into itself as a note. A memory search finds the reminder together with everything else. The reminder does not wait in a notification queue that the harness does not own.</p>
+<div id="bfae5b85" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>w <span class="op">=</span> host.watch(<span class="st">'Add the weekly groceries to the Coles trolley, and a Ceres fruit box.'</span>,</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>               action<span class="op">=</span><span class="st">'remind'</span>, every<span class="op">=</span><span class="st">'1w'</span>, note<span class="op">=</span><span class="st">'weekly shop'</span>)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>[(x[<span class="st">'id'</span>], x[<span class="st">'action'</span>], <span class="bu">int</span>(x[<span class="st">'every'</span>])) <span class="cf">for</span> x <span class="kw">in</span> host.watches()]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A new watch is first due at the moment it is created. A poll at any earlier time finds nothing to run.</p>
+<div id="65a46f3b" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>test_eq(host.vault.poll(at<span class="op">=</span>w[<span class="st">'next_run'</span>] <span class="op">-</span> <span class="dv">1</span>, <span class="ex">connect</span><span class="op">=</span><span class="va">False</span>)[<span class="st">'ran'</span>], <span class="dv">0</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A poll after that moment runs it, and a memory search then finds what it filed.</p>
+<div id="5755c6e2" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>fired <span class="op">=</span> host.vault.poll(at<span class="op">=</span>w[<span class="st">'next_run'</span>] <span class="op">+</span> <span class="dv">1</span>, <span class="ex">connect</span><span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>test_eq(fired[<span class="st">'ran'</span>], <span class="dv">1</span>)</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>test_eq(fired[<span class="st">'results'</span>][<span class="dv">0</span>][<span class="st">'status'</span>], <span class="st">'ok'</span>)</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>hit <span class="op">=</span> host.memory_search(<span class="st">'what am I supposed to be doing about groceries'</span>, limit<span class="op">=</span><span class="dv">3</span>)</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>[s[<span class="st">'title'</span>] <span class="cf">for</span> s <span class="kw">in</span> hit[<span class="st">'results'</span>]]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>One failing watch must not stop the others. vishalakshi’s <code>run_watch</code> records a failure on the watch and returns it instead of raising. A poll over five due watches therefore runs all five. The vault runs each watch by calling its method named after the action. Replacing <code>host.vault.url</code> with a function that always fails makes every <code>url</code> watch fail. The example below puts one such watch next to a working reminder.</p>
+<div id="b7d3855d" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _down(target, <span class="op">**</span>kw): <span class="cf">raise</span> <span class="pp">ConnectionError</span>(<span class="st">'name not resolved'</span>)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>host.vault.url <span class="op">=</span> _down</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>dead <span class="op">=</span> host.watch(<span class="st">'https://example.invalid/x'</span>, action<span class="op">=</span><span class="st">'url'</span>, every<span class="op">=</span><span class="st">'1d'</span>)</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>live <span class="op">=</span> host.watch(<span class="st">'check which day the Ceres box arrives'</span>, action<span class="op">=</span><span class="st">'remind'</span>, every<span class="op">=</span><span class="st">'1d'</span>)</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>out <span class="op">=</span> host.vault.poll(at<span class="op">=</span><span class="bu">max</span>(dead[<span class="st">'next_run'</span>], live[<span class="st">'next_run'</span>]) <span class="op">+</span> <span class="dv">1</span>, <span class="ex">connect</span><span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(r[<span class="st">'status'</span>] <span class="cf">for</span> r <span class="kw">in</span> out[<span class="st">'results'</span>])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The failed watch is still there, rescheduled, with its last status recorded. A single failure does not delete a watch. The cleanup cancels both watches by hand.</p>
+<div id="c7d552dd" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>host.unwatch(dead[<span class="st">'id'</span>])</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>host.unwatch(live[<span class="st">'id'</span>])</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">len</span>(host.watches()), <span class="dv">1</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>The watch tools appear when the host provides the watch capability, as the memory tools do for the memory capability.</p>
+<div id="d2035f2b" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>tools <span class="op">=</span> have(host)</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>test_eq({<span class="st">'remember'</span>, <span class="st">'watch'</span>, <span class="st">'list_watches'</span>, <span class="st">'cancel_watch'</span>} <span class="op">&lt;=</span> tools, <span class="va">True</span>)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="bu">any</span>(t.startswith(<span class="st">'watch'</span>) <span class="cf">for</span> t <span class="kw">in</span> have(NullHost())), <span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>watch</code> is one tool for every kind of watch. Its <code>kind</code> is <code>url</code> for a page, <code>remind</code> for a reminder, <code>search</code> for a web query and <code>folder</code> for a path. The harness polls watches. The model does not. At the start of each turn, <a href="https://vedicreader.github.io/ramabana/agent.html#agent.poll_watches"><code>Agent.poll_watches</code></a> calls <code>host.poll()</code> in a background thread, at most once every <code>poll_every</code> seconds, and reports what fired. The host returns failures instead of raising. A turn that starts by asking what is outstanding therefore does not end on an error.</p>
+<div id="f29a3d31" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:08.496464+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:08.622004+00:00&quot;,&quot;total&quot;:0.12554479299998889}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.tools <span class="im">import</span> watch_tools</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>watch <span class="op">=</span> <span class="bu">next</span>(t <span class="cf">for</span> t <span class="kw">in</span> watch_tools(host) <span class="cf">if</span> t.<span class="va">__name__</span> <span class="op">==</span> <span class="st">'watch'</span>)</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(watch(<span class="st">'renew the domain'</span>, kind<span class="op">=</span><span class="st">'remind'</span>, every<span class="op">=</span><span class="st">'1w'</span>))</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>host.poll()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>watching remind renew the domain as 2f42956e2ac2, every 1w</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>{'checked': 1,
+ 'ran': 1,
+ 'results': [{'job_id': '732d4cfd45c4',
+   'kind': 'watch',
+   'status': 'ok',
+   'took': 0.04,
+   'error': None,
+   'result': {'doc_id': '933f98410a15e19f',
+    'title': 'renew the domain',
+    'kind': 'note',
+    'nodes': 2,
+    'chunks': 1,
+    'changed': True,
+    'source': 'note:reminder:2f42956e2ac2',
+    'replaced': False}}],
+ 'reclaimed': 0,
+ 'dead': 0,
+ 'next_due': 1794034268,
+ 'housekeeping': {'checked': 1, 'stale': 0, 'pruned': 0, 'reasons': {}}}</code></pre>
+</div>
+</div>
+</section>
+<section id="using-it" class="level2">
+<h2 class="anchored" data-anchor-id="using-it">Using it</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana <span class="im">import</span> Agent</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.vault <span class="im">import</span> VaultHost</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>host <span class="op">=</span> VaultHost(roots<span class="op">=</span>[<span class="st">'~/code/myproject'</span>])     <span class="co"># the shared ~/.vishalakshi/vault.db</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>agent <span class="op">=</span> Agent(host, model<span class="op">=</span><span class="st">'gpt-mini'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>This agent has eight tools that a <code>LocalHost</code> agent does not have: the four memory tools, <code>ask_memory</code> and the three watch tools. Its <code>search_code</code> also answers from everything the vault has read. <a href="https://vedicreader.github.io/ramabana/agent.html#agent"><code>Agent</code></a> needs no change. The tools appear because the host declares the groups they belong to.</p>
+</section>
+<section id="answering-from-material-the-model-must-not-see" class="level2">
+<h2 class="anchored" data-anchor-id="answering-from-material-the-model-must-not-see">Answering from material the model must not see</h2>
+<p><code>memory_search</code> returns whole sections to the model. This suits research. It does not suit a bank statement. To answer from a section, the model that runs the turn must hold the section in its context. That model often runs on someone else’s servers.</p>
+<p><code>ask</code>, which the <code>ask_memory</code> tool calls, works in reverse. The vault answers and the caller receives only the answer. <code>vishalakshi.pii</code> detects personal information by pattern. It does not ask a model to read the sections first. When the retrieved sections hold personal information, the vault answers with a local model under a briefing that forbids repeating any personal detail. These cells are marked <code>eval: false</code>, and the test suite skips them.</p>
+<p>In a real session, <a href="https://vedicreader.github.io/ramabana/agent.html#agent.lend_model"><code>Agent.lend_model</code></a> supplies <code>mk_chat</code>, and <code>mk_chat</code> honours the model it is asked for. The vault asks for its local model. It then checks that the returned chat runs on this machine. Without this check, a factory could send a statement to a hosted API. In the example, the factory returns a chat that claims a remote runtime. The vault refuses and sends nothing.</p>
+<div id="3d18e728" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>_h.mk_chat <span class="op">=</span> _chat(<span class="st">'remote'</span>, <span class="st">'THIS MUST NEVER BE SENT'</span>)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>_sent.clear()</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> _h.ask(<span class="st">'what is on invoice 4471?'</span>)</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>test_eq(_sent, [])</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>test_eq(r.refused, <span class="va">True</span>)</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>r.answer</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A chat on a local runtime receives the question under a different briefing. It returns an answer that withholds the personal details.</p>
+<div id="cfaae5b5" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>_h.mk_chat <span class="op">=</span> _chat(<span class="st">'litert'</span>, <span class="st">'One invoice, 240.00 GBP, due in September. Holding back the name, '</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>                             <span class="st">'email, phone and card. Tell me if you need a total, a date, or a yes/no.'</span>)</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>_sent.clear()</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(ask_memory(<span class="st">'what is on invoice 4471?'</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>That reply is half of a two-step exchange. The model that reads the reply decides what it needs and sends an <code>instruction</code> back. The instruction runs the local model again over the same sections. The model receives a useful answer, and the private material never leaves the machine.</p>
+<div id="25c9c652" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>_h.mk_chat <span class="op">=</span> _chat(<span class="st">'litert'</span>, <span class="st">'Total 240.00 GBP, due 2026-09-01.'</span>)</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>_sent.clear()</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>out <span class="op">=</span> ask_memory(<span class="st">'what is on invoice 4471?'</span>, instruction<span class="op">=</span><span class="st">'Give me the total and the due date only.'</span>)</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>test_eq(<span class="st">'Give me the total and the due date only.'</span> <span class="kw">in</span> _sent[<span class="dv">0</span>][<span class="dv">1</span>], <span class="va">True</span>)</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>out</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

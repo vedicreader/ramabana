@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.20">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="A local socket a detached job runner listens on, so a host’s page can prompt, steer, stop and answer its agent from another process.">
+
+<title>control – ramabana</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-17888a1159294d3eb470f19f6f52f5a5.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-66a38d7287321bc50e069add96f8c30e.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="control – ramabana">
+<meta property="og:description" content="A local socket a detached job runner listens on, so a host’s page can prompt, steer, stop and answer its agent from another process.">
+<meta property="og:site_name" content="ramabana">
+<meta name="twitter:title" content="control – ramabana">
+<meta name="twitter:description" content="A local socket a detached job runner listens on, so a host’s page can prompt, steer, stop and answer its agent from another process.">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">ramabana</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./control.html">control</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">ramabana</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./runtime.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">runtime</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./models.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">models</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">tools</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./agent.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">agent</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./history_core.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">History core</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./history.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">history</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./testing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">testing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./hl.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">hl</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./mcp.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">mcp</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vault.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">vault</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./coding_patterns.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Coding patterns</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./spec.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">spec</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./theory.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Theory</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_prose.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write prose</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./write_docs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Write docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./monitor.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">monitor</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./pane.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">pane</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./setup.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">setup</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./control.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">control</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./learned.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">learned</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./debugging.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Debugging</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peers.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peers</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_work.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Peer work</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_hooks.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peer_hooks</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./peer_report.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">peer_report</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./guard.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">guard</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-socket" id="toc-the-socket" class="nav-link active" data-scroll-target="#the-socket">The socket</a></li>
+  <li><a href="#peers" id="toc-peers" class="nav-link" data-scroll-target="#peers">Peers</a></li>
+  <li><a href="#messages-from-peers" id="toc-messages-from-peers" class="nav-link" data-scroll-target="#messages-from-peers">Messages from peers</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="control.html.md"><i class="bi bi-file-code"></i>Markdown</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">control</h1>
+</div>
+
+<div>
+  <div class="description">
+    A local socket a detached job runner listens on, so a host’s page can prompt, steer, stop and answer its agent from another process.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<section id="the-socket" class="level2">
+<h2 class="anchored" data-anchor-id="the-socket">The socket</h2>
+<p>A program that hosts agent jobs, such as a web app, often runs each job in a process of its own. Restarting the web server then does not kill a turn halfway through. The page that started the job needs a way to reach it: to send a prompt, steer the running turn, stop it, and answer the approval requests it raises. <a href="https://vedicreader.github.io/ramabana/control.html#control"><code>Control</code></a> provides that way. It opens a Unix socket in the session’s run folder. A Unix socket is an address in the file system that only processes on this machine can connect to. Only the current user may connect.</p>
+<p>The protocol is one JSON object per line in each direction. A request is <code>{"id", "method", "params"}</code>. A successful reply is <code>{"id", "result"}</code>. A failed reply is <code>{"id", "error"}</code>. <code>METHODS</code> lists the methods:</p>
+<ul>
+<li><code>prompt(text)</code> starts a turn on a worker thread. If a turn is already running, <code>text</code> is queued to run after it.</li>
+<li><code>steer(text)</code> gives <code>text</code> to the running turn with its next tool result. This redirects the model without stopping the turn.</li>
+<li><code>tell(run_id, text)</code> queues <code>text</code> for the running sub-agent <code>run_id</code>, as <a href="https://vedicreader.github.io/ramabana/agent.html#agent.tell"><code>Agent.tell</code></a> does, and returns what it said: <code>told RUN</code>, or why nothing is listening. A transcript pane uses it for the lines typed into it.</li>
+<li><code>cancel()</code> stops the running turn and drops the prompts queued behind it. The reply includes the number dropped as <code>dropped</code>.</li>
+<li><code>asks()</code> lists the approval requests waiting for an answer, oldest first. <code>answer(id, ok, note)</code> answers one of them.</li>
+<li><code>status()</code> returns <code>running</code>, <code>queued</code> (the number of queued prompts), <code>session</code> and <code>last</code>. <code>last</code> is how the last turn ended, or <code>None</code> before any turn has ended. It also returns what a peer lists: <code>name</code>, the session’s name for a person; <code>state</code>, one of <code>idle</code>, <code>working</code> and <code>waiting for approval</code>; <code>folder</code>, its first open folder; and <code>at</code>, when it was last active.</li>
+<li><code>events(offset)</code> returns <code>events</code>, the records in the session’s event file from byte <code>offset</code> on, and <code>offset</code>, the value to pass next time. It returns whole lines only, at most <code>EVENTS_MAX</code> bytes per call. When the file has rolled over since the last read, it starts from byte 0 and sets <code>rotated</code> to true. It raises an error until the runner has called <code>agent.events_to(path)</code>.</li>
+</ul>
+<p><code>control_call(path, method, **params)</code> is the other end. It connects, sends one request and returns the <code>result</code>. On an error reply it raises <code>RuntimeError</code> with the error’s message. Its <code>timeout</code> argument is 30 seconds by default. The page uses it, and any script that needs to reach a running job can use it.</p>
+<p><code>start</code> refuses a path where another runner is listening and a path that holds anything other than a socket. It removes a socket that a crashed runner left behind.</p>
+<p>A Unix socket path takes at most about 100 bytes (<code>SOCKET_MAX</code>). When you give no path and the session’s run folder is deeper, the socket goes in the temporary folder as <code>ramabana-&lt;session&gt;.sock</code>. An explicit <code>path</code> that is too long raises <code>ValueError</code>.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Constant</th>
+<th>Value</th>
+<th>Limit</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>SOCKET_MAX</code></td>
+<td>100</td>
+<td>Bytes of a socket path. macOS allows 104.</td>
+</tr>
+<tr class="even">
+<td><code>REQUEST_MAX</code></td>
+<td>1,000,000</td>
+<td>Bytes of one request line</td>
+</tr>
+<tr class="odd">
+<td><code>EVENTS_MAX</code></td>
+<td>1,000,000</td>
+<td>Bytes of the event file that one <code>events</code> call returns</td>
+</tr>
+</tbody>
+</table>
+<div id="1caa4e51" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.325076+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.360584+00:00&quot;,&quot;total&quot;:0.035515767000021015}}" data-execution_count="5">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L52" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="control" class="level3">
+<h3 class="anchored" data-anchor-id="control">Control</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> Control(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    agent, path:NoneType<span class="op">=</span><span class="va">None</span>, <span class="co"># the socket; None puts it in the session's run folder as `CONTROL`</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A Unix socket through which another process prompts, steers, stops and answers an agent running in this one.</em></p>
+</section>
+</div>
+<div id="2369dc7c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.360750+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.373268+00:00&quot;,&quot;total&quot;:0.012524131999981591}}" data-execution_count="6">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L45" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="session_name" class="level3">
+<h3 class="anchored" data-anchor-id="session_name">session_name</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> session_name(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    agent, at</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A live session’s name for a person, titled as <a href="https://vedicreader.github.io/ramabana/agent.html#agent.sessions"><code>Agent.sessions</code></a> titles it for <code>/resume</code>, else by its first folder’s name, then its model and how long ago it was <code>at</code>.</em></p>
+</section>
+</div>
+<div id="a38b5dbf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.373419+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.384262+00:00&quot;,&quot;total&quot;:0.010847310000002608}}" data-execution_count="7">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L41" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="pick_row" class="level3">
+<h3 class="anchored" data-anchor-id="pick_row">pick_row</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> pick_row(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    rows, choice</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The row numbered <code>choice</code> in <code>rows</code> as they were listed from 1, or None when <code>choice</code> is not one of those numbers.</em></p>
+</section>
+</div>
+<div id="a336a635" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.384408+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.395245+00:00&quot;,&quot;total&quot;:0.010842650999990155}}" data-execution_count="8">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L36" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="ago" class="level3">
+<h3 class="anchored" data-anchor-id="ago">ago</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> ago(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    t</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>How long ago <code>t</code> was: <code>5m</code>, <code>3h</code> or <code>2d</code>.</em></p>
+</section>
+</div>
+<div id="fd9eabba" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.395405+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.404064+00:00&quot;,&quot;total&quot;:0.008662912000005463}}" data-execution_count="9">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L31" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="control_path" class="level3">
+<h3 class="anchored" data-anchor-id="control_path">control_path</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> control_path(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    agent</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Where <code>agent</code>’s session listens: <code>CONTROL</code> in its run folder, or <code>ramabana-&lt;session&gt;.sock</code> in the temporary folder when that path is too long for a socket.</em></p>
+</section>
+</div>
+<p><code>start</code> also readies the session for messages from peers, and <code>close</code> undoes that. The methods below do the work; <em>Messages from peers</em>, at the end of this page, explains them with an example.</p>
+<div id="b1b6957a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.428848+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.440161+00:00&quot;,&quot;total&quot;:0.01131929000001719}}" data-execution_count="11">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L304" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="control.user_back" class="level3">
+<h3 class="anchored" data-anchor-id="control.user_back">Control.user_back</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> user_back():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>What the user missed, as the user typed: whether a work together mode ended since the user last looked, and the report saved when it ended, or None. The mode stays on.</em></p>
+</section>
+</div>
+<div id="62de1641" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.440325+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.451018+00:00&quot;,&quot;total&quot;:0.010700603999993064}}" data-execution_count="12">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L214" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="control.receive" class="level3">
+<h3 class="anchored" data-anchor-id="control.receive">Control.receive</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> receive(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    env</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Handle one peer message: a note or a reply steers the running turn or waits for the next; an ask runs in work together mode with a partner, else when the user says yes.</em></p>
+</section>
+</div>
+<div id="0e027ab0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.451195+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.466270+00:00&quot;,&quot;total&quot;:0.015081912999988845}}" data-execution_count="13">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L206" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="control.do_message" class="level3">
+<h3 class="anchored" data-anchor-id="control.do_message">Control.do_message</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> do_message(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span>:<span class="bu">str</span><span class="op">=</span><span class="st">''</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Take the new messages in this session’s inbox and <code>receive</code> each on its own thread; <code>id</code> names the one that rang.</em></p>
+</section>
+</div>
+<div id="7aa4ced8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.466443+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.473501+00:00&quot;,&quot;total&quot;:0.007062404000009792}}" data-execution_count="14">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L187" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="control.d" class="level3">
+<h3 class="anchored" data-anchor-id="control.d">Control.d</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> d():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The peers folder of this session’s config.</em></p>
+</section>
+</div>
+<div id="bf239ea0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.473646+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.484176+00:00&quot;,&quot;total&quot;:0.010535352000005105}}" data-execution_count="15">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L182" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="control.key" class="level3">
+<h3 class="anchored" data-anchor-id="control.key">Control.key</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> key():</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>This session’s key in the peers folder.</em></p>
+</section>
+</div>
+<p>The example plays both sides in one process. <a href="https://vedicreader.github.io/ramabana/testing.html#fake_agent"><code>fake_agent</code></a> from <code>ramabana.testing</code> supplies an agent whose model replies with a scripted line. The first cell sends a prompt through the socket, waits for the turn to finish, checks how it ended and reads the turn’s events.</p>
+<p>The second cell raises an approval request for <code>edit_file</code> from another thread, as a tool would, finds it through <code>asks</code>, and approves it through the socket. The agent was built with <code>no_listener='wait'</code>. With that setting the request waits for an answer. Without it, the request is refused because no terminal is attached. An unknown method comes back as an error, and <a href="https://vedicreader.github.io/ramabana/peers.html#control_call"><code>control_call</code></a> raises it as <code>RuntimeError</code>.</p>
+<div id="8bb987af" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.484969+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.685482+00:00&quot;,&quot;total&quot;:0.20051999000000365}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile, time</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana <span class="im">import</span> agent</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.testing <span class="im">import</span> fake_agent</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>d <span class="op">=</span> Path(tempfile.mkdtemp(<span class="bu">dir</span><span class="op">=</span><span class="st">'/tmp'</span>))   <span class="co"># a Unix socket path must stay short</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>a, be <span class="op">=</span> fake_agent(cfg<span class="op">=</span>d, replies<span class="op">=</span>[<span class="st">'the first reply'</span>], approvals<span class="op">=</span>agent.Approvals(tools<span class="op">=</span>{<span class="st">'edit_file'</span>}, timeout<span class="op">=</span><span class="dv">5</span>, no_listener<span class="op">=</span><span class="st">'wait'</span>))</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>a.events_to(d<span class="op">/</span><span class="st">'job.events'</span>)</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>ctl <span class="op">=</span> Control(a).start()</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>call <span class="op">=</span> <span class="kw">lambda</span> method, <span class="op">**</span>kw: control_call(ctl.path, method, <span class="op">**</span>kw)</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>test_eq(call(<span class="st">'prompt'</span>, text<span class="op">=</span><span class="st">'hello'</span>), {<span class="st">'started'</span>: <span class="va">True</span>})</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">200</span>):</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">not</span> call(<span class="st">'status'</span>)[<span class="st">'running'</span>]: <span class="cf">break</span></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.01</span>)</span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>st <span class="op">=</span> call(<span class="st">'status'</span>)</span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>test_eq((st[<span class="st">'running'</span>], st[<span class="st">'last'</span>][<span class="st">'state'</span>], st[<span class="st">'last'</span>][<span class="st">'reply'</span>]), (<span class="va">False</span>, <span class="st">'complete'</span>, <span class="st">'the first reply'</span>))</span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a>ev <span class="op">=</span> call(<span class="st">'events'</span>)</span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> {<span class="st">'turn_start'</span>, <span class="st">'turn_end'</span>} <span class="op">&lt;=</span> {e[<span class="st">'kind'</span>] <span class="cf">for</span> e <span class="kw">in</span> ev[<span class="st">'events'</span>]} <span class="kw">and</span> ev[<span class="st">'offset'</span>] <span class="op">&gt;</span> <span class="dv">0</span></span>
+<span id="cb11-19"><a href="#cb11-19" aria-hidden="true" tabindex="-1"></a>test_eq(call(<span class="st">'events'</span>, offset<span class="op">=</span>ev[<span class="st">'offset'</span>])[<span class="st">'events'</span>], [])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="48dc99d4" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>out <span class="op">=</span> {}</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>threading.Thread(target<span class="op">=</span><span class="kw">lambda</span>: out.setdefault(<span class="st">'r'</span>, a.approvals.request(<span class="st">'edit_file'</span>, {<span class="st">'path'</span>: <span class="st">'a.py'</span>})), daemon<span class="op">=</span><span class="va">True</span>).start()</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">200</span>):</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (waiting <span class="op">:=</span> call(<span class="st">'asks'</span>)): <span class="cf">break</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.01</span>)</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>test_eq(waiting[<span class="dv">0</span>][<span class="st">'tool'</span>], <span class="st">'edit_file'</span>)</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> call(<span class="st">'answer'</span>, <span class="bu">id</span><span class="op">=</span>waiting[<span class="dv">0</span>][<span class="st">'id'</span>], ok<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">200</span>):</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="st">'r'</span> <span class="kw">in</span> out: <span class="cf">break</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.01</span>)</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> out[<span class="st">'r'</span>], <span class="st">'answered through the socket'</span></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>test_fail(<span class="kw">lambda</span>: call(<span class="st">'fly'</span>), exc<span class="op">=</span><span class="pp">RuntimeError</span>)</span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>ctl.close()<span class="op">;</span> a.close()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="peers" class="level2">
+<h2 class="anchored" data-anchor-id="peers">Peers</h2>
+<p>Every terminal session listens on its own socket, so one session can reach another. <code>peers_of(agent)</code> finds the other live sessions under the same config folder. It asks each socket in <code>&lt;cfg&gt;/runs/*/</code> and each <code>ramabana-&lt;session&gt;.sock</code> of a session in that folder for its <code>status</code>, and leaves out a socket that does not answer within <code>PEER_WAIT</code> seconds. The list puts the most recently active session first.</p>
+<p><code>status</code> names a session for a person, the way the <code>--resume</code> picker lists sessions: its title, else its first folder’s name, then its model and how long ago it was active, as in <code>orgs · claude-opus-5-5 · 2m ago</code>. <a href="https://vedicreader.github.io/ramabana/peers.html#peer_lines"><code>peer_lines</code></a> numbers the list, and <a href="https://vedicreader.github.io/ramabana/control.html#find_peer"><code>find_peer</code></a> takes a number from it, as the picker takes one, or a session id.</p>
+<p><code>peer_tools(agent)</code> gives the agent the same reach as two tools. <code>peers()</code> lists the sessions of every kind with their ids. <code>tell(session, text, kind='note')</code> posts a note to the inbox of that session, through <a href="https://vedicreader.github.io/ramabana/peers.html#tell"><code>ramabana.peers.tell</code></a>, and rings its socket. With <code>kind='ask'</code> it asks for work and waits up to <code>wait</code> seconds for the reply. The sender of each message is <code>self_frm(agent)</code>: this session’s key and all its folders.</p>
+<div id="74acfc15" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.717224+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.737234+00:00&quot;,&quot;total&quot;:0.020016376000000946}}" data-execution_count="18">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L338" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="peer_tools" class="level3">
+<h3 class="anchored" data-anchor-id="peer_tools">peer_tools</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> peer_tools(</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    agent</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em><code>peers()</code>, <a href="https://vedicreader.github.io/ramabana/peers.html#tell"><code>tell()</code></a> and <code>work_together()</code>: the agent’s tools for reaching the other live sessions.</em></p>
+</section>
+</div>
+<div id="5e153cf4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.737392+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.751209+00:00&quot;,&quot;total&quot;:0.013823131000009425}}" data-execution_count="19">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L334" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="note_peer" class="level3">
+<h3 class="anchored" data-anchor-id="note_peer">note_peer</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> note_peer(</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    agent, row, text, kind:<span class="bu">str</span><span class="op">=</span><span class="st">'note'</span>, wait:<span class="bu">int</span><span class="op">=</span><span class="dv">0</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Post <code>text</code> as a <a href="https://vedicreader.github.io/ramabana/agent.html#note"><code>note</code></a> or <code>ask</code> from this session to the session <code>row</code>, and with <code>wait</code> return the reply to an ask; what <a href="https://vedicreader.github.io/ramabana/peers.html#tell"><code>tell</code></a> says. <code>LookupError</code> when it is gone.</em></p>
+</section>
+</div>
+<div id="786a9dd3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.751348+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.764299+00:00&quot;,&quot;total&quot;:0.012957448000008753}}" data-execution_count="20">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L329" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="self_frm" class="level3">
+<h3 class="anchored" data-anchor-id="self_frm">self_frm</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> self_frm(</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    agent</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>This session as the sender of a peer message: its kind, session, key, name and all its folders.</em></p>
+</section>
+</div>
+<div id="b1fc01a1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.764430+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.780187+00:00&quot;,&quot;total&quot;:0.01576430000000073}}" data-execution_count="21">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L325" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="find_peer" class="level3">
+<h3 class="anchored" data-anchor-id="find_peer">find_peer</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> find_peer(</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    rows, key</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The row <code>key</code> names: its number in <code>rows</code>, or its session id; None when neither matches.</em></p>
+</section>
+</div>
+<div id="45ed8ca7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.780337+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.793151+00:00&quot;,&quot;total&quot;:0.012818615999975691}}" data-execution_count="22">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L321" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="peer_label" class="level3">
+<h3 class="anchored" data-anchor-id="peer_label">peer_label</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> peer_label(</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    row</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>A peer’s name without how long ago it was active, which a label kept on screen would leave stale.</em></p>
+</section>
+</div>
+<div id="f653acda" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.793279+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.806185+00:00&quot;,&quot;total&quot;:0.01291225300002452}}" data-execution_count="23">
+<hr>
+<p><a href="https://github.com/vedicreader/ramabana/blob/main/ramabana/control.py#L317" target="_blank" style="float:right; font-size:smaller">source</a></p>
+<section id="peers_of" class="level3">
+<h3 class="anchored" data-anchor-id="peers_of">peers_of</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> peers_of(</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    agent, timeout:<span class="bu">int</span><span class="op">=</span><span class="dv">2</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>):</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The other live sessions under <code>agent</code>’s config folder, most recently active first: each one’s <code>status</code> plus the <code>path</code> it listens on, and the registered Claude Code and Codex sessions.</em></p>
+</section>
+</div>
+<p>Two more agents in the same config folder show the peer side. <code>listener</code> writes its events to <code>EVENT_FILE</code>, as a terminal session does, so a reply can be read from them. <code>asker</code> lists the sessions it can reach: the one that listens, by its folder’s name since it has no title yet, and never itself.</p>
+<div id="3f7f0b3e" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>listener, _ <span class="op">=</span> fake_agent(cfg<span class="op">=</span>d, replies<span class="op">=</span>[<span class="st">'nothing much'</span>])</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>asker, _ <span class="op">=</span> fake_agent(cfg<span class="op">=</span>d)</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>listener.events_to(listener.runs_dir<span class="op">/</span>EVENT_FILE)</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>listening <span class="op">=</span> Control(listener).start()</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>peers, tell, work_together <span class="op">=</span> peer_tools(asker)</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>listed <span class="op">=</span> peers()</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> listed.startswith(<span class="st">'1  proj · fake · 0m ago  idle'</span>) <span class="kw">and</span> listener.session_id <span class="kw">in</span> listed <span class="kw">and</span> asker.session_id <span class="kw">not</span> <span class="kw">in</span> listed</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>listed</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p><code>status</code> also gives the <code>kind</code>, the inbox <code>key</code>, all the folders and the permission mode of the gate, so <code>peers</code>, <a href="https://vedicreader.github.io/ramabana/peers.html#tell"><code>tell</code></a> and <code>together</code> can use it.</p>
+<div id="ca32211c" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>st <span class="op">=</span> control_call(listening.path, <span class="st">'status'</span>)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> (st[<span class="st">'kind'</span>], st[<span class="st">'key'</span>]) <span class="op">==</span> (<span class="st">'ramabana'</span>, <span class="ss">f'ramabana-</span><span class="sc">{</span>listener<span class="sc">.</span>session_id<span class="sc">}</span><span class="ss">'</span>) <span class="kw">and</span> st[<span class="st">'folders'</span>] <span class="kw">and</span> <span class="st">'approve'</span> <span class="kw">in</span> st</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>st[<span class="st">'key'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>A note to an idle session waits there for its next turn. An ask starts a turn there, and <a href="https://vedicreader.github.io/ramabana/peers.html#tell"><code>tell</code></a> returns its reply. <code>listener</code> is in work together mode, so its user is not asked first.</p>
+<div id="77d17afc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.807050+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:00.812877+00:00&quot;,&quot;total&quot;:0.005831232999980784}}" data-execution_count="24">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.peers <span class="im">import</span> together_on</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div id="9cfd7752" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tell(<span class="dv">1</span>, <span class="st">'are you there?'</span>, wait<span class="op">=</span><span class="dv">0</span>).startswith(<span class="st">'told'</span>)</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>together_on(peers_dir(d), <span class="ss">f'ramabana-</span><span class="sc">{</span>listener<span class="sc">.</span>session_id<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>replied <span class="op">=</span> tell(<span class="dv">1</span>, <span class="st">'what are you working on?'</span>, kind<span class="op">=</span><span class="st">'ask'</span>, wait<span class="op">=</span><span class="dv">10</span>)</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>listening.close()<span class="op">;</span> listener.close()<span class="op">;</span> asker.close()</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> replied <span class="op">==</span> <span class="st">'nothing much'</span></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>replied</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="messages-from-peers" class="level2">
+<h2 class="anchored" data-anchor-id="messages-from-peers">Messages from peers</h2>
+<p>A peer posts each message to this session’s inbox, <code>ramabana-&lt;session&gt;.inbox.jsonl</code> in the peers folder, and then rings the socket with <code>message</code>. <code>do_message</code> takes the new messages and hands each one to <code>receive</code> on its own thread. A reply that a <a href="https://vedicreader.github.io/ramabana/peers.html#tell"><code>tell</code></a> here waits for stays in the inbox for that <a href="https://vedicreader.github.io/ramabana/peers.html#tell"><code>tell</code></a>.</p>
+<p><code>receive</code> handles each kind:</p>
+<ul>
+<li>A <a href="https://vedicreader.github.io/ramabana/agent.html#note"><code>note</code></a> or a <code>reply</code> goes into the running turn as a steer. With no turn running, it waits in <code>agent.peer_notes</code> for the next prompt.</li>
+<li>An <code>ask</code> runs at once when work together mode is on and the sender is a partner. It runs as <code>do_prompt</code> runs a prompt. When a limit (hops or budget) refuses it, no turn starts, and the sender gets one reply, <code>refused: &lt;why&gt;</code>.</li>
+<li>Any other <code>ask</code> goes to the approval gate as <code>peer ask</code>. Only a person answers it: no approval mode, saved rule or <code>/approve</code> switch decides it, and it waits with no time limit. While it waits, it is also in <code>ramabana-&lt;session&gt;.pending.jsonl</code>, so a session that quits raises it again when it starts. A no goes back to the sender as the reply <code>refused: &lt;note&gt;</code>.</li>
+</ul>
+<p><code>start</code> adds <code>_turn_end</code> to <code>agent.turn_ends</code>, which the agent calls with each turn’s log row however the turn ended, and <code>close</code> takes it off. <code>_turn_end</code> finds every ask the turn read, in its prompt (a terminal can join queued asks into one turn) or steered in. Each ask gets the turn’s text back as the reply, with its <code>changes:</code> and <code>proof:</code> lines. A failed turn replies <code>failed: &lt;error&gt;</code>. A stopped turn replies <code>failed: cancelled by the user</code> to every ask still open, the queued ones it dropped too. The send budget never holds back a reply, so the asker always hears back. When the hop limit stops a reply, the asker gets <code>failed: &lt;why&gt;</code> in its inbox; an asker with no live session, such as the <code>cli</code>, gets the reply there too.</p>
+<p>A thread looks at work together mode every <code>TOGETHER_CHECK</code> seconds. When a mode it saw on has ended, it saves the morning report with <a href="https://vedicreader.github.io/ramabana/peer_report.html#save_report"><code>save_report</code></a>. When the user types, <code>user_back</code> gives the report to show, or says that a mode ended while the user was away. Typing does not end the mode. Only <code>/together off</code>, <code>ramabana together off</code>, the <code>work_together</code> tool or the end time ends it. A waited reply to <a href="https://vedicreader.github.io/ramabana/peers.html#tell"><code>tell</code></a> is a peer’s text, so it marks the turn as <code>peer_turn</code>.</p>
+<p>In the example, a Claude Code session, <code>claude-s1</code>, sends to a session with an approval gate. A note to an idle session waits for the next turn. An ask with no work together mode raises <code>peer ask</code> at the gate, and a no goes back to the sender as <code>refused: &lt;note&gt;</code>.</p>
+<div id="95b8ea12" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-31T06:51:00.814286+00:00&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-31T06:51:01.339669+00:00&quot;,&quot;total&quot;:0.5253883990000077}}" data-execution_count="25">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ramabana.peers <span class="im">import</span> post, register</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>os.environ[<span class="st">'RAMABANA_PEERS'</span>] <span class="op">=</span> <span class="bu">str</span>(d<span class="op">/</span><span class="st">'peers'</span>)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>register(peers_dir(d), <span class="st">'claude'</span>, <span class="st">'s1'</span>, [<span class="st">'/r/abhyasa'</span>], os.getpid())</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>frm <span class="op">=</span> {<span class="st">'kind'</span>: <span class="st">'claude'</span>, <span class="st">'session'</span>: <span class="st">'s1'</span>, <span class="st">'key'</span>: <span class="st">'claude-s1'</span>, <span class="st">'name'</span>: <span class="st">'abhyasa'</span>}</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>b, bbe <span class="op">=</span> fake_agent(cfg<span class="op">=</span>d, replies<span class="op">=</span>[<span class="st">'ok'</span>], approvals<span class="op">=</span>agent.Approvals(tools<span class="op">=</span>{<span class="st">'edit_file'</span>}, no_listener<span class="op">=</span><span class="st">'wait'</span>))</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>bc <span class="op">=</span> Control(b).start()</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> ring(kind, text):</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    post(bc.d, bc.key, Envelope(kind, text, frm, bc.key))</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> control_call(bc.path, <span class="st">'message'</span>, <span class="bu">id</span><span class="op">=</span><span class="st">''</span>)</span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>test_eq(ring(<span class="st">'note'</span>, <span class="st">'v2 is out'</span>), {<span class="st">'took'</span>: <span class="dv">1</span>})</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">100</span>):</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> b.peer_notes <span class="kw">or</span> b.approvals.waiting: <span class="cf">break</span></span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.02</span>)</span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>test_eq([e.text <span class="cf">for</span> e <span class="kw">in</span> b.peer_notes], [<span class="st">'v2 is out'</span>])</span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>ring(<span class="st">'ask'</span>, <span class="st">'add a Card part'</span>)</span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">100</span>):</span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> b.approvals.waiting: <span class="cf">break</span></span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.02</span>)</span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>ask <span class="op">=</span> b.approvals.waiting[<span class="dv">0</span>]</span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>test_eq((ask.tool, ask.args[<span class="st">'text'</span>]), (<span class="st">'peer ask'</span>, <span class="st">'add a Card part'</span>))</span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>b.approvals.answer(ask.<span class="bu">id</span>, <span class="va">False</span>, <span class="st">'not now'</span>)</span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">100</span>):</span>
+<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (got <span class="op">:=</span> take(bc.d, <span class="st">'claude-s1'</span>)): <span class="cf">break</span></span>
+<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>    time.sleep(<span class="fl">.02</span>)</span>
+<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>bc.close()<span class="op">;</span> b.close()<span class="op">;</span> <span class="kw">del</span> os.environ[<span class="st">'RAMABANA_PEERS'</span>]</span>
+<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>test_eq([(e.kind, e.text) <span class="cf">for</span> e <span class="kw">in</span> got], [(<span class="st">'reply'</span>, <span class="st">'refused: not now'</span>)])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vedicreader\.github\.io\/ramabana");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/vedicreader/ramabana/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
