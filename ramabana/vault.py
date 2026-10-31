@@ -235,6 +235,8 @@ class VaultHost(LocalHost):
 
 class WorkspaceHost(VaultHost, SpecHost):
     "One workspace host configured with optional memory and API providers."
+    on_cmd_done = None   #: callable(run_id, command, state, tail) when a `run_cmd_bg` command exits by itself
+    CMD_DONE_LINES = 60  #: lines of output `on_cmd_done` gets
     def __init__(self,
                  roots=('.',),
                  vault=False,             # False, True (default vault), a path, or a Vault
@@ -279,7 +281,16 @@ class WorkspaceHost(VaultHost, SpecHost):
         p = subprocess.Popen(str(command), shell=True, cwd=str(d), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         log.close()
         self._bg[rid] = (p, Path(log.name))
+        startthread(lambda: self._cmd_exited(rid, str(command), p), daemon=True).name = f'ramabana-{rid}'
         return rid
+
+    def _cmd_exited(self, rid, command, p):
+        "Wait for `p`, then tell `on_cmd_done`. A command that `cmd_stop` killed or that `close` cleared is not reported."
+        p.wait()
+        if getattr(p, 'stopped', False) or (done := self.on_cmd_done) is None: return
+        try: state, text = self.cmd_output(rid, self.CMD_DONE_LINES)
+        except Exception: return
+        if state != 'stopped': done(rid, command, state, text)
 
     def _memory_call(self, name, *args, **kwargs):
         owner = VaultHost if self._vault_enabled else LocalHost

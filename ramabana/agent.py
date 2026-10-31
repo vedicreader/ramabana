@@ -1983,6 +1983,12 @@ def background(self:Agent):
     return self._background
 
 @patch
+def shell_done(self:Agent, rid, command, state, text):
+    "Queue a `run_shell_bg` command that exited by itself as finished background work. The next turn's notice carries its output, and an idle terminal wakes for it."
+    from types import SimpleNamespace
+    self.background.on_done(SimpleNamespace(id=rid, state=state, question=command), text)
+
+@patch
 def background_notice(self:Agent):
     "The answers of background delegations since the last turn, as one notice, or ''."
     with self.background.lock: done, self._bg_done = self._bg_done, []
@@ -3028,9 +3034,11 @@ def session_owner(self:Agent, sid):
     return {'pid': pid} if pid and pid != os.getpid() and _alive(pid) else None
 
 @patch
-def _from_here(self:Agent, sid):
+def _from_here(self:Agent, sid,
+               roots=None):   # the folders its `sessions()` row lists; None reads the index
     "Whether session `sid` ran with one of this host's folders: those its index entry saved, else those its last holder recorded."
-    roots = self.session_meta(sid).get('roots') or ((None if self.cfg is None else _read_json(self.cfg/'runs'/str(sid)/OWNER)) or {}).get('roots') or ()
+    if roots is None: roots = self.session_meta(sid).get('roots')
+    roots = roots or ((None if self.cfg is None else _read_json(self.cfg/'runs'/str(sid)/OWNER)) or {}).get('roots') or ()
     return bool({str(r) for r in self.host.roots} & set(roots))
 
 @patch
@@ -3215,7 +3223,7 @@ def resume_session(self:Agent, selector='latest',
     if not choices: raise KeyError('no saved sessions; start the CLI with --cfg or use its default config')
     selector = (selector or 'latest').strip()
     if selector == 'latest':   # never a conversation another process is in; one from these folders first
-        order = sorted(choices, key=lambda s: not self._from_here(s['id']))   # stable: newest first within each
+        order = sorted(choices, key=lambda s: not self._from_here(s['id'], s.get('roots')))   # stable: newest first within each
     else:
         order = [s for s in choices if s['id'] == selector or s['id'].startswith(selector)]
         if len(order) != 1: raise KeyError(f'session {selector!r} matched {len(order)} conversations')
@@ -4139,7 +4147,7 @@ def command(self:Agent, line):
         except (ValueError, OSError) as e: return f'{out}\nnot saved: {e}'
     if name == 'sessions':
         every = self.sessions()
-        rows = every if arg.lower() == 'all' else [s for s in every if self._from_here(s['id'])]
+        rows = every if arg.lower() == 'all' else [s for s in every if self._from_here(s['id'], s.get('roots'))]
         if rows: return '\n'.join(f"{s['id']}  {s['turns']:>3} turns  {s['model']:<20} {s['title']}" for s in rows)
         if every: return 'no saved sessions from these folders; /sessions all lists every folder'
         where = str(self.history_path) if self.history_path is not None else '(history disabled: no cfg directory)'

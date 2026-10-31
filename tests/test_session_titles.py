@@ -44,6 +44,23 @@ def test_pick_session_lists_this_folders_sessions_newest_first(tmp_path):
     assert 'from elsewhere' in '\n'.join(everywhere)
 
 
+def test_the_picker_reads_the_session_index_once_not_once_per_session(tmp_path, monkeypatch):
+    "Each listed row carries its folders, so filtering by folder reads nothing more."
+    import ramabana.agent as ag
+    from ramabana.cli import pick_session
+    for i in range(5):
+        a, _ = fake_agent(cfg=tmp_path); list(a.stream(f'session {i}'))
+    me, _ = fake_agent(cfg=tmp_path)
+    me.sessions()   # brings the index up to date, so both counts below see the same work
+    reads, real = [], ag._session_rows
+    monkeypatch.setattr(ag, '_session_rows', lambda agent: reads.append(1) or real(agent))
+    me.sessions(); listing = len(reads); reads.clear()
+    assert pick_session(me, ask=lambda q: 'n', out=lambda s: None) == ''
+    assert len(reads) == listing, f'the picker read the index {len(reads)} times; listing alone reads it {listing}'
+    reads.clear(); me.command('/sessions')
+    assert len(reads) == listing, f'/sessions read the index {len(reads)} times'
+
+
 def test_a_session_resumed_elsewhere_gains_that_folder_and_lists_are_strictly_this_folder(tmp_path):
     "A folder with no sessions of its own lists nothing; `--all-folders` and `/sessions all` reach the rest."
     from ramabana.cli import pick_session

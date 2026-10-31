@@ -68,3 +68,29 @@ def test_the_terminal_wakes_when_idle_and_defers_otherwise():
         assert ui.turn is not None, 'the deferred wake fires when the turn queue is clear'
     try: asyncio.run(scenario())
     finally: tty.close()
+
+
+def test_a_background_command_that_exits_wakes_the_idle_terminal_and_a_stopped_one_does_not(tmp_path):
+    from ramabana.vault import WorkspaceHost
+    tty = EmuTty(80, 24)
+    comp = Compositor(tty); comp._register_signals = lambda: None
+    host = WorkspaceHost([str(tmp_path)], warm=False)
+    agent, be = fake_agent(replies=['saw it'], approvals=Approvals(mode='auto'), host=host)
+
+    async def scenario():
+        await comp.start()
+        ui = cli.Ui(comp, agent); ui.loop = asyncio.get_running_loop()
+        ui._key_at -= 100
+        stopped = host.run_cmd_bg('sleep 30')
+        host.cmd_stop(stopped)
+        await asyncio.sleep(.3)
+        assert ui.turn is None and not agent._bg_done, 'a command the model stopped wakes nobody'
+        rid = host.run_cmd_bg('echo built')
+        for _ in range(200):   # the fake model answers at once, so the turn may already be over: watch what it was sent
+            await asyncio.sleep(.05)
+            if be.sent: break
+        assert be.sent, 'the exit started a turn'
+        sent = str(be.sent[-1])
+        assert f'{rid} (exit 0)' in sent and f'## {rid} (exit 0): echo built\nbuilt' in sent, sent
+    try: asyncio.run(scenario())
+    finally: tty.close(); host.close()

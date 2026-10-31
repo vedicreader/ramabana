@@ -1198,6 +1198,7 @@ class Ui:
         agent.on_media = self.on_media
         agent.on_plan = self.on_plan
         agent.on_background_done = lambda run, ans: self._post(self._maybe_wake)
+        if hasattr(agent.host, 'on_cmd_done'): agent.host.on_cmd_done = agent.shell_done   # only this session's own agent, never a sub-agent sharing the host
         self._compact_hook = getattr(agent.compactor, 'on_compact', None)
         agent.compactor.on_compact = self._on_compact
         if agent.approvals is not None: agent.approvals.listen(self.on_ask, self.on_answer)
@@ -2757,7 +2758,7 @@ def pick_session(agent,
                  ask=input, out=print, n=20):
     "The id of the saved session the person picks from the newest `n`, or '' for a new session."
     rows = agent.sessions()
-    rows = (rows if all_folders else [s for s in rows if agent._from_here(s['id'])])[:n]
+    rows = (rows if all_folders else [s for s in rows if agent._from_here(s['id'], s.get('roots'))])[:n]
     if not rows:
         out('no saved sessions ' + ('yet' if all_folders else 'from these folders; --all-folders lists every folder') + '; starting a new one')
         return ''
