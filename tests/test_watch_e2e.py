@@ -1,6 +1,6 @@
 """The whole loop on a real tmux and a real pobblebonk beat: a folder moves, the beat reviews it, and a pane shows the review."""
 
-import os, shutil, subprocess, time
+import os, shutil, subprocess, tempfile, time
 
 import pytest
 
@@ -21,7 +21,23 @@ def until(pred, timeout=8., every=.2):
     return pred()
 
 
-def test_a_beat_reviews_a_folder_and_a_pane_shows_it(tmp_path):
+def shown(pane):
+    "The last 200 lines of `pane` as one line, each run of spaces and line breaks made one space, so a wrap between words does not matter."
+    return ' '.join(subprocess.run(['tmux', 'capture-pane', '-p', '-J', '-S', '-200', '-t', pane], capture_output=True, text=True).stdout.split())
+
+
+@pytest.fixture
+def own_tmux(monkeypatch):
+    "A private tmux server, so the test neither joins nor inherits the options of the tmux it runs in."
+    d = tempfile.mkdtemp(prefix='rama-e2e-', dir='/tmp')  # a Unix socket path must stay short; tmp_path is too long
+    monkeypatch.delenv('TMUX', raising=False)
+    monkeypatch.setenv('TMUX_TMPDIR', d)
+    yield d
+    subprocess.run(['tmux', 'kill-server'], capture_output=True)
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def test_a_beat_reviews_a_folder_and_a_pane_shows_it(tmp_path, own_tmux):
     repo, cfg = tmp_path/'repo', tmp_path/'cfg'
     repo.mkdir(); (repo/'a.py').write_text('one\n')
     subprocess.run(['git', 'init', '-q', str(repo)], check=True)
@@ -42,11 +58,11 @@ def test_a_beat_reviews_a_folder_and_a_pane_shows_it(tmp_path):
         out = a.command('/watch monitors')
         assert out.startswith('watching monitors in pane'), out
         pid = out.rsplit(' ', 1)[-1]
-        assert until(lambda: 'sub answer' in fastmux.tmux(pid).display(lines=200).text), fastmux.tmux(pid).display().text
+        assert until(lambda: 'sub answer' in shown(pid)), shown(pid)
         out = a.command(f"/watch {rec['run_id']}")
         assert out.startswith('watching'), out
         rpid = out.rsplit(' ', 1)[-1]
-        assert until(lambda: 'sub answer' in fastmux.tmux(rpid).display(lines=200).text)
+        assert until(lambda: 'sub answer' in shown(rpid)), shown(rpid)
         assert 'finished' in a.command(f"/tell {rec['run_id']} anything")
         assert a.command('/unwatch').startswith('closed')
         a.close()
