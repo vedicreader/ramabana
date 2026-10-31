@@ -99,7 +99,7 @@ def tmux_conf(version):
     return TMUX_CONF + ''.join(f'{l}\n' for v, l in VERSIONED.items() if version >= v)
 
 # %% ../nbs/19_setup.ipynb #579428a9
-HOLD = r'set -m; eval "set -- $RAMABANA_ARGV"; "$@" || { s=$?; printf "\nramabana exited with status %s · enter closes this\n" $s; read _; exit $s; }'
+HOLD = r'set -m; "$@" || { s=$?; printf "\nramabana exited with status %s · enter closes this\n" $s; read _; exit $s; }'
 
 def prune_sockets(
     folder,              # a tmux socket folder, `$TMUX_TMPDIR/tmux-<uid>`
@@ -158,10 +158,10 @@ class Setup:
         return [*me, *args]
 
     def wrap(self):
-        "The `execvpe` arguments that rerun `command` on a tmux server of its own, with `command` in `$RAMABANA_ARGV`."
-        env = {**self.environ, env_prefixes()[0]+'WRAPPED': '1', 'RAMABANA_ARGV': shlex.join(self.command())}
+        "The `execvpe` arguments that rerun `command` on a tmux server of its own."
+        env = {**self.environ, env_prefixes()[0]+'WRAPPED': '1'}
         return self.tmux, ['tmux', '-L', f'{SOCKET}-{uuid.uuid4().hex[:8]}', '-f', str(self.conf()), 'new-session', '-s', SOCKET,
-                           '-c', self.cwd, 'sh', '-c', HOLD, 'ramabana'], env
+                           '-c', self.cwd, 'sh', '-c', HOLD, 'ramabana', *self.command()], env
 
     def launch(self,
         prompt='',     # a one-shot question stays in this terminal
