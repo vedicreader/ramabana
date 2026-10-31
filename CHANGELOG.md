@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.98
+- A background shell command that exits by itself now wakes an idle terminal session. Before, nothing reported the exit until the agent called `shell_output`. The next turn's `<background-results>` notice holds the command, its state, such as `exit 0`, and its last 60 lines of output.
+- The wake follows the rules for a finished background delegation. In `auto` and `edits` approval mode the agent continues the work. In `ask` and `off` mode it reports the result and changes no file. The `auto_turns` setting overrides this, and the hourly wake cap applies.
+- A command that `shell_stop` killed does not wake the session. A `!COMMAND` line that you type does not wake it either.
+- `WorkspaceHost.on_cmd_done` is the new hook. It gets the run id, the command, its state and its output. `Agent.shell_done` queues the exit as finished background work.
+- The resume list opens faster. `ramabana --resume`, `--resume latest` and `/sessions` read the session index once. Before, they read it once for each saved session. With 311 sessions, the folder filter took 284 ms before and takes 4 ms now.
+
 ## 0.2.97
 - A new agent tool, `work_together(on=True, partners='', until='')`, turns work together mode on or off for the session. The agent calls it when you tell it to work with peers. In `auto` approval mode it runs without a question. `ask` and `edits` ask you, and `off` refuses it. While the mode is on, an ask from a partner runs without a question to you.
 - A turn that a peer message reached cannot call `work_together`. A peer message reaches a turn as its prompt, as a note kept for the next prompt, steered into the running turn, or as the reply a `tell(..., wait=N)` waited for. `Agent.peer_turn` records it for each turn.
