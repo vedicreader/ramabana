@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.99
+- Ramabana now removes dead tmux sockets before it starts its own tmux server. A tmux server leaves its socket file in `/tmp/tmux-<uid>` when it exits, even after `tmux kill-server`. Before, each session left one file there.
+- New `prune_sockets(folder, prefix='ramabana-', age=5)` removes each socket that refuses a connection, because no server listens on it. It keeps live sockets, the sockets of other programs, and sockets younger than `age` seconds. A server that is still starting refuses connections for a moment.
+- The tmux client no longer has the Ramabana command line in its arguments. `Setup.wrap` puts the command line in `$RAMABANA_ARGV`, and the pane wrapper `HOLD` reads it from there. A tool that reads process arguments, such as Sanketa, now finds Ramabana in the pane only, not also in the tmux client.
+
 ## 0.2.98
 - A background shell command that exits by itself now wakes an idle terminal session. Before, nothing reported the exit until the agent called `shell_output`. The next turn's `<background-results>` notice holds the command, its state, such as `exit 0`, and its last 60 lines of output.
 - The wake follows the rules for a finished background delegation. In `auto` and `edits` approval mode the agent continues the work. In `ask` and `off` mode it reports the result and changes no file. The `auto_turns` setting overrides this, and the hourly wake cap applies.
