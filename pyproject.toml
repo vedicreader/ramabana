@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-search = ["vishalakshi>=0.1.35",   # note(key=), folder watches, age/stale; 0.1.35 litesearch 0.1.61
+search = ["vishalakshi>=0.1.36",   # note(key=), folder watches, age/stale; 0.1.35 litesearch 0.1.61; 0.1.36 shelves() skips stores of names, Vault() reads $VISHALAKSHI_VAULT
           "litesearch>=0.1.61", "koshas>=0.1.18",   # koshas 0.1.18 indexes the lang filter
           "rgapi>=0.1.23", "fossick>=0.1.22"]   # 0.1.22 plain HTTP verifies TLS and checks each redirect; 0.1.21 cart actions add the requested variant once; 0.1.20 Chrome and gh_clone git get /dev/null as stdin
 serve = ["mcp>=1.29.1"]

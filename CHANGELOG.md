@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.100
+- A Swift file no longer prints a panic on each redraw. fastpylight 0.1.19 fails to start its Swift highlighter; after the first failure, each later call printed `LazyLock instance has previously been poisoned`. Ramabana now remembers a language whose tokenizer raises `RuntimeError` and stops calling it. The first panic still prints once.
+- `tokens(code, lang)` keeps the failed languages in `FAILED_LANGS`. A diff in a failed language uses plain line colour. A chat code fence in a failed language uses pygments. An unknown language still raises `ValueError`.
+- The `search` extra needs vishalakshi 0.1.36. In that version `shelves()` leaves out stores of names, such as a graph's `entities` table, so a search no longer logs `no such table: entities_docs`. `Vault()` with no path opens the file `$VISHALAKSHI_VAULT` names.
+
 ## 0.2.99
 - Ramabana now removes dead tmux sockets before it starts its own tmux server. A tmux server leaves its socket file in `/tmp/tmux-<uid>` when it exits, even after `tmux kill-server`. Before, each session left one file there.
 - New `prune_sockets(folder, prefix='ramabana-', age=5)` removes each socket that refuses a connection, because no server listens on it. It keeps live sockets, the sockets of other programs, and sockets younger than `age` seconds. A server that is still starting refuses connections for a moment.

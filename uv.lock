@@ -4090,10 +4090,10 @@ requires-dist = [
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.4,<0.1.5" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.4,<0.1.5" },
     { name = "uraiyadal", specifier = ">=0.0.19" },
-    { name = "vishalakshi", marker = "extra == 'all'", specifier = ">=0.1.35" },
-    { name = "vishalakshi", marker = "extra == 'cli'", specifier = ">=0.1.35" },
-    { name = "vishalakshi", marker = "extra == 'dev'", specifier = ">=0.1.35" },
-    { name = "vishalakshi", marker = "extra == 'search'", specifier = ">=0.1.35" },
+    { name = "vishalakshi", marker = "extra == 'all'", specifier = ">=0.1.36" },
+    { name = "vishalakshi", marker = "extra == 'cli'", specifier = ">=0.1.36" },
+    { name = "vishalakshi", marker = "extra == 'dev'", specifier = ">=0.1.36" },
+    { name = "vishalakshi", marker = "extra == 'search'", specifier = ">=0.1.36" },
 ]
 provides-extras = ["abhyasa", "all", "cli", "dev", "dhrona", "search", "serve"]
 
@@ -5055,7 +5055,7 @@ wheels = [
 
 [[package]]
 name = "vishalakshi"
-version = "0.1.35"
+version = "0.1.36"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastcore" },
@@ -5075,9 +5075,9 @@ dependencies = [
     { name = "varga" },
     { name = "vruksha" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cf/d9/910453d6c6e8bb81c6227c0a24158e8024f2cb06a943525e5a9d00425cce/vishalakshi-0.1.35.tar.gz", hash = "sha256:b7facd54fce4f5ee50dce8809fe02046b9a5647eb3cac78e7e0c1954588fa847", size = 117182, upload-time = "2026-10-25T08:06:51.123Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/30/26/c3453443a20b7680d53a6780b3df51ba6c9b0eae0fd6b8f190aa7088a822/vishalakshi-0.1.36.tar.gz", hash = "sha256:7336506aad9fd93535ca5d4fd0ab1d20f3e3a5286f854f7306146c564e070905", size = 117398, upload-time = "2026-10-31T06:38:32.436Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/07/904d5a28be386773b4781caa5f4c44ddcebe4e42bc7412a24af7c5e69eae/vishalakshi-0.1.35-py3-none-any.whl", hash = "sha256:c291b3d4faad0cf0a7f831bbcc11d383f314fa1557311797c3dd4cfaba9738e6", size = 117363, upload-time = "2026-10-25T08:06:49.684Z" },
+    { url = "https://files.pythonhosted.org/packages/23/c2/c0ecd5146c893bf47c5ff37077d4581da8ea8f48d40aa47edd94fcacdb03/vishalakshi-0.1.36-py3-none-any.whl", hash = "sha256:d6a3bdb1c32352e946b38fd7b915fcdf3a1c5fb196c449a1f949c2d225931b62", size = 117596, upload-time = "2026-10-31T06:38:31.044Z" },
 ]
 
 [[package]]
