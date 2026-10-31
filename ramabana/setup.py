@@ -99,7 +99,7 @@ def tmux_conf(version):
     return TMUX_CONF + ''.join(f'{l}\n' for v, l in VERSIONED.items() if version >= v)
 
 # %% ../nbs/19_setup.ipynb #579428a9
-HOLD = r'eval "set -- $RAMABANA_ARGV"; "$@" || { s=$?; printf "\nramabana exited with status %s · enter closes this\n" $s; read _; exit $s; }'
+HOLD = r'set -m; eval "set -- $RAMABANA_ARGV"; "$@" || { s=$?; printf "\nramabana exited with status %s · enter closes this\n" $s; read _; exit $s; }'
 
 def prune_sockets(
     folder,              # a tmux socket folder, `$TMUX_TMPDIR/tmux-<uid>`
