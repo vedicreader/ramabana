@@ -17,8 +17,8 @@ from fastcore.basics import patch
 from shalya import acts, err
 from .core import agent_err
 from .agent import TurnResult, model_title
-from .peers import (CONTROL, Envelope, _atomic_write, _rows, all_peers, answer, control_call, guard_of, is_partner, limit_refusal, next_hops, peer_lines, peer_text,
-                            peers_dir, take, together_off, together_state, tell as send)
+from .peers import (CONTROL, Envelope, _atomic_write, _hhmm, _rows, all_peers, answer, control_call, guard_of, is_partner, limit_refusal, next_hops, peer_lines, peer_text,
+                            peers_dir, take, together_off, together_on, together_state, tell as send)
 from .peer_report import save_report
 
 # %% ../nbs/20_control.ipynb #9c6353b2
@@ -302,12 +302,14 @@ def _save_report(self:Control, since):
 
 @patch
 def user_back(self:Control):
-    "End work together mode, as the user typed: whether a mode ended since the user left, and the report saved when it ended, or None."
+    "What the user missed, as the user typed: whether a work together mode ended since the user last looked, and the report saved when it ended, or None. The mode stays on."
     with self._lock:
-        seen, self._seen = self._seen, None
-        on = together_state(self.d, self.key) is not None and together_off(self.d, self.key) is not None
+        together_state(self.d, self.key)   # a mode past its end time ends here and leaves `<key>.ended`
+        mark = self.d/f'{self.key}.ended'
+        expired = mark.exists()
+        mark.unlink(missing_ok=True)
     p, self.report = self.report, None
-    return bool(on or seen or p), p
+    return bool(expired or p), p
 
 # %% ../nbs/20_control.ipynb #c74ae65b
 PEER_WAIT = 2   #: seconds a peer has to answer `status` before `peers_of` leaves it out
@@ -334,7 +336,7 @@ def note_peer(agent, row, text, kind='note', wait=0):
     return send(row['key'], text, kind, self_frm(agent), wait=wait, cfg=agent.cfg)
 
 def peer_tools(agent):
-    "`peers()` and `tell()`: the agent's tools for reaching the other live sessions."
+    "`peers()`, `tell()` and `work_together()`: the agent's tools for reaching the other live sessions."
     shown = []
     def peers() -> str:
         "List the other live sessions, numbered, most recently active first: name, state, folder, session id and kind (ramabana, claude or codex)."
@@ -355,8 +357,24 @@ def peer_tools(agent):
             row = find_peer(shown, session)
         if row is None: return err(f'no live session {session!r}; peers() lists them')
         wait = wait if kind == 'ask' else 0
-        if wait: agent.peer_waits.add(row['key'])
+        if wait: agent.peer_waits.add(row['key']); agent.peer_turn = True   # the reply is a peer's text
         try: return note_peer(agent, row, text, kind, wait)
         except (LookupError, ValueError) as e: return err(str(e))
         finally: agent.peer_waits.discard(row['key'])
-    return [peers, tell]
+    @acts
+    def work_together(
+        on: bool = True,     # False ends it
+        partners: str = '',  # comma-separated session names; empty means every peer
+        until: str = '',     # 'HH:MM' local time; empty means `TOGETHER_HOURS` hours
+    ) -> str:
+        "Turn work together mode on or off for this session when the user tells you to work with peers. While it is on, a partner's ask runs without asking the user. Auto approval mode runs this tool unasked; `ask` and `edits` ask the user. A turn that a peer message reached cannot change it."
+        if agent.peer_turn: return err('a peer message reached this turn; only the user turns work together mode on or off')
+        ap = agent.approvals
+        if ap is not None and not ap.request('work_together', dict(on=on, partners=partners, until=until), force=True).answer: return err('work together refused')
+        d, key = peers_dir(agent.cfg), f'ramabana-{agent.session_id}'
+        if not on: return 'work together ended' if together_off(d, key) else 'work together was off'
+        names = [s.strip() for s in partners.split(',') if s.strip()]
+        try: st = together_on(d, key, names, until or None)
+        except ValueError: return err(f'bad time {until!r}: use HH:MM')
+        return f"work together until {_hhmm(st['until'])}" + (f" with {', '.join(names)}" if names else ' with every peer')
+    return [peers, tell, work_together]

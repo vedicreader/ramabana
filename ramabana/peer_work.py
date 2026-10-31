@@ -51,7 +51,7 @@ Two roles exist. The worker does the work. The owner holds the repo. One session
 ## Work together mode
 
 - `ramabana together on` lets those sessions send asks to you without approval. Add `--with A,B` to name them. Add `--until HH:MM` to set the end. Without `--until`, it ends after 12 hours.
-- `ramabana together off` ends it. `ramabana together status` shows it. It also ends when the user types in your session.
+- `ramabana together off` ends it. `ramabana together status` shows it. In Claude Code and Codex it also ends when the user types. In Ramabana it stays on, and `work_together()` turns it on or off when the user tells you to work with peers.
 - `ramabana report` shows what the sessions did: changes, proof and the user's action list.
 
 Docs: https://vedicreader.github.io/ramabana/peer_work.html.md"""

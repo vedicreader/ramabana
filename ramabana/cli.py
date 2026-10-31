@@ -563,7 +563,7 @@ CARD = dict(
     options=("↑/↓ move · enter choose · an option's own letter picks it · esc cancel and keep the line", ''),
     shell=('', 'ctrl+c interrupts it, twice kills it'), plan=('', 'the plan survives stop and /resume'),
     setup=('', ''), extra=('', ''), subagent=('', 'each with --save to keep it · tab completes them'),
-    talk=('', 'tab completes main and the running ids'), peers=('', 'a typed line ends work together mode'), tasks=('', ''),
+    talk=('', 'tab completes main and the running ids'), peers=('', '/together off ends work together mode'), tasks=('', ''),
     api=('start with --spec · then api_load URL-or-path · api_ops · api_call', ''))
 
 _SHOWN = dict(up='↑', down='↓', left='←', right='→', pageup='pgup', pagedown='pgdn', escape='esc')
@@ -3733,7 +3733,7 @@ def welcome_back(self:Ui, ended, report):
 _submit_together = Ui.submit
 @patch
 def submit(self:Ui):
-    "Handle `/together`; any other typed line ends work together mode, because the user is back, and shows its report."
+    "Handle `/together`; any other typed line shows the report of a work together mode that ended while the user was away, and leaves a mode that is on running."
     line = self.buf.text.strip()
     if line == '/together' or line.startswith('/together '):
         self.buf.clear()

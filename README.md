@@ -357,10 +357,10 @@ The gate covers every tool with an effect:
 
 - files: `replace_text`, `create_file`, `edit_cell`, `add_cell`, and `edit_file` when `--optin exhash` offers it
 - code: `run_python`, `run_shell`, `run_shell_bg`
-- git: `git_commit`, `git_checkout`, `git_stash`, `git_remote`
+- git: `git_commit`, `git_checkout`, `git_stash`, `git_remote`, `git_sync`, `git_conflicts`
 - the rest: `memory_forget`, `create_skill`, `cancel_watch`, `add_root`
 
-Git goes through those tools. `run_shell` refuses `git commit|push|pull|fetch|stash|switch|checkout` and names the tool to use. Ramabana snapshots every git write so `/rewind` can undo it. When the same gated call comes three times running, Ramabana asks you rather than run or refuse it again, whatever the mode.
+Git goes through those tools. Merge or rebase with `git_sync`, not `run_shell`. Settle conflicts with `git_conflicts`, and `git_status` shows the plan. `run_shell` refuses `git commit|push|pull|fetch|stash|switch|checkout|merge|rebase` and names the tool to use. Ramabana snapshots every git write so `/rewind` can undo it. When the same gated call comes three times running, Ramabana asks you rather than run or refuse it again, whatever the mode.
 
 ## The folders it can touch
 
@@ -486,7 +486,7 @@ ramabana tell sanketa "The Card API moved to v2"
 ramabana tell --ask --wait 120 sanketa "Add a Card part"
 ```
 
-Work together mode lets the named sessions send you asks without a question to the user. Each session keeps its own permission mode. The mode ends at the set time, after 12 hours if you set no time, or when you type in the session:
+Work together mode lets the named sessions send you asks without a question to the user. Each session keeps its own permission mode. The mode ends at the set time, after 12 hours if you set no time, or with `ramabana together off`. In a Claude Code or Codex session it also ends when you type. In a Ramabana session, `/together on` starts it, and so does telling the agent to work with peers: the agent calls its `work_together` tool. In `auto` permission mode the tool runs without a question; `ask` and `edits` ask you. A turn that a peer message reached cannot call it:
 
 ``` sh
 ramabana together on --with abhyasa,leela --until 07:00

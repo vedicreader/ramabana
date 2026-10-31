@@ -10,7 +10,7 @@ import ramabana.cli as cli
 import ramabana.control as control
 from ramabana.agent import Approvals
 from ramabana.control import Control, control_call, peer_tools, self_frm
-from ramabana.peers import HOP_MAX, PEER_BUDGET, PEER_NOTE, TOGETHER_HOURS, Envelope, answer, folder_denial, log, peers_dir, post, register, take, together_on, together_state
+from ramabana.peers import HOP_MAX, PEER_BUDGET, PEER_NOTE, TOGETHER_HOURS, Envelope, answer, folder_denial, log, peer_text, peers_dir, post, register, take, together_on, together_state
 from ramabana.testing import FakeBackend, MemHost, fake_agent
 from ramabana.tools import WRITE_TOOLS, failed
 
@@ -204,7 +204,7 @@ def test_ramabana_in_git_repo_guards_it(cfg, tmp_path):
 def test_tell_tool_sends_ask_envelope(cfg):
     agent, _ = fake_agent(cfg=cfg)
     ctl = Control(agent).start()
-    peers, tell = peer_tools(agent)
+    peers, tell, _ = peer_tools(agent)
     try:
         assert 'claude' in peers()
         assert failed(tell('s1', 'hi', kind='steer'))
@@ -220,7 +220,7 @@ def test_tell_tool_sends_ask_envelope(cfg):
         t.start()
         assert tell('s1', 'and a Badge part', kind='ask', wait=10) == 'done\nproof: pytest: ok'
         t.join(10)
-        assert agent.peer_notes == []
+        assert agent.peer_notes == [] and agent.peer_turn, 'a waited reply is a peer message in this turn'
     finally: ctl.close()
 
 
@@ -239,8 +239,8 @@ def test_mode_end_saves_report(cfg, monkeypatch):
     finally: ctl.close()
 
 
-def test_typed_line_ends_together_mode(cfg):
-    agent, _ = fake_agent(cfg=cfg, replies=['hi'])
+def test_typed_line_keeps_together_mode_and_shows_one_that_ended(cfg):
+    agent, _ = fake_agent(cfg=cfg, replies=['hi', 'hi'])
     tty = EmuTty(100, 30)
     comp = Compositor(tty); comp._register_signals = lambda: None
     said = lambda u: '\n'.join(u.transcript.block_text(b) for b in u.comp.blocks.values())
@@ -249,16 +249,58 @@ def test_typed_line_ends_together_mode(cfg):
         u = cli.Ui(comp, agent, loop=asyncio.get_running_loop())
         ctl = cli.start_control(u)
         try:
+            async def typed(line):
+                u.buf.text = line
+                if (out := u.submit()) is not None: u.start_turn(out)
+                for _ in range(200):
+                    if u.turn is None: break
+                    await asyncio.sleep(.05)
             together_on(ctl.d, ctl.key)
-            u.buf.text = 'I am back'
-            if (out := u.submit()) is not None: u.start_turn(out)
-            assert together_state(ctl.d, ctl.key) is None and 'ramabana report' in said(u)
-            for _ in range(200):
-                if u.turn is None: break
-                await asyncio.sleep(.05)
+            await typed('I am back')
+            assert together_state(ctl.d, ctl.key) is not None and 'ramabana report' not in said(u), 'only /together off, the tool or the end time ends it'
+            together_on(ctl.d, ctl.key, now=time.time() - TOGETHER_HOURS*3600 - 1)
+            await typed('what did the peers do?')
+            assert together_state(ctl.d, ctl.key) is None and 'ramabana report' in said(u), 'a typed line shows a mode that ended while the user was away'
         finally: ctl.close()
     try: asyncio.run(asyncio.wait_for(go(), 30))
     finally: tty.close()
+
+
+def test_work_together_tool_runs_in_auto_mode_asks_otherwise_and_never_for_a_peer(cfg):
+    ap = Approvals(tools=WRITE_TOOLS, mode='auto')
+    seen = []
+    ap.listen(seen.append)
+    agent, _ = fake_agent(cfg=cfg, approvals=ap)
+    *_, work_together = peer_tools(agent)
+    d, key = peers_dir(cfg), f'ramabana-{agent.session_id}'
+    assert work_together(partners='leela, abhyasa').startswith('work together until') and ap.waiting == [], 'auto mode asks no one'
+    assert together_state(d, key)['partners'] == ['leela', 'abhyasa']
+    assert failed(work_together(until='25:00'))
+    agent.peer_turn = True
+    assert failed(work_together(on=False)) and together_state(d, key) is not None, 'a turn a peer message reached cannot change the mode'
+    agent.peer_turn = False
+    ap.set_mode('ask')
+    got = []
+    t = threading.Thread(target=lambda: got.append(work_together(on=False)), daemon=True)
+    t.start()
+    [a] = _until(lambda: seen, 'the approval')
+    ap.answer(a.id, False, 'not now')
+    t.join(10)
+    assert a.tool == 'work_together' and failed(got[0]) and together_state(d, key) is not None, 'ask mode asks the user'
+    ap.set_mode('auto')
+    assert work_together(on=False) == 'work together ended' and together_state(d, key) is None
+
+
+def test_peer_turn_marks_each_turn_a_peer_message_reached(cfg):
+    agent, _ = fake_agent(cfg=cfg, replies=['a', 'b', 'c'])
+    to = f'ramabana-{agent.session_id}'
+    agent.ask(peer_text(Envelope('ask', 'add a Card part', FRM, to)))
+    assert agent.peer_turn, 'an ask is the prompt'
+    agent.ask('go on')
+    assert not agent.peer_turn, 'each turn starts unmarked'
+    agent.peer_notes.append(Envelope('note', 'the Card API moved', FRM, to))
+    agent.ask('go on')
+    assert agent.peer_turn, 'a kept note joins the prompt'
 
 
 def test_peer_ask_always_asks_a_person(cfg):

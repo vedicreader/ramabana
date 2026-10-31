@@ -143,7 +143,7 @@ def test_peers_and_tell_between_two_agents_in_one_process():
     other.events_to(other.runs_dir/'events.jsonl')   # as a terminal session does
     ctls = [Control(other).start(), Control(me).start()]
     try:
-        peers, tell = peer_tools(me)
+        peers, tell, _ = peer_tools(me)
         listed = peers()
         assert listed.startswith('1  other') and listed.endswith('ramabana') and other.session_id in listed and me.session_id not in listed, listed
         refused = tell(1, 'start something', kind='ask', wait=10)

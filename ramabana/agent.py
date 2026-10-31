@@ -48,7 +48,7 @@ from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, Too
                             err, failed, find, load, read_only, skill_index, subagent_tools,
                             tools_for, Background, Slots, SUB_MAX_STEPS, SUB_STEP_CEILING, SUB_TIMEOUT, SUB_READ_ONLY, parse_plan_items, GIT_WRITE_TOOLS, small_tool, read_pictures, path_write, write_targets, inbox_note, _inboxed, STATUS_NOTE, status_tool, keep_media, picture_mime)
 from .monitor import _counts, _rel, Monitors, POB_READER, beat_join, beat_notes, beat_notice, beat_problems, pob, pob_path, review_notice
-from .peers import all_peers, folder_denial, guard_of, peer_text
+from .peers import PEER_MARK, all_peers, folder_denial, guard_of, peer_text
 from .history_core import (HISTORY_TAIL, HISTORY_TURNS, LEGACY_GAP, MAX_SPANS, _log_turn,
     hydrate_turns, request_text, request_body, _cut_title, request_title, _add_span, _join_spans,
     _set_spans, _index_from_log, _index_from_history)
@@ -1325,6 +1325,7 @@ class Agent:
         self.poll_every, self._polled, self._poll_thread = float(poll_every or 0), 0.0, None
         self._watch_found, self._watch_lock = [], threading.Lock()
         self.peer_notes, self.peer_waits = [], set()   #: peer notes and replies kept for the next turn; the peers a `tell` waits on for a reply
+        self.peer_turn = False   #: whether a peer message reached this turn: as its prompt, as a kept note, or steered in
         self._peer_rows, self._peer_rows_at = [], float('-inf')
         self.turn_ends = []   #: callables given each turn's log row once it is recorded, however the turn ended
         self.git_undo = {}       # turn id -> its git writes and `undo` tokens
@@ -1362,6 +1363,7 @@ class Agent:
     def _heard_steer(self, msgs):
         "Record steering messages that went to the model with a tool result."
         self._steered.extend(msgs)
+        if any(PEER_MARK in str(m) for m in msgs): self.peer_turn = True
         self._event('steer', turn_id=self.current_turn_id, messages=list(msgs))
 
     def _ask_kept(self, ask):
@@ -2842,6 +2844,7 @@ def peer_notice(self:Agent):
     "The peer messages kept since the last turn, as one `<peer-messages>` block, or ''."
     got = []
     while self.peer_notes: got.append(self.peer_notes.pop(0))
+    if got: self.peer_turn = True
     return '\n\n<peer-messages>\n' + '\n'.join(map(peer_text, got)) + '\n</peer-messages>' if got else ''
 
 # %% ../nbs/03_agent.ipynb #45435c30
@@ -2948,6 +2951,7 @@ def _begin_turn(self:Agent, run=None):
     self._budget_hit, self._budget_cap, self._rates = '', None, {}
     self._tool_calls_turn = 0
     self._steered = []
+    self.peer_turn = PEER_MARK in str(request_text(getattr(run, 'question', '')))
     self.turn_seq += 1
     self.current_turn_id = f'{self.session_id}:turn_{self.turn_seq:06d}'
     self.activity.mark(self.current_turn_id)
