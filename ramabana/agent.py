@@ -16,9 +16,9 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS',
            'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'SOFT_CAPS', 'HARD_CAPS',
            'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN',
-           'EST_RATE', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE',
-           'CTX_AFTER', 'BRANCH_POLICIES', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
-           'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
+           'EST_RATE', 'UNREAD', 'HALT_POLL', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS',
+           'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md',
+           'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
            'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons', 'learned_context',
            'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
            'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
@@ -3626,15 +3626,6 @@ def stream_with(self:Agent, prompt, context='', screen='', image=None, context_p
     "The same turn, as an iterator of markdown chunks."
     return self.stream(self.compose(prompt, context, screen, image, context_path), **kw)
 
-# %% ../nbs/03_agent.ipynb #3482d795
-@patch
-def cancel(self:Agent):
-    "Stop the active turn. Returns whether one was running."
-    running = self.busy
-    if self.approvals is not None: self.approvals.cancel_all('the turn was stopped')
-    self._be('turn').cancel()
-    return running
-
 # %% ../nbs/03_agent.ipynb #7e4133d5
 @patch
 def close(self:Agent):
@@ -4366,8 +4357,13 @@ def ask(self:Agent, prompt,
         schema=None,   # a type pydantic validates, or a JSON schema dict: the model hands back a value of it through `submit_result`
         result=False,  # return a `TurnResult` rather than the reply text
         strict=False,  # raise `TurnFailed` for a turn that did not complete, and `ResultMissing` for a `schema` never filled
+        deadline=None, # seconds the turn may take, as for `oneshot`; then it is cancelled with `halt`
+        stop=None,     # a `threading.Event`; once it is set, the turn is cancelled with `halt`
         **kw):
-    "One registered turn. A stopped turn is recorded and not replayed. Without `schema`, `result` or `strict`, it returns the reply text, a dict when the turn was stopped, or a failure note."
+    "One registered turn. A stopped turn is recorded and not replayed. Without `schema`, `result` or `strict`, it returns the reply text, a dict when the turn was stopped, or a failure note. Past `deadline`, or once `stop` is set, the turn, its sub-agents and the side runs are cancelled."
+    if deadline is not None or stop is not None:
+        _check_deadline(deadline)
+        with self._watched(deadline, stop): return self.ask(prompt, schema=schema, result=result, strict=strict, **kw)
     if schema is None and not result and not strict: return self._ask_once(prompt, **kw)
     if schema is not None and not self._offered('submit_result'):
         raise ValueError("an `ask` with a `schema` hands its result back through the `submit_result` tool, which `only_tools` leaves out; add 'submit_result' to `only_tools`")
@@ -4580,6 +4576,35 @@ def cancel(self:Agent, run_id='', grace=None):
     run.cancel(self.cancel_grace if grace is None else grace)
     self._release_run(run)
     return run.dict()
+
+def _stop_tree(r):
+    "Ask `r` to stop, or each live run under a finished `r`, with no wait. How many runs were asked."
+    if not r.terminal and not r.cancelled:
+        r.request_cancel()
+        return 1
+    return sum(_stop_tree(c) for c in list(r.children))
+
+@patch
+def halt(self:Agent):
+    "Cancel the turn, its run tree and the side runs (background delegations and monitor reviews), each with its children, and wait for none. Return how many runs stopped."
+    with getattr(self, '_runs_lock', threading.RLock()): roots = list(_run_store(self).values())
+    live = [r for r in (*roots, *self._side_runs()) if _live(r)]
+    if live and self.approvals is not None: self.approvals.cancel_all('the run was stopped')
+    return sum(_stop_tree(r) for r in live)
+
+HALT_POLL = .05   #: seconds between two looks at a turn's `deadline` and `stop`
+
+@patch
+@contextlib.contextmanager
+def _watched(self:Agent, deadline=None, stop=None):
+    "Inside the block, `halt` the agent once `deadline` seconds pass or `stop` is set. It looks again each `HALT_POLL` seconds, so a run that starts later is stopped too."
+    end, done = None if deadline is None else time.monotonic() + deadline, threading.Event()
+    def watch():
+        while not done.wait(HALT_POLL):
+            if (stop is not None and stop.is_set()) or (end is not None and time.monotonic() >= end): self.halt()
+    threading.Thread(target=watch, daemon=True, name='ramabana-halt').start()
+    try: yield
+    finally: done.set()
 
 @patch
 def terminate(self:Agent, run_id=''):
