@@ -33,7 +33,7 @@ from fastcore.all import Path, atomic_save, first
 from shalya.host import HostError
 from .setup import CHANNELS, EFFORTS, ENV_DEFAULT, PII_MODES, PII_OFF, PROFILES, config_path, keys_path, load_keys, model_setting, setting
 import urai, rishi.core   # registers rishi's backends with urai
-from .models import CATALOG, claude_ids, claude_aliases, provider_models
+from .models import CATALOG, claude_ids, claude_aliases, model_label, provider_models, vendor_of
 from dataclasses import dataclass, field, replace
 
 # %% ../nbs/00_core.ipynb #2049138c
@@ -476,10 +476,12 @@ def _at_once(fns):
     return [None if isinstance(o, Exception) else o for o in out]
 
 def _facts(row):
-    "`row` with what its `value` resolves to: `local`, whether it runs on this machine, and its `model_id`."
-    try: spec = resolve(row['value'])
-    except Exception: return {**row, 'local': row['provider'] in ('litert', 'mlx', 'llama'), 'model_id': ''}
-    return {**row, 'local': spec.local, 'model_id': spec.model_id}
+    "`row` with what its `value` resolves to: `local`, whether it runs on this machine, and its `model_id`; then `name` from `model_label` and `vendor` from `vendor_of`."
+    v = row['value']
+    name = model_label(v, {**LOCAL, **MLX, **LLAMA}.get(v, ''))
+    try: spec = resolve(v)
+    except Exception: return {**row, 'local': row['provider'] in ('litert', 'mlx', 'llama'), 'model_id': '', 'name': name, 'vendor': ''}
+    return {**row, 'local': spec.local, 'model_id': spec.model_id, 'name': name, 'vendor': '' if spec.local else vendor_of(v)}
 
 def _model_rows(include_legacy=False):
     "Every row of `available_models`, asked now. The slow probes start together: ollama's list, Copilot's catalogue, the sign-ins and each vendor's live list."
@@ -983,25 +985,25 @@ class Routing:
         return '\n'.join(rows)
 
 # %% ../nbs/00_core.ipynb #1604ccee
-#: what each provider needs, and a config.toml that uses it; `provider_ready` says which are set up here.
+#: what each provider needs, the company behind it, and a config.toml that uses it; `provider_ready` says which are set up here.
 #: `/login` runs `login`, the provider's own sign-in, after `install` when its program is missing, and asks for the key in `env`
 PROVIDERS = (
-    dict(key='claude', label='Claude Code subscription', needs='Claude Code installed and `claude /login`', example='[jobs]\nturn = "claude-opus-5-5"',
+    dict(key='claude', vendor='Anthropic', label='Claude Code subscription', needs='Claude Code installed and `claude /login`', example='[jobs]\nturn = "claude-opus-5-5"',
          login=('claude', 'auth', 'login'), install='curl -fsSL https://claude.ai/install.sh | bash'),
-    dict(key='codex', label='Codex (ChatGPT) subscription', needs='`codex login`', example='[jobs]\nsummary = "gpt-6-luna"',
+    dict(key='codex', vendor='OpenAI', label='Codex (ChatGPT) subscription', needs='`codex login`', example='[jobs]\nsummary = "gpt-6-luna"',
          login=('codex', 'login'), install='npm install -g @openai/codex (with Node.js 18 or later)'),
-    dict(key='openai', label='OpenAI API', needs='OPENAI_API_KEY', example='[jobs]\nturn = "gpt-5.4"', env='OPENAI_API_KEY'),
-    dict(key='azure', label='Azure OpenAI', needs='AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY', example='[jobs]\nturn = "azure/<deployment>"', env='AZURE_OPENAI_API_KEY'),
-    dict(key='bedrock', label='AWS Bedrock, OpenAI-compatible (Mantle) endpoint', needs='AWS_BEARER_TOKEN_BEDROCK, a Bedrock API key', env='AWS_BEARER_TOKEN_BEDROCK',
+    dict(key='openai', vendor='OpenAI', label='OpenAI API', needs='OPENAI_API_KEY', example='[jobs]\nturn = "gpt-5.4"', env='OPENAI_API_KEY'),
+    dict(key='azure', vendor='Microsoft', label='Azure OpenAI', needs='AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY', example='[jobs]\nturn = "azure/<deployment>"', env='AZURE_OPENAI_API_KEY'),
+    dict(key='bedrock', vendor='Amazon', label='AWS Bedrock, OpenAI-compatible (Mantle) endpoint', needs='AWS_BEARER_TOKEN_BEDROCK, a Bedrock API key', env='AWS_BEARER_TOKEN_BEDROCK',
          example='[model."bedrock-gpt"]\nmodel_id = "openai.gpt-5.4"\nbase_url = "https://bedrock-mantle.<region>.api.aws/v1"\napi_key_env = "AWS_BEARER_TOKEN_BEDROCK"\napi_name = "openai"\n\n[jobs]\nturn = "bedrock-gpt"'),
-    dict(key='anthropic', label='Anthropic API', needs='ANTHROPIC_API_KEY', example='[jobs]\nturn = "anthropic/<model>"', env='ANTHROPIC_API_KEY'),
-    dict(key='gemini', label='Gemini API', needs='GEMINI_API_KEY', example='[jobs]\nturn = "gemini/<model>"', env='GEMINI_API_KEY'),
-    dict(key='openrouter', label='OpenRouter', needs='OPENROUTER_API_KEY', example='[jobs]\nturn = "openrouter/<vendor>/<model>"', env='OPENROUTER_API_KEY'),
-    dict(key='copilot', label='GitHub Copilot subscription', needs='a Copilot sign-in', example='[jobs]\nturn = "copilot/<model>"',
+    dict(key='anthropic', vendor='Anthropic', label='Anthropic API', needs='ANTHROPIC_API_KEY', example='[jobs]\nturn = "anthropic/<model>"', env='ANTHROPIC_API_KEY'),
+    dict(key='gemini', vendor='Google', label='Gemini API', needs='GEMINI_API_KEY', example='[jobs]\nturn = "gemini/<model>"', env='GEMINI_API_KEY'),
+    dict(key='openrouter', vendor='OpenRouter', label='OpenRouter', needs='OPENROUTER_API_KEY', example='[jobs]\nturn = "openrouter/<vendor>/<model>"', env='OPENROUTER_API_KEY'),
+    dict(key='copilot', vendor='GitHub', label='GitHub Copilot subscription', needs='a Copilot sign-in', example='[jobs]\nturn = "copilot/<model>"',
          login=(sys.executable, '-c', 'from rishi.copilot import copilot_login; copilot_login()')),
-    dict(key='custom', label='Any OpenAI-compatible endpoint', needs='its base URL, and an env var holding its key',
+    dict(key='custom', vendor='', label='Any OpenAI-compatible endpoint', needs='its base URL, and an env var holding its key',
          example='[model."mine"]\nmodel_id = "<model>"\nbase_url = "https://<host>/v1"\napi_key_env = "MY_API_KEY"\napi_name = "openai_chat"'),
-    dict(key='local', label='On this machine', needs='a local runtime: LiteRT ships with rishi; mlx, llama.cpp or ollama', example='[jobs]\nturn = "gemma-e4b"'))
+    dict(key='local', vendor='', label='On this machine', needs='a local runtime: LiteRT ships with rishi; mlx, llama.cpp or ollama', example='[jobs]\nturn = "gemma-e4b"'))
 
 def provider_ready(key, auth=None):
     "Whether provider `key`'s credential or runtime is on this machine. Chooses nothing."

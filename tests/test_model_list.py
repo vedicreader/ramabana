@@ -113,3 +113,21 @@ def test_auth_status_still_follows_the_environment(monkeypatch):
     assert not auth_status()['openai']['available']
     monkeypatch.setenv('OPENAI_API_KEY', 'sk-test')
     assert auth_status()['openai']['available']
+
+
+def test_each_row_has_a_name_and_a_vendor(machine):
+    rows = {r['value']: r for r in available_models()}
+    assert rows['claude/claude-opus-5-5']['name'] == 'Claude Opus 5.5' and rows['claude/claude-opus-5-5']['vendor'] == 'Anthropic'
+    assert rows['copilot/gpt-6-sol']['vendor'] == 'GitHub' and rows['openai/gpt-6-sol']['name'] == 'GPT-6 Sol'
+    assert rows['gemma-e4b']['name'] == 'Gemma 4 E4B' and rows['gemma-e4b']['vendor'] == '', 'a local model: named from its download, and no company'
+
+
+def test_model_label_and_vendor_of():
+    from ramabana.models import model_label, vendor_of
+    assert model_label('qwen3-4b') == 'Qwen 3 4B' and model_label('anthropic/claude-haiku-4-5-20251001') == 'Claude Haiku 4.5'
+    assert vendor_of('codex/gpt-6-sol') == 'OpenAI' and vendor_of('gemma-e4b') == ''
+
+
+def test_each_provider_names_its_company():
+    assert {p['key']: p['vendor'] for p in core.PROVIDERS}['gemini'] == 'Google'
+    assert all('vendor' in p for p in core.PROVIDERS)
