@@ -9,6 +9,7 @@
 - `copilot_catalog` and `provider_models` keep their lists on disk, so a new process shows the last list at once.
 - Each `available_models` row also has `local`, whether the model runs on this machine, and the `model_id` its `value` resolves to.
 - New `model_label(name, repo='')` gives a name people know: `claude-opus-5-5` gives `Claude Opus 5.5`, `qwen3-4b` gives `Qwen 3 4B`. New `vendor_of(name)` gives the company that hosts a model, such as `OpenAI` for `codex/gpt-6-sol`, or `''` for a local model. Each `available_models` row has `name` and `vendor`, and each `PROVIDERS` entry has `vendor`.
+- `Agent.oneshot(wait=True)` waits for a backend that another call holds, up to `deadline`, and does not answer `''`. `strict=True` raises the new `OneshotEmpty(job, why)` when no route answers; `why` names the routes set aside, or the route's note. `oneshot_stream` takes `wait` and `strict` too, and `fallback=True` gives a route that cannot stream as one chunk. `Backend.oneshot` and `oneshot_stream` take `wait`.
 - `forget_probes(disk=True)` removes every probe file in its folder, and each file this process wrote to another folder.
 
 ## 0.2.102

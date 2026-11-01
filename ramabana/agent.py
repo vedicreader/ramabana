@@ -40,7 +40,7 @@ from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import DFLT_TURN, needs_setup, accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
 from .setup import PANE_LINGER, config_path, follow_cmd, config_reset, config_set, config_show, load_config, set_table, setting
-from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block, done_items, OneshotTimeout, deadline_hit, cancel_hit, BudgetExceeded, cap_breach
+from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block, done_items, OneshotTimeout, OneshotEmpty, StreamUnsupported, deadline_hit, cancel_hit, BudgetExceeded, cap_breach
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
@@ -3853,9 +3853,25 @@ def oneshot(self:Agent, prompt, sp='', job='oneshot', max_tokens=None,
             fits=None,    # `fits(backend)`; a route it refuses ends the search with '' and is not set aside
             prepare=None, # `prepare(prompt, sp, backend)` returns the text for each route; a raised refusal stops the search
             deadline=None, # seconds the whole call may take, routing, `prepare` and fitting included
+            wait=False,   # wait for a backend another call holds, rather than answer ''
+            strict=False, # raise `OneshotEmpty`, which says why, rather than answer ''
 ):
-    "A question on whichever model `job` routes to, in a conversation that is thrown away. A cloud model that fails or answers nothing is set aside, and the question goes to `job`'s next route. Past `deadline` it raises `OneshotTimeout` and tries no other route. `prepare` is not interrupted: the deadline is checked when it returns. A route that cannot hold a `deadline` raises `DeadlineUnsupported` before it is asked."
+    "A question on whichever model `job` routes to, in a conversation that is thrown away. A cloud model that fails or answers nothing is set aside, and the question goes to `job`'s next route. Past `deadline` it raises `OneshotTimeout` and tries no other route. `prepare` is not interrupted: the deadline is checked when it returns. A route that cannot hold a `deadline` raises `DeadlineUnsupported` before it is asked. With `wait`, a busy backend is waited for, up to `deadline`. With `strict`, no answer raises `OneshotEmpty` with the routes set aside or the route's note."
     _check_deadline(deadline)
+    since = time.time()
+    out = Agent._one_shot(self, prompt, sp, job, max_tokens, fits, prepare, deadline, wait)   # through `Agent`, for a stand-in `self`
+    if strict and not out: raise OneshotEmpty(job, Agent._why_empty(self, job, since))
+    return out
+
+@patch
+def _why_empty(self:Agent, job, since):
+    "Why `job` got no answer: the routes set aside since `since`, else the note of its route."
+    notes = [f'{n} {w}' for n, (w, t) in self.routing.down.items() if t >= since] or [self.routing.notes.get(job, '')]
+    return '; '.join(n for n in notes if n) or 'no route answered'
+
+@patch
+def _one_shot(self:Agent, prompt, sp, job, max_tokens, fits, prepare, deadline, wait=False):
+    "The routes of `oneshot`."
     began, tried = time.monotonic(), set()
     while (b := self._be_or_none(job)) is not None and b.spec.name not in tried:
         if fits is not None and not fits(b): return ''
@@ -3867,7 +3883,7 @@ def oneshot(self:Agent, prompt, sp='', job='oneshot', max_tokens=None,
         rate = self._one_rate(b.spec)
         if (over := self._one_check(at=True)) is not None: raise over
         out, got = '', []
-        try: out = b.oneshot(text, briefing, max_tokens, job=job, if_busy=None, spent=got, **({} if left is None else {'deadline': left}))
+        try: out = b.oneshot(text, briefing, max_tokens, job=job, if_busy=None, spent=got, **({} if left is None else {'deadline': left}), **({'wait': True} if wait else {}))
         except Exception as e:
             if deadline_hit(e) and not isinstance(e, OneshotTimeout): raise OneshotTimeout(b.spec.name, time.monotonic() - began, e.stopped) from e
             raise
@@ -3884,13 +3900,34 @@ def oneshot_stream(self:Agent, prompt, sp='', job='oneshot', max_tokens=None,
                    fits=None,    # `fits(backend)`; a route it refuses ends the search with nothing yielded and is not set aside
                    prepare=None, # `prepare(prompt, sp, backend)` returns the text for each route; a raised refusal stops the search
                    deadline=None, # seconds the whole call may take, routing, `prepare` and fitting included
+                   wait=False,   # wait for a backend another call holds, rather than yield nothing
+                   strict=False, # raise `OneshotEmpty`, which says why, when no text comes
+                   fallback=False, # a route that cannot stream gives its whole reply as one chunk
 ):
-    "The text of `oneshot`'s reply as the model sends it, one chunk at a time. The next route is tried only while no text has come: a route that fails or says nothing is set aside, and one that has spoken is never followed by another. A timeout, a cancel, a failure after text and a budget stop are raised. Closing the iterator closes the model's stream. A route that cannot stream raises `StreamUnsupported`, and one that cannot hold a `deadline` raises `DeadlineUnsupported`, before it is asked. Different backends can run in parallel. Budgets are soft spend caps, not billing ceilings. Parallel calls can overshoot by the calls already in flight."
+    "The text of `oneshot`'s reply as the model sends it, one chunk at a time. The next route is tried only while no text has come: a route that fails or says nothing is set aside, and one that has spoken is never followed by another. A timeout, a cancel, a failure after text and a budget stop are raised. Closing the iterator closes the model's stream. A route that cannot stream raises `StreamUnsupported`, and one that cannot hold a `deadline` raises `DeadlineUnsupported`, before it is asked. Different backends can run in parallel. Budgets are soft spend caps, not billing ceilings. Parallel calls can overshoot by the calls already in flight. With `fallback`, a route that cannot stream is asked through `oneshot`, and its reply comes as one chunk."
     _check_deadline(deadline)
-    return self._one_stream(prompt, sp, job, max_tokens, fits, prepare, deadline)
+    it = self._one_stream(prompt, sp, job, max_tokens, fits, prepare, deadline, wait)
+    return it if not (strict or fallback) else self._kept_stream(it, prompt, sp, job, max_tokens, fits, prepare, deadline, wait, strict, fallback)
 
 @patch
-def _one_stream(self:Agent, prompt, sp, job, max_tokens, fits, prepare, deadline):
+def _kept_stream(self:Agent, it, prompt, sp, job, max_tokens, fits, prepare, deadline, wait, strict, fallback):
+    "`it`, with `fallback`'s whole reply for a route that cannot stream, and `strict`'s `OneshotEmpty` when no text came."
+    began, since, said = time.monotonic(), time.time(), False
+    try:
+        for chunk in it:
+            said = said or bool(chunk)
+            yield chunk
+    except StreamUnsupported:
+        if not fallback: raise
+        left = None if deadline is None else deadline - (time.monotonic() - began)
+        if left is not None and left <= 0: raise OneshotTimeout(job, time.monotonic() - began, True)
+        if (out := self.oneshot(prompt, sp, job, max_tokens, fits, prepare, left, wait, strict)): yield out
+        return
+    finally: it.close()
+    if strict and not said: raise OneshotEmpty(job, self._why_empty(job, since))
+
+@patch
+def _one_stream(self:Agent, prompt, sp, job, max_tokens, fits, prepare, deadline, wait=False):
     "The routes of `oneshot_stream`. With a budget set it counts the text as it comes and stops the stream once that count passes a budget: an estimate from the text, not the provider's own billing cap."
     began, tried, capped = time.monotonic(), set(), self._capped()
     while (b := self._be_or_none(job)) is not None and b.spec.name not in tried:
@@ -3903,7 +3940,7 @@ def _one_stream(self:Agent, prompt, sp, job, max_tokens, fits, prepare, deadline
         rate = self._one_rate(b.spec)
         if (over := self._one_check(at=True)) is not None: raise over
         got = []
-        it = b.oneshot_stream(text, briefing, max_tokens, job=job, if_busy=None, spent=got, **({} if left is None else {'deadline': left}))
+        it = b.oneshot_stream(text, briefing, max_tokens, job=job, if_busy=None, spent=got, **({} if left is None else {'deadline': left}), **({'wait': True} if wait else {}))
         said, busy, stopped, over, heard = False, False, True, None, []
         tin = b.oneshot_input_tokens(text, briefing, max_tokens) if capped else 0
         try:
