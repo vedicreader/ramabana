@@ -66,10 +66,10 @@ def _current(provider, mid, legacy=False):
 
 # %% ../nbs/01b_models.ipynb #ca5783b2
 def provider_models(p, legacy=False, ttl=300):
-    "Ids a picker offers for provider `p`: the curated ones in their order, then what live discovery adds."
+    "Ids a picker offers for provider `p`: the curated ones in their order, then what live discovery adds. The live list is kept on disk, so a new process shows the last one at once and asks again in the background."
     from ramabana.core import probed
     src = next((q for q, f in LIVE.items() if f is LIVE.get(p)), p)
-    try: live = probed(f'{src}-models', lambda: LIVE[p](), ttl=ttl, disk=False) if p in LIVE else []
+    try: live = probed(f'{src}-models', lambda: LIVE[p](), ttl=ttl) if p in LIVE else []
     except Exception: live = []
     newest = lambda m: (tuple(map(int, re.findall(r'\d+', m))), m)
     live = (m for m in live if _current(p, m, legacy) and not re.search(r'-20\d{6}$', m))

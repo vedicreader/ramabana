@@ -57,7 +57,7 @@ from teleprint.transcript import TranscriptView
 from teleprint.tty import RealTty
 from teleprint.widgets import CompletionMenu, Tooltip
 from .core import EFFORTS, EXTRAS, JOBS, PII_MODES, PII_OFF, PROFILES, AgentError, accepts, agent_err, available_models, env, installed, model_note, need, needs_setup, setup_guide, welcome
-from .core import PROVIDERS, auth_status, checklist, config_models, getting_started, provider_ready, ready_model
+from .core import PROVIDERS, auth_status, checklist, forget_probes, config_models, getting_started, provider_ready, ready_model
 from shalya.core import one_line
 from shalya.tools import media_dir, save_media
 from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
@@ -3319,6 +3319,7 @@ async def login(self:Ui, key):
     if (cmd := p.get('login')):
         if not shutil.which(cmd[0]): return self.note(f"{p['label']} needs `{cmd[0]}` on this machine's PATH first: {p.get('install') or p['needs']}", 'error')
         await self.lend(lambda: subprocess.run(list(cmd)))
+        forget_probes()   # the sign-in changed what the machine can reach
     if key in SETUP_FIELDS:
         err = io.StringIO()
         def ask():

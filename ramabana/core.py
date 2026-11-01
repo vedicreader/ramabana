@@ -8,23 +8,23 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE_ALIASES', 'CLAUDE', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
            'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PROBE_TTL', 'PROBE_DIR', 'HARNESS',
-           'AZURE_KEY_ENV', 'AZURE_HOSTS', 'API_KEYS', 'MODEL_ALIASES', 'DEFINES', 'DFLT_TURN', 'DFLT_SMALL',
-           'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY',
-           'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SETUP_HINT', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP',
-           'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS', 'TOOL_CHANNELS', 'EFFORT_RUNTIMES', 'KEY_ENVS',
-           'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS', 'READY_ORDER', 'CLAUDE_SIGNED_OUT', 'KEY_VARS', 'DFLT_IMAGE',
-           'NO_IMAGES', 'DFLT_VIDEO', 'GEMINI_BASE', 'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix',
-           'env', 'claude_ctx', 'claude_wire', 'probe_path', 'probed', 'forget_probes', 'runtime_remedy',
-           'runtime_detail', 'runtime_available', 'azure_base', 'azure_endpoint', 'azure_key_env', 'azure_ready',
-           'azure_host', 'is_azure', 'auth_status', 'register_model', 'unregister_model', 'use_aliases', 'alias_path',
-           'saved_models', 'load_models', 'save_model', 'delete_model', 'config_models', 'sync_models',
-           'model_problems', 'remote_models', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx',
-           'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts',
-           'model_note', 'Budget', 'budget_for', 'profile_for', 'force_tags', 'forget_forced_tags', 'norm_channel',
-           'norm_effort', 'claude_native', 'tool_channel', 'effort_support', 'native_support', 'models_table',
-           'missing_key', 'needs', 'is_local', 'Routing', 'provider_ready', 'ready_model', 'ready_turn', 'job_source',
-           'needs_setup', 'setup_guide', 'welcome', 'on_wsl', 'getting_started', 'checklist', 'watch_getting_started',
-           'image_route', 'video_route']
+           'CLAUDE_LOGIN_TTL', 'AZURE_KEY_ENV', 'AZURE_HOSTS', 'API_KEYS', 'MODEL_ALIASES', 'DEFINES',
+           'OLLAMA_LIST_TIMEOUT', 'VENDORS', 'DFLT_TURN', 'DFLT_SMALL', 'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL',
+           'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SETUP_HINT',
+           'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS',
+           'TOOL_CHANNELS', 'EFFORT_RUNTIMES', 'KEY_ENVS', 'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS', 'READY_ORDER',
+           'CLAUDE_SIGNED_OUT', 'KEY_VARS', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO', 'GEMINI_BASE', 'BranchChanged',
+           'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'claude_wire', 'probe_path', 'probed',
+           'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available', 'azure_base', 'azure_endpoint',
+           'azure_key_env', 'azure_ready', 'azure_host', 'is_azure', 'auth_status', 'register_model',
+           'unregister_model', 'use_aliases', 'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model',
+           'config_models', 'sync_models', 'model_problems', 'remote_models', 'copilot_catalog', 'available_models',
+           'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve',
+           'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for', 'force_tags',
+           'forget_forced_tags', 'norm_channel', 'norm_effort', 'claude_native', 'tool_channel', 'effort_support',
+           'native_support', 'models_table', 'missing_key', 'needs', 'is_local', 'Routing', 'provider_ready',
+           'ready_model', 'ready_turn', 'job_source', 'needs_setup', 'setup_guide', 'welcome', 'on_wsl',
+           'getting_started', 'checklist', 'watch_getting_started', 'image_route', 'video_route']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time, warnings
@@ -123,14 +123,14 @@ def _keep(key, value, gen, dir, disk):
     # under the lock, or an in-flight refresh recreates a file `forget_probes` removed
     with _probe_lock:
         if gen != _probe_gen: return
-        _PROBED[key] = {'at': time.time(), 'value': value, 'busy': False}
+        _PROBED[key] = {'at': time.time(), 'value': value, 'busy': False, 'dir': dir, 'disk': disk}
         if disk: _write_probe(key, value, dir)
 
 def probed(key, fn, ttl=PROBE_TTL, dir=None, disk=True):
     "`fn()`'s last answer, refreshing a stale one in the background."
     with _probe_lock: row, gen = _PROBED.get(key), _probe_gen
     if row is None and disk and (kept := _read_probe(key, dir)) is not None:
-        row = {'at': 0.0, 'value': kept, 'busy': False}
+        row = {'at': 0.0, 'value': kept, 'busy': False, 'dir': dir, 'disk': disk}
         with _probe_lock:
             if gen == _probe_gen: _PROBED[key] = row
     if row is None:
@@ -147,13 +147,15 @@ def probed(key, fn, ttl=PROBE_TTL, dir=None, disk=True):
     return row['value']
 
 def forget_probes(disk=False, dir=None):
-    "Drop every cached answer, and with `disk` its file too."
+    "Drop every cached answer, and with `disk` the files too: each answer in `dir`, and each one this process wrote to another folder."
     global _probe_gen
     with _probe_lock:
-        keys, _probe_gen, _ = list(_PROBED), _probe_gen+1, _PROBED.clear()
+        rows, _probe_gen = dict(_PROBED), _probe_gen+1
+        _PROBED.clear()
         if not disk: return
-        for key in keys:
-            try: probe_path(key, dir).unlink(missing_ok=True)
+        files = {*Path(dir or PROBE_DIR).expanduser().glob('*.json'), *(probe_path(k, r.get('dir')) for k, r in rows.items() if r.get('disk'))}
+        for p in files:
+            try: p.unlink(missing_ok=True)
             except Exception: pass
 
 # %% ../nbs/00_core.ipynb #de745a4a
@@ -227,9 +229,15 @@ def _json_has(path, *keys):
         return bool(nested_idx(Path(path).expanduser().read_json(), *keys))
     except Exception: return False
 
+CLAUDE_LOGIN_TTL = 60   #: seconds `auth_status` keeps the answer of `claude auth status`
+
 def _claude_login():
-    "Whether Claude Code is logged in, from status metadata only."
+    "Whether Claude Code is logged in, from status metadata only. `claude auth status` runs at most once each `CLAUDE_LOGIN_TTL` seconds."
     if not shutil.which('claude'): return False
+    return probed('claude-login', _ask_claude_login, ttl=CLAUDE_LOGIN_TTL, disk=False)
+
+def _ask_claude_login():
+    "Whether `claude auth status` reports a login."
     try:
         p = subprocess.run(['claude', 'auth', 'status', '--json'], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=3)
         return p.returncode == 0 and bool(json.loads(p.stdout).get('loggedIn'))
@@ -442,34 +450,54 @@ def _copilot_catalog():
     except Exception: return {}
 
 def copilot_catalog(ttl=300):
-    "Copilot's catalogue for this account, cached: `{id: entry}`, or `{}` when it cannot be reached."
-    return probed('copilot-catalog', _copilot_catalog, ttl=ttl, disk=False)
+    "Copilot's catalogue for this account, cached and kept on disk: `{id: entry}`, or `{}` when it cannot be reached."
+    return probed('copilot-catalog', _copilot_catalog, ttl=ttl)
 
 def _copilot_chat_models():
     "Chat ids this Copilot plan can reach, from the live catalog."
     return [i for i, m in copilot_catalog().items() if (m.get('capabilities') or {}).get('type') == 'chat']
 
-def available_models(include_legacy=False):
-    "Models selectable here, with older generations only when `include_legacy`."
+OLLAMA_LIST_TIMEOUT = 2   #: seconds `available_models` waits for the ollama daemon's list
+VENDORS = ('openai', 'codex', 'gemini', 'anthropic')   #: the hosted vendors whose models need only a credential
+
+def _ollama_models():
+    "What the ollama daemon lists, or `[]` when it does not answer within `OLLAMA_LIST_TIMEOUT` seconds."
+    try:
+        from rishi.ollama import OllamaClient
+        c = OllamaClient(timeout=OLLAMA_LIST_TIMEOUT)
+        try: return list(c.models())
+        finally: c.close()
+    except Exception: return []
+
+def _at_once(fns):
+    "Each of `fns` called at the same time, one thread each: their answers in order, None for one that raised."
+    from fastcore.parallel import parallel
+    out = parallel(lambda f: f(), list(fns), n_workers=len(fns), threadpool=True, return_exceptions=True)
+    return [None if isinstance(o, Exception) else o for o in out]
+
+def _facts(row):
+    "`row` with what its `value` resolves to: `local`, whether it runs on this machine, and its `model_id`."
+    try: spec = resolve(row['value'])
+    except Exception: return {**row, 'local': row['provider'] in ('litert', 'mlx', 'llama'), 'model_id': ''}
+    return {**row, 'local': spec.local, 'model_id': spec.model_id}
+
+def _model_rows(include_legacy=False):
+    "Every row of `available_models`, asked now. The slow probes start together: ollama's list, Copilot's catalogue, the sign-ins and each vendor's live list."
+    when = lambda rt, f: (lambda: f() if runtime_available(rt) else [])
+    auth, ollama, claude, copilot, *lists = _at_once([auth_status, when('ollama', _ollama_models),
+        when('claude', lambda: provider_models('claude', include_legacy)), when('copilot', _copilot_chat_models),
+        *(lambda v=v: provider_models(v, include_legacy) for v in VENDORS)])
     rows = []
     for runtime, models in (('litert', LOCAL), ('mlx', MLX), ('llama', LLAMA)):
         if not runtime_available(runtime): continue
         rows += [{'value': name, 'label': name, 'provider': runtime, 'source': f'on device via Rishi {runtime}'} for name in models]
-    if runtime_available('ollama'):
-        try:
-            from rishi.ollama import OllamaClient
-            for m in OllamaClient().models():
-                rows.append({'value': f'ollama/{m}', 'label': m, 'provider': 'ollama', 'source': 'on device via the ollama daemon'})
-        except Exception: pass
-    if runtime_available('claude'):
-        rows += [{'value': f'claude/{m}', 'label': m, 'provider': 'claude', 'source': 'Claude Code (CLI or SDK)'} for m in provider_models('claude', include_legacy)]
-    if runtime_available('copilot'):
-        for model in _copilot_chat_models():
-            rows.append({'value': f'copilot/{model}', 'label': model, 'provider': 'copilot', 'source': 'GitHub Copilot subscription'})
-    auth = auth_status()
-    for vendor in ('openai', 'codex', 'gemini', 'anthropic'):
+    rows += [{'value': f'ollama/{m}', 'label': m, 'provider': 'ollama', 'source': 'on device via the ollama daemon'} for m in ollama or []]
+    rows += [{'value': f'claude/{m}', 'label': m, 'provider': 'claude', 'source': 'Claude Code (CLI or SDK)'} for m in claude or []]
+    rows += [{'value': f'copilot/{m}', 'label': m, 'provider': 'copilot', 'source': 'GitHub Copilot subscription'} for m in copilot or []]
+    auth = auth or auth_status()
+    for vendor, models in zip(VENDORS, lists):
         if not auth[vendor]['available']: continue
-        rows += [{'value': f'{vendor}/{m}', 'label': m, 'provider': vendor, 'source': auth[vendor]['source']} for m in provider_models(vendor, include_legacy)]
+        rows += [{'value': f'{vendor}/{m}', 'label': m, 'provider': vendor, 'source': auth[vendor]['source']} for m in models or []]
     for n in list(config_models()):
         try: spec = resolve(n)
         except Exception: continue
@@ -478,8 +506,14 @@ def available_models(include_legacy=False):
     seen, out = set(), []
     for row in rows:
         if row['value'] in seen: continue
-        seen.add(row['value']); out.append(row)
+        seen.add(row['value']); out.append(_facts(row))
     return out
+
+def available_models(include_legacy=False, ttl=None):
+    "Models selectable here, with older generations only when `include_legacy`. With `ttl`, the last answer within `ttl` seconds: an older one comes back at once and is asked again in the background, and the answer is kept on disk for the next run."
+    if ttl is None: return _model_rows(include_legacy)
+    rows = probed(f'available-models-{bool(include_legacy)}', lambda: _model_rows(include_legacy), ttl=ttl)
+    return [dict(r) for r in rows]   # a caller that changes a row leaves the kept answer alone
 
 # %% ../nbs/00_core.ipynb #70d7dfa3
 DFLT_TURN, DFLT_SMALL, DFLT_SUBAGENT = 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-sonnet-5-5'
@@ -551,8 +585,9 @@ def _copilot_ctx(model_id):
     if (n := lim.get('max_prompt_tokens') or lim.get('max_context_window_tokens')): return int(n), ''
     return _cloud_ctx(model_id)
 
+@functools.lru_cache(maxsize=1024)
 def _cloud_ctx(model_id):
-    "Context window and a note for a cloud model, from fastllm's tables."
+    "Context window and a note for a cloud model, from fastllm's tables, which do not change while a process runs. Kept, since each lookup reads fastllm's JSON again."
     try:
         from fastllm.types import get_model_info
         v, _, m = model_id.partition('/')
