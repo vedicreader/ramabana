@@ -13,6 +13,7 @@
 - New `Agent.halt()` stops the turn, its sub-agents and the side runs (background delegations and monitor reviews) at once. It waits for none and returns how many runs it stopped. `Agent.ask(deadline=, stop=)` calls it once `deadline` seconds pass, as for `oneshot`, or once the `threading.Event` `stop` is set.
 - `Agent` has one `cancel`: the registered-run `cancel(run_id='', grace=None)` that returns the run's state. An older `cancel` that returned a bool was hidden by it and is removed.
 - New `model_agent(turn=None, sp='', host=None, **kw)` makes an `Agent` that only calls the model: read-only, approvals refused, and no sub-agents, extensions, skills, learned notes, compaction or polling. `kw` goes to `Agent` and wins.
+- New `read_key(name, path=None)` gives one key from the key file, or `''`. It sets nothing in `os.environ` and runs no `!command` value. Like `load_keys`, it refuses a file that other users can read.
 - `forget_probes(disk=True)` removes every probe file in its folder, and each file this process wrote to another folder.
 
 ## 0.2.102

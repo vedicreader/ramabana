@@ -21,11 +21,11 @@ __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN'
            'SETUP_USAGE', 'HISTORY_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP',
            'PEER_MARKS', 'PEER_START', 'PEER_END', 'env_prefixes', 'installed', 'need', 'follow_cmd', 'tmux_version',
            'tmux_conf', 'prune_sockets', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path',
-           'keys_path', 'load_keys', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names', 'set_setting',
-           'set_table', 'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli', 'config_reset',
-           'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes',
-           'index_gate', 'save_index', 'log_index', 'last_index', 'merge_hooks', 'peer_skill', 'setup_peers',
-           'hook_check', 'peers_status', 'path_check']
+           'keys_path', 'load_keys', 'read_key', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names',
+           'set_setting', 'set_table', 'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli',
+           'config_reset', 'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state',
+           'index_changes', 'index_gate', 'save_index', 'log_index', 'last_index', 'merge_hooks', 'peer_skill',
+           'setup_peers', 'hook_check', 'peers_status', 'path_check']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -288,10 +288,7 @@ def keys_path():
 def load_keys(path=None):
     "Load keys not already in the environment, refusing a file others can read; returns the names set."
     p = Path(path).expanduser() if path else keys_path()
-    if not p.exists(): return []
-    if os.name != 'nt' and p.stat().st_mode & 0o077:
-        print(f'{p} is readable by other users, so its keys were not loaded: chmod 600 {p}', file=sys.stderr)
-        return []
+    if not _private(p): return []
     from dotenv import dotenv_values
     got = []
     for name, value in dotenv_values(p, interpolate=False).items():
@@ -308,6 +305,22 @@ def load_keys(path=None):
         os.environ[name] = value
         got.append(name)
     return got
+
+def _private(p):
+    "Whether the key file `p` exists and only its owner can read it; a file others can read is reported and refused."
+    if not p.exists(): return False
+    if os.name != 'nt' and p.stat().st_mode & 0o077:
+        print(f'{p} is readable by other users, so its keys were not loaded: chmod 600 {p}', file=sys.stderr)
+        return False
+    return True
+
+def read_key(name, path=None):
+    "The value of key `name` in the key file, or ''. It sets nothing in `os.environ`, and runs no `!command` value: such a key gives ''."
+    p = Path(path).expanduser() if path else keys_path()
+    if not _private(p): return ''
+    from dotenv import dotenv_values
+    v = dotenv_values(p, interpolate=False).get(name) or ''
+    return v[1:] if v.startswith('$!') else '' if v.startswith('!') else v
 
 def save_key(name, value, path=None):
     "Save one dotenv key atomically with mode 0600, keeping other entries and comments, and set it in this process."
