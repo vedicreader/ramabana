@@ -24,8 +24,8 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
            'generated_denial', 'note_tools', 'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed',
            'ResultMissing', 'token_rate', 'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard',
-           'guard_reads', 'mk_host', 'mk_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS',
-           'hydrate_turns', 'request_text', 'request_body', 'request_title']
+           'guard_reads', 'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP',
+           'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextlib, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -5438,3 +5438,11 @@ def mk_agent(roots=('.',),
     if host.model_local is None: host.model_local = agent.model_local
     agent.lend_model()   # else `--vault` loads a second runtime
     return agent, host
+
+# %% ../nbs/03_agent.ipynb #fbf27fa9
+def model_agent(turn=None, sp='', host=None, **kw):
+    "An `Agent` that only calls the model: read-only, approvals refused, no sub-agents, extensions, skills, learned notes, compaction or polling. `kw` goes to `Agent` and wins."
+    from ramabana.tools import NullHost
+    opts = dict(routing=Routing(turn=turn), cfg=None, sp=sp, approvals=Approvals(mode='ask', no_listener='refuse', timeout=0), readonly=True,
+                subagents=False, extensions=False, global_skills=False, learned=False, compact=False, poll_every=0, auto_turns='off')
+    return Agent(host or NullHost(), **{**opts, **kw})

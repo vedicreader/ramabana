@@ -12,6 +12,7 @@
 - `Agent.oneshot(wait=True)` waits for a backend that another call holds, up to `deadline`, and does not answer `''`. `strict=True` raises the new `OneshotEmpty(job, why)` when no route answers; `why` names the routes set aside, or the route's note. `oneshot_stream` takes `wait` and `strict` too, and `fallback=True` gives a route that cannot stream as one chunk. `Backend.oneshot` and `oneshot_stream` take `wait`.
 - New `Agent.halt()` stops the turn, its sub-agents and the side runs (background delegations and monitor reviews) at once. It waits for none and returns how many runs it stopped. `Agent.ask(deadline=, stop=)` calls it once `deadline` seconds pass, as for `oneshot`, or once the `threading.Event` `stop` is set.
 - `Agent` has one `cancel`: the registered-run `cancel(run_id='', grace=None)` that returns the run's state. An older `cancel` that returned a bool was hidden by it and is removed.
+- New `model_agent(turn=None, sp='', host=None, **kw)` makes an `Agent` that only calls the model: read-only, approvals refused, and no sub-agents, extensions, skills, learned notes, compaction or polling. `kw` goes to `Agent` and wins.
 - `forget_probes(disk=True)` removes every probe file in its folder, and each file this process wrote to another folder.
 
 ## 0.2.102
