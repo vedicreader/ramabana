@@ -8,24 +8,24 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 __all__ = ['SUB_MAX_STEPS', 'SUB_STEP_CEILING', 'SUB_MIN_STEPS', 'SUB_TIMEOUT', 'SUB_STEP_SECONDS', 'SUB_TIMEOUT_CEILING',
            'SUB_UNFINISHED', 'SUB_NUDGE', 'SUB_READ_ONLY', 'SUB_SLOTS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP',
            'SUB_SP', 'SUB_NEST_SP', 'SUB_ANSWER', 'NO_SUB', 'PATH_WRITES', 'STATUS_NOTE', 'ASYNC_MAX', 'ASYNC_KEEP',
-           'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING', 'NullHost', 'draws_itself',
-           'image_tools', 'tools_for', 'small_tool', 'ToolEntry', 'ToolCatalog', 'inbox_note', 'sub_briefing', 'sub_sp',
-           'bad_json', 'keep_media', 'path_write', 'write_targets', 'status_tool', 'Slots', 'delegate', 'lanes',
-           'delegate_many', 'Background', 'named_skills', 'picture_mime', 'read_pictures', 'renamed', 'sub_steps',
-           'subagent_tools', 'parse_plan_items', 'mod_doc', 'media_path', 'is_media', 'media_paths', 'ref_tokens',
-           'attach_refs', 'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'API_VENDORS',
-           'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS',
-           'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS',
-           'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS',
-           'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS',
-           'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds',
-           'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find',
-           'git_tools', 'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary',
-           'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost',
-           'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools',
-           'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs',
-           'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools',
-           'research_tools', 'author_tools', 'legacy_tools']
+           'WAIT_MAX', 'SAVE_WAIT', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING',
+           'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'small_tool', 'ToolEntry', 'ToolCatalog',
+           'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'keep_media', 'path_write', 'write_targets',
+           'status_tool', 'Slots', 'delegate', 'lanes', 'delegate_many', 'Background', 'named_skills', 'picture_mime',
+           'read_pictures', 'renamed', 'sub_steps', 'subagent_tools', 'parse_plan_items', 'mod_doc', 'media_path',
+           'is_media', 'media_paths', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES',
+           'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API',
+           'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
+           'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX',
+           'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools',
+           'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err',
+           'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write',
+           'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost',
+           'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost',
+           'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools',
+           'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt',
+           'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, contextvars, functools, json, re, tempfile, threading, time, uuid
@@ -466,6 +466,8 @@ def delegate_many(backend, questions, tools=(), sp=None, max_steps=SUB_MAX_STEPS
 # %% ../nbs/02_tools.ipynb #84bd8c5d
 ASYNC_MAX = 4        #: background delegations reaching a model at once; the rest wait as `pending`
 ASYNC_KEEP = 50      #: answers held before the oldest is dropped
+WAIT_MAX = 120       #: most seconds one `delegate_result` call waits for an answer
+SAVE_WAIT = 5        #: seconds a finished run gets to save its answer
 
 class Background:
     "Delegations running behind the turn that asked for them, and the answers they leave."
@@ -474,7 +476,7 @@ class Background:
                  keep=ASYNC_KEEP,     # answers held before the oldest is dropped
                  on_done=None):       # called with `(run, answer)` when a run finishes
         self.sem = threading.Semaphore(max(1, int(mx)))
-        self.keep, self.lock, self.open, self.on_done = max(1, int(keep)), threading.Lock(), True, on_done
+        self.keep, self.lock, self.open, self.on_done = max(1, int(keep)), threading.Condition(), True, on_done
         self.runs, self.answers, self.seen = {}, {}, set()
 
     def _live(self, run):
@@ -491,6 +493,7 @@ class Background:
             for old in list(self.runs)[:-self.keep * 2]:
                 self.runs.pop(old, None)
                 self.seen.discard(old)
+            self.lock.notify_all()
 
     def start(self, fn, run):
         "Register `run`, then work `fn(run)` on a daemon thread; return its id."
@@ -516,15 +519,18 @@ class Background:
         r = runs.get(str(run_id))
         return [r.dict()] if r is not None else f'no delegation named {run_id!r} was started here'
 
-    def result(self, run_id):
-        "The answer `run_id` left, or what it is still doing."
+    def result(self, run_id, wait=0):
+        "The answer `run_id` left, waiting up to `wait` seconds for it, or what it is still doing."
         with self.lock:
             rid = str(run_id)
+            if (run := self.runs.get(rid)) is not None:   # a finished run saves its answer a moment after its state changes
+                self.lock.wait_for(lambda: rid in self.seen, timeout=min(max(float(wait or 0), SAVE_WAIT if run.terminal else 0), WAIT_MAX))
             run, ans, held = self.runs.get(rid), self.answers.get(rid), rid in self.seen
         if run is None: return f'no delegation named {run_id!r} was started here'
         if ans is not None: return ans
         if held: return f'{run_id} finished ({run.state}) and its answer is no longer held'
-        return f'{run_id} is {run.state}; ask again later'
+        return (f'{run_id} is still working ({run.state}). Do not ask again: its answer comes to you by itself, '
+                'with a later tool result or as a new turn. Go on with other work, or call delegate_result with wait=60 to wait for it.')
 
     def cancel(self, run_id):
         "Stop one run; its answer becomes the stopped notice."
@@ -787,11 +793,12 @@ def subagent_tools(get_backend, get_tools, get_skills=None, get_cloud_backend=No
     @summary(lambda a: f'Collect delegation {a["run_id"]}' if a.get('run_id') else 'List the background delegations')
     def delegate_result(run_id: str = '', # the id `delegate_async` returned; empty lists every background delegation
                         offset: int = 0,   # characters of a long answer already read; the truncation note names the offset that continues
+                        wait: int = 0,     # seconds to wait for the answer, at most `WAIT_MAX`; 0 returns at once
                         ) -> str:
-        "The answer a background delegation left, or what it is still doing; a long answer comes in pages, read on with `offset`. With no `run_id`, every delegation started this session and its state."
+        "The answer a background delegation left, or what it is still doing; a long answer comes in pages, read on with `offset`. The answer also comes by itself when the run ends, so do not poll. With no `run_id`, every delegation started this session and its state."
         mx = _max()
         if run_id:
-            text, start = bg.result(run_id), max(0, int(offset or 0))
+            text, start = bg.result(run_id, wait), max(0, int(offset or 0))
             if start and start >= len(text): return f'offset {start} is past the end of the answer, which is {len(text)} chars'
             if len(text) - start <= mx: return text[start:]
             reserve = len(f'…[chars {start}-{len(text)} of {len(text)}; continue with offset={len(text)}]')

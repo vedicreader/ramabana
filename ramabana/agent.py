@@ -11,21 +11,22 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'PERSON_ONLY', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'DATED_CONTEXT', 'PICTURE_RULE',
            'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'MASKED_NOTE',
            'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES',
-           'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'COMPACT_RETRY', 'GIT_SHELL',
-           'RAHASYA_SECRETS', 'MORE_SECRETS', 'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE', 'PEER_ROWS_EVERY',
-           'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS',
-           'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'SOFT_CAPS', 'HARD_CAPS',
-           'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN',
-           'EST_RATE', 'UNREAD', 'HALT_POLL', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS',
-           'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md',
-           'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
-           'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons', 'learned_context',
-           'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
-           'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
-           'generated_denial', 'note_tools', 'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed',
-           'ResultMissing', 'token_rate', 'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard',
-           'guard_reads', 'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP',
-           'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title']
+           'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_GRANTS', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'COMPACT_RETRY',
+           'GIT_SHELL', 'RAHASYA_SECRETS', 'MORE_SECRETS', 'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE',
+           'PEER_ROWS_EVERY', 'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE',
+           'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'SOFT_CAPS',
+           'HARD_CAPS', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK',
+           'RESULT_AGAIN', 'EST_RATE', 'UNREAD', 'HALT_POLL', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
+           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES', 'PII_READS', 'Act', 'Activity',
+           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
+           'applied', 'apply', 'note', 'inline_for', 'prompt_text', 'turn_prompt', 'prompt_directives',
+           'project_context', 'dated_lessons', 'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt',
+           'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
+           'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial', 'generated_denial', 'note_tools',
+           'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'token_rate',
+           'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard', 'guard_reads', 'mk_host',
+           'mk_agent', 'model_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS', 'hydrate_turns',
+           'request_text', 'request_body', 'request_title']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextlib, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -1187,6 +1188,7 @@ def plan_tools(get_plan, save=None):
 
 PLAN_TOOLS = frozenset(f.__name__ for f in plan_tools(list))
 ROOT_ONLY = NO_SUB | PLAN_TOOLS   #: the root turn's own tools; a sub-agent never receives them
+SUB_GRANTS = frozenset({'tell', 'work_together', 'remember', 'memory_forget', 'add_root'})   #: tools that act outside the task; a sub-agent gets one only when `subagent_grants` names it
 
 # %% ../nbs/03_agent.ipynb #baaf2f5e
 _TOOL_MIN, _TOOL_MAX = 20, 400
@@ -1222,6 +1224,7 @@ class Agent:
                  inline_skills=INLINE_SKILLS,
                  subagents=True,
                  subagent_writes=True,     # sub-agents get write tools, behind the same approvals
+                 subagent_grants=None,     # the `SUB_GRANTS` tools sub-agents may have; None reads config.toml's `subagents.grants`, else none
                  subagent_steps='auto',    # 'auto' lets a delegation ask for up to `SUB_STEP_CEILING` steps; a number caps every delegation's `max_steps`
                  subagent_timeout=SUB_TIMEOUT, # seconds before a delegation is stopped; 0 never
                  subagent_depth=2,          # levels of sub-agents that may delegate again, at most `SUB_DEPTH_MAX`
@@ -1272,6 +1275,7 @@ class Agent:
         self.on_watch = None             # callable(target, log_path), instead of a tmux pane
         self.on_background_done = None   # callable(run, answer)
         self.subagent_writes = bool(subagent_writes)
+        self.subagent_grants = frozenset(ifnone(subagent_grants, setting('subagents.grants', ())))
         self.turn_channel = self.sub_channel = self.sub_effort = ''   # '' takes config.toml's
         self._be_lock = threading.RLock()   # one backend per model, however many delegations ask for it at once
         self.subagent_steps, self.subagent_timeout, self.subagent_depth = _sub_steps(subagent_steps), _sub_timeout(subagent_timeout), _sub_depth(subagent_depth)
@@ -1932,7 +1936,7 @@ def _sub_budget(self:Agent, spec=None):
 
 @patch
 def _sub_plain(self:Agent, spec=None):
-    "The sub-agent policy view of the catalog, without the `ROOT_ONLY` tools. It is sized for `spec`'s model, or for the sub-agent model with no `spec`."
+    "The sub-agent policy view of the catalog, without the `ROOT_ONLY` tools and the `SUB_GRANTS` tools not granted. It is sized for `spec`'s model, or for the sub-agent model with no `spec`."
     budget = self._sub_budget(spec)
     same = budget == self.budget
     source = self._catalog_for(budget, full=same)
@@ -1944,7 +1948,8 @@ def _sub_plain(self:Agent, spec=None):
         key = ('subagent', budget.tool_max, tuple(budget.drop), held)
         if key not in self._views: self._views[key] = source.map(self._record)
         tools = self._views[key].tools
-    return [t for t in tools if getattr(t, '__name__', '') not in ROOT_ONLY]
+    held = ROOT_ONLY | (SUB_GRANTS - self.subagent_grants)
+    return [t for t in tools if getattr(t, '__name__', '') not in held]
 
 @patch
 def _delegation_tools(self:Agent, get_tools, background=None,
