@@ -1032,6 +1032,8 @@ def _has_commit(repo, sha):
     except Exception: return False
 
 def _on_disk(host, path):
+    "Whether `path` exists: an absolute path anywhere on disk, never read, or a relative one in the open folders."
+    if Path(path).expanduser().is_absolute() and Path(path).expanduser().exists(): return True
     try: return host.exists(str(host.check(path)))
     except Exception: return False
 
@@ -1049,7 +1051,7 @@ def evidence_problem(text, host=None):
             why.append(f'commit {shas[0]} is not in {repo.root}')
     paths = [p for p in re.findall(_PATH, t) if p not in shas]
     if any(_on_disk(host, p) for p in paths): return ''
-    if paths: why.append(f'{paths[0]} is not in the open folders')
+    if paths: why.append(f'{paths[0]} was not found')
     return 'the evidence did not check out: ' + '; '.join(why)
 
 @dataclass

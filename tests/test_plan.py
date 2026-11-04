@@ -51,8 +51,11 @@ def test_done_needs_a_commit_that_is_in_the_repo_or_a_file_that_exists(tmp_path)
     out = tool('commit', 'done', evidence='deadbee1')
     assert 'ERROR' in out and 'commit deadbee1 is not in' in out and a.plan.find('commit').status == 'pending'
     assert 'ERROR' not in tool('commit', 'done', evidence=git('rev-parse', '--short', 'HEAD'))
-    assert 'missing.txt is not in the open folders' in tool('write', 'done', evidence='missing.txt')
+    assert 'missing.txt was not found' in tool('write', 'done', evidence='missing.txt')
     assert 'ERROR' not in tool('write', 'done', evidence='a.txt')
+    shot = tmp_path.parent/'shot.png'; shot.write_bytes(b'')   # outside the open folder, as screenshots under /tmp are
+    a.plan.add('screenshot', id='shot')
+    assert 'ERROR' not in tool('shot', 'done', evidence=str(shot)), 'an absolute path that exists counts anywhere'
     assert 'ERROR' not in tool('test', 'done', evidence='pytest -q: 3 passed'), 'a command and its result are checked by shape'
 
 
