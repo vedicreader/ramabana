@@ -25,7 +25,7 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'small_system_prompt', 'model_family', 'is_evidence', 'evidence_problem', 'Todo', 'Request', 'Plan',
            'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
            'generated_denial', 'note_tools', 'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed',
-           'ResultMissing', 'token_rate', 'agui', 'sse', 'TurnEvents', 'Completer', 'model_title', 'HistoryBusy',
+           'ResultMissing', 'token_rate', 'agui', 'sse_event', 'TurnEvents', 'Completer', 'model_title', 'HistoryBusy',
            'compact_history', 'masking_guard', 'guard_reads', 'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL',
            'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title']
 
@@ -4890,7 +4890,7 @@ def agui(type, **fields):
     "One AG-UI event as a plain dict, stamped with the time in milliseconds. Fields that are None are left out."
     return {'type': type, 'timestamp': int(time.time() * 1000), **{k: v for k, v in fields.items() if v is not None}}
 
-def sse(event):
+def sse_event(event):
     "`event` as one server-sent-events frame."
     return f'data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n'
 
