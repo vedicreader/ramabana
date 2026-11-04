@@ -15,17 +15,19 @@ from fastcore.xtras import Path
 
 # %% auto #0
 __all__ = ['ENV_DEFAULT', 'EXTRAS', 'SCRIPTS', 'SOCKET', 'WRAP_MIN', 'SPLIT_MIN', 'KEYS_MIN', 'TMUX_CONF', 'VERSIONED', 'HOLD',
-           'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'EFFORTS', 'CHANNELS', 'PII_OFF', 'PII_MODES', 'VALUED',
-           'EARLY', 'FLAGS', 'LAUNCHED', 'CLI_FROM_CONFIG', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV', 'PANE_LINGER',
-           'THEME_NAMES', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE',
-           'SETUP_USAGE', 'HISTORY_USAGE', 'SETUP_FIELDS', 'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP',
-           'PEER_MARKS', 'PEER_START', 'PEER_END', 'env_prefixes', 'installed', 'need', 'follow_cmd', 'tmux_version',
-           'tmux_conf', 'prune_sockets', 'Setup', 'refusal', 'launch_args', 'bare_resume', 'run_cli', 'config_path',
-           'keys_path', 'load_keys', 'read_key', 'save_key', 'load_config', 'setting', 'model_setting', 'env_names',
-           'set_setting', 'set_table', 'config_defaults', 'config_template', 'config_show', 'config_set', 'config_cli',
-           'config_reset', 'history_cli', 'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state',
-           'index_changes', 'index_gate', 'save_index', 'log_index', 'last_index', 'merge_hooks', 'peer_skill',
-           'setup_peers', 'hook_check', 'peers_status', 'path_check']
+           'WHY', 'TMUX_MODES', 'PANE_MODES', 'PROFILES', 'EFFORTS', 'CHANNELS', 'PII_OFF', 'PII_MODES', 'PERMISSIONS',
+           'VALUED', 'EARLY', 'FLAGS', 'LAUNCHED', 'CLI_FROM_CONFIG', 'PICK_SESSION', 'CONFIG', 'KEYS_ENV',
+           'PANE_LINGER', 'THEME_NAMES', 'Key', 'KEYS', 'MODEL_KEYS', 'RETIRED_KEYS', 'VESHA_FIELDS', 'Vesha', 'VESHA',
+           'CONFIG_HEAD', 'MODEL_EXAMPLE', 'CONFIG_USAGE', 'SETUP_USAGE', 'MODS_USAGE', 'HISTORY_USAGE', 'SETUP_FIELDS',
+           'KOSHA_STATE', 'KOSHA_LOG', 'LOG_MAX', 'LOG_KEEP', 'PEER_MARKS', 'PEER_START', 'PEER_END', 'env_prefixes',
+           'installed', 'need', 'follow_cmd', 'tmux_version', 'tmux_conf', 'prune_sockets', 'Setup', 'refusal',
+           'loosened', 'launch_args', 'bare_resume', 'run_cli', 'config_path', 'keys_path', 'load_keys', 'read_key',
+           'save_key', 'load_config', 'vesha_dir', 'vesha_names', 'load_vesha', 'use_vesha', 'vesha_arg',
+           'config_values', 'setting', 'model_setting', 'env_names', 'set_setting', 'set_table', 'config_defaults',
+           'config_template', 'config_show', 'config_set', 'config_cli', 'mods_cli', 'config_reset', 'history_cli',
+           'setup_cli', 'kosha_env_db', 'pkg_state', 'root_state', 'index_state', 'index_changes', 'index_gate',
+           'save_index', 'log_index', 'last_index', 'merge_hooks', 'peer_skill', 'setup_peers', 'hook_check',
+           'peers_status', 'path_check']
 
 # %% ../nbs/19_setup.ipynb #8cc164e0
 ENV_DEFAULT = ('RAMABANA_', 'LEELA_')
@@ -193,9 +195,25 @@ def refusal(tmux='auto', pane='auto', profile='auto', pii=PII_OFF, vault=False,
     if pii != PII_OFF and not vault: return '--pii gates what a vault returns; add --vault'
     return ''
 
+#: the `[cli]` keys that set what a session may do, each with its values from strictest to loosest; `none` runs with no approval gate
+PERMISSIONS = {'cli.approve': ('off', 'ask', 'edits', 'auto', 'none'), 'cli.pii': ('refuse', 'redact', PII_OFF),
+               'cli.read_outside': (False, True), 'cli.vault': (False, True)}
+
+def loosened(
+    vesha,     # the `Vesha` to check
+    base,      # each permission key's value from the built-in defaults under config.toml
+    skip=(),   # permission keys to leave alone: those a flag sets, or that do not apply
+):
+    "Why `vesha` may not start: the first permission key it sets looser than `base`; '' when it loosens none."
+    for k, order in PERMISSIONS.items():
+        if k in skip or k not in vesha.values or order.index(v := vesha.values[k]) <= order.index(was := base[k]): continue
+        return (f'vesha {vesha.sources.get(k, vesha.name)} sets {k} = {_toml(v)}, looser than {_toml(was)} from config.toml and the built-in defaults. '
+                f"A vesha may only tighten permissions: set {k} in config.toml, or pass --{k[4:].replace('_', '-')}")
+    return ''
+
 #: the `ramabana` options that take a value; every other option is a flag
 VALUED = ('--root', '--model', '--approve', '--pii', '--theme', '--max-tool-calls', '--max-steps', '--cfg', '--resume',
-          '--tmux', '--pane', '--optin', '--profile')
+          '--tmux', '--pane', '--optin', '--profile', '--vesha')
 #: options after which `main` returns before `launch`
 EARLY = ('-h', '--help', '--json', '--doctor')
 #: the flags `refusal` reads
@@ -238,6 +256,7 @@ def run_cli():
     if sys.argv[1:2] == ['config']: return config_cli(sys.argv[2:])
     if sys.argv[1:2] == ['setup']: return setup_cli(sys.argv[2:])
     if sys.argv[1:2] == ['history']: return history_cli(sys.argv[2:])
+    if sys.argv[1:2] == ['mods']: return mods_cli(sys.argv[2:])
     if sys.argv[1:2] in (['peers'], ['tell'], ['inbox'], ['together']):
         from ramabana.peers import peers_cli
         return peers_cli(sys.argv[1:])
@@ -246,6 +265,11 @@ def run_cli():
         return report_cli(sys.argv[2:])
     if (msg := need('cli')): return _refuse(msg)()
     sys.argv[1:] = bare_resume(sys.argv[1:])   # both parsers, and the rerun inside tmux, see a value
+    try: use_vesha(vesha_arg(sys.argv[1:]))   # before `launch_args`, which reads cli.tmux
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        if not {a.partition('=')[0] for a in sys.argv[1:]} & {'-h', '--help', '--doctor'}: return 2
+        use_vesha('')   # help and the doctor still run, to fix the vesha with
     if (kw := launch_args(sys.argv[1:])) is not None:
         LAUNCHED = True
         Setup(kw['cfg']).launch(tmux=kw['tmux'])
@@ -253,9 +277,22 @@ def run_cli():
     from ramabana.cli import main
     p = anno_parser(main.__wrapped__, pos=['prompt'])
     explicit = vars(p.parse_args())
-    defaults = {k[4:]: v for k, v in load_config()[0].items() if k.startswith('cli.')}
+    if (named := explicit.get('vesha')) and named != getattr(VESHA, 'name', None):   # an abbreviated --vesha that `vesha_arg` missed
+        try: use_vesha(named)
+        except ValueError as e:
+            print(e, file=sys.stderr)
+            return 2
+    defaults = {k[4:]: v for k, v in config_values().items() if k.startswith('cli.')}
     if (cfg := explicit.get('cfg')) is not None and Path(cfg).expanduser().resolve() != Path('~/.config/ramabana').expanduser().resolve():
         for k in ('read_outside', 'vault', 'pii'): defaults.pop(k, None)
+    if VESHA is not None:
+        base = {k: p.get_default(k[4:]) for k in PERMISSIONS} | {k: v for k, v in load_config()[0].items() if k in PERMISSIONS}
+        q = anno_parser(main.__wrapped__, pos=['prompt'])
+        q.set_defaults(**dict.fromkeys(('approve', 'pii', 'read_outside', 'no_read_outside', 'vault', 'no_vault'), None))
+        flagged = {k for k, v in vars(q.parse_args()).items() if v is not None}
+        if (why := loosened(VESHA, base, {k for k in PERMISSIONS if k[4:] not in defaults or {k[4:], f'no_{k[4:]}'} & flagged})):
+            print(why, file=sys.stderr)
+            return 2
     p.set_defaults(**defaults)   # a flag given still wins
     args = vars(p.parse_args())
     for k in ('pdb', 'xtra'): args.pop(k, None)
@@ -393,6 +430,7 @@ KEYS = {
     'cli.profile': Key(str, '', '--profile', 'the tool profile; small suits local models of 32k or less', PROFILES),
     'cli.max_tool_calls': Key((int, str), '', '--max-tool-calls', 'tool calls one turn may make: auto, or 20 to 400'),
     'cli.max_steps': Key((int, str), '', '--max-steps', 'model and tool steps one turn may take: auto, or 8 to 80'),
+    'cli.vesha': Key(str, '', '--vesha', 'the vesha the terminal session starts in, vesha/NAME.toml beside this file; empty starts none'),
 }
 #: what a `[model."NAME"]` table may correct in fastllm's numbers for that model, and, given `model_id`, what defines a model of that name
 MODEL_KEYS = {'max_input_tokens': Key(int, doc='the input window the guard sizes each turn against'),
@@ -464,13 +502,84 @@ def load_config(path=None):
         if b not in _WARNED: _WARNED.add(b); warnings.warn(b, stacklevel=2)
     return out
 
+VESHA_FIELDS = ('description', 'extends', 'mods')   #: what a vesha file holds besides config keys
+Vesha = namedtuple('Vesha', 'name values sources mods description')   # `sources`: key -> the vesha in the `extends` chain that set it
+VESHA = None   #: the `Vesha` this process runs under; `use_vesha` sets it, and only the terminal session calls that
+
+def vesha_dir():
+    "Where vesha files live: `vesha/` beside config.toml."
+    return config_path().parent/'vesha'
+
+def vesha_names(d=None):
+    "The vesha names in `d`, sorted; files starting with `_` or `.` are skipped."
+    d = Path(d) if d else vesha_dir()
+    return sorted(p.stem for p in d.glob('*.toml') if not p.name.startswith(('_', '.'))) if d.is_dir() else []
+
+def _vesha_file(name, d):
+    "One vesha file's `(values, extends, mods, description)`. Raises `ValueError` naming what is wrong and what is valid."
+    if name not in (names := vesha_names(d)): raise ValueError(f"unknown vesha {name!r}; the veshas in {d}: {', '.join(names) or 'none'}")
+    p = d/f'{name}.toml'
+    try: raw = tomllib.loads(p.read_text())
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as e: raise ValueError(f'{p} is not valid TOML ({e})') from None
+    extends, mods, desc = raw.pop('extends', ''), raw.pop('mods', None), raw.pop('description', '')
+    if not isinstance(extends, str): raise ValueError(f'{p}: extends must be the name of another vesha')
+    if mods is not None and not (isinstance(mods, list) and all(isinstance(m, str) for m in mods)): raise ValueError(f'{p}: mods must be a list of mod names')
+    if isinstance(raw.get('cli'), dict) and 'vesha' in raw['cli']: raise ValueError(f'{p}: a vesha cannot set cli.vesha; name the other vesha in extends')
+    vals, bad = _check(raw)
+    if bad:
+        table = bad[0].split(' ', 1)[0].rpartition('.')[0]
+        valid = [k for k in KEYS if k.rpartition('.')[0] == table and k != 'cli.vesha'] or [k for k in KEYS if k != 'cli.vesha']
+        raise ValueError(f"{p}: {bad[0]}; valid keys: {', '.join(valid)}, and {', '.join(VESHA_FIELDS)}")
+    return vals, extends, mods, str(desc)
+
+def load_vesha(name, d=None):
+    "The `Vesha` called `name` after its `extends` chain. Raises `ValueError` for an unknown vesha, a cycle or a bad key, with the valid names."
+    d, chain, files = Path(d) if d else vesha_dir(), [], []
+    while name:
+        if name in chain: raise ValueError(f"vesha extends cycle: {' -> '.join([*chain, name])}")
+        chain.append(name)
+        files.append(f := _vesha_file(name, d))
+        name = f[1]
+    vals, sources, mods = {}, {}, None
+    for n, (v, _, m, _) in reversed(list(zip(chain, files))):   # the base first, so the vesha named wins
+        vals, sources = _layer(vals, v), sources | {k: n for k in _flat(v)}
+        if m is not None: mods = tuple(m)
+    return Vesha(chain[0], vals, sources, mods, files[0][3])
+
+def _flat(vals):
+    "`vals` with each `model` table spread into `model.\"NAME\".key` names."
+    return {k: v for k, v in vals.items() if k != 'model'} | {f'model."{n}".{f}': x for n, o in vals.get('model', {}).items() for f, x in o.items()}
+
+def _layer(low, high):
+    "`high` over `low`; a model table is merged key by key."
+    models = {n: {**low.get('model', {}).get(n, {}), **o} for n, o in {**low.get('model', {}), **high.get('model', {})}.items()}
+    return low | high | ({'model': models} if models else {})
+
+def use_vesha(name, d=None):
+    "Run this process under the vesha `name`, or under none when it is empty. Returns the `Vesha` or None."
+    global VESHA
+    VESHA = load_vesha(name, d) if name else None
+    return VESHA
+
+def vesha_arg(argv):
+    "The vesha a command line names with `--vesha`, else config.toml's `cli.vesha`."
+    for i, a in enumerate(argv):
+        k, eq, v = a.partition('=')
+        if k == '--vesha': return v if eq else (argv[i + 1] if i + 1 < len(argv) else '')
+    return load_config()[0].get('cli.vesha', '')
+
+def config_values():
+    "Config.toml's values with the active vesha's laid over them."
+    vals = load_config()[0]
+    return vals if VESHA is None else _layer(vals, VESHA.values)
+
 def setting(key, dflt=None):
-    "Config.toml's value for `key`, else `dflt`. An env var or a flag that beats it is read by the code that owns the key."
-    return load_config()[0].get(key, dflt)
+    "The value for `key` from config.toml and the active vesha, else `dflt`. An env var or a flag that beats it is read by the code that owns the key."
+    return config_values().get(key, dflt)
 
 def model_setting(*names):
     "The `[model.\"NAME\"]` corrections for the first of `names` that has any, else `{}`."
-    ovr = load_config()[0].get('model', {})
+    ovr = config_values().get('model', {})
     return next((ovr[n] for n in names if n in ovr), {})
 
 def _toml(v):
@@ -625,15 +734,20 @@ def config_template():
         out.append('')
     return '\n'.join(out) + MODEL_EXAMPLE
 
-def config_show(path=None):
-    "Each setting in effect and where it came from: an env var, config.toml or the built-in default. A flag is per command line, so it is named, not read."
+def config_show(path=None,
+                vesha=None):   # the vesha to show; None takes the active one, else config.toml's cli.vesha
+    "Each setting in effect and where it came from: an env var, a vesha, config.toml or the built-in default. A flag is per command line, so it is named, not read."
     p = Path(path).expanduser() if path else config_path()
     vals, bad = load_config(p)
     d = config_defaults()
-    rows = [f'# {p}' + ('' if p.exists() else ' does not exist; `ramabana config init` writes one')]
+    try: ves = load_vesha(vesha, p.parent/'vesha') if vesha else VESHA if VESHA is not None else load_vesha(vals['cli.vesha'], p.parent/'vesha') if vals.get('cli.vesha') else None
+    except ValueError as e: ves, bad = None, [*bad, str(e)]
+    srcs = {k: f'vesha {n}' for k, n in ves.sources.items()} if ves else {}
+    vals = _layer(vals, ves.values) if ves else vals
+    rows = [f'# {p}' + ('' if p.exists() else ' does not exist; `ramabana config init` writes one')] + ([f'# vesha {ves.name}'] if ves else [])
     for k, key in KEYS.items():
         e = next((n for n in env_names(key) if os.environ.get(n)), None)
-        v, src = (os.environ[e], f'${e}') if e else (vals[k], 'config.toml') if k in vals else (d.get(k, ''), 'built-in')
+        v, src = (os.environ[e], f'${e}') if e else (vals[k], srcs.get(k, 'config.toml')) if k in vals else (d.get(k, ''), 'built-in')
         rows.append(f'{k} = {_toml(v)}   # {src}' + (f'; {key.flag} beats it' if key.flag else ''))
     for name, o in vals.get('model', {}).items():
         for f, v in o.items():
@@ -643,10 +757,11 @@ def config_show(path=None):
                     from ramabana.core import _spec_for
                     up = f', fastllm says {_spec_for(name).ctx:,}'
                 except Exception: pass
-            rows.append(f'model."{name}".{f} = {_toml(v)}   # config.toml{up}')
+            mk = f'model."{name}".{f}'
+            rows.append(f'{mk} = {_toml(v)}   # {srcs.get(mk, "config.toml")}{up}')
     return '\n'.join(rows + [f'warning: {b}' for b in bad])
 
-CONFIG_USAGE = 'usage: ramabana config [show | init [--force] | path | set KEY VALUE | models]'
+CONFIG_USAGE = 'usage: ramabana config [show [--vesha NAME] | init [--force] | path | set KEY VALUE | models]'
 
 def _parsed(key, raw):
     "`raw`, as typed on a command line, in `key`'s type."
@@ -682,7 +797,7 @@ def config_cli(argv=()):
     a = list(argv); cmd = a[0] if a else 'show'
     p = config_path()
     if cmd == 'path': print(p); return 0
-    if cmd == 'show': print(config_show(p)); return 0
+    if cmd == 'show': print(config_show(p, a[a.index('--vesha') + 1] if '--vesha' in a[:-1] else None)); return 0
     if cmd == 'models':
         from ramabana.core import models_table
         print(models_table()); return 0
@@ -695,6 +810,17 @@ def config_cli(argv=()):
         print(f'{p} exists; `ramabana config init --force` replaces it and keeps it as {p.name}.bak', file=sys.stderr)
         return 1
     print(config_reset(p))
+    return 0
+
+MODS_USAGE = 'usage: ramabana mods check PATH'
+
+def mods_cli(argv=()):
+    "`ramabana mods check PATH`: print what one mod file or folder registers, without starting its timers."
+    a = list(argv)
+    if len(a) != 2 or a[0] != 'check': print(MODS_USAGE, file=sys.stderr); return 2
+    if not (p := Path(a[1]).expanduser()).exists(): print(f'{p} does not exist', file=sys.stderr); return 1
+    from shalya.skills import check
+    print(json.dumps(check(p), indent=1, default=str))
     return 0
 
 def config_reset(path=None):

@@ -17,17 +17,17 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'PEER_ROWS_EVERY', 'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE',
            'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'SOFT_CAPS',
            'HARD_CAPS', 'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK',
-           'RESULT_AGAIN', 'EST_RATE', 'UNREAD', 'HALT_POLL', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES',
-           'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES', 'PII_READS', 'Act', 'Activity',
-           'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
-           'applied', 'apply', 'note', 'inline_for', 'prompt_text', 'turn_prompt', 'prompt_directives',
+           'RESULT_AGAIN', 'EST_RATE', 'UNREAD', 'REFUSED', 'HALT_POLL', 'SUBTASK', 'COMPLETE_SP',
+           'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES', 'PII_READS',
+           'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always',
+           'never', 'applied', 'apply', 'note', 'inline_for', 'prompt_text', 'turn_prompt', 'prompt_directives',
            'project_context', 'dated_lessons', 'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt',
            'small_system_prompt', 'model_family', 'is_evidence', 'evidence_problem', 'Todo', 'Request', 'Plan',
-           'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
-           'generated_denial', 'note_tools', 'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed',
-           'ResultMissing', 'token_rate', 'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard',
-           'guard_reads', 'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP',
-           'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title']
+           'plan_tools', 'Agent', 'TurnRefused', 'mod_context', 'git_shell_denial', 'mask_secrets', 'secret_denial',
+           'env_denial', 'shell_denial', 'generated_denial', 'note_tools', 'repo_state', 'replays', 'SessionBusy',
+           'TurnResult', 'TurnFailed', 'ResultMissing', 'token_rate', 'Completer', 'model_title', 'HistoryBusy',
+           'compact_history', 'masking_guard', 'guard_reads', 'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL',
+           'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextlib, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -41,7 +41,7 @@ from fastcore.xtras import atomic_save
 from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import DFLT_TURN, needs_setup, accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
-from .setup import PANE_LINGER, config_path, follow_cmd, config_reset, config_set, config_show, load_config, set_table, setting
+from .setup import PANE_LINGER, config_path, follow_cmd, config_reset, config_set, config_show, load_config, load_vesha, set_table, setting, vesha_dir, vesha_names
 from .runtime import APPROVAL_NOTICE, prompt_notices, fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block, done_items, OneshotTimeout, OneshotEmpty, StreamUnsupported, deadline_hit, cancel_hit, BudgetExceeded, cap_breach
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
@@ -307,6 +307,7 @@ def preview_for(name, args, host=None):
     if name == 'add_cell':
         return f'{p}  (new {args.get("cell_type","code")} cell at {args.get("index",-1)})\n\n{args.get("source","")}'[:MAX_PREVIEW]
     if name == 'run_python':  return str(args.get('code', ''))[:MAX_PREVIEW]
+    if name == 'ask user':    return str(args.get('preview', ''))[:MAX_PREVIEW]
     if name == 'run_shell':   return (f"$ {args.get('command', '')}" + (f'\n  in {c}' if (c := args.get('cwd')) else ''))[:MAX_PREVIEW]
     if name in GIT_WRITE_TOOLS and host is not None:
         try: where = f'in {git_repo(host, p).root}'
@@ -375,9 +376,10 @@ def ask_md(ask):
             'Approve, or refuse with a reason -- the reason goes back to the model.')
 
 def answer_md(ask):
-    "The person's half of the exchange, in the same voice."
-    head = '**✅ approved**' if ask.answer else '**⛔ refused**'
-    return f'{head} -- `{ask.tool}`' + (f'\n\n{ask.note}' if ask.note else '')
+    "The person's half of the exchange, in the same voice; a question a mod asked is named by its title."
+    if ask.tool == 'ask user': head = f"**{'✅' if ask.answer else '⛔'} asked: {ask.summary}** -- {'yes' if ask.answer else 'no'}"
+    else: head = ('**✅ approved**' if ask.answer else '**⛔ refused**') + f' -- `{ask.tool}`'
+    return head + (f'\n\n{ask.note}' if ask.note else '')
 
 # %% ../nbs/03_agent.ipynb #ca1437e3
 EDIT_GROUPS = ('file', 'notebook')
@@ -410,7 +412,7 @@ APPROVE_MODES = ('off', 'ask', 'edits', 'auto')   #: strictest first
 VERDICTS = ('allow', 'deny', 'ask')   #: what an approval `policy` may return; anything else falls through
 NO_LISTENER = ('refuse', 'wait')   #: an ask with nobody listening is refused at once, or waits for a listener
 ON_TIMEOUT = ('refuse', 'allow')   #: what an ask nobody answers in time becomes
-PERSON_ONLY = frozenset({'peer ask'})   #: requests only a person answers: no mode, saved rule, policy, timeout or cancelled turn decides them
+PERSON_ONLY = frozenset({'peer ask', 'ask user'})   #: requests only a person answers: no mode, saved rule, policy, timeout or cancelled turn decides them
 
 class Approvals:
     "The approval gate: it holds each request waiting for an answer and wakes the model's thread when a person answers."
@@ -563,7 +565,8 @@ class Approvals:
     def ask(self, name, args):
         "Add an undecided `Ask` for this call to `history` and return it."
         run, args = current_run(), _hidden(name, args)
-        a = Ask(tool=name, args=args, summary=_summary(name, args), preview=preview_for(name, args, self.host),
+        summary = str(args.get('title', '')) if name == 'ask user' else _summary(name, args)
+        a = Ask(tool=name, args=args, summary=summary, preview=preview_for(name, args, self.host),
                 run_id=getattr(run, 'id', '') or '', run=run)
         self.history.append(a)
         return a
@@ -621,7 +624,13 @@ class Approvals:
         for a in settled: self.answer(a.id, ok, f'answered by /approve {self.mode}')
         return f' · {"approved" if ok else "refused"} what was waiting'
 
-    def request(self, name, args, force=False, timeout=None):
+    def request(self,
+        name,              # the tool, or the kind of question, such as 'ask user'
+        args,              # its arguments
+        force=False,       # gate it even when it is not one of the gate's `tools`
+        timeout=None,      # seconds to wait for an answer; None takes the gate's `timeout`
+        no_listener=None,  # 'refuse' or 'wait' with nobody listening; None takes the gate's `no_listener`
+    ):
         "Raise one request and wait for the answer. The reason for a refusal is in `reply()` of the resolved `Ask`."
         a = self.ask(name, args)
         loop = (force or name in self.tools or path_write(name, args)) and self._looping(name, args)
@@ -629,7 +638,7 @@ class Approvals:
         if (d := self.decide(name, args, force, ask=a, loop=loop)) is not None: return d
         # under the close lock, or an ask in the gap waits out its timeout
         with self._lock:
-            closing, heard = self.closed, bool(self._watchers) or self.no_listener == 'wait'
+            closing, heard = self.closed, bool(self._watchers) or (no_listener or self.no_listener) == 'wait'
             if not closing and heard: self._asks[a.id], self.current = a, a
         if closing: return self._decided(a, False, 'the session is closing')
         if not heard:
@@ -1341,6 +1350,8 @@ class Agent:
                  extensions=True,
                  project_extensions=False,  # project extensions run code from the repo; True opts in
                  ext_paths=(),
+                 mods=None,                 # names of the only mods to load; None loads every mod
+                 vesha='',                  # the vesha this session runs in, for `/vesha` and `status`
                  inline_skills=INLINE_SKILLS,
                  subagents=True,
                  subagent_writes=True,     # sub-agents get write tools, behind the same approvals
@@ -1409,6 +1420,8 @@ class Agent:
             self._chat_callbacks = {'budget': _budget_callback(self)}
         self.local_multimodal = bool(local_multimodal)
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
+        self.mods, self.vesha = None if mods is None else frozenset(mods), vesha
+        self._injected, self._turn_prompt, self._context_added, self._ended = deque(), None, [], False   # context mods queued; this turn's rewritten prompt and added context; whether `session_end` fired
         self._sp, self.extra_sp, self.global_skills = sp, extra_sp, bool(global_skills)
         self.drop_tools = frozenset(ifnone(drop_tools, setting('drop_tools', ())))
         self.compactor = Compactor(auto=ifnone(compact, setting('compaction.auto', True)), strategy=ifnone(compact_strategy, setting('compaction.strategy', 'digest')),
@@ -1557,13 +1570,107 @@ _REG_LOCK = threading.RLock()   # the start thread and the loop thread can both 
 
 @patch(as_prop=True)
 def registry(self:Agent):
-    "The extension registry, built once. The object outlives a reload, which re-reads only the extension files."
+    "The extension registry, built once. The object outlives a reload, which re-reads only the extension files. With `mods`, every other mod is listed off and its code does not run."
     with _REG_LOCK:
         if self._reg is None: self._reg = Registry(host=self.host, agent=self)
         if self.extensions and not self._reg.loaded:
-            try: load(self._reg, self.host.roots, self.cfg, self.project_extensions, self.ext_paths)
+            try: load(self._reg, self.host.roots, self.cfg, self.project_extensions, self.ext_paths, only=self.mods)
             except Exception as e: self._reg.notes.append(f'extension loading failed: {agent_err(e)}')
     return self._reg
+
+# %% ../nbs/03_agent.ipynb #7c9f9f59
+class TurnRefused(Exception):
+    "A `before_turn` hook refused the turn; the message is its reason."
+
+def _reprompt(prompt, text):
+    "`prompt` with its words replaced by `text`; its pictures and sounds stay."
+    if not isinstance(prompt, (list, tuple)): return text
+    return [p for p in prompt if not (isinstance(p, str) or isinstance(p, dict) and p.get('type') == 'text')] + [text]
+
+def mod_context(entries):
+    "Context mods added, one `<mod-context>` block each, naming the mod when it is known."
+    def one(e):
+        head = f'<mod-context mod="{e["mod"]}">' if e.get('mod') else '<mod-context>'
+        return f'\n\n{head}\n{e["text"]}\n</mod-context>'
+    return ''.join(map(one, entries))
+
+@patch
+def _before_turn(self:Agent, prompt):
+    "Run the `before_turn` hooks, each on the prompt the hooks before it left, and return the prompt the model gets and the context they added: a `str` raises `TurnRefused`, `{'prompt': ...}` rewrites and `{'context': ...}` adds context."
+    sent, context = prompt, []
+    for mod, hook in self.registry.each('before_turn'):
+        r = hook(self, sent)
+        if isinstance(r, str) and r.strip(): raise TurnRefused(r.strip())
+        if isinstance(r, dict):
+            if isinstance(r.get('prompt'), str): sent = _reprompt(sent, r['prompt'])
+            if r.get('context'): context.append(dict(mod=mod, text=str(r['context'])))
+    if sent != prompt: self._turn_prompt = sent
+    return sent, context
+
+@patch
+def inject(self:Agent, text):
+    "Add `text` as context to the root turn's next model request, or to the next turn when none runs, naming the mod that calls."
+    if str(text or '').strip(): self._injected.append(dict(mod=self.registry.mod, text=str(text)))
+
+@patch
+def _take_injected(self:Agent):
+    "Every piece of queued context, oldest first, taken off the queue."
+    got = []
+    while True:   # parallel tool calls drain the same queue
+        try: got.append(self._injected.popleft())
+        except IndexError: return got
+
+@patch
+def inject_notice(self:Agent):
+    "The context queued since it was last taken, as `<mod-context>` blocks for a tool result, or ''. What it takes joins this turn's row."
+    got = self._take_injected()
+    self._context_added += [e | {'where': 'tool'} for e in got]
+    return mod_context(got)
+
+@patch
+def ask_user(self:Agent, title, preview, timeout=None):
+    "Put a question to the person through the approval gate and return the resolved `Ask`. No mode, saved rule or policy answers it, and with nobody listening it is refused."
+    args = {'title': str(title), 'preview': str(preview)}
+    if self.approvals is None: return Ask('ask user', args, str(title), str(preview)).resolve(False, 'this session has no approval gate to ask its user')
+    return self.approvals.request('ask user', args, force=True, timeout=timeout, no_listener='refuse')
+
+@patch
+def mod_status(self:Agent):
+    "What the mods' status segments return now; a segment that returns nothing is left out."
+    return self.registry.status_texts(self)
+
+@patch
+def mods_command(self:Agent, arg=''):
+    "`/mods`: one aligned line per mod with on or off and its note, then the notes no mod made. `off NAME` and `on NAME` switch one."
+    reg, (verb, _, name) = self.registry, arg.strip().partition(' ')
+    name = name.strip()
+    if not verb:
+        labels = {m.name if m.path is None else m.path.name for m in reg.mods}
+        width = max((len(m.name) for m in reg.mods), default=0)
+        rows = [f"{m.name:{width}}  {'on' if m.on else 'off':3}  {m.note}".rstrip() for m in reg.mods]
+        return '\n'.join(rows + [n for n in reg.notes if n.partition(':')[0] not in labels]) or 'no mods loaded'
+    if verb not in ('on', 'off') or not name: return 'usage: /mods [off NAME | on NAME]'
+    if (m := first(m for m in reg.mods if m.name == name)) is None: return f"no mod named {name!r}; mods: {', '.join(m.name for m in reg.mods) or 'none'}"
+    if verb == 'off': reg.off(name)
+    else: reg.on_mod(name)
+    self._forget(files=False); self._rebrief()
+    return f"{name}: {'on' if m.on else 'off'}" + (f' · {m.note}' if m.note else '')
+
+@patch
+def vesha_command(self:Agent, arg=''):
+    "`/vesha`: the veshas, the current one marked. `/vesha NAME` switches the mods to that vesha's."
+    if not (name := arg.strip()): return '\n'.join(f"{'*' if n == self.vesha else ' '} {n}" for n in vesha_names()) or f'no veshas in {vesha_dir()}'
+    try: v = load_vesha(name)
+    except ValueError as e: return str(e)
+    reg, self.vesha, self.mods = self.registry, v.name, None if v.mods is None else frozenset(v.mods)
+    for m in list(reg.mods):
+        allowed = self.mods is None or m.name in self.mods
+        if m.on and not allowed: reg.off(m.name)
+        elif allowed and not m.on: reg.on_mod(m.name)
+    self._forget(files=False); self._rebrief()
+    out = f"vesha {v.name} · mods on: {', '.join(m.name for m in reg.mods if m.on) or 'none'}"
+    if (missing := sorted(set(self.mods or ()) - {m.name for m in reg.mods})): out += f" · not found: {', '.join(missing)}"
+    return out + (' · its settings apply when ramabana next starts' if v.values else '')
 
 # %% ../nbs/03_agent.ipynb #47fc0470
 @patch(as_prop=True)
@@ -2160,7 +2267,7 @@ def tools(self:Agent):
             self.approvals.prune()
         root = lambda: r if (r := current_run()) is self.run() else None
         self._tools = view.map(lambda f: _inboxed(self._record(f), root, self._heard_steer, mx=lambda: self.budget.tool_max,
-                                                  notice=self.background_notice)).tools + ([status_tool(root)] if self._quiet and self._offered('status') else [])
+                                                  notice=lambda: self.background_notice() + self.inject_notice())).tools + ([status_tool(root)] if self._quiet and self._offered('status') else [])
     return self._tools
 
 
@@ -2456,11 +2563,12 @@ def chat_or_none(self:Agent, job='turn'):
 
 # %% ../nbs/03_agent.ipynb #2c471726
 @patch
-def _forget(self:Agent):
+def _forget(self:Agent,
+            files=True):   # False keeps the mods as they are and rebuilds the tools and skills from them
     "Drop what is rebuilt from disk. The registry keeps whatever this process registered on it."
     self._skills = self._tools = None
     self._catalogs.clear(); self._views.clear()
-    if self._reg is not None: self._reg.drop_loaded()
+    if files and self._reg is not None: self._reg.drop_loaded()
 
 @patch
 def reload(self:Agent):
@@ -3083,7 +3191,7 @@ def _begin_turn(self:Agent, run=None):
     self.turn_use = Usage()
     self._budget_hit, self._budget_cap, self._rates = '', None, {}
     self._tool_calls_turn = 0
-    self._steered = []
+    self._steered, self._turn_prompt, self._context_added = [], None, []
     self.peer_turn = PEER_MARK in str(request_text(getattr(run, 'question', '')))
     self.turn_seq += 1
     self.current_turn_id = f'{self.session_id}:turn_{self.turn_seq:06d}'
@@ -3170,7 +3278,7 @@ def _from_here(self:Agent, sid,
 
 @patch
 def _prepare(self:Agent, prompt):
-    "Everything that happens before a message goes out: notices, hooks, and prospective compaction."
+    "Everything that happens before a message goes out: notices, hooks, and prospective compaction. When this fails, queued mod context goes back on its queue in order, and the hooks add theirs again on the next turn."
     for p, was in self.before.items(): self.session_before.setdefault(p, was)
     self.before.clear(); self.new.clear(); self.binary.clear()
     self._drawn = []
@@ -3185,7 +3293,7 @@ def _prepare(self:Agent, prompt):
     self.checkpoints[self.current_turn_id] = {'before': self._be('turn').snapshot_hist(),
                                               'branch_id': self.current_branch_id}
     for old in list(self.checkpoints)[:-MAX_CHECKPOINTS]: self.checkpoints.pop(old, None)
-    self.registry.fire('before_turn', self, prompt)
+    prompt, context = self._before_turn(prompt)
     self.poll_watches()
     reviews = self.monitors.drain()
     self.poll_monitors()
@@ -3216,9 +3324,18 @@ def _prepare(self:Agent, prompt):
     if (fired := self.watch_notice()): outgoing = _append(outgoing, fired)
     if (heard := self.peer_notice()): outgoing = _append(outgoing, heard)
     if (left := self.beat_drain()): outgoing = _append(outgoing, beat_notice(left))
-    for skill in loaded:
-        outgoing = _append(outgoing, f'\n\n<requested-skill name="{skill.name}">\n{skill.text()}\n</requested-skill>')
-    return self._fit(outgoing, _grown(outgoing, prompt))
+    queued = self._take_injected()
+    held = queued + context
+    try:
+        if held: outgoing = _append(outgoing, mod_context(held))
+        for skill in loaded:
+            outgoing = _append(outgoing, f'\n\n<requested-skill name="{skill.name}">\n{skill.text()}\n</requested-skill>')
+        outgoing = self._fit(outgoing, _grown(outgoing, prompt))
+    except BaseException:
+        self._injected.extendleft(reversed(queued))
+        raise
+    self._context_added += [e | {'where': 'start'} for e in held]
+    return outgoing
 
 FRESH_HINT = 'Start a new conversation for a fresh window; this one stays in the history and can be resumed.'   #: `ContextFull`'s advice when the host gives none
 
@@ -3336,7 +3453,7 @@ def _as_messages(turns):
     out = []
     for turn in turns:
         steer = '\n'.join(turn.get('steered') or ())
-        out.append({'role': 'user', 'content': turn_prompt(turn) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
+        out.append({'role': 'user', 'content': turn_prompt(turn) + mod_context(turn.get('context_added') or ()) + (f'\n\n<sent_mid_turn>\n{steer}\n</sent_mid_turn>' if steer else '')})
         body = _resumed_acts(turn.get('activity')) + str(turn.get('reply') or '')
         if turn.get('state') == 'cancelled': body += '\n\n[This turn was interrupted by the user; this is an incomplete reply.]'
         if turn.get('state') == 'interrupted': body += '\n\n[This turn was cut off when its process ended; any reply is missing or incomplete.]'
@@ -3517,6 +3634,8 @@ def _remember(self:Agent, prompt, text, error='', state='complete'):
             'usage': self.turn_use.dict(), 'usage_label': repr(self.turn_use), 'budget': self._budget_cap if state == 'budget' else None,
             'context': dict(used=(b := self._be('turn')).used_tokens, pct=round(b.pct_full, 3), events=list(self._compactions)),
             'activity': self.activity.rows(mark=self.activity._mark)}
+    if self._turn_prompt is not None: turn |= {'prompt': prompt_text(self._turn_prompt), 'prompt_original': prompt_text(prompt)}
+    if self._context_added: turn['context_added'] = list(self._context_added)
     self._compactions = []
     self.history.append(turn)
     del self.history[:-HISTORY_TURNS]
@@ -4223,7 +4342,8 @@ def status(self:Agent):
             'plan': self.plan.dict(), 'plan_line': self.plan.line(),
             'activity': self.activity.rows(40),
             'approval': (p.dict() if self.approvals is not None and (p := self.approvals.pending) is not None else None),
-            'calls': [{'tool': t, 'args': str(a)[:300]} for t, a in self.calls[-40:]]}
+            'calls': [{'tool': t, 'args': str(a)[:300]} for t, a in self.calls[-40:]],
+            'mod_status': self.mod_status()} | ({'vesha': self.vesha} if self.vesha else {})
 
 # %% ../nbs/03_agent.ipynb #0795cbf0
 COMMIT_SP = r'Write the git commit message for this diff: a subject line under 60 characters, a blank line, then one or two plain sentences. Output only the message.'
@@ -4334,7 +4454,8 @@ def command(self:Agent, line):
     if name == 'skills': return '\n'.join(f'{s.name:16} {s.source:8} {s.description[:90]}' for s in self.skills) or 'no skills found'
     if name == 'skill': return clip(_skill_text(self.skills, arg))
     if name == 'tools': return '\n'.join(sorted(getattr(t, '__name__', '?') for t in self.tools))
-    if name == 'extensions': return '\n'.join(self.registry.notes) or 'no extensions loaded'
+    if name in ('mods', 'extensions'): return self.mods_command(arg)
+    if name == 'vesha': return self.vesha_command(arg)
     if name == 'reload':
         self.reload()
         return f'reloaded: {len(self.tools)} tools, {len(self.skills)} skills'
@@ -4427,7 +4548,7 @@ def _release_run(self:Agent, run):
 class TurnResult:
     "How one turn ended, for a host: its reply, its state, and the value it handed back."
     reply: str = ''
-    state: str = ''           # 'complete', 'failed', 'cancelled', 'budget' or 'abandoned'
+    state: str = ''           # 'complete', 'failed', 'cancelled', 'budget', 'refused' or 'abandoned'
     error: str = ''
     usage: dict = field(default_factory=dict)
     result: object = None     # what `submit_result` received, validated against the `schema`
@@ -4603,18 +4724,19 @@ def run_queued(self:Agent, **kw):
         out.append(self.ask(p, result=True, **kw))
 
 UNREAD = 'Sent during the last turn, after its last tool call, so not yet read:'
+REFUSED = 'A mod refused this turn: {}'   #: the text a refused turn returns and records as its reply
 
 @patch
 def _with_unread(self:Agent, prompt):
-    "`prompt` preceded by the steering the last turn never read. A line sent too late is not lost. A running turn keeps its own."
-    if (r := self.run()) is None or not r.terminal or not (msgs := r.drain_inbox()): return prompt
+    "`(prompt, msgs)`: `prompt` preceded by `msgs`, the steering the last turn never read. A line sent too late is not lost. A running turn keeps its own."
+    if (r := self.run()) is None or not r.terminal or not (msgs := r.drain_inbox()): return prompt, []
     head = UNREAD + '\n' + '\n'.join(msgs)
-    return f'{head}\n\n{prompt}' if isinstance(prompt, str) else [head, *prompt]
+    return (f'{head}\n\n{prompt}' if isinstance(prompt, str) else [head, *prompt]), msgs
 
 @patch
 def _ask_once(self:Agent, prompt, **kw):
     "One registered turn. A stopped turn is recorded, and not replayed."
-    prompt = self._with_unread(prompt)
+    prompt, unread = self._with_unread(prompt)
     run, kept = self._new_run(prompt), [False]
     def keep(state, text='', error=''):
         "Write the row once, however the turn ended. A stop that a cost or token budget made is recorded as `budget`; a cancel by the user stays `cancelled`."
@@ -4641,6 +4763,9 @@ def _ask_once(self:Agent, prompt, **kw):
         run.finish(outcome)
         kept[0] = True
         return out
+    except TurnRefused as e:
+        run.give_back(unread); run.finish('refused'); keep('refused', REFUSED.format(e))
+        return REFUSED.format(e)
     except Exception as e:
         if run.cancelled:
             run.finish(); keep('cancelled'); return run.dict()
@@ -4655,7 +4780,7 @@ def _ask_once(self:Agent, prompt, **kw):
 @patch
 def stream(self:Agent, prompt, on_registered=None, **kw):
     "One registered turn as markdown chunks. A stopped turn is recorded and not replayed."
-    prompt = self._with_unread(prompt)
+    prompt, unread = self._with_unread(prompt)
     run, out, kept = self._new_run(prompt), [], [False]
     def keep(state, text='', error=''):
         "Write the row once, however the turn ended. A stop that a cost or token budget made is recorded as `budget`; a cancel by the user stays `cancelled`."
@@ -4689,6 +4814,9 @@ def stream(self:Agent, prompt, on_registered=None, **kw):
             run.finish(outcome)
             kept[0] = True
             if tail: yield tail
+    except TurnRefused as e:
+        run.give_back(unread); run.finish('refused'); keep('refused', REFUSED.format(e))
+        yield REFUSED.format(e)
     except Exception as e:
         if run.cancelled: run.finish(); keep('cancelled', ''.join(out)); return
         run.finish('failed')
@@ -4888,7 +5016,7 @@ def unwatch(self:Agent, target='all'):
 @patch
 def commands(self:Agent):
     "Every command name, built-in and registered, for a help line or an autocomplete."
-    return sorted({'config', 'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'handoff', 'skills', 'skill', 'tools', 'extensions', 'reload',
+    return sorted({'config', 'model', 'models', 'sessions', 'resume', 'cost', 'compact', 'handoff', 'skills', 'skill', 'tools', 'extensions', 'mods', 'vesha', 'reload',
                    'subagents', 'plan', 'planmode', 'todos', 'todo', 'rewind', 'branches', 'branch', 'commit', 'pr', 'learned', *self.registry.commands})
 
 # %% ../nbs/03_agent.ipynb #8fd374fe
@@ -5045,11 +5173,16 @@ def commands(self:Agent): return sorted(set(_agent_commands_runs(self)) | {'stop
 
 @patch
 def close(self:Agent):
-    "End the session: close panes, background work and the gate, cancel active runs, then close the backends and the host."
+    "End the session: close panes, background work and the gate, fire `session_end` once and turn the mods off, cancel active runs, then close the backends and the host."
     backends = list(self._backends.values())
     self.unwatch('all')
     if getattr(self, '_background', None) is not None: self._background.close()
-    if self.approvals is not None: self.approvals.close()
+    if self.approvals is not None: self.approvals.close()   # first, so an `ask_user` from a `session_end` hook is refused rather than waited on
+    if self._reg is not None and not self._ended:   # a registry never built has no hooks to tell
+        self._ended = True
+        self._reg.fire('session_end', self)
+        for m in list(self._reg.mods):
+            if m.on: self._reg.off(m.name)   # cancels their timers
     for row in self.runs(active=True): self.cancel(row['id'])
     evicted = [b for b in backends if all(b is not live for live in self._backends.values())]
     _agent_close_runs(self)
