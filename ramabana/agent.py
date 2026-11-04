@@ -11,7 +11,8 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'PERSON_ONLY', 'INLINE_SKILLS', 'MAX_CONTEXT_FILE', 'CONTEXT_FILES', 'DATED_CONTEXT', 'PICTURE_RULE',
            'RULES', 'SMALL_RULES', 'CATALOGUE_CHARS', 'SKILL_POINTERS', 'SMALL_CONTEXT_FILE', 'MASKED_NOTE',
            'CLAUDE_NOTES', 'LESSON_RULE', 'QUIET_NOTE', 'GPT_NOTES', 'GEMINI_NOTES', 'MODEL_NOTES', 'TODO_STATUSES',
-           'TODO_MARK', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_GRANTS', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'COMPACT_RETRY',
+           'TODO_MARK', 'REQUEST_STATUSES', 'REQUEST_CHARS', 'LEDGER_HEAD', 'LEDGER_FILES', 'WAKE_HEAD',
+           'EVIDENCE_NEEDED', 'PLAN_TOOLS', 'ROOT_ONLY', 'SUB_GRANTS', 'SUB_DEPTH_MAX', 'TREE_SPENT', 'COMPACT_RETRY',
            'GIT_SHELL', 'RAHASYA_SECRETS', 'MORE_SECRETS', 'PRIVATE_KEY', 'HIDING', 'READERS', 'ASK_PRESENCE',
            'PEER_ROWS_EVERY', 'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE',
            'WARM_ROUNDS', 'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'SOFT_CAPS',
@@ -21,12 +22,12 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
            'applied', 'apply', 'note', 'inline_for', 'prompt_text', 'turn_prompt', 'prompt_directives',
            'project_context', 'dated_lessons', 'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt',
-           'small_system_prompt', 'model_family', 'Todo', 'Plan', 'plan_tools', 'Agent', 'git_shell_denial',
-           'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial', 'generated_denial', 'note_tools',
-           'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing', 'token_rate',
-           'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard', 'guard_reads', 'mk_host',
-           'mk_agent', 'model_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS', 'hydrate_turns',
-           'request_text', 'request_body', 'request_title']
+           'small_system_prompt', 'model_family', 'is_evidence', 'Todo', 'Request', 'Plan', 'plan_tools', 'Agent',
+           'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial', 'generated_denial',
+           'note_tools', 'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing',
+           'token_rate', 'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard', 'guard_reads',
+           'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS',
+           'hydrate_turns', 'request_text', 'request_body', 'request_title']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextlib, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -41,7 +42,7 @@ from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import DFLT_TURN, needs_setup, accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
 from .setup import PANE_LINGER, config_path, follow_cmd, config_reset, config_set, config_show, load_config, set_table, setting
-from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block, done_items, OneshotTimeout, OneshotEmpty, StreamUnsupported, deadline_hit, cancel_hit, BudgetExceeded, cap_breach
+from .runtime import APPROVAL_NOTICE, prompt_notices, fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block, done_items, OneshotTimeout, OneshotEmpty, StreamUnsupported, deadline_hit, cancel_hit, BudgetExceeded, cap_breach
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
@@ -1011,6 +1012,20 @@ def model_family(spec):
 # %% ../nbs/03_agent.ipynb #8f32832a
 TODO_STATUSES = ('pending', 'active', 'done', 'cancelled')
 TODO_MARK = {'pending': '[ ]', 'active': '[▸]', 'done': '[x]', 'cancelled': '[-]'}
+REQUEST_STATUSES = ('open', 'agreed', 'done', 'declined')
+REQUEST_CHARS = 2000   #: most characters of one request the ledger keeps
+LEDGER_HEAD = '## Session ledger'
+LEDGER_FILES = 40      #: most changed files the ledger lists
+WAKE_HEAD = 'Background work you started finished:'   #: how `wake_prompt` starts; such a prompt is no request
+EVIDENCE_NEEDED = ('a step is done only with evidence: give `evidence` as a commit sha, '
+                   'a test command and its result (`pytest -q: 12 passed`), or a file or screenshot path')
+_SHA = r'\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b'
+_RESULT = r'\S\s*(?:->|→|=>|:)\s*.*\b(?:pass(?:ed|es)?|fail(?:ed|s|ures?)?|ok|green|exit \d+|errors?)\b'
+_PATH = r'[\w.~-]*/[\w./-]*\w|\b[\w-]+\.\w{2,5}\b'
+
+def is_evidence(text):
+    "Whether `text` can close a step: a commit sha, a command and its result, or a file path."
+    return bool(re.search(f'{_SHA}|{_RESULT}|{_PATH}', str(text or ''), re.I))
 
 @dataclass
 class Todo:
@@ -1020,13 +1035,14 @@ class Todo:
     status: str = 'pending'
     note: str = ''
     owner: str = ''           # sub-agent label; '' for the main agent
+    evidence: str = ''        # what closed it: a commit sha, a test command and its result, or a path
 
     def __post_init__(self):
         if self.status not in TODO_STATUSES:
             raise ValueError(f'status must be one of {TODO_STATUSES}')
 
     def dict(self):
-        return dict(id=self.id, text=self.text, status=self.status, note=self.note, owner=self.owner)
+        return dict(id=self.id, text=self.text, status=self.status, note=self.note, owner=self.owner, evidence=self.evidence)
 
     @classmethod
     def from_dict(cls, d):
@@ -1036,12 +1052,27 @@ class Todo:
                    text=str(d.get('text') or ''),
                    status=str(d.get('status') or 'pending'),
                    note=str(d.get('note') or ''),
-                   owner=str(d.get('owner') or ''))
+                   owner=str(d.get('owner') or ''),
+                   evidence=str(d.get('evidence') or ''))
+
+
+@dataclass
+class Request:
+    "One request from the user, word for word, with its status."
+    id: str
+    text: str
+    status: str = 'open'
+    turn: str = ''
+
+    def __post_init__(self):
+        if self.status not in REQUEST_STATUSES: raise ValueError(f'status must be one of {REQUEST_STATUSES}')
+
+    def dict(self): return dict(id=self.id, text=self.text, status=self.status, turn=self.turn)
 
 
 class Plan:
-    "The session's checklist of steps, with a status for each step."
-    def __init__(self, title='', todos=None, updated=0.):
+    "The session's checklist of steps, with a status for each step, and the ledger kept beside it: the user's requests, the files changed and the commits made."
+    def __init__(self, title='', todos=None, updated=0., requests=(), files=(), commits=()):
         self.title = str(title or '')
         self.todos, self.updated = [], float(updated or time.time())
         for it in todos or ():
@@ -1050,17 +1081,22 @@ class Plan:
             else:
                 text = str(it).strip()
                 if text: self.todos.append(Todo(id=uuid.uuid4().hex[:8], text=text))
+        self.requests = [r if isinstance(r, Request) else Request(**{k: str(v) for k, v in r.items() if k in ('id', 'text', 'status', 'turn')})
+                         for r in requests or ()]
+        self.files, self.commits = list(files or ()), list(commits or ())
 
     def __bool__(self): return bool(self.title) or bool(self.todos)
     def __len__(self): return len(self.todos)
 
     def dict(self):
-        return dict(title=self.title, updated=self.updated, todos=[t.dict() for t in self.todos])
+        return dict(title=self.title, updated=self.updated, todos=[t.dict() for t in self.todos],
+                    requests=[r.dict() for r in self.requests], files=self.files, commits=self.commits)
 
     @classmethod
     def from_dict(cls, d):
         d = dict(d or {})
-        return cls(title=d.get('title') or '', todos=d.get('todos') or [], updated=d.get('updated') or 0.)
+        return cls(title=d.get('title') or '', todos=d.get('todos') or [], updated=d.get('updated') or 0.,
+                   requests=d.get('requests') or (), files=d.get('files') or (), commits=d.get('commits') or ())
 
     def progress(self):
         "`(done, total)`. Cancelled todos are not counted."
@@ -1091,15 +1127,15 @@ class Plan:
         return self._touch()
 
     def set(self, title, items=()):
-        "Replace the plan. `items` are todo texts (str), dicts or `Todo` objects."
+        "Replace the plan. `items` are todo texts (str), dicts or `Todo` objects. A text that names a step already on the plan keeps that step, its status and its evidence."
         self.title = str(title or '').strip()
-        out = []
+        out, had = [], {t.text: t for t in self.todos}
         for it in items or ():
             if isinstance(it, Todo): out.append(it)
             elif isinstance(it, dict): out.append(Todo.from_dict(it))
             else:
                 text = str(it).strip()
-                if text: out.append(Todo(id=uuid.uuid4().hex[:8], text=text))
+                if text: out.append(had.get(text) or Todo(id=uuid.uuid4().hex[:8], text=text))
         self.todos = out
         return self._touch()
 
@@ -1109,7 +1145,7 @@ class Plan:
         self.todos.append(t)
         return self._touch() and t
 
-    def update(self, key, status=None, note=None, text=None, owner=None):
+    def update(self, key, status=None, note=None, text=None, owner=None, evidence=None):
         t = self.find(key)
         if t is None: raise KeyError(f'no todo matches {key!r}')
         if status is not None:
@@ -1121,8 +1157,53 @@ class Plan:
         if note is not None: t.note = str(note)
         if text is not None: t.text = str(text).strip() or t.text
         if owner is not None: t.owner = str(owner)
+        if evidence is not None: t.evidence = str(evidence).strip()
         self._touch()
         return t
+
+    def ask(self, text, turn=''):
+        "Record a user request word for word, as `open`. A bare approval marks the newest open request `agreed` instead; a one-key shortcut records nothing."
+        p = str(text or '').strip()
+        if not p or p in ('.', ';', ',') or p.startswith(WAKE_HEAD): return None
+        if APPROVAL_NOTICE in prompt_notices(p):
+            if (r := next((r for r in reversed(self.requests) if r.status == 'open'), None)): r.status = 'agreed'; self._touch()
+            return r
+        r = Request(f'r{len(self.requests) + 1}', p if len(p) <= REQUEST_CHARS else p[:REQUEST_CHARS] + '…', turn=str(turn or ''))
+        self.requests.append(r); self._touch()
+        return r
+
+    def answer(self, key, status):
+        "Set the status of the request with id `key`."
+        if status not in REQUEST_STATUSES: raise ValueError(f'status must be one of {REQUEST_STATUSES}')
+        r = next((r for r in self.requests if r.id == str(key).strip()), None)
+        if r is None: raise KeyError(f'no request has the id {key!r}')
+        r.status = status; self._touch()
+        return r
+
+    def touched(self, files=(), commits=()):
+        "Add the files a turn changed and the commits it made. Returns whether the ledger changed."
+        new = [f for f in dict.fromkeys(map(str, files)) if f not in self.files], [c for c in dict.fromkeys(map(str, commits)) if c not in self.commits]
+        self.files += new[0]; self.commits += new[1]
+        if any(new): self._touch()
+        return any(new)
+
+    def ledger(self):
+        "The session ledger as markdown: each request and its status, the steps by their honest state, the files changed and the commits."
+        if not (self.requests or self.todos or self.files or self.commits): return ''
+        out, row = [LEDGER_HEAD], lambda t, why='': f'- `{t.id}` {t.text}' + (f' -- {why}' if why else '')
+        if self.requests:
+            out += ['### Requests', *(f'- `{r.id}` [{r.status}] ' + (r.text if r.status in ('open', 'agreed') else _cut_title(r.text, 200)).replace('\n', '\n  ')
+                                      for r in self.requests)]
+        steps = {'### Done': [row(t, f'evidence: {t.evidence}') for t in self.todos if t.status == 'done' and t.evidence],
+                 '### Marked done with no evidence': [row(t, 'not checked') for t in self.todos if t.status == 'done' and not t.evidence],
+                 '### Open': [row(t, t.status) for t in self.todos if t.status in ('active', 'pending')]}
+        for head, rows in steps.items():
+            if rows: out += [head, *rows]
+        if self.files:
+            out += ['### Files changed', *(f'- {f}' for f in self.files[-LEDGER_FILES:])]
+            if len(self.files) > LEDGER_FILES: out.append(f'- and {len(self.files) - LEDGER_FILES} more')
+        if self.commits: out += ['### Commits', *(f'- {c}' for c in self.commits)]
+        return '\n'.join(out)
 
     def md(self):
         "The checklist as markdown, for a briefing, a status block or a `/plan` reply."
@@ -1134,7 +1215,8 @@ class Plan:
             mark = TODO_MARK.get(t.status, '[ ]')
             own = f'  @{t.owner}' if t.owner else ''
             note = f'  -- {t.note}' if t.note else ''
-            lines.append(f'{mark} `{t.id}` {t.text}{own}{note}')
+            proof = f'  -- evidence: {t.evidence}' if t.evidence else '  -- no evidence' if t.status == 'done' else ''
+            lines.append(f'{mark} `{t.id}` {t.text}{own}{note}{proof}')
         return '\n'.join(lines)
 
     def line(self):
@@ -1165,20 +1247,28 @@ def plan_tools(get_plan, save=None):
         return get_plan().md()
 
     @summary(lambda a: f'Todo {a.get("id") or "new"} → {a.get("status") or ("update" if a.get("id") else "add")}')
-    def update_todo(id: str = '',     # the todo's id or a unique prefix of it; empty adds `text` as a new step
-                    status: str = '', # pending, active, done or cancelled
-                    text: str = '',   # the step's new text, or the text of the step to add
+    def update_todo(id: str = '',       # the todo's id or a unique prefix of it; a request id such as `r2` from the session ledger; empty adds `text` as a new step
+                    status: str = '',   # pending, active, done or cancelled; for a request, open, agreed, done or declined
+                    text: str = '',     # the step's new text, or the text of the step to add
+                    evidence: str = '', # what proves the step done: a commit sha, a test command and its result, or a file or screenshot path
                     ) -> str:
-        "Change a todo by id or unique prefix (status: pending, active, done, cancelled), or append `text` as a new step when `id` is empty."
+        "Change a todo by id or unique prefix (status: pending, active, done, cancelled), or append `text` as a new step when `id` is empty. Marking a step done needs `evidence`. A request id such as `r2` sets that request's status instead."
         p = get_plan()
+        if any(r.id == id for r in p.requests):
+            try: r = p.answer(id, status)
+            except Exception as e: return err('could not update the request', e)
+            _save()
+            return f'`{r.id}` → {r.status}\n\n{p.ledger()}'
+        if status == 'done' and not is_evidence(evidence): return err(EVIDENCE_NEEDED)
         if not id:
             if not text: return err('give `text` to add a step, or `id` to change one')
             try: t = p.add(text, status=status or 'pending')
             except Exception as e: return err('could not add todo', e)
+            if evidence: t.evidence = evidence.strip()
             _save()
             return f'added `{t.id}` ({t.status}): {t.text}\n\n{p.md()}'
-        kw = {k: v for k, v in (('status', status), ('text', text)) if v}
-        if not kw: return err('nothing to update; pass status or text')
+        kw = {k: v for k, v in (('status', status), ('text', text), ('evidence', evidence)) if v}
+        if not kw: return err('nothing to update; pass status, text or evidence')
         try: t = p.update(id, **kw)
         except Exception as e: return err('could not update todo', e)
         _save()
@@ -1299,6 +1389,8 @@ class Agent:
         self.activity.tap = self._act_event
         self._nested = contextvars.ContextVar('delegating', default=())   # per context; a fan-out's workers inherit it
         self.plan = Plan()
+        self.compactor.ledger = lambda: self.plan.ledger()
+        self._ledger_due = False # a loaded ledger goes out once with the next prompt
         self.on_plan = None      # callable(plan) after every mutation
         self.on_media = None     # callable(paths) when a tool writes a picture
         self.calls = []
@@ -2017,8 +2109,7 @@ def wake_prompt(self:Agent):
     if len(self._wakes) >= self.auto_turns_per_hour: return ''
     self._wakes.append(now)
     said = ', '.join(f'{r.id} ({r.state})' for r in runs)
-    return f'Background work you started finished: {said}. Its result follows. ' + ('Report the result to the user; do not change files in this turn.' if mode == 'report' else 'Continue: verify the work, then commit or report.')
-
+    return f'{WAKE_HEAD} {said}. Its result follows. ' + ('Report the result to the user; do not change files in this turn.' if mode == 'report' else 'Continue: verify the work, then commit or report.')
 
 # %% ../nbs/03_agent.ipynb #d598e329
 @patch(as_prop=True)
@@ -2191,7 +2282,8 @@ def _load_plan(self:Agent):
     p = self.plan_path
     if p is None or not p.exists(): return
     try: self.plan = Plan.from_dict(json.loads(p.read_text()))
-    except Exception: pass
+    except Exception: return
+    self._ledger_due = bool(self.plan.ledger())
 
 # %% ../nbs/03_agent.ipynb #15c8df1f
 @patch
@@ -3086,6 +3178,9 @@ def _prepare(self:Agent, prompt):
         try: evidence = tool(query)
         except Exception as e: evidence = f'{name} failed: {agent_err(e)}'
         outgoing = _append(outgoing, f'\n\n<preflight-tool name="{name}">\n{evidence}\n</preflight-tool>')
+    if self._ledger_due and (led := self.plan.ledger()): outgoing = _append(outgoing, f'\n\n<session-ledger>\n{led}\n</session-ledger>')
+    self._ledger_due = False
+    if self.plan.ask(request_body(prompt), self.current_turn_id) is not None: self._save_plan()
     if reviews: outgoing = _append(outgoing, review_notice(reviews))
     if (done := self.background_notice()): outgoing = _append(outgoing, done)
     if (fired := self.watch_notice()): outgoing = _append(outgoing, fired)
@@ -3441,6 +3536,8 @@ def _finish(self:Agent, text, prompt=''):
     self.last_verify = self._verify(cmd) if self.changes() and (cmd := self.verify_command()) and not self._verified() else ''
     if self.last_verify: text += '\n\n' + self.last_verify
     if unsaved := self._checkpoint(): text += '\n\n' + unsaved
+    made = [f"{g['head'][:10]} {g['summary']}" for g in self.git_undo.get(self.current_turn_id, []) if g.get('tool') == 'git_commit' and g.get('head')]
+    if self.plan.touched([*self.before, *self.new], made): self._save_plan()
     if (run := self.run()) is not None: run.write(f'reply: {_1(text, 2000)}')
     self.registry.fire('stop', self, text)
     self.registry.fire('after_turn', self, text)
@@ -4029,7 +4126,7 @@ def handoff(self:Agent):
     "Hand the conversation to a fresh context: summarise all of it, keep its finished work as a project memory note, and go on from the summary alone."
     n = self.compactor.count
     text = self.compact(fresh=True)
-    if self.compactor.count > n and (done := done_items(text)) not in ('', '(none)'):
+    if self.compactor.count > n and (done := done_items(self.plan.ledger()) or done_items(text)) not in ('', '(none)'):
         try: self.note_memory(done, title=f'finished in {self.session_id}', key=f'handoff-{self.session_id}')   # a later summary keeps earlier Done items, so it replaces this note
         except OSError as e: self.note = f'{self.compactor.note}; the Done list was not kept ({e})'
     return text
