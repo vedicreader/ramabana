@@ -2,6 +2,21 @@
 
 <!-- do not remove -->
 
+## 0.2.106
+- Each session keeps a ledger in its plan file (`~/.config/ramabana/agent-plans/<session>.json`). The ledger holds:
+  - each request of the user, word for word, with its status: open, agreed, done or declined
+  - the evidence of each plan step
+  - the files that changed
+  - the commits
+- A step is done only with evidence: a commit in the repo, an existing file or screenshot path, or a test command and its result. Before, a step with no evidence could be marked done, for example "full suite green". The ledger shows a step marked done in another way as "not checked".
+- Compaction makes a digest and calls no model by default (`compaction.strategy = "digest"`). The digest has three parts, in this order:
+  - the ledger
+  - the user's words and the assistant's words, nearly whole
+  - one line for each tool call, with its target and ok or the error
+
+  Past its budget, the oldest lines are left out. With `compaction.overflow = "summary"`, a model summarises them instead. `summary` and `surgical` are still available.
+- A resumed or restarted session gets the ledger in its first prompt.
+
 ## 0.2.105
 - Compaction keeps the newest messages. Before, a long turn (one request and then hundreds of tool steps) kept 0 messages, and only the summary was left. Now the kept tail can start at an assistant message, and never at a tool result without its call. When no request of the user is left in the tail, the summary keeps the last request word for word.
 - `delegate_result` takes `wait`, up to 120 s, and gives a finished run 5 s to save its answer. Its text no longer says "ask again later". It says that the answer comes by itself.
