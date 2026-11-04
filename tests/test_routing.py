@@ -272,7 +272,7 @@ def test_compaction_moves_past_a_summary_model_that_fails_and_names_the_error_wh
     monkeypatch.setenv('CODEX_AUTH_TOKEN', 'x')
     monkeypatch.setattr(core, 'runtime_available', lambda rt: rt == 'claude')
     monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: Refused(spec, **kw))
-    a = Agent(MemHost(), extensions=False, subagents=False)
+    a = Agent(MemHost(), extensions=False, subagents=False, compact_strategy='summary')
     b = a._be('turn'); b.start()
     talk = lambda: [{'role': r, 'content': f'{r} {i} ' * 60} for i in range(6) for r in ('user', 'assistant')]
     b.hist_ = talk()
@@ -283,7 +283,7 @@ def test_compaction_moves_past_a_summary_model_that_fails_and_names_the_error_wh
     assert a.compact() == '' and 'model_not_found' in a.compactor.note, a.compactor.note
     monkeypatch.setattr(Refused, 'everyone', False)
     monkeypatch.setattr(Refused, 'unstartable', True)
-    a = Agent(MemHost(), extensions=False, subagents=False)
+    a = Agent(MemHost(), extensions=False, subagents=False, compact_strategy='summary')
     b = a._be('turn'); b.start(); b.hist_ = talk()
     assert a.compact() == 'GOAL: summarised by claude-opus-5-5', 'a summary model that cannot start leaves the turn model'
 
@@ -294,9 +294,9 @@ def test_compaction_never_hands_a_route_a_prompt_its_window_would_cut(monkeypatc
     monkeypatch.setenv('CODEX_AUTH_TOKEN', 'x')
     monkeypatch.setattr(core, 'runtime_available', lambda rt: rt == 'claude')
     monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: Refused(spec, **kw))
-    a = Agent(MemHost(), extensions=False, subagents=False)
+    a = Agent(MemHost(), extensions=False, subagents=False, compact_strategy='summary')
     b = a._be('turn'); b.start()
-    b.spec = replace(b.spec, ctx=300)
+    b.spec =replace(b.spec, ctx=300)
     b.hist_ = [{'role': r, 'content': f'{r} {i} ' * 60} for i in range(6) for r in ('user', 'assistant')]
     held = list(b.hist_)
     assert a.compact() == '' and b.hist_ == held, 'history left whole'

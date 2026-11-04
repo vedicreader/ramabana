@@ -127,7 +127,7 @@ def test_compaction_progresses_under_a_briefing_that_fills_the_window():
     be.start()
     be.hist_ = [{'role': 'user', 'content': 'a' * 14_000}, {'role': 'assistant', 'content': 'b' * 14_000},
                 {'role': 'user', 'content': 'recent question'}]
-    assert Briefed(5_214).compact(be, lambda p, sp: 'GOAL: keep going') == 'GOAL: keep going'
+    assert Briefed(5_214, strategy='summary').compact(be,lambda p, sp: 'GOAL: keep going') == 'GOAL: keep going'
     assert be.hist[0]['content'].startswith(runtime.SUMMARY_PREFIX)
 
     c = Compactor()

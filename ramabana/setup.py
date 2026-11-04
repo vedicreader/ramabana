@@ -370,7 +370,8 @@ KEYS = {
     'window.keep_recent': Key(int, '', '', 'tokens of the newest conversation a compaction keeps word for word'),
     'window.local_ctx': Key(int, 'LOCAL_CTX', '', "the window every local model runs with; 0 keeps each model's own"),
     'compaction.auto': Key(bool, '', '', 'compact on crossing the reserve; false compacts only on /compact or when a turn cannot fit'),
-    'compaction.strategy': Key(str, '', '', 'summary asks the summary model; surgical keeps a digest made without a model', ('summary', 'surgical')),
+    'compaction.strategy': Key(str, '', '', 'digest keeps the ledger, the words of both sides and one line for each tool call, with no model; surgical cuts each message short, with no model; summary asks the summary model', ('digest', 'surgical', 'summary')),
+    'compaction.overflow': Key(str, '', '', 'what a digest that is still too large does with its oldest lines: cut leaves them out, summary asks the summary model', ('cut', 'summary')),
     'compaction.soft': Key(int, '', '', 'tokens past which the next turn that starts at a clean boundary hands off to a fresh context'),
     'compaction.hard': Key(int, '', '', 'tokens past which the conversation compacts, or at the window reserve when that is lower'),
     'runtime.effort': Key(str, 'EFFORT', '', 'the reasoning effort a Claude turn asks for'),
@@ -575,7 +576,7 @@ def config_defaults():
     from ramabana.runtime import CLAUDE_EFFORT, EST_MARGIN, HARD_LINE, IMG_TOKENS, KEEP_RECENT, RESERVE, SOFT_LINE
     d = {'learning': True, 'pane_close_done': True, 'calm': False, 'drop_tools': [], 'jobs.turn': DFLT_TURN, **{f'jobs.{j}': v or '' for j, v in DEFAULT_POLICY.items() if j != 'turn'},
          'window.margin': EST_MARGIN, 'window.image_tokens': IMG_TOKENS, 'window.reserve': RESERVE, 'window.keep_recent': KEEP_RECENT,
-         'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'summary', 'compaction.soft': SOFT_LINE, 'compaction.hard': HARD_LINE, 'runtime.effort': CLAUDE_EFFORT,
+         'window.local_ctx': 0, 'compaction.auto': True, 'compaction.strategy': 'digest', 'compaction.overflow': 'cut', 'compaction.soft': SOFT_LINE, 'compaction.hard': HARD_LINE, 'runtime.effort': CLAUDE_EFFORT,
          'runtime.tool_channel': '', 'runtime.litert_backend': '', 'subagents.effort': '', 'subagents.tool_channel': '', 'azure.endpoint': '', 'azure.api_key_env': AZURE_KEY_ENV, 'jobs.image': DFLT_IMAGE, 'jobs.video': DFLT_VIDEO}
     try:
         from ramabana.cli import main

@@ -6,18 +6,20 @@ Docs: https://vedicreader.github.io/ramabana/runtime.html.md"""
 
 # %% auto #0
 __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SOFT_LINE', 'HARD_LINE', 'SUMMARY_PREFIX', 'LAST_ASK',
-           'PIN_CHARS', 'SURGICAL_POLICY', 'SUMMARISE_SP', 'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE',
-           'READ_NOTICE', 'APPROVAL_NOTICE', 'BTW_NOTICE', 'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS',
-           'ONESHOT_TOKENS', 'ONESHOT_HEADROOM', 'ONESHOT_CUT', 'IMG_TOKENS', 'EST_MARGIN', 'TRIMMED', 'QUIET_RUNTIMES',
-           'CLAUDE_EFFORT', 'CLAUDE_GRANTS', 'ROUTINE_CBS', 'STATUS_CHARS', 'CHILD_KEEP', 'NOTE_KEEP', 'AIR_CALLS',
-           'AIR_CHARS', 'REPEAT_CALLS', 'CHAT_CALLBACKS', 'interesting', 'captured', 'capture', 'estimate_tokens',
-           'halvings', 'threshold', 'should_compact', 'done_items', 'serialise', 'split_previous', 'summarise_prompt',
-           'transcript_runs', 'fold_summary', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices',
-           'notices_block', 'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter',
-           'oneshot_tokens', 'Usage', 'margin', 'img_tokens', 'msg_tokens', 'trim_hist', 'omitted', 'excerpt',
-           'fit_content', 'DeadlineUnsupported', 'OneshotTimeout', 'deadline_hit', 'cancel_hit', 'OneshotEmpty',
-           'StreamUnsupported', 'BudgetExceeded', 'cap_breach', 'Backend', 'use_chat', 'RishiBackend', 'make_backend',
-           'status_line', 'said_before_call', 'Run', 'current_run', 'run_context', 'TokenLogger']
+           'PIN_CHARS', 'SURGICAL_POLICY', 'DIGEST_POLICY', 'DIGEST_TOKENS', 'HISTORY_HEAD', 'TARGET_KEYS',
+           'SUMMARISE_SP', 'SUMMARISE', 'UPDATE_SUMMARISE', 'REORIENT', 'Q_NOTICE', 'READ_NOTICE', 'APPROVAL_NOTICE',
+           'BTW_NOTICE', 'ACTION_NOTICE', 'TAG_REMINDER', 'MAX_STEPS', 'ONESHOT_TOKENS', 'ONESHOT_HEADROOM',
+           'ONESHOT_CUT', 'IMG_TOKENS', 'EST_MARGIN', 'TRIMMED', 'QUIET_RUNTIMES', 'CLAUDE_EFFORT', 'CLAUDE_GRANTS',
+           'ROUTINE_CBS', 'STATUS_CHARS', 'CHILD_KEEP', 'NOTE_KEEP', 'AIR_CALLS', 'AIR_CHARS', 'REPEAT_CALLS',
+           'CHAT_CALLBACKS', 'interesting', 'captured', 'capture', 'estimate_tokens', 'halvings', 'threshold',
+           'should_compact', 'done_items', 'serialise', 'prior_text', 'split_previous', 'summarise_prompt',
+           'transcript_runs', 'fold_summary', 'truncate_middle', 'surgical_history', 'call_target', 'call_failed',
+           'call_line', 'digest_rows', 'digest', 'reorient', 'prompt_notices', 'notices_block',
+           'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'oneshot_tokens',
+           'Usage', 'margin', 'img_tokens', 'msg_tokens', 'trim_hist', 'omitted', 'excerpt', 'fit_content',
+           'DeadlineUnsupported', 'OneshotTimeout', 'deadline_hit', 'cancel_hit', 'OneshotEmpty', 'StreamUnsupported',
+           'BudgetExceeded', 'cap_breach', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'status_line',
+           'said_before_call', 'Run', 'current_run', 'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import base64, contextvars, copy, json, math, mimetypes, os, re, sys, threading, time, uuid
@@ -25,7 +27,10 @@ from pathlib import Path
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fastcore.basics import first, patch
+from itertools import takewhile
 from urai import resp_text, tool_rows, strip_hist_media, strip_media, is_media
+from shalya.core import failed
+from .history_core import request_body
 from .setup import config_path, setting
 from .core import EFFORT_RUNTIMES, EFFORTS, AgentError, accepts, agent_err, claude_wire, env, force_tags, local_ctx, local_window, model_setting, tool_channel
 
@@ -144,6 +149,10 @@ SUMMARY_PREFIX = 'Previous conversation summary:\n'
 LAST_ASK = "The user's last request, word for word:\n"
 PIN_CHARS = 8000             # most characters of that request a compaction keeps
 SURGICAL_POLICY = {'user': 2000, 'assistant': 150, 'call': 60, 'result': 35}
+DIGEST_POLICY = {'user': 2000, 'assistant': 1000, 'target': 24, 'error': 40}   # tokens for each part of a digest line
+DIGEST_TOKENS = 24_000       # most tokens a digest takes before its oldest lines are cut or summarised
+HISTORY_HEAD = '## Conversation so far\n'
+TARGET_KEYS = ('path', 'file', 'filename', 'command', 'cmd', 'query', 'pattern', 'url', 'id', 'name', 'task', 'prompt')
 
 # %% ../nbs/01_runtime.ipynb #be51204d
 def estimate_tokens(text, count=None):
@@ -188,12 +197,18 @@ def serialise(msgs, mx=2000):
     return '\n'.join(out)
 
 
+def prior_text(head):
+    "The summary or digest in a compaction message, without the ledger, the pinned request or the reminder around it."
+    t = head.split(HISTORY_HEAD, 1)[-1]
+    for mark in ('\n\n' + LAST_ASK, '\n\n<system-reminder>'): t = t.split(mark, 1)[0]
+    return t.strip()
+
 def split_previous(msgs):
     "Split off a leading summary: `(previous_summary_or_None, remaining_msgs)`."
     if not msgs: return None, msgs
     t = resp_text(msgs[0])
     if msgs[0].get('role') == 'user' and t.startswith(SUMMARY_PREFIX):
-        return t[len(SUMMARY_PREFIX):], msgs[1:]
+        return prior_text(t[len(SUMMARY_PREFIX):]), msgs[1:]
     return None, msgs
 
 # %% ../nbs/01_runtime.ipynb #f175b4bf
@@ -326,6 +341,71 @@ def surgical_history(msgs, policy=None, count=None):
             rows.append('> ' + truncate_middle(result, policy['result'], count))
     return '\n'.join(rows)
 
+# %% ../nbs/01_runtime.ipynb #1d11f870
+def call_target(args):
+    "The main target of a tool call: the first of `TARGET_KEYS` in its arguments, else its first text argument."
+    if not isinstance(args, dict): return str(args or '')
+    v = next((args[k] for k in TARGET_KEYS if args.get(k)), None) or next((v for v in args.values() if isinstance(v, str) and v), '')
+    return v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+
+def call_failed(result):
+    "Whether a tool result reports a failure: an `ERROR:` text, or a command that exited with a code that is not zero."
+    return failed(result) or bool(re.match(r'exit [1-9]', str(result or '')))
+
+def call_line(name, args, result, policy=None, count=None):
+    "One digest line for a tool call: its name, its main target, and `ok`, `error: <short text>` or `no result`."
+    p = {**DIGEST_POLICY, **(policy or {})}
+    if result is None: state = 'no result'
+    elif not call_failed(result): state = 'ok'
+    else: state = 'error: ' + truncate_middle(' ¶ '.join(x.strip() for x in str(result).splitlines() if x.strip()), p['error'], count)
+    target = truncate_middle(call_target(args), p['target'], count)
+    return f'▶ {name}' + (f' {target}' if target else '') + f' · {state}'
+
+# %% ../nbs/01_runtime.ipynb #bdb95b2b
+def digest_rows(msgs, policy=None, count=None):
+    "Messages as digest lines: the user's and the assistant's words nearly whole, and one line for each tool call."
+    p = {**DIGEST_POLICY, **(policy or {})}
+    rows = []
+    for i, m in enumerate(msgs):
+        role, text = m.get('role'), resp_text(m).strip()
+        if role == 'user' and (said := request_body(text)): rows.append('§ ' + truncate_middle(said, p['user'], count))
+        if role != 'assistant': continue
+        if text: rows.append('» ' + truncate_middle(text, p['assistant'], count))
+        after = list(takewhile(lambda o: o.get('role') == 'tool', msgs[i+1:]))
+        by_id = {o['tool_call_id']: resp_text(o) for o in after if o.get('tool_call_id')}
+        for k, (tc, (name, args)) in enumerate(zip(m.get('tool_calls') or [], tool_rows(m))):
+            res = by_id.get(tc.get('id')) if by_id else resp_text(after[k]) if k < len(after) else None
+            rows.append(call_line(name, args, res, p, count))
+    return rows
+
+# %% ../nbs/01_runtime.ipynb #a6e9c85d
+def _row_msgs(rows, mx=1900):
+    "Digest lines packed into user messages of at most about `mx` characters, which `serialise` does not clip."
+    out, cur = [], ''
+    for r in rows:
+        if cur and len(cur) + len(r) > mx: out.append(cur); cur = ''
+        cur = f'{cur}\n{r}' if cur else r
+    return [{'role': 'user', 'content': c} for c in out + [cur] if c]
+
+def digest(msgs,
+           budget=DIGEST_TOKENS, # most tokens of the result
+           summariser=None,      # `summariser(prompt, sp)` for the oldest lines past the budget; None leaves them out
+           summary_tokens=None,  # the summarizer's input budget, as `fold_summary` takes it
+           count=None, policy=None, extra=''):
+    "The digest of `msgs` in `budget` tokens, after the lines of an earlier digest. Past the budget, the oldest lines are summarised or left out."
+    prev, rest = split_previous(msgs)
+    rows = (prev.splitlines() if prev else []) + digest_rows(rest, policy, count)
+    sizes = [estimate_tokens(r, count) + 1 for r in rows]
+    if sum(sizes) <= budget: return '\n'.join(rows)
+    room, i, n = (budget // 2 if summariser else budget - 32), len(rows), 0
+    while i and n + sizes[i-1] <= room: i -= 1; n += sizes[i]
+    old, s = rows[:i], ''
+    if summariser is not None:
+        try: s = fold_summary(_row_msgs(old), summariser, extra, summary_tokens, count)
+        except Exception: s = ''
+    head = _clip_tokens(s, budget - n, count) if s else f'({len(old)} older digest lines left out)'
+    return '\n'.join([head, *rows[i:]])
+
 # %% ../nbs/01_runtime.ipynb #83afe271
 def reorient(kernel_alive=True, skills=()):
     "The system reminder placed after a compacted or otherwise rewritten conversation."
@@ -415,12 +495,14 @@ class Compactor:
                  auto=True,                  # the agent compacts on crossing the threshold only when true; `Compactor` itself ignores it
                  kernel_alive=True,          # whether the kernel survived; passed to `reorient`
                  on_compact=None,            # called with each new summary
-                 strategy='summary',          # 'summary' or 'surgical'; 'surgical' calls no model
+                 strategy='digest',          # 'digest', 'surgical' or 'summary'; only 'summary' always calls a model
                  soft=None,                  # None reads `compaction.soft`, else `SOFT_LINE`
-                 hard=None):                 # None reads `compaction.hard`, else `HARD_LINE`
+                 hard=None,                  # None reads `compaction.hard`, else `HARD_LINE`
+                 ledger=None,                # a function that returns the session ledger, put before the digest
+                 overflow=None):             # 'cut' or 'summary': what a digest past its budget does with its oldest lines; None reads `compaction.overflow`, else 'cut'
         self._reserve, self._keep_recent, self.auto = reserve, keep_recent, auto
         self._soft, self._hard = soft, hard
-        self.strategy = strategy
+        self.strategy, self.ledger, self._overflow = strategy, ledger, overflow
         self.kernel_alive, self.on_compact = kernel_alive, on_compact
         self.count = 0
         self.last = ''
@@ -439,6 +521,12 @@ class Compactor:
     def soft(self): return setting('compaction.soft', SOFT_LINE) if self._soft is None else self._soft
     @property
     def hard(self): return setting('compaction.hard', HARD_LINE) if self._hard is None else self._hard
+    @property
+    def overflow(self): return setting('compaction.overflow', 'cut') if self._overflow is None else self._overflow
+
+    def digest_budget(self, ctx=0):
+        "Most tokens a digest takes: `DIGEST_TOKENS`, or a quarter of a smaller window."
+        return min(DIGEST_TOKENS, max(1024, ctx // 4)) if ctx else DIGEST_TOKENS
 
     def due(self, backend):
         "Whether `backend` has crossed the hard line, or its window's threshold when that is lower."
@@ -477,15 +565,16 @@ class Compactor:
         return kept
 
     def _head(self, text, older, keep):
-        "The message that replaces `older`: the summary, the user's last request when `keep` has none, and the reminder."
+        "The message that replaces `older`: the ledger, the summary, the user's last request when `keep` has none, and the reminder."
         ask = '' if any(m.get('role') == 'user' for m in keep) else next((resp_text(m) for m in reversed(older) if m.get('role') == 'user'), '')
         if len(ask) > PIN_CHARS: ask = ask[:PIN_CHARS] + TRIMMED
-        parts = [SUMMARY_PREFIX + text, LAST_ASK + ask if ask else '', reorient(self.kernel_alive)]
+        led = self.ledger() if self.ledger else ''
+        parts = [SUMMARY_PREFIX + (f'{led}\n\n{HISTORY_HEAD}{text}' if led else text), LAST_ASK + ask if ask else '', reorient(self.kernel_alive)]
         return '\n\n'.join(p for p in parts if p)
 
     def compact(self, backend, summariser, extra='', summary_ctx=0, summary_output=4096, summary_count=None,
-                fresh=False):  # keep no recent messages and always summarise: a handoff to a fresh context
-        "Summarise `backend`'s history with `summariser(prompt, sp)`, replace it, return the summary."
+                fresh=False):  # keep no recent messages: a handoff to a fresh context; the 'surgical' strategy then summarises
+        "Replace the older part of `backend`'s history with a digest, a surgical rendering or a summary from `summariser(prompt, sp)`, and return that text."
         msgs = list(backend.hist or [])
         if not msgs:
             self.note = 'nothing to compact'
@@ -498,41 +587,35 @@ class Compactor:
         if not older:
             self.note = 'everything is recent; nothing to compact'
             return ''
-        if self.strategy == 'surgical' and not fresh:
-            text = surgical_history(older, count=backend.count_tokens)
-            head = self._head(text, older, keep)
-            try: backend.replace_hist(head, keep)
-            except Exception as e:
-                self.note = f'compaction checkpoint written but history not replaced ({agent_err(e)})'
-                return text
-            self.count += 1; self.last = text
-            self.note = f'surgically compacted {len(older)} message(s), kept {len(keep)}'
-            if self.on_compact:
-                try: self.on_compact(text)
-                except Exception: pass
-            return text
         input_budget = None
         if summary_ctx:
             sp_tokens = estimate_tokens(SUMMARISE_SP, summary_count)
             input_budget = max(128, summary_ctx - summary_output - sp_tokens - 64)
-        # an estimated budget can still overflow; retry on halvings
-        text, err = '', None
-        for b in halvings(input_budget):
-            try:
-                if (text := fold_summary(older, summariser, extra, b, summary_count)): break
-            except Exception as e: err = e
-        if not text:
-            self.note = (f'compaction failed ({agent_err(err)})' if err is not None
-                         else 'the summarizer returned nothing; conversation left alone')
-            return ''
+        what = 'checkpoint'
+        if self.strategy == 'surgical' and not fresh: text, how = surgical_history(older, count=count), 'surgically compacted {} message(s)'
+        elif self.strategy == 'digest':
+            over = summariser if self.overflow == 'summary' else None
+            text = digest(older, self.digest_budget(getattr(backend.spec, 'ctx', 0)), over, input_budget, count, extra=extra)
+            how = 'compacted {} message(s) into a digest'
+        else:
+            # an estimated budget can still overflow; retry on halvings
+            text, err, what, how = '', None, 'summary', 'compacted {} message(s)'
+            for b in halvings(input_budget):
+                try:
+                    if (text := fold_summary(older, summariser, extra, b, summary_count)): break
+                except Exception as e: err = e
+            if not text:
+                self.note = (f'compaction failed ({agent_err(err)})' if err is not None
+                             else 'the summarizer returned nothing; conversation left alone')
+                return ''
         head = self._head(text, older, keep)
         try: backend.replace_hist(head, keep)
         except Exception as e:
-            self.note = f'compaction summary written but history not replaced ({agent_err(e)})'
+            self.note = f'compaction {what} written but history not replaced ({agent_err(e)})'
             return text
         self.count += 1
         self.last = text
-        self.note = f'handed off {len(older)} message(s) to a fresh context' if fresh else f'compacted {len(older)} message(s), kept {len(keep)}'
+        self.note = f'handed off {len(older)} message(s) to a fresh context' if fresh else how.format(len(older)) + f', kept {len(keep)}'
         if self.on_compact:
             try: self.on_compact(text)
             except Exception: pass

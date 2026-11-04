@@ -1306,7 +1306,7 @@ class Agent:
                  approvals=None,            # an `Approvals`; None gates nothing
                  cfg=None,                  # config dir, for skills and extensions
                  compact=None,              # compact automatically at the threshold; None reads config.toml's `compaction.auto`, else True
-                 compact_strategy=None,     # 'summary' or deterministic 'surgical'; None reads `compaction.strategy`, else 'summary'
+                 compact_strategy=None,     # 'digest', 'surgical' or 'summary'; None reads `compaction.strategy`, else 'digest'
                  kernel_alive=True,         # what the post-compaction note may promise
                  extensions=True,
                  project_extensions=False,  # project extensions run code from the repo; True opts in
@@ -1381,7 +1381,7 @@ class Agent:
         self.extensions, self.project_extensions, self.ext_paths = extensions, project_extensions, ext_paths
         self._sp, self.extra_sp, self.global_skills = sp, extra_sp, bool(global_skills)
         self.drop_tools = frozenset(ifnone(drop_tools, setting('drop_tools', ())))
-        self.compactor = Compactor(auto=ifnone(compact, setting('compaction.auto', True)), strategy=ifnone(compact_strategy, setting('compaction.strategy', 'summary')),
+        self.compactor = Compactor(auto=ifnone(compact, setting('compaction.auto', True)), strategy=ifnone(compact_strategy, setting('compaction.strategy', 'digest')),
                                    kernel_alive=kernel_alive, on_compact=on_compact)
         self.fresh_hint = fresh_hint
         self._compactions, self._compact_retry = [], 0   # compactions and handoffs since the last log row; the size a failed one waits for

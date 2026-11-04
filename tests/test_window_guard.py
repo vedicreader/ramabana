@@ -33,8 +33,8 @@ class Reported(RemoteChat):
 
 
 def _agent(tmp_path=None):
-    "An `Agent` whose every job runs on one `RishiBackend` over `Reported`."
-    a = Agent(MemHost({'/proj/a.py': 'a = 1\n'}), extensions=False, profile='full', cfg=tmp_path)
+    "An `Agent` whose every job runs on one `RishiBackend` over `Reported`, and that compacts with a model summary."
+    a = Agent(MemHost({'/proj/a.py': 'a = 1\n'}), extensions=False, profile='full', cfg=tmp_path, compact_strategy='summary')
     be = RishiBackend(SPEC, sp='brief', tools=[])
     a.routing.turn, a.routing.policy = SPEC.name, {}
     a.routing._cache[SPEC.name] = SPEC
