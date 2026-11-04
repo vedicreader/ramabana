@@ -16,16 +16,16 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'PEER_ROWS_WAIT', 'MEMORY_CHARS', 'PLAN_NOTE', 'SHOWN_CHANNEL', 'SUBAGENTS_USAGE', 'WARM_ROUNDS',
            'WARM_SMALL_CHARS', 'OWNER', 'LOCK', 'PENDING', 'FRESH_HINT', 'REPLAYED', 'SOFT_CAPS', 'HARD_CAPS',
            'EVENT_MAX', 'HIST', 'ROW_MAX', 'CHECKPOINT_BYTES', 'COMMIT_SP', 'PR_SP', 'RESULT_ASK', 'RESULT_AGAIN',
-           'EST_RATE', 'UNREAD', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS', 'CTX_BEFORE',
-           'CTX_AFTER', 'BRANCH_POLICIES', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md', 'answer_md',
-           'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
+           'EST_RATE', 'UNREAD', 'HALT_POLL', 'SUBTASK', 'COMPLETE_SP', 'MAX_COMPLETION_LINES', 'COMPLETION_TOKENS',
+           'CTX_BEFORE', 'CTX_AFTER', 'BRANCH_POLICIES', 'PII_READS', 'Act', 'Activity', 'preview_for', 'Ask', 'ask_md',
+           'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never', 'applied', 'apply', 'note', 'inline_for',
            'prompt_text', 'turn_prompt', 'prompt_directives', 'project_context', 'dated_lessons', 'learned_context',
            'work_rules', 'skill_catalogue', 'system_prompt', 'small_system_prompt', 'model_family', 'Todo', 'Plan',
            'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
            'generated_denial', 'note_tools', 'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed',
            'ResultMissing', 'token_rate', 'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard',
-           'guard_reads', 'mk_host', 'mk_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS',
-           'hydrate_turns', 'request_text', 'request_body', 'request_title']
+           'guard_reads', 'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP',
+           'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextlib, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -40,7 +40,7 @@ from collections import deque
 from urai import parse_args, tc_name, tool_media
 from .core import DFLT_TURN, needs_setup, accepts, AgentError, ContextFull, agent_err, available_models, missing_key, missing_runtime, model_problems, needs, SETUP_HINT, reachable_hint, BranchChanged, budget_for, JOBS, PROFILES, Routing, SMALL_TOOLS, model_note, profile_for, tool_channel, env, effort_support, forget_forced_tags, models_table, norm_channel, norm_effort, unknown_model
 from .setup import PANE_LINGER, config_path, follow_cmd, config_reset, config_set, config_show, load_config, set_table, setting
-from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block, done_items, OneshotTimeout, deadline_hit, cancel_hit, BudgetExceeded, cap_breach
+from .runtime import fit_content, margin, msg_tokens, threshold, QUIET_RUNTIMES, Usage, Run, current_run, run_context, make_backend, Compactor, compact_notebook_context, notices_block, done_items, OneshotTimeout, OneshotEmpty, StreamUnsupported, deadline_hit, cancel_hit, BudgetExceeded, cap_breach
 from shalya.core import HostError, apply_edits, diff_text, edits, writes
 from shalya.tools import OPTIN, group_of, git_repo, lesson_text, lessons as lesson_rows
 from .tools import (mime_for, MAX_TOOL_CHARS, NO_SUB, WRITE_TOOLS, Registry, ToolCatalog, clip, discover,
@@ -3626,15 +3626,6 @@ def stream_with(self:Agent, prompt, context='', screen='', image=None, context_p
     "The same turn, as an iterator of markdown chunks."
     return self.stream(self.compose(prompt, context, screen, image, context_path), **kw)
 
-# %% ../nbs/03_agent.ipynb #3482d795
-@patch
-def cancel(self:Agent):
-    "Stop the active turn. Returns whether one was running."
-    running = self.busy
-    if self.approvals is not None: self.approvals.cancel_all('the turn was stopped')
-    self._be('turn').cancel()
-    return running
-
 # %% ../nbs/03_agent.ipynb #7e4133d5
 @patch
 def close(self:Agent):
@@ -3853,9 +3844,25 @@ def oneshot(self:Agent, prompt, sp='', job='oneshot', max_tokens=None,
             fits=None,    # `fits(backend)`; a route it refuses ends the search with '' and is not set aside
             prepare=None, # `prepare(prompt, sp, backend)` returns the text for each route; a raised refusal stops the search
             deadline=None, # seconds the whole call may take, routing, `prepare` and fitting included
+            wait=False,   # wait for a backend another call holds, rather than answer ''
+            strict=False, # raise `OneshotEmpty`, which says why, rather than answer ''
 ):
-    "A question on whichever model `job` routes to, in a conversation that is thrown away. A cloud model that fails or answers nothing is set aside, and the question goes to `job`'s next route. Past `deadline` it raises `OneshotTimeout` and tries no other route. `prepare` is not interrupted: the deadline is checked when it returns. A route that cannot hold a `deadline` raises `DeadlineUnsupported` before it is asked."
+    "A question on whichever model `job` routes to, in a conversation that is thrown away. A cloud model that fails or answers nothing is set aside, and the question goes to `job`'s next route. Past `deadline` it raises `OneshotTimeout` and tries no other route. `prepare` is not interrupted: the deadline is checked when it returns. A route that cannot hold a `deadline` raises `DeadlineUnsupported` before it is asked. With `wait`, a busy backend is waited for, up to `deadline`. With `strict`, no answer raises `OneshotEmpty` with the routes set aside or the route's note."
     _check_deadline(deadline)
+    since = time.time()
+    out = Agent._one_shot(self, prompt, sp, job, max_tokens, fits, prepare, deadline, wait)   # through `Agent`, for a stand-in `self`
+    if strict and not out: raise OneshotEmpty(job, Agent._why_empty(self, job, since))
+    return out
+
+@patch
+def _why_empty(self:Agent, job, since):
+    "Why `job` got no answer: the routes set aside since `since`, else the note of its route."
+    notes = [f'{n} {w}' for n, (w, t) in self.routing.down.items() if t >= since] or [self.routing.notes.get(job, '')]
+    return '; '.join(n for n in notes if n) or 'no route answered'
+
+@patch
+def _one_shot(self:Agent, prompt, sp, job, max_tokens, fits, prepare, deadline, wait=False):
+    "The routes of `oneshot`."
     began, tried = time.monotonic(), set()
     while (b := self._be_or_none(job)) is not None and b.spec.name not in tried:
         if fits is not None and not fits(b): return ''
@@ -3867,7 +3874,7 @@ def oneshot(self:Agent, prompt, sp='', job='oneshot', max_tokens=None,
         rate = self._one_rate(b.spec)
         if (over := self._one_check(at=True)) is not None: raise over
         out, got = '', []
-        try: out = b.oneshot(text, briefing, max_tokens, job=job, if_busy=None, spent=got, **({} if left is None else {'deadline': left}))
+        try: out = b.oneshot(text, briefing, max_tokens, job=job, if_busy=None, spent=got, **({} if left is None else {'deadline': left}), **({'wait': True} if wait else {}))
         except Exception as e:
             if deadline_hit(e) and not isinstance(e, OneshotTimeout): raise OneshotTimeout(b.spec.name, time.monotonic() - began, e.stopped) from e
             raise
@@ -3884,13 +3891,34 @@ def oneshot_stream(self:Agent, prompt, sp='', job='oneshot', max_tokens=None,
                    fits=None,    # `fits(backend)`; a route it refuses ends the search with nothing yielded and is not set aside
                    prepare=None, # `prepare(prompt, sp, backend)` returns the text for each route; a raised refusal stops the search
                    deadline=None, # seconds the whole call may take, routing, `prepare` and fitting included
+                   wait=False,   # wait for a backend another call holds, rather than yield nothing
+                   strict=False, # raise `OneshotEmpty`, which says why, when no text comes
+                   fallback=False, # a route that cannot stream gives its whole reply as one chunk
 ):
-    "The text of `oneshot`'s reply as the model sends it, one chunk at a time. The next route is tried only while no text has come: a route that fails or says nothing is set aside, and one that has spoken is never followed by another. A timeout, a cancel, a failure after text and a budget stop are raised. Closing the iterator closes the model's stream. A route that cannot stream raises `StreamUnsupported`, and one that cannot hold a `deadline` raises `DeadlineUnsupported`, before it is asked. Different backends can run in parallel. Budgets are soft spend caps, not billing ceilings. Parallel calls can overshoot by the calls already in flight."
+    "The text of `oneshot`'s reply as the model sends it, one chunk at a time. The next route is tried only while no text has come: a route that fails or says nothing is set aside, and one that has spoken is never followed by another. A timeout, a cancel, a failure after text and a budget stop are raised. Closing the iterator closes the model's stream. A route that cannot stream raises `StreamUnsupported`, and one that cannot hold a `deadline` raises `DeadlineUnsupported`, before it is asked. Different backends can run in parallel. Budgets are soft spend caps, not billing ceilings. Parallel calls can overshoot by the calls already in flight. With `fallback`, a route that cannot stream is asked through `oneshot`, and its reply comes as one chunk."
     _check_deadline(deadline)
-    return self._one_stream(prompt, sp, job, max_tokens, fits, prepare, deadline)
+    it = self._one_stream(prompt, sp, job, max_tokens, fits, prepare, deadline, wait)
+    return it if not (strict or fallback) else self._kept_stream(it, prompt, sp, job, max_tokens, fits, prepare, deadline, wait, strict, fallback)
 
 @patch
-def _one_stream(self:Agent, prompt, sp, job, max_tokens, fits, prepare, deadline):
+def _kept_stream(self:Agent, it, prompt, sp, job, max_tokens, fits, prepare, deadline, wait, strict, fallback):
+    "`it`, with `fallback`'s whole reply for a route that cannot stream, and `strict`'s `OneshotEmpty` when no text came."
+    began, since, said = time.monotonic(), time.time(), False
+    try:
+        for chunk in it:
+            said = said or bool(chunk)
+            yield chunk
+    except StreamUnsupported:
+        if not fallback: raise
+        left = None if deadline is None else deadline - (time.monotonic() - began)
+        if left is not None and left <= 0: raise OneshotTimeout(job, time.monotonic() - began, True)
+        if (out := self.oneshot(prompt, sp, job, max_tokens, fits, prepare, left, wait, strict)): yield out
+        return
+    finally: it.close()
+    if strict and not said: raise OneshotEmpty(job, self._why_empty(job, since))
+
+@patch
+def _one_stream(self:Agent, prompt, sp, job, max_tokens, fits, prepare, deadline, wait=False):
     "The routes of `oneshot_stream`. With a budget set it counts the text as it comes and stops the stream once that count passes a budget: an estimate from the text, not the provider's own billing cap."
     began, tried, capped = time.monotonic(), set(), self._capped()
     while (b := self._be_or_none(job)) is not None and b.spec.name not in tried:
@@ -3903,7 +3931,7 @@ def _one_stream(self:Agent, prompt, sp, job, max_tokens, fits, prepare, deadline
         rate = self._one_rate(b.spec)
         if (over := self._one_check(at=True)) is not None: raise over
         got = []
-        it = b.oneshot_stream(text, briefing, max_tokens, job=job, if_busy=None, spent=got, **({} if left is None else {'deadline': left}))
+        it = b.oneshot_stream(text, briefing, max_tokens, job=job, if_busy=None, spent=got, **({} if left is None else {'deadline': left}), **({'wait': True} if wait else {}))
         said, busy, stopped, over, heard = False, False, True, None, []
         tin = b.oneshot_input_tokens(text, briefing, max_tokens) if capped else 0
         try:
@@ -4329,8 +4357,13 @@ def ask(self:Agent, prompt,
         schema=None,   # a type pydantic validates, or a JSON schema dict: the model hands back a value of it through `submit_result`
         result=False,  # return a `TurnResult` rather than the reply text
         strict=False,  # raise `TurnFailed` for a turn that did not complete, and `ResultMissing` for a `schema` never filled
+        deadline=None, # seconds the turn may take, as for `oneshot`; then it is cancelled with `halt`
+        stop=None,     # a `threading.Event`; once it is set, the turn is cancelled with `halt`
         **kw):
-    "One registered turn. A stopped turn is recorded and not replayed. Without `schema`, `result` or `strict`, it returns the reply text, a dict when the turn was stopped, or a failure note."
+    "One registered turn. A stopped turn is recorded and not replayed. Without `schema`, `result` or `strict`, it returns the reply text, a dict when the turn was stopped, or a failure note. Past `deadline`, or once `stop` is set, the turn, its sub-agents and the side runs are cancelled."
+    if deadline is not None or stop is not None:
+        _check_deadline(deadline)
+        with self._watched(deadline, stop): return self.ask(prompt, schema=schema, result=result, strict=strict, **kw)
     if schema is None and not result and not strict: return self._ask_once(prompt, **kw)
     if schema is not None and not self._offered('submit_result'):
         raise ValueError("an `ask` with a `schema` hands its result back through the `submit_result` tool, which `only_tools` leaves out; add 'submit_result' to `only_tools`")
@@ -4543,6 +4576,35 @@ def cancel(self:Agent, run_id='', grace=None):
     run.cancel(self.cancel_grace if grace is None else grace)
     self._release_run(run)
     return run.dict()
+
+def _stop_tree(r):
+    "Ask `r` to stop, or each live run under a finished `r`, with no wait. How many runs were asked."
+    if not r.terminal and not r.cancelled:
+        r.request_cancel()
+        return 1
+    return sum(_stop_tree(c) for c in list(r.children))
+
+@patch
+def halt(self:Agent):
+    "Cancel the turn, its run tree and the side runs (background delegations and monitor reviews), each with its children, and wait for none. Return how many runs stopped."
+    with getattr(self, '_runs_lock', threading.RLock()): roots = list(_run_store(self).values())
+    live = [r for r in (*roots, *self._side_runs()) if _live(r)]
+    if live and self.approvals is not None: self.approvals.cancel_all('the run was stopped')
+    return sum(_stop_tree(r) for r in live)
+
+HALT_POLL = .05   #: seconds between two looks at a turn's `deadline` and `stop`
+
+@patch
+@contextlib.contextmanager
+def _watched(self:Agent, deadline=None, stop=None):
+    "Inside the block, `halt` the agent once `deadline` seconds pass or `stop` is set. It looks again each `HALT_POLL` seconds, so a run that starts later is stopped too."
+    end, done = None if deadline is None else time.monotonic() + deadline, threading.Event()
+    def watch():
+        while not done.wait(HALT_POLL):
+            if (stop is not None and stop.is_set()) or (end is not None and time.monotonic() >= end): self.halt()
+    threading.Thread(target=watch, daemon=True, name='ramabana-halt').start()
+    try: yield
+    finally: done.set()
 
 @patch
 def terminate(self:Agent, run_id=''):
@@ -5376,3 +5438,11 @@ def mk_agent(roots=('.',),
     if host.model_local is None: host.model_local = agent.model_local
     agent.lend_model()   # else `--vault` loads a second runtime
     return agent, host
+
+# %% ../nbs/03_agent.ipynb #fbf27fa9
+def model_agent(turn=None, sp='', host=None, **kw):
+    "An `Agent` that only calls the model: read-only, approvals refused, no sub-agents, extensions, skills, learned notes, compaction or polling. `kw` goes to `Agent` and wins."
+    from ramabana.tools import NullHost
+    opts = dict(routing=Routing(turn=turn), cfg=None, sp=sp, approvals=Approvals(mode='ask', no_listener='refuse', timeout=0), readonly=True,
+                subagents=False, extensions=False, global_skills=False, learned=False, compact=False, poll_every=0, auto_turns='off')
+    return Agent(host or NullHost(), **{**opts, **kw})

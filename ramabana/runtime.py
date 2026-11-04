@@ -15,9 +15,9 @@ __all__ = ['MAX_KEEP', 'CHARS_PER_TOKEN', 'RESERVE', 'KEEP_RECENT', 'SOFT_LINE',
            'fold_summary', 'truncate_middle', 'surgical_history', 'reorient', 'prompt_notices', 'notices_block',
            'compact_notebook_context', 'Compactor', 'answer_only', 'prefills_think', 'ThinkFilter', 'oneshot_tokens',
            'Usage', 'margin', 'img_tokens', 'msg_tokens', 'trim_hist', 'omitted', 'excerpt', 'fit_content',
-           'DeadlineUnsupported', 'OneshotTimeout', 'deadline_hit', 'cancel_hit', 'StreamUnsupported', 'BudgetExceeded',
-           'cap_breach', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'status_line', 'said_before_call',
-           'Run', 'current_run', 'run_context', 'TokenLogger']
+           'DeadlineUnsupported', 'OneshotTimeout', 'deadline_hit', 'cancel_hit', 'OneshotEmpty', 'StreamUnsupported',
+           'BudgetExceeded', 'cap_breach', 'Backend', 'use_chat', 'RishiBackend', 'make_backend', 'status_line',
+           'said_before_call', 'Run', 'current_run', 'run_context', 'TokenLogger']
 
 # %% ../nbs/01_runtime.ipynb #835f4984
 import base64, contextvars, copy, json, math, mimetypes, os, re, sys, threading, time, uuid
@@ -718,6 +718,12 @@ def cancel_hit(e):
     one=getattr(sys.modules.get('rishi.core'),'OneShotCancelled',None)
     return one is not None and isinstance(e,one)
 
+class OneshotEmpty(AgentError):
+    "A strict one-shot got no answer from any route. `job` names the job, and `why` says what ramabana noted: the routes it set aside, or the route's note."
+    def __init__(self,job,why):
+        self.job,self.why=job,why
+        super().__init__(f'the {job} job got no answer: {why}')
+
 class StreamUnsupported(AgentError):
     "A one-shot stream asked of a backend that cannot stream one. Nothing was sent, and no whole reply was buffered in its place."
 
@@ -910,12 +916,19 @@ class Backend:
             body=body[-max(1,int(len(body)*room*.95/n)):]
         return ONESHOT_CUT+body
 
-    def oneshot(self,prompt,sp='',max_tokens=None,job='one-shot',if_busy='',deadline=None,spent=None):
-        "Ask one question in a throwaway conversation; `job` names a failure, and `if_busy` is the answer while another call holds the backend. `deadline` is the seconds the whole call may take, starting the backend and fitting the prompt included. A backend that cannot hold one raises `DeadlineUnsupported` before anything is sent, and a call that outruns it raises its timeout error, which no retry follows. When the backend reports a spend, `spent` (a list) holds that call's `Usage` once the call ends, whatever ended it."
+    def _take(self,wait,deadline,began):
+        "Take the backend's lock: at once, or with `wait` once the call that holds it ends. A wait that outruns `deadline` raises `OneshotTimeout`."
+        if not wait: return self.lock.acquire(False)
+        if deadline is None: return self.lock.acquire()
+        if self.lock.acquire(timeout=max(0.,deadline-(time.monotonic()-began))): return True
+        raise OneshotTimeout(self.spec.name,time.monotonic()-began,True)
+
+    def oneshot(self,prompt,sp='',max_tokens=None,job='one-shot',if_busy='',deadline=None,spent=None,wait=False):
+        "Ask one question in a throwaway conversation; `job` names a failure, and `if_busy` is the answer while another call holds the backend; with `wait` the call waits for it instead. `deadline` is the seconds the whole call may take, starting the backend and fitting the prompt included. A backend that cannot hold one raises `DeadlineUnsupported` before anything is sent, and a call that outruns it raises its timeout error, which no retry follows. When the backend reports a spend, `spent` (a list) holds that call's `Usage` once the call ends, whatever ended it."
         began=time.monotonic()
         if self.start() is None:return ''
         if deadline is not None and not self.supports_deadline: raise DeadlineUnsupported(f'{self.spec.name} cannot hold a one-shot deadline')
-        if not self.lock.acquire(False):return if_busy
+        if not self._take(wait,deadline,began):return if_busy
         text=out=''
         sent=False
         try:
@@ -935,21 +948,21 @@ class Backend:
                 if spent is not None and (u:=self._spent(text,sp,out,False,sent)) is not None: spent[:]=[u]
             finally:self.lock.release()
 
-    def oneshot_stream(self,prompt,sp='',max_tokens=None,job='one-shot',if_busy='',deadline=None,spent=None):
-        "Yield one reply to `prompt` as the model sends it, in a throwaway conversation. A backend that cannot stream raises `StreamUnsupported`, and one that cannot hold a `deadline` raises `DeadlineUnsupported`, both before anything is sent. The iterator returns `if_busy` when another call holds the backend, and '' otherwise. A failure before the first text is noted and ends the stream empty; after text it is raised. A timeout or `cancel()` is always raised. Closing the iterator closes the model's stream and frees the backend. When the backend reports a spend, `spent` (a list) holds the `Usage` reported so far while the stream runs, and the call's whole `Usage` once it ends, whatever ended it."
+    def oneshot_stream(self,prompt,sp='',max_tokens=None,job='one-shot',if_busy='',deadline=None,spent=None,wait=False):
+        "Yield one reply to `prompt` as the model sends it, in a throwaway conversation. A backend that cannot stream raises `StreamUnsupported`, and one that cannot hold a `deadline` raises `DeadlineUnsupported`, both before anything is sent. The iterator returns `if_busy` when another call holds the backend, or with `wait` waits for it, and returns '' otherwise. A failure before the first text is noted and ends the stream empty; after text it is raised. A timeout or `cancel()` is always raised. Closing the iterator closes the model's stream and frees the backend. When the backend reports a spend, `spent` (a list) holds the `Usage` reported so far while the stream runs, and the call's whole `Usage` once it ends, whatever ended it."
         began=time.monotonic()
         ready=self.start() is not None
         if ready and not self.supports_stream: raise StreamUnsupported(f'{self.spec.name} cannot stream a one-shot')
         if ready and deadline is not None and not self.supports_deadline: raise DeadlineUnsupported(f'{self.spec.name} cannot hold a one-shot deadline')
-        return self._stream_run(ready,prompt,sp,max_tokens,job,if_busy,deadline,began,spent)
+        return self._stream_run(ready,prompt,sp,max_tokens,job,if_busy,deadline,began,spent,wait)
 
     def oneshot_input_tokens(self,prompt,sp='',max_tokens=None):
         "The tokens a one-shot of `prompt` and `sp` sends once `oneshot` has cut the prompt to the window."
         return self.count_tokens(self._fit_oneshot(prompt,sp,max_tokens))+self.count_tokens(sp)
 
-    def _stream_run(self,ready,prompt,sp,max_tokens,job,if_busy,deadline,began,spent):
+    def _stream_run(self,ready,prompt,sp,max_tokens,job,if_busy,deadline,began,spent,wait=False):
         if not ready:return ''
-        if not self.lock.acquire(False):return if_busy
+        if not self._take(wait,deadline,began):return if_busy
         text,said,it,done,sent='',[],None,False,False
         try:
             text=self._fit_oneshot(prompt,sp,max_tokens)

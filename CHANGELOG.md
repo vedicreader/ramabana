@@ -2,6 +2,20 @@
 
 <!-- do not remove -->
 
+## 0.2.103
+- A model picker opens faster. `available_models(ttl=)` keeps the whole list: a call within `ttl` seconds asks nothing, an older list comes back at once and is asked again in the background, and a new process starts from the list on disk. Without `ttl`, each call asks again, as before.
+- The slow probes of `available_models` start together: ollama's list, Copilot's catalogue, the Claude Code sign-in and each vendor's live list. The ollama list waits 2 s at most. On one Mac, a first call took 3.0 to 3.9 s before and 2.1 s now, and a later call 0.2 s before and 0.01 s now.
+- `auth_status` runs `claude auth status` at most once a minute. A key in the environment still shows at once. `/login` forgets the kept answers.
+- `copilot_catalog` and `provider_models` keep their lists on disk, so a new process shows the last list at once.
+- Each `available_models` row also has `local`, whether the model runs on this machine, and the `model_id` its `value` resolves to.
+- New `model_label(name, repo='')` gives a name people know: `claude-opus-5-5` gives `Claude Opus 5.5`, `qwen3-4b` gives `Qwen 3 4B`. New `vendor_of(name)` gives the company that hosts a model, such as `OpenAI` for `codex/gpt-6-sol`, or `''` for a local model. Each `available_models` row has `name` and `vendor`, and each `PROVIDERS` entry has `vendor`.
+- `Agent.oneshot(wait=True)` waits for a backend that another call holds, up to `deadline`, and does not answer `''`. `strict=True` raises the new `OneshotEmpty(job, why)` when no route answers; `why` names the routes set aside, or the route's note. `oneshot_stream` takes `wait` and `strict` too, and `fallback=True` gives a route that cannot stream as one chunk. `Backend.oneshot` and `oneshot_stream` take `wait`.
+- New `Agent.halt()` stops the turn, its sub-agents and the side runs (background delegations and monitor reviews) at once. It waits for none and returns how many runs it stopped. `Agent.ask(deadline=, stop=)` calls it once `deadline` seconds pass, as for `oneshot`, or once the `threading.Event` `stop` is set.
+- `Agent` has one `cancel`: the registered-run `cancel(run_id='', grace=None)` that returns the run's state. An older `cancel` that returned a bool was hidden by it and is removed.
+- New `model_agent(turn=None, sp='', host=None, **kw)` makes an `Agent` that only calls the model: read-only, approvals refused, and no sub-agents, extensions, skills, learned notes, compaction or polling. `kw` goes to `Agent` and wins.
+- New `read_key(name, path=None)` gives one key from the key file, or `''`. It sets nothing in `os.environ` and runs no `!command` value. Like `load_keys`, it refuses a file that other users can read.
+- `forget_probes(disk=True)` removes every probe file in its folder, and each file this process wrote to another folder.
+
 ## 0.2.102
 - The tmux client again has the Ramabana command line in its arguments. This reverts the argument change in 0.2.99. Sanketa finds Ramabana in the arguments of the tmux client. Without them, Sanketa 0.2.6 showed no Ramabana layer in a Kaku tab. `Setup.wrap` passes the command line to tmux, and the pane wrapper `HOLD` no longer reads `$RAMABANA_ARGV`. `prune_sockets` and the `set -m` start of `HOLD` are unchanged.
 
