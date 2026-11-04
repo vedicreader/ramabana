@@ -44,3 +44,16 @@ def test_after_compaction_the_next_context_has_the_request_the_honest_plan_and_t
     assert 'Step 7: handout' in a.system_prompt() and 'no evidence' in a.system_prompt()
     a.ask('go on')
     assert be.hist_[0]['content'] == head and be.hist_[-1]['content'] == 'next', 'the next turn runs on the digest'
+
+
+def test_a_handoff_starts_the_fresh_context_from_the_ledger_and_a_turn_records_its_files(tmp_path):
+    a, be = fake_agent(cfg=tmp_path, replies=['wrote it'])
+    a.ask(ASK)
+    a.before['/proj/a.py'] = 'def a(): pass\n'   # what a write tool keeps before its first write of the turn
+    a._finish('wrote it', ASK)
+    assert a.plan.files == ['/proj/a.py'] and '- /proj/a.py' in a.plan.ledger()
+    be.hist_ = _turn(20)
+    a.handoff()
+    assert 'handed off' in a.compactor.note and len(be.hist_) == 1, a.compactor.note
+    head = be.hist_[0]['content']
+    assert head.index('## Session ledger') < head.index('▶ view_file abhyasa/blocks/f0.py · ok') and f'[open] {ASK}' in head
