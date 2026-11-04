@@ -22,12 +22,12 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'preview_for', 'Ask', 'ask_md', 'answer_md', 'subject', 'call_key', 'Approvals', 'always', 'never',
            'applied', 'apply', 'note', 'inline_for', 'prompt_text', 'turn_prompt', 'prompt_directives',
            'project_context', 'dated_lessons', 'learned_context', 'work_rules', 'skill_catalogue', 'system_prompt',
-           'small_system_prompt', 'model_family', 'is_evidence', 'Todo', 'Request', 'Plan', 'plan_tools', 'Agent',
-           'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial', 'generated_denial',
-           'note_tools', 'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed', 'ResultMissing',
-           'token_rate', 'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard', 'guard_reads',
-           'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS',
-           'hydrate_turns', 'request_text', 'request_body', 'request_title']
+           'small_system_prompt', 'model_family', 'is_evidence', 'evidence_problem', 'Todo', 'Request', 'Plan',
+           'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
+           'generated_denial', 'note_tools', 'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed',
+           'ResultMissing', 'token_rate', 'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard',
+           'guard_reads', 'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP',
+           'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
 import ast, contextlib, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
@@ -1024,8 +1024,33 @@ _RESULT = r'\S\s*(?:->|→|=>|:)\s*.*\b(?:pass(?:ed|es)?|fail(?:ed|s|ures?)?|ok|
 _PATH = r'[\w.~-]*/[\w./-]*\w|\b[\w-]+\.\w{2,5}\b'
 
 def is_evidence(text):
-    "Whether `text` can close a step: a commit sha, a command and its result, or a file path."
+    "Whether `text` has the shape of evidence: a commit sha, a command and its result, or a file path."
     return bool(re.search(f'{_SHA}|{_RESULT}|{_PATH}', str(text or ''), re.I))
+
+def _has_commit(repo, sha):
+    try: repo.run('cat-file', '-e', f'{sha}^{{commit}}'); return True
+    except Exception: return False
+
+def _on_disk(host, path):
+    try: return host.exists(str(host.check(path)))
+    except Exception: return False
+
+def evidence_problem(text, host=None):
+    "Why `text` cannot close a step, as one plain line, or ''. With a `host`, a sha must name a commit in its repository and a path must exist in its folders; a command and its result are checked by shape only."
+    t = str(text or '')
+    if not is_evidence(t): return EVIDENCE_NEEDED
+    if host is None or re.search(_RESULT, t, re.I): return ''
+    why, shas = [], re.findall(_SHA, t, re.I)
+    if shas:
+        try: repo = git_repo(host)
+        except Exception: why.append(f'there is no Git repository in which to find commit {shas[0]}')
+        else:
+            if any(_has_commit(repo, s) for s in shas): return ''
+            why.append(f'commit {shas[0]} is not in {repo.root}')
+    paths = [p for p in re.findall(_PATH, t) if p not in shas]
+    if any(_on_disk(host, p) for p in paths): return ''
+    if paths: why.append(f'{paths[0]} is not in the open folders')
+    return 'the evidence did not check out: ' + '; '.join(why)
 
 @dataclass
 class Todo:
@@ -1230,7 +1255,10 @@ class Plan:
         return bit
 
 
-def plan_tools(get_plan, save=None):
+def plan_tools(get_plan,                # returns the plan the tools change
+               save=None,               # called with no arguments after each change
+               check=evidence_problem,  # `check(evidence)` gives why evidence cannot close a step, or ''
+):
     "Model-facing `set_plan` and `update_todo` tools over the agent's `Plan`."
     def _save():
         if save:
@@ -1259,7 +1287,7 @@ def plan_tools(get_plan, save=None):
             except Exception as e: return err('could not update the request', e)
             _save()
             return f'`{r.id}` → {r.status}\n\n{p.ledger()}'
-        if status == 'done' and not is_evidence(evidence): return err(EVIDENCE_NEEDED)
+        if status == 'done' and (why := check(evidence)): return err(why)
         if not id:
             if not text: return err('give `text` to add a step, or `id` to change one')
             try: t = p.add(text, status=status or 'pending')
@@ -1997,7 +2025,7 @@ def _catalog_for(self:Agent, budget, full=True, profile='full'):
             if self.subagents:
                 extra += self._delegation_tools(self._sub_tools, background=self.background, get_max=lambda: budget.tool_max,
                                                 get_tools_for=lambda spec: self._sub_tools(spec=spec))
-            extra += plan_tools(lambda: self.plan, save=self._save_plan)
+            extra += plan_tools(lambda: self.plan, save=self._save_plan, check=lambda e: evidence_problem(e, self.host))
         built = tools_for(self.host, lambda: self.skills, extra, mx=budget.tool_max,
                           drop=budget.drop, get_spec=self.spec_or_none, on_media=self._drew, optin=self.optin)
         built = [t for t in built if getattr(t, '__name__', '') not in self.drop_tools and self._offered(getattr(t, '__name__', ''))]
