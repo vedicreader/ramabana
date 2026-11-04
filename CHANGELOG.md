@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.105
+- Compaction keeps the newest messages. Before, a long turn (one request and then hundreds of tool steps) kept 0 messages, and only the summary was left. Now the kept tail can start at an assistant message, and never at a tool result without its call. When no request of the user is left in the tail, the summary keeps the last request word for word.
+- `delegate_result` takes `wait`, up to 120 s, and gives a finished run 5 s to save its answer. Its text no longer says "ask again later". It says that the answer comes by itself.
+- A sub-agent does not get `tell`, `work_together`, `remember`, `memory_forget` or `add_root`, unless `Agent(subagent_grants=...)` or `subagents.grants` in config.toml names the tool.
+- A tool whose schema cannot be built, such as a plug-in whose file is gone, is left out with a notice. Before, the model showed as unavailable and the session could not start. ramabana needs `uraiyadal>=0.0.21` and `rishi>=0.1.67`.
+
 ## 0.2.104
 - `ramabana tell` now accepts an option after the target. Before, `ramabana tell abhyasa --ask build Card` stopped with `unrecognized arguments: build Card`, because the text after `--ask` was not part of the message. Now the command sends the ask `build Card`. An unknown option, such as `--bogus`, still stops the command.
 
