@@ -458,7 +458,11 @@ def _together(a, d, frm, rows):
 
 def peers_cli(argv, cfg=None):
     "Run one of `peers`, `tell`, `inbox` and `together` with the arguments `argv`; the exit code."
-    a = _parser().parse_args(argv)
+    p = _parser()
+    a, rest = p.parse_known_args(argv)
+    # argparse fills `words` from one run of words only, so text after an option is left over; it belongs to the message.
+    if rest and a.cmd == 'tell' and not any(w.startswith('-') for w in rest): a.words += rest
+    elif rest: p.error(f"unrecognized arguments: {' '.join(rest)}")
     d = peers_dir(cfg)
     try: frm = me(cfg, a.session)
     except LookupError as e: print(e, file=sys.stderr); return 1
