@@ -25,12 +25,12 @@ __all__ = ['MAX_DETAIL', 'MAX_ACTS', 'RESUME_DETAIL', 'MAX_CHECKPOINTS', 'POLL_E
            'small_system_prompt', 'model_family', 'is_evidence', 'evidence_problem', 'Todo', 'Request', 'Plan',
            'plan_tools', 'Agent', 'git_shell_denial', 'mask_secrets', 'secret_denial', 'env_denial', 'shell_denial',
            'generated_denial', 'note_tools', 'repo_state', 'replays', 'SessionBusy', 'TurnResult', 'TurnFailed',
-           'ResultMissing', 'token_rate', 'Completer', 'model_title', 'HistoryBusy', 'compact_history', 'masking_guard',
-           'guard_reads', 'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL', 'HISTORY_TURNS', 'LEGACY_GAP',
-           'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title']
+           'ResultMissing', 'token_rate', 'agui', 'sse', 'TurnEvents', 'Completer', 'model_title', 'HistoryBusy',
+           'compact_history', 'masking_guard', 'guard_reads', 'mk_host', 'mk_agent', 'model_agent', 'HISTORY_TAIL',
+           'HISTORY_TURNS', 'LEGACY_GAP', 'MAX_SPANS', 'hydrate_turns', 'request_text', 'request_body', 'request_title']
 
 # %% ../nbs/03_agent.ipynb #ace94f1a
-import ast, contextlib, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, re, shlex, tempfile, threading, time, tomllib, uuid
+import ast, contextlib, contextvars, datetime, fnmatch, functools, hashlib, inspect, json, math, os, queue, re, shlex, tempfile, threading, time, tomllib, uuid
 from glob import escape as glob_escape
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -1483,8 +1483,9 @@ class Agent:
         return fn(name, args) if fn is not None else None
 
     def _act_event(self, act):
-        "Emit an activity row as an `act` event, with its result clipped to 2000 characters."
+        "Emit an activity row as an `act` event, with its result clipped to 2000 characters, and pass it to each `events` turn."
         self._event('act', act={**act.dict(), 'detail': _clip(act.detail, 2000)})
+        for t in list(self.__dict__.get('_agui', ())): t.act(act)
 
     def _heard_steer(self, msgs):
         "Record steering messages that went to the model with a tool result."
@@ -4883,6 +4884,114 @@ def unwatch(self:Agent, target='all'):
         except Exception: pass
     return f"closed {', '.join(closed)}" if closed else 'nothing was being watched'
 
+
+# %% ../nbs/03_agent.ipynb #d1b698c0
+def agui(type, **fields):
+    "One AG-UI event as a plain dict, stamped with the time in milliseconds. Fields that are None are left out."
+    return {'type': type, 'timestamp': int(time.time() * 1000), **{k: v for k, v in fields.items() if v is not None}}
+
+def sse(event):
+    "`event` as one server-sent-events frame."
+    return f'data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n'
+
+def _uid(): return uuid.uuid4().hex[:12]
+
+class TurnEvents:
+    "Turn one turn's text chunks and activity rows into AG-UI events, and give each to `put`."
+    def __init__(self, thread_id, put):
+        self.thread_id, self.put, self.lock = thread_id, put, threading.RLock()
+        self.run_id, self.msg, self.last_msg, self.steps, self.after_tools, self.calls = '', '', '', 0, False, set()
+
+    def emit(self, type, **fields):
+        with self.lock: self.put(agui(type, **fields))
+
+    def started(self, run):
+        "Open the run and its first step, once."
+        with self.lock:
+            if self.run_id: return
+            self.run_id = run.id
+            self.emit('RUN_STARTED', threadId=self.thread_id, runId=run.id)
+            self._step()
+
+    def _step(self):
+        self.steps, self.after_tools, self.last_msg = self.steps + 1, False, ''
+        self.emit('STEP_STARTED', stepName=f'step {self.steps}')
+
+    def _end_text(self):
+        if self.msg: self.emit('TEXT_MESSAGE_END', messageId=self.msg); self.msg = ''
+
+    def _end_step(self):
+        self._end_text()
+        self.emit('STEP_FINISHED', stepName=f'step {self.steps}')
+
+    def text(self, chunk):
+        with self.lock:
+            if self.after_tools: self._end_step(); self._step()
+            if not self.msg:
+                self.msg = self.last_msg = _uid()
+                self.emit('TEXT_MESSAGE_START', messageId=self.msg, role='assistant')
+            self.emit('TEXT_MESSAGE_CONTENT', messageId=self.msg, delta=chunk)
+
+    def act(self, act):
+        "The events for one activity row: the call when it starts, its result when it is done. Approval rows are left out."
+        if act.kind == 'ask' or not self.run_id: return
+        with self.lock:
+            nested = bool(act.parent_action_id)
+            if not act.done and act.id not in self.calls:
+                self.calls.add(act.id)
+                if not nested: self._end_text()
+                self.emit('TOOL_CALL_START', toolCallId=act.id, toolCallName=act.tool, parentMessageId=act.parent_action_id or self.last_msg or None)
+                self.emit('TOOL_CALL_ARGS', toolCallId=act.id, delta=mask_secrets(json.dumps(act.dict()['args'], ensure_ascii=False)))
+                self.emit('TOOL_CALL_END', toolCallId=act.id)
+            elif act.done and act.id in self.calls:
+                self.calls.discard(act.id)
+                self.emit('TOOL_CALL_RESULT', messageId=_uid(), toolCallId=act.id, content=mask_secrets(act.detail), role='tool')
+                if not nested: self.after_tools = True
+
+    def finish(self, run, error=''):
+        "Close the open step and end the run: `RUN_ERROR` for a failed run, else `RUN_FINISHED`."
+        with self.lock:
+            if run is not None: self.started(run); self._end_step()
+            if error or run is None: self.emit('RUN_ERROR', message=error or 'the turn did not start', code='failed')
+            else: self.emit('RUN_FINISHED', threadId=self.thread_id, runId=run.id, result={'state': run.state})
+
+@patch
+def events(self:Agent, prompt, on_registered=None, **kw):
+    "One registered turn as AG-UI event dicts. `stream` runs in a worker thread; closing the generator early cancels the turn."
+    q = queue.Queue()
+    tr = TurnEvents(self.session_id, q.put)
+    def registered(run):
+        tr.started(run)
+        if on_registered is not None: on_registered(run)
+    def work():
+        try:
+            for chunk in self.stream(prompt, on_registered=registered, **kw):
+                if not tr.run_id and (r := self.run()) is not None: tr.started(r)
+                tr.text(chunk)
+            run = self.run()
+            failed = run is not None and run.state == 'failed'
+            tr.finish(run, (getattr(run.backend, 'turn_error', '') or self.note) if failed else '')
+        except Exception as e: tr.emit('RUN_ERROR', message=agent_err(e), code=type(e).__name__)
+        finally: q.put(None)
+    self.__dict__.setdefault('_agui', []).append(tr)
+    worker = threading.Thread(target=work, daemon=True, name='ramabana-events')
+    worker.start()
+    try:
+        while (e := q.get()) is not None: yield e
+    finally:
+        if worker.is_alive() and tr.run_id: self.cancel(tr.run_id)
+        worker.join()
+        self._agui.remove(tr)
+
+@patch
+def emit(self:Agent, name, value=None):
+    "Send a `CUSTOM` event to each `events` turn that is running."
+    for t in list(self.__dict__.get('_agui', ())): t.emit('CUSTOM', name=name, value=value)
+
+@patch
+def emit_state(self:Agent, snapshot):
+    "Send a `STATE_SNAPSHOT` event to each `events` turn that is running."
+    for t in list(self.__dict__.get('_agui', ())): t.emit('STATE_SNAPSHOT', snapshot=snapshot)
 
 # %% ../nbs/03_agent.ipynb #6eac79b9
 @patch
