@@ -2,6 +2,9 @@
 
 <!-- do not remove -->
 
+## 0.2.104
+- `ramabana tell` now accepts an option after the target. Before, `ramabana tell abhyasa --ask build Card` stopped with `unrecognized arguments: build Card`, because the text after `--ask` was not part of the message. Now the command sends the ask `build Card`. An unknown option, such as `--bogus`, still stops the command.
+
 ## 0.2.103
 - A model picker opens faster. `available_models(ttl=)` keeps the whole list: a call within `ttl` seconds asks nothing, an older list comes back at once and is asked again in the background, and a new process starts from the list on disk. Without `ttl`, each call asks again, as before.
 - The slow probes of `available_models` start together: ollama's list, Copilot's catalogue, the Claude Code sign-in and each vendor's live list. The ollama list waits 2 s at most. On one Mac, a first call took 3.0 to 3.9 s before and 2.1 s now, and a later call 0.2 s before and 0.01 s now.
