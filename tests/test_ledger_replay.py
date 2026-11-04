@@ -35,7 +35,8 @@ def test_after_compaction_the_next_context_has_the_request_the_honest_plan_and_t
     assert 'into a digest' in a.compactor.note, 'no model is asked'
     head = be.hist_[0]['content']
     assert be.hist_[-2:] == tail and len(be.hist_) > 3, 'the tail stays: compaction does not keep 0 messages'
-    assert f'[open] {ASK}' in head and LAST_ASK + ASK in head, "the user's request, word for word"
+    assert f'[open] {ASK}' in head, "the user's request, word for word"
+    assert LAST_ASK not in head and head.count(ASK) == 2, 'the request is in the ledger and on its digest line, and is not pinned a third time'
     assert 'Step 7: handout -- not checked' in head and 'Step 7' not in done_items(head), 'the unchecked step is not reported done'
     assert 'Step 8: walk -- evidence: 9c41e2d' in done_items(head)
     assert 'full suite green -- active' in head

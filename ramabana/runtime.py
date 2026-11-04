@@ -565,10 +565,11 @@ class Compactor:
         return kept
 
     def _head(self, text, older, keep):
-        "The message that replaces `older`: the ledger, the summary, the user's last request when `keep` has none, and the reminder."
+        "The message that replaces `older`: the ledger, the summary, the user's last request when `keep` has none and the ledger does not hold it word for word, and the reminder."
         ask = '' if any(m.get('role') == 'user' for m in keep) else next((resp_text(m) for m in reversed(older) if m.get('role') == 'user'), '')
-        if len(ask) > PIN_CHARS: ask = ask[:PIN_CHARS] + TRIMMED
         led = self.ledger() if self.ledger else ''
+        if ask and request_body(ask) in led.replace('\n  ', '\n'): ask = ''
+        if len(ask) > PIN_CHARS: ask = ask[:PIN_CHARS] + TRIMMED
         parts = [SUMMARY_PREFIX + (f'{led}\n\n{HISTORY_HEAD}{text}' if led else text), LAST_ASK + ask if ask else '', reorient(self.kernel_alive)]
         return '\n\n'.join(p for p in parts if p)
 
