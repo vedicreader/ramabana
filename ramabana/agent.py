@@ -4898,8 +4898,8 @@ def _uid(): return uuid.uuid4().hex[:12]
 
 class TurnEvents:
     "Turn one turn's text chunks and activity rows into AG-UI events, and give each to `put`."
-    def __init__(self, thread_id, put):
-        self.thread_id, self.put, self.lock = thread_id, put, threading.RLock()
+    def __init__(self, thread_id, put, mine=lambda act: True):
+        self.thread_id, self.put, self.mine, self.lock = thread_id, put, mine, threading.RLock()
         self.run_id, self.msg, self.last_msg, self.steps, self.after_tools, self.calls = '', '', '', 0, False, set()
 
     def emit(self, type, **fields):
@@ -4934,7 +4934,7 @@ class TurnEvents:
 
     def act(self, act):
         "The events for one activity row: the call when it starts, its result when it is done. Approval rows are left out."
-        if act.kind == 'ask' or not self.run_id: return
+        if act.kind == 'ask' or not self.run_id or not self.mine(act): return
         with self.lock:
             nested = bool(act.parent_action_id)
             if not act.done and act.id not in self.calls:
@@ -4958,40 +4958,50 @@ class TurnEvents:
 @patch
 def events(self:Agent, prompt, on_registered=None, **kw):
     "One registered turn as AG-UI event dicts. `stream` runs in a worker thread; closing the generator early cancels the turn."
-    q = queue.Queue()
-    tr = TurnEvents(self.session_id, q.put)
+    q, closed = queue.Queue(), threading.Event()
+    def mine(act):
+        "Whether the run that made `act` is this turn or one of its sub-agents."
+        r = self.run(act.run_id) if act.run_id else None
+        while r is not None and r.id != tr.run_id: r = r.parent
+        return r is not None
+    tr = TurnEvents(self.session_id, q.put, mine)
     def registered(run):
         tr.started(run)
+        if closed.is_set(): run.request_cancel()
         if on_registered is not None: on_registered(run)
     def work():
         try:
             for chunk in self.stream(prompt, on_registered=registered, **kw):
                 if not tr.run_id and (r := self.run()) is not None: tr.started(r)
                 tr.text(chunk)
-            run = self.run()
+            run = self.run(tr.run_id or '')
             failed = run is not None and run.state == 'failed'
             tr.finish(run, (getattr(run.backend, 'turn_error', '') or self.note) if failed else '')
         except Exception as e: tr.emit('RUN_ERROR', message=agent_err(e), code=type(e).__name__)
-        finally: q.put(None)
+        finally:
+            self._agui.remove(tr)
+            q.put(None)
     self.__dict__.setdefault('_agui', []).append(tr)
     worker = threading.Thread(target=work, daemon=True, name='ramabana-events')
     worker.start()
     try:
         while (e := q.get()) is not None: yield e
     finally:
+        closed.set()
         if worker.is_alive() and tr.run_id: self.cancel(tr.run_id)
-        worker.join()
-        self._agui.remove(tr)
+        worker.join(self.cancel_grace)
 
 @patch
 def emit(self:Agent, name, value=None):
     "Send a `CUSTOM` event to each `events` turn that is running."
-    for t in list(self.__dict__.get('_agui', ())): t.emit('CUSTOM', name=name, value=value)
+    for t in list(self.__dict__.get('_agui', ())):
+        if t.run_id: t.emit('CUSTOM', name=name, value=value)
 
 @patch
 def emit_state(self:Agent, snapshot):
     "Send a `STATE_SNAPSHOT` event to each `events` turn that is running."
-    for t in list(self.__dict__.get('_agui', ())): t.emit('STATE_SNAPSHOT', snapshot=snapshot)
+    for t in list(self.__dict__.get('_agui', ())):
+        if t.run_id: t.emit('STATE_SNAPSHOT', snapshot=snapshot)
 
 # %% ../nbs/03_agent.ipynb #6eac79b9
 @patch
