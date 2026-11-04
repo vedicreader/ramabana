@@ -401,7 +401,7 @@ A turn runs until the model stops calling tools. `--max-tool-calls` caps the too
 - the reasoning tokens
 - the spend, when the backend reports one
 
-`/compact` summarises the history so far and carries on with the shorter context. `/compact NOTE` tells the compactor what to keep.
+`/compact` shortens the history so far and carries on with the shorter context. By default it calls no model. It keeps the session ledger (your requests, the plan steps with their evidence, the files changed and the commits), your words and the assistant’s words nearly whole, and one line for each tool call. Set `compaction.strategy = "summary"` in config.toml to ask the summary model instead. `/compact NOTE` tells the summary model what to keep.
 
 Ramabana saves every session with a completed turn under `--cfg`, which defaults to `~/.config/ramabana`. `/sessions` lists them with their turn counts and models. `/resume ID` reopens one from a full id or a unique prefix. From the shell:
 
