@@ -1543,6 +1543,10 @@ class Run:
             if out: self.silent = 0
         return out
 
+    def give_back(self, msgs):
+        "Put `msgs`, taken from the inbox and never read, back at its front in order."
+        with self._lock: self.inbox[:0] = list(msgs)
+
     def set_status(self, text):
         "Make `text`'s last line the status, noting a new one in the transcript."
         if (s := status_line(text)) and s != self.status:
@@ -1581,7 +1585,7 @@ class Run:
                 f'sentences what you have found and what you are doing next. Their request was: "{asked}"')
 
     @property
-    def terminal(self): return self.state in ('completed', 'cancelled', 'detached', 'terminated', 'failed')
+    def terminal(self): return self.state in ('completed', 'refused', 'cancelled', 'detached', 'terminated', 'failed')
     @property
     def cancelled(self): return self.state in ('cancelling', 'cancelled', 'detached', 'terminated')
 
@@ -1630,7 +1634,7 @@ class Run:
 
     def terminate(self):
         with self._lock:
-            if self.state in ('completed', 'cancelled', 'terminated', 'failed'): return self
+            if self.state in ('completed', 'refused', 'cancelled', 'terminated', 'failed'): return self
             children, backend = list(self.children), self.backend
         for child in children: child.terminate()
         if backend is not None:

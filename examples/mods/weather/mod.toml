@@ -1,0 +1,2 @@
+description = "Context and tool-use forecast: a status word, a band of tool calls per turn, and /weather."
+version = "0.1.0"

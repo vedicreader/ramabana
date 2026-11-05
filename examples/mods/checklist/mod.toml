@@ -1,0 +1,2 @@
+description = "A sticky checklist the person pins, shown to the agent each turn, with optional gates on commits and pushes."
+version = "0.1.0"

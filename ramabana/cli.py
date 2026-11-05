@@ -12,23 +12,24 @@ __all__ = ['FRAME_PATCHED', 'INK_PATCHED', 'KITTY_ON', 'KITTY_OFF', 'KEYS_ON', '
            'PANE_EVERY', 'FLASH_FOR', 'MAX_GROUP_ROWS', 'DIFF_OPEN', 'MOUSE_ON', 'MOUSE_OFF', 'SURFACE_COMMANDS',
            'CONTEXTS', 'TASKS_KEY', 'KEYMAP', 'CARD', 'HELP', 'TIPS', 'BUILD', 'VERSION', 'GUIDE', 'KITTY_ENV',
            'KITTY_TERM', 'KITTY_PROGRAM', 'MAX_IMG_COLS', 'MAX_IMG_ROWS', 'CELL_ASPECT', 'MAX_IMG_DRAW', 'IMG_CHROME',
-           'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'TASK_ROWS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO',
-           'NOT_ANSWER', 'APPROVE_CHIPS', 'PLAN_ROWS', 'PLAN_RESERVE', 'HINTS', 'TIPS_USAGE', 'DIFF_LEXERS',
-           'BLOCK_START', 'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'BG_WAIT', 'CLI_FRESH', 'REF_AT', 'REF_CAP',
-           'REF_TTL', 'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH',
-           'REVIVE_TRIES', 'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'light_rgb', 'is_light',
-           'reply_light', 'fgbg_light', 'auto_theme', 'set_theme', 'plan_text', 'key_text', 'key_names', 'help_text',
-           'keymap_doc', 'keymap_dir', 'write_keymap', 'key_card', 'guide_text', 'kitty_graphics', 'png_size',
-           'img_cells', 'Picture', 'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment',
-           'file_note', 'Option', 'options_for', 'ChoiceMenu', 'task_order', 'task_age', 'TaskMenu',
-           'close_done_shells', 'run_turn', 'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural',
-           'stretch_summary', 'Row', 'Stretch', 'OpenDiff', 'MessageBuffer', 'Ui', 'parse_answer', 'ask_pattern',
-           'fence_lang', 'ThemedCode', 'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty',
-           'stderr_to', 'stderr_log', 'pick_session', 'loop_error', 'query_background', 'can_ask_background', 'amain',
-           'headless_prompt', 'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'guide_cmd', 'pane_cmd',
-           'UiControl', 'start_control', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media',
-           'media_paths', 'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment',
-           'sendable', 'media_parts', 'media_note']
+           'APC_CHUNK', 'MAX_FILE_ATTACH', 'REFACTOR', 'MENUS', 'TASK_ROWS', 'MOD_BUSY_EVERY', 'MOD_IDLE_EVERY',
+           'MOD_WORKERS', 'BELL_IDLE', 'REASK_EVERY', 'YES', 'NO', 'NOT_YES_NO', 'NOT_ANSWER', 'APPROVE_CHIPS',
+           'PLAN_ROWS', 'PLAN_RESERVE', 'HINTS', 'QUESTION_HINT', 'TIPS_USAGE', 'DIFF_LEXERS', 'BLOCK_START',
+           'SHELL_NOTE', 'WRITE_WAIT', 'RESUME_SHOWN', 'BG_WAIT', 'CLI_FRESH', 'REF_AT', 'REF_CAP', 'REF_TTL',
+           'SUB_WORDS', 'LEARNED_WORDS', 'THEME_USAGE', 'ALIVE_EVERY', 'REOPEN_EVERY', 'QUICK_DEATH', 'REVIVE_TRIES',
+           'ext_key', 'ext_keys_ok', 'code_theme', 'hl_theme', 'code_bg', 'light_rgb', 'is_light', 'reply_light',
+           'fgbg_light', 'auto_theme', 'set_theme', 'plan_text', 'key_text', 'key_names', 'help_text', 'keymap_doc',
+           'keymap_dir', 'write_keymap', 'key_card', 'guide_text', 'kitty_graphics', 'png_size', 'img_cells', 'Picture',
+           'picture', 'draw_png', 'media_line', 'steer_note', 'file_refs', 'FileAttachment', 'file_note', 'Option',
+           'options_for', 'ChoiceMenu', 'task_order', 'task_age', 'TaskMenu', 'close_done_shells', 'run_turn',
+           'hl_text', 'diff_rich', 'changed_table', 'opens', 'plural', 'stretch_summary', 'Row', 'Stretch', 'OpenDiff',
+           'MessageBuffer', 'mod_text', 'ModCache', 'Ui', 'parse_answer', 'ask_pattern', 'fence_lang', 'ThemedCode',
+           'Reply', 'compact_md', 'sync_index', 'start_agent', 'off_loop', 'AppTty', 'stderr_to', 'stderr_log',
+           'pick_session', 'loop_error', 'query_background', 'can_ask_background', 'amain', 'headless_prompt',
+           'ask_once', 'host_kw', 'main', 'ref_text', 'arg_words', 'guide_cmd', 'pane_cmd', 'UiControl',
+           'start_control', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'media_path', 'is_media', 'media_paths',
+           'ATTACH_REF', 'TRAILING', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
+           'media_parts', 'media_note']
 
 # %% ../nbs/05_cli.ipynb #77060a68
 import asyncio, concurrent.futures, contextlib, functools, inspect, itertools, os, re, select, shlex, shutil, signal, subprocess, sys, tempfile, termios, threading, time
@@ -36,6 +37,7 @@ import json as _json
 from base64 import b64encode
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from random import randrange
 from urllib.parse import unquote, urlparse
 from rich.text import Text
@@ -60,7 +62,7 @@ from .core import EFFORTS, EXTRAS, JOBS, PII_MODES, PII_OFF, PROFILES, AgentErro
 from .core import PROVIDERS, auth_status, checklist, forget_probes, config_models, getting_started, provider_ready, ready_model
 from shalya.core import one_line
 from shalya.tools import media_dir, save_media
-from .agent import Agent, Approvals, APPROVE_MODES, answer_md, request_body, subject
+from .agent import Agent, Approvals, APPROVE_MODES, PERSON_ONLY, answer_md, request_body, subject
 from .pane import background_rows, quit_mark, talk_mark, write_snapshot
 from .control import EVENT_FILE, Control, ago, control_call, find_peer, note_peer, peer_label, peer_lines, peer_tools, peers_of, pick_row, self_frm
 from .peers import _parser as peer_parser, _together, peers_dir
@@ -525,6 +527,9 @@ KEYMAP = [
     _cmd('cmd_cost', '/cost', 'shows what the session has cost', 'extra'),
     _cmd('cmd_compact', '/compact', 'compacts the conversation', 'extra'),
     _cmd('cmd_reload', '/reload', 'finds skills, extensions and tools again', 'extra'),
+    _cmd('cmd_mods', ['/mods', '/extensions'], 'lists the mods, on or off, with what each added', 'extra'),
+    _cmd('cmd_mods_switch', '/mods off|on NAME', 'turns one mod off or on for this session', 'extra'),
+    _cmd('cmd_vesha', '/vesha [NAME]', 'lists the veshas, or switches the mods to one', 'extra'),
     _cmd('cmd_learned', '/learned', 'lists what Dhrona proposes', 'extra'),
     _cmd('cmd_learned_review', '/learned diff|accept|reject ID', 'reviews one proposal', 'extra'),
     _cmd('cmd_learned_compact', '/learned compact [ID]', 'proposes a shorter AGENTS.md, with candidate ID folded in', 'extra'),
@@ -980,9 +985,11 @@ async def run_turn(ui, prompt):
         try:
             for chunk in ui.agent.stream_with(ask, image=media or None):
                 if stopped.is_set(): break
-                post(chunk)
-        except Exception as e: post(agent_err(e))
+                post((ui.agent.current_turn_id, chunk))
+        except Exception as e: post((ui.agent.current_turn_id, agent_err(e)))
         finally: post(None)
+    before = ui.agent.run()   # the last turn's run, still current until this turn's stream registers its own
+    def this_run(): return None if (r := ui.agent.run()) is before else r
     threading.Thread(target=pump, daemon=True).start()
     blk, run = None, None
     try:
@@ -990,12 +997,16 @@ async def run_turn(ui, prompt):
             ui.mark_read()
             try: chunk = await asyncio.wait_for(q.get(), .05)
             except asyncio.TimeoutError:
-                run = run or ui.agent.run()
-                if run is not None and run.terminal and run.state not in ('completed', 'failed'): break   # these end their stream themselves, so what is queued still arrives
+                run = run or this_run()
+                if run is not None and run.terminal and run.state not in ('completed', 'failed', 'refused'): break   # these end their stream themselves, so what is queued still arrives
                 continue
             if chunk is None:break
-            run = run or ui.agent.run()
-            blk = ui.stream(blk, chunk)
+            turn_id, chunk = chunk
+            run = run or this_run()
+            row = next((h for h in reversed(ui.agent.history) if h.get('turn_id') == turn_id), None)
+            if row is not None and row.get('state') == 'refused':
+                ui.say(Text(chunk, style='dim'), 'note', fold=None)
+            else: blk = ui.stream(blk, chunk)
             if run is not None and run.cancelled:break
     finally:
         stopped.set()
@@ -1122,6 +1133,78 @@ class MessageBuffer(Buffer):
 # %% ../nbs/05_cli.ipynb #2874a64d
 def _now_file(agent): return None if (d := agent.runs_dir) is None else d/'now.json'
 
+MOD_BUSY_EVERY, MOD_IDLE_EVERY = 0.05, 0.25   #: the least seconds between two refreshes of the mods' status segments and bands, while busy and while idle
+
+_CONTROLS = re.compile(r'[\x00-\x08\x0a-\x1f\x7f-\x9f]')   #: C0 controls except tab, DEL, and C1 controls
+
+def mod_text(row):
+    "Convert one mod row to safe styled text."
+    if not isinstance(row, (str, list)): return None
+    out = Text()
+    try:
+        for span in [(row, '')] if isinstance(row, str) else row:
+            if not isinstance(span, (list, tuple)) or len(span) != 2: return None
+            part, style = span
+            if not isinstance(part, str) or not isinstance(style, str) or _CONTROLS.search(style): return None
+            Style.parse(style)
+            out.append(_CONTROLS.sub('', part), style)
+    except Exception: return None
+    out.expand_tabs()
+    return out
+
+MOD_WORKERS = 4   #: the most mod callbacks evaluated at once; each band, and the status with its segments, holds one slot
+
+class ModCache:
+    "Refresh status and band output off the UI thread, each callback in its own slot."
+    def __init__(self, ui):
+        self.ui, self.status, self.bands, self.segments = ui, None, {}, ()
+        self._lock, self._busy, self._at, self._key = threading.Lock(), set(), 0.0, None
+
+    def kick(self, view):
+        "Refresh for `view` each callback whose last refresh has finished, unless the surface is closed or the last kick was recent and for the same view."
+        now = time.monotonic()
+        key = (view.busy, view.width, view.rows, view.theme, view.colors)
+        bands = [b for b in list(self.ui.agent.registry.bands) if type(b.rows) is int and 1 <= b.rows <= 50]
+        with self._lock:
+            if self.ui.closed: return
+            if key == self._key and now - self._at < (MOD_BUSY_EVERY if view.busy else MOD_IDLE_EVERY): return
+            self._at, self._key = now, key
+            self.bands = {b: rows for b, rows in self.bands.items() if any(b is x for x in bands)}
+            for slot in ['status', *bands]:
+                if slot in self._busy or len(self._busy) >= MOD_WORKERS: continue   # a callback still running is skipped, not queued
+                self._busy.add(slot)
+                threading.Thread(target=self._refresh, args=(slot, view), daemon=True, name='mods').start()
+
+    def _refresh(self, slot, view):
+        try: changed = self._read_status() if slot == 'status' else self._draw_band(slot, view)
+        finally:
+            with self._lock: self._busy.discard(slot)
+        if changed and not self.ui.closed and self.ui.turn is None: self.ui._wake_mods()   # a running turn repaints on its own timer
+
+    def _read_status(self):
+        "Read the agent's status and the mods' segments; whether they changed. A status that fails keeps the last good one on the bar."
+        try:
+            status = self.ui.agent.status()
+            segments = tuple(t.plain for seg in status.pop('mod_status', ()) if (t := mod_text(seg)) is not None and t.plain)
+        except Exception: return False
+        with self._lock:
+            changed = (status, segments) != (self.status, self.segments)
+            self.status, self.segments = status, segments
+        return changed
+
+    def _draw_band(self, band, view):
+        "Draw one band; whether its rows changed. A band that fails or returns no list shows nothing until it draws again."
+        rows = None
+        if (limit := min(band.rows, view.rows)):
+            try: result = band(SimpleNamespace(**vars(view) | dict(rows=limit, t=time.monotonic())))
+            except Exception: result = None
+            if isinstance(result, (list, tuple)): rows = [t for row in result[:limit] if (t := mod_text(row)) is not None]
+        with self._lock:
+            changed = self.bands.get(band) != rows
+            if rows is None: self.bands.pop(band, None)
+            else: self.bands[band] = rows
+        return changed
+
 class Ui:
     "The terminal surface: a transcript of blocks, a status bar, and one line to type in."
 
@@ -1170,6 +1253,10 @@ class Ui:
         self.pics = {}
         self.drawn = 0
         self.frame = 0
+        self._busy_since = None
+        self._band_painted = 0.0
+        self.mods = ModCache(self)
+        agent.registry.on_redraw = self._wake_mods
         self._reply = ''
         self._seg = ''
         self._seg_blk = None
@@ -1204,6 +1291,7 @@ class Ui:
         if agent.approvals is not None: agent.approvals.listen(self.on_ask, self.on_answer)
         comp.on_frame, comp.toggle = self.place_pics, self.toggle
         comp.set_modes(1000, 1006, on=self.mouse)   # `start` takes the mouse; it is off until `/mouse on`
+        self.mods.kick(self.mod_view())   # the first read of the agent's status is slow; it runs now, behind the first paint
 
     def _post(self, fn, *a):
         "Run `fn` on the loop thread, or now without a loop."
@@ -1223,6 +1311,13 @@ class Ui:
         except concurrent.futures.TimeoutError:
             if held.cancel(): raise TimeoutError(f'the session did not get to it within {timeout} s') from None
             return held.result()
+
+    def _wake_mods(self):
+        if self.loop is not None:
+            with contextlib.suppress(RuntimeError): self.loop.call_soon_threadsafe(self._redraw_mods)
+
+    def _redraw_mods(self):
+        if not self.closed: self.paint()
 
     def _usage_line(self, text):
         "The `TokenLogger` sink, posted from the turn thread."
@@ -1263,13 +1358,13 @@ class Ui:
         return self.BOW_FRAMES[self.BOW_CYCLE[self.frame % len(self.BOW_CYCLE)]]
 
     def status(self):
-        "The status bar: what is loaded, whether it is working, and what it has cost."
+        "The status bar: what is loaded, whether it is working, and what it has cost. The counts and the mods' text come from what `ModCache` last fetched: it never calls a mod."
         if self.starting: s, busy, state, color = None, True, 'starting model…', GRUVBOX['yellow']
         else:
-            s = self.agent.status()
-            busy = self.turn is not None or s['busy']
-            state = 'working' if busy else ('ready' if s['ready'] else 'idle')
-            color = GRUVBOX['yellow'] if busy else GRUVBOX['green'] if s['ready'] else GRUVBOX['gray']
+            s, ready = self.mods.status, self.agent.ready   # whether it is working and ready is read live; the rest, and every mod's text, from the last refresh
+            busy = self.turn is not None or self.agent.busy
+            state = 'working' if busy else ('ready' if ready else 'idle')
+            color = GRUVBOX['yellow'] if busy else GRUVBOX['green'] if ready else GRUVBOX['gray']
         mark = self.SPINNER[self.frame % len(self.SPINNER)] if busy else '●'
         out = self.bow_text(busy, color); out.append(' ')
         out.append(self.WORDMARK, style=f"bold {GRUVBOX['fg0']}")
@@ -1283,6 +1378,8 @@ class Ui:
         if s['compactions']: bits.append(f"{s['compactions']} compacted")
         if self.agent.use.total: bits.append(s['usage'])
         if s['problems']: bits.append(f"{len(s['problems'])} problems")
+        bits.extend(self.mods.segments)
+        if s.get('vesha'): bits.append(f"vesha {s['vesha']}")
         out.append('  ' + ' · '.join(bits), style=GRUVBOX['gray'])
         return out
 
@@ -1354,6 +1451,11 @@ class Ui:
                 self.frame += 1
                 self.flush_stream()
                 self.paint()
+            elif self.agent.registry.bands or self.agent.registry.status_segments:
+                busy = self.starting or bool(self.agent.runs(active=True))
+                if time.monotonic() - self._band_painted >= (0.1 if busy else 0.5):
+                    self.frame += 1
+                    self.paint()
             elif isinstance(self.menu, TaskMenu):
                 self.frame += 1
                 if self.frame % 10 == 0: self.paint()   # once a second, so ages and states move while the list is open
@@ -1376,11 +1478,21 @@ class Ui:
         self._now_busy = self.agent.busy
 
     ASKING = 'approve? [y/n/a · n: reason] '
+    QUESTION = 'answer? [y/n · n: reason] '   #: for a question only a person answers, which approving all does not cover
+
+    @property
+    def person_only(self):
+        "Whether the waiting question is one of `PERSON_ONLY`, which no approve-all or saved rule may settle."
+        return getattr(self.ask, 'tool', None) in PERSON_ONLY
+
+    def asking(self):
+        "What heads the input line while a question waits."
+        return self.QUESTION if self.person_only else self.ASKING
 
     def prompt(self):
         "The input line: an approval question when one is pending, otherwise the prompt, with the selection reversed."
         ask = self.ask is not None
-        out = Text(self.ASKING if ask else '▌ ', style=f"bold {GRUVBOX['yellow' if ask else 'blue']}")
+        out = Text(self.asking() if ask else '▌ ', style=f"bold {GRUVBOX['yellow' if ask else 'blue']}")
         selected = self.buf.selection()
         for i, end, _ in split_graphemes(self.buf.text)[0]:
             style = Style(color=GRUVBOX['fg0'], meta={'compose': i})
@@ -1391,7 +1503,7 @@ class Ui:
 
     def _prefixed(self, text):
         "`text` with what precedes it on screen, as `tail` measures it."
-        if self.ask is not None: return self.ASKING + text
+        if self.ask is not None: return self.asking() + text
         return '▌ ' + text
 
     def overlay(self):
@@ -1409,7 +1521,11 @@ class Ui:
             drafting = bool(self.buf.text)
             for mode, on in ((1000, drafting or self.mouse), (1006, drafting or self.mouse), (1002, drafting)):
                 if (mode in self.comp._modes) != on: self.comp.set_modes(mode, on=on)
+        for notice in self.agent.registry.drain_notices():
+            prefix = f"[{notice['mod']}] " if notice['mod'] is not None else ''
+            self.say(Text(prefix + notice['text'], style='dim'), 'note', fold=None)
         self.announce_context()
+        self._band_painted = time.monotonic()
         rows, cursor = self.tail()
         self.comp.set_tail(*rows, cursor=cursor, over=self.overlay())
         if self.transcript.active: self.transcript.draw()
@@ -2040,10 +2156,11 @@ class Ui:
         if self.ask is not None:
             bare = not self.buf.text.strip()
             if bare and k.name in ('y', 'Y'):     self.answer(True)
+            elif bare and k.name in ('a', 'A') and self.person_only: pass
             elif bare and k.name == 'A' and self.always_allow(): pass
             elif bare and k.name in ('a', 'A'):   self.answer(True, session=True)
             elif k.name == 'enter':
-                if (ans := parse_answer(self.buf.text)) is None: self.buf.clear(); self.reask(NOT_ANSWER)
+                if (ans := parse_answer(self.buf.text)) is None: self.buf.clear(); self.reask(NOT_YES_NO if self.person_only else NOT_ANSWER)
                 else: self.answer(ans[0], note=ans[1])
             elif k.name == 'ctrl+y':              self.answer(True)
             elif k.name == 'ctrl+c':              self.answer(False)
@@ -2119,7 +2236,8 @@ class Ui:
 BELL_IDLE = 5   # idle seconds before the bell rings
 REASK_EVERY = 120   # seconds before a waiting question re-asks
 YES, NO = ('y', 'yes', 'approve'), ('n', 'no', 'refuse', 'deny')   # no `ok`: too easy to type by accident
-NOT_ANSWER = 'not an answer · y approves · n refuses · n: REASON refuses with a reason · a approves all this session'
+NOT_YES_NO = 'not an answer · y approves · n refuses · n: REASON refuses with a reason'
+NOT_ANSWER = NOT_YES_NO + ' · a approves all this session'
 
 def parse_answer(text):
     "`(ok, note)` for a typed approval answer (`y`, `n`, `n: reason`), or None."
@@ -2296,6 +2414,7 @@ HINTS = {state: hint.format_map(key_names()) for state, hint in dict(
     waiting='{recall_one} edits newest waiting · {recall_all} takes them back · \u21aa after this call · \u23f3 after the turn',
     approval='y approve · n refuse · n: REASON \u23ce says why · {approve_all} approve all · {always_allow} always allow',
     tasks='{task_move} move · {task_open} opens · {task_stop} stops · {task_close} back').items()}
+QUESTION_HINT = 'y approve · n refuse · n: REASON \u23ce says why'   #: the hint row while a `PERSON_ONLY` question waits
 
 @patch
 def context(self:Ui, browsing=True):
@@ -2312,6 +2431,7 @@ def footer_hint(self:Ui):
     "The hint row for what the surface is doing now, from `HINTS`; empty with `cli.hints` off."
     if not self.hints: return ''
     state = self.context(browsing=False)
+    if state == 'approval' and self.person_only: return QUESTION_HINT
     return HINTS[state] + (f' · {self.hint}' if state == 'idle' and self.hint else '')
 
 @patch
@@ -2323,8 +2443,21 @@ def announce_context(self:Ui):
         self.comp.tty.write(f'\x1b]2;ramabana · {ctx}\x07')
 
 @patch
+def mod_view(self:Ui):
+    "What the mods' bands are told of the surface now; `rows` is the most rows all bands may take together. Also tracks how long the surface has been busy."
+    now = time.monotonic()
+    busy = self.starting or self.turn is not None or bool(self.agent.runs(active=True))
+    if busy and self._busy_since is None: self._busy_since = now
+    if not busy: self._busy_since = None
+    return SimpleNamespace(agent=self.agent, busy=busy, busy_since=self._busy_since, t=now,
+                           width=self.comp.cols, rows=self.comp.rows // 3, theme='light' if is_light(ACTIVE_THEME) else 'dark',
+                           colors={'truecolor': 'truecolor', '256': '256', 'standard': 'standard'}.get(self.comp.console.color_system, 'none'))
+
+@patch
 def tail(self:Ui):
     "The live-tail description shared with Teleprint's transcript view. The plan checklist heads it rather than covering the transcript."
+    view = self.mod_view()
+    self.mods.kick(view)
     rows = [self.status(), self.model_row()]
     if (hint := self.footer_hint()): rows.append(Text(' ' + hint, style=GRUVBOX['gray'], no_wrap=True, overflow='ellipsis'))
     chips = self.attach_row()
@@ -2332,6 +2465,14 @@ def tail(self:Ui):
     rows += self.working()
     for r in (*self.queued_rows(), self.flash_row()):
         if r is not None: rows.append(r)
+    remaining = view.rows
+    for band in list(self.agent.registry.bands):
+        if type(band.rows) is not int or not 1 <= band.rows <= 50: continue
+        for text in self.mods.bands.get(band, ())[:min(band.rows, remaining)]:
+            text = text.copy()
+            text.truncate(self.comp.cols, overflow='crop')
+            rows.append(text)
+            remaining -= 1
     rows.append(self.prompt())
     rows[:0] = self._plan_rows(rows)
     before = Text(self._prefixed(self.buf.text[:self.buf.cursor]))
@@ -2878,7 +3019,9 @@ async def amain(agent, hint='', bell=True, pane='auto',
         with contextlib.suppress(OSError): os.set_blocking(sys.stdout.fileno(), True)   # the shell gets the terminal back blocking
         tty.write('\x1b[?2004l' + MOUSE_OFF + (KEYS_OFF if ext_keys_ok(tty) else '') + '\r\n')   # `stop` never ran if setup raised
         tty.restore()
-        if ui is not None: ui.closed = True
+        if ui is not None:
+            ui.closed = True
+            agent.registry.on_redraw = None
         agent.close()
 
 # %% ../nbs/05_cli.ipynb #b6d74293
@@ -2942,6 +3085,8 @@ def main(
     optin: str = '',                     # opt-in tool groups: exhash,research,author
     profile: str = 'auto',               # auto | small | full: small suits ≤32k local models
     learned: bool = True,                # --no-learned starts without <cfg>/learned, the lessons Dhrona keeps
+    vesha: str = '',                     # start in this vesha: its mods and settings, from vesha/NAME.toml beside config.toml
+    no_mods: bool = False,               # start with no mods loaded
 ):
     "Run Ramabana as a terminal agent. Name every folder it may work on: --root .,~/notes"
     read_outside = read_outside and not no_read_outside
@@ -2949,6 +3094,10 @@ def main(
     if doctor: return Setup(cfg).doctor()
     if (msg := refusal(tmux, pane, profile, pii, vault, warm, no_warm)):
         print(msg, file=sys.stderr)
+        return 2
+    try: ves = setup.use_vesha(vesha)
+    except ValueError as e:
+        print(e, file=sys.stderr)
         return 2
     prompt = headless_prompt(prompt)
     if prompt and approve == 'ask':
@@ -2964,7 +3113,8 @@ def main(
                                pii=pii, pii_ner=pii_ner, host_kw=host_kw(tmux),
                                max_tool_calls=max_tool_calls, max_steps=max_steps, max_cost=max_cost,
                                warm=True if warm else False if no_warm else None, optin=tuple(s.strip() for s in optin.split(',') if s.strip()), profile=profile,
-                               cfg=Path(cfg).expanduser() if cfg else None, learned=learned)
+                               cfg=Path(cfg).expanduser() if cfg else None, learned=learned,
+                               extensions=not no_mods, mods=ves.mods if ves else None, vesha=vesha)
     except KeyError as e:
         print(e.args[0] if e.args else e, file=sys.stderr)
         return 2

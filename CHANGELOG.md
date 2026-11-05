@@ -2,6 +2,17 @@
 
 <!-- do not remove -->
 
+## 0.2.107
+- Mods. A mod is one `.py` file, or one folder with `mod.py`, in `~/.config/ramabana/mods` or `extensions`, in the project's `.leela/mods` when project extensions are on, or in a package with a `ramabana.mods` entry point. An extension file is a mod too. Its `setup(reg)` adds tools, commands, hooks, status segments, bands, notices and timers. It needs shalya 0.1.29.
+- A `before_turn` hook can refuse a prompt with a reason, rewrite it, or add context with `agent.inject(text)`. Each rewrite and each injected text is written to the history row, so rewind and dhrona see what the model saw. Rewrites from several hooks chain in order.
+- New `agent.ask_user(title, preview)` asks the person a yes or no question. The CLI shows the title and the preview, and offers only `y`, `n` and `n: reason`. `a` and `A` do nothing for a question that only a person may answer, and this now applies to peer asks too.
+- The CLI draws each mod's status segment at the end of the status bar, its bands above the input line, and its notices in the transcript. Bands repaint on the animation loop. Each callback has its own slot, so a slow or hung mod never blocks a paint or the other mods. Escape sequences and tabs in mod text are removed, and the width and height are capped.
+- `/mods` lists each mod with `on` or `off` and what it registered. `/mods off NAME` and `/mods on NAME` turn one mod off or on. `ramabana mods check PATH` loads a mod in a dry run and prints what it registers. `--no-mods` starts with no mods.
+- Veshas. A vesha is a file `vesha/NAME.toml` beside `config.toml`. It names the mods to load and `[cli]` settings to use. Start with `--vesha NAME` or `cli.vesha`, list them with `/vesha`, and see their settings with `ramabana config show --vesha NAME`. A vesha may only tighten permissions: one that loosens `cli.approve` or another permission key stops start-up with the reason.
+- Five example mods are in `examples/mods`: `sun`, a pixel sun that breathes in and out while the agent works; `pomodoro`, a work and break timer that refuses prompts during a break; `checklist`, pinned items that block a commit until a person checks them, and that dhrona 0.1.24 learns from; `gate`, which asks before a commit, a push, a wide delete or a release turn; and `weather`, the context use in the status bar and a band of tool use per turn.
+- Fix: a turn could take the previous turn's run as its own after a stopped turn, and then drop the refusal that ended it.
+- The `dhrona` extra needs dhrona 0.1.24.
+
 ## 0.2.106
 - Each session keeps a ledger in its plan file (`~/.config/ramabana/agent-plans/<session>.json`). The ledger holds:
   - each request of the user, word for word, with its status: open, agreed, done or declined
