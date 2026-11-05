@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.108
+- New `Agent.events(prompt)` gives a turn as typed events, with the names and fields of the AG-UI protocol: `RUN_STARTED`, `STEP_STARTED` and `STEP_FINISHED`, `TEXT_MESSAGE_START`, `_CONTENT` and `_END`, `TOOL_CALL_START`, `_ARGS`, `_END` and `_RESULT`, `STATE_SNAPSHOT`, `CUSTOM`, then `RUN_FINISHED` or `RUN_ERROR`. Each event is a plain dict with a `timestamp`. ramabana does not depend on the `ag-ui-protocol` package.
+- Tool arguments and results in the events are masked as in the logs. A sub-agent's calls have the `toolCallId` of the delegate call that started it as their `parentMessageId`.
+- A host tool sends app events with `agent.emit(name, value)` and `agent.emit_state(snapshot)`. `sse_event(e)` writes one event as a server-sent event.
+- When the reader closes the event stream early, the turn is cancelled.
+
 ## 0.2.107
 - Mods. A mod is one `.py` file, or one folder with `mod.py`, in `~/.config/ramabana/mods` or `extensions`, in the project's `.leela/mods` when project extensions are on, or in a package with a `ramabana.mods` entry point. An extension file is a mod too. Its `setup(reg)` adds tools, commands, hooks, status segments, bands, notices and timers. It needs shalya 0.1.29.
 - A `before_turn` hook can refuse a prompt with a reason, rewrite it, or add context with `agent.inject(text)`. Each rewrite and each injected text is written to the history row, so rewind and dhrona see what the model saw. Rewrites from several hooks chain in order.
