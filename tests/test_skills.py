@@ -45,9 +45,11 @@ def test_a_tool_registered_while_the_session_runs_survives_a_reload(tmp_path):
 
     assert 'from_file' in {t.__name__ for t in a.tools}
     before = a.tools
+    loaded = next(t for t in a.registry.tools if t.__name__ == 'from_file')
     a.add_tool(added)
     assert a.tools is not before                      # the built list was rebuilt around it
     assert 'added' in {t.__name__ for t in a.tools}
+    assert any(t is loaded for t in a.registry.tools), 'add_tool set the extensions up again'
 
     for call in (a.reload, a.refresh):
         call()

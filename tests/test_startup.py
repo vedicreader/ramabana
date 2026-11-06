@@ -12,7 +12,7 @@ def child(code, timeout=120):
 
 from teleprint.compositor import Compositor
 from teleprint.testing import EmuTty
-from ramabana.cli import Ui
+from ramabana.cli import Ui, _now_file
 from ramabana.testing import SPEC, FakeBackend, fake_agent
 
 class Slow(FakeBackend):
@@ -73,6 +73,17 @@ def test_the_screen_says_ready_once_the_start_ends(tmp_path):
         await asyncio.sleep(.05)
         screen = ui.comp.tty.term.text()
         assert 'ready' in screen and 'working' not in screen and 'thinking' not in screen, screen
+    session(a, body)
+
+def test_the_pane_gets_a_snapshot_once_the_start_ends(tmp_path):
+    "A snapshot asked for during the start was dropped, so the pane said 'waiting for the agent' until the first change."
+    a, be = slow_agent(tmp_path)
+    async def body(ui):
+        await asyncio.sleep(.05)
+        assert not _now_file(a).exists()
+        be.gate.set()
+        assert await until(lambda: not ui.starting and ui.turn is None)
+        assert await until(_now_file(a).exists, 1)
     session(a, body)
 
 def test_a_line_sent_before_ready_waits_then_runs(tmp_path):

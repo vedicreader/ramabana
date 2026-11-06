@@ -2618,7 +2618,8 @@ def add_tool(self:Agent, f):
     "Add one tool to this agent now, and re-brief a running backend. Raises `ValueError` for a tool `only_tools` does not name."
     if not self._offered(name := getattr(f, '__name__', '')): raise ValueError(f'{name!r} is not in only_tools ({", ".join(sorted(self.only_tools)) or "empty"}); name it there to offer it')
     self.registry.tool(f)
-    self.refresh()
+    self._forget(files=False)
+    self._rebrief()
     return f
 
 # %% ../nbs/03_agent.ipynb #58e7f494

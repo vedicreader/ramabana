@@ -1317,7 +1317,9 @@ class Ui:
             with contextlib.suppress(RuntimeError): self.loop.call_soon_threadsafe(self._redraw_mods)
 
     def _redraw_mods(self):
-        if not self.closed: self.paint()
+        if self.closed: return
+        self.paint()
+        if self.agent.registry.sections: self.write_now()
 
     def _usage_line(self, text):
         "The `TokenLogger` sink, posted from the turn thread."
@@ -2840,7 +2842,7 @@ async def warm_up(self:Ui):
     except Exception as e: self.note(f'no model available: {agent_err(e)}')
     finally:
         self.starting = False
-        if not self.closed: self.paint()
+        if not self.closed: self.paint(); self.write_now(force=True)
 
 @patch
 def begin(self:Ui):

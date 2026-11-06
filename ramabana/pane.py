@@ -124,6 +124,7 @@ def now_snapshot(agent):
             'root': {'turn_elapsed': _secs(root, now) if root else 0, 'steps': len(mine), 'state': root.state if root else 'idle',
                      'status': agent.status_line, 'current': _current(mine)},
             'plan': [{'text': t.text, 'status': t.status} for t in agent.plan.todos],
+            'sections': agent.registry.section_rows(agent),
             'subs': [_sub(r, every, now) for r in kids + bg],
             'files': _files(agent, seen, every[mark:]),
             'background': background_rows(agent, now),
@@ -232,6 +233,10 @@ def _note_rows(n, width, opened, P):
     return [(key if i == 0 else None, (head if i == 0 else Text(' ' * head.cell_len)) + _line(l, P['fg1'], room))
             for i, l in enumerate(lines)]
 
+def _text_rows(text, width, P, style='fg1'):
+    "`text` wrapped to the pane in palette colour `style`, its later lines indented two cells."
+    return [(None, _line(l, _c(style, P), width, '  ' if i else '')) for i, l in enumerate(textwrap.wrap(text, max(8, width - 2)) or [''])]
+
 def board(snap, width=40, now=None, open=(), err=''):
     "The pane for `snap` as `(key, row)` pairs, one per screen line, in the snapshot's palette; a row with a `key` opens and closes."
     P = palette_of(snap)
@@ -242,6 +247,7 @@ def board(snap, width=40, now=None, open=(), err=''):
     def section(title, body):
         if body: rows.extend([(None, Text('')), (None, Text(title, style=f"bold {P['gray']}")), *body])
     section('Plan', [(None, _todo(t, width, P)) for t in snap['plan']])
+    for s in snap.get('sections') or []: section(s['title'], [r for t in s['rows'] for r in _text_rows(t, width, P, s.get('style') or 'fg1')])
     target = snap.get('target') or 'main'
     def aimed(k, t): return _cut(Text('→ ', style=f"bold {P['green']}") + t, width) if k and k == (('main', 'main') if target == 'main' else ('sub', target)) else t
     main = [(('main', 'main'), _row(width, Text('main', style=f"bold {P['blue']}"), ' · talk to the main agent', style=P['gray']))]
