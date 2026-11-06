@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.111
+
+- A rule tells the model to import its own packages (rupaka, kosha, ramabana, nbformat) with `own_python`, and to keep `run_python` for the user's kernel and variables. A host without `own_python` does not get the rule.
+
 ## 0.2.110
 - `/reload` keeps the conversation. Before, it closed every model backend, and the next turn started with no history. Now the new turn backend starts with the history of the backend it replaces. Pictures in that history become placeholders.
 - Fix: in the `decisions` example mod, `record` read any question that starts with "h", such as "How should…", as a hold number such as h1, and failed with "no item". Now only text such as `h1` or `h12` is a hold number.
