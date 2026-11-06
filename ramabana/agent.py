@@ -2841,12 +2841,11 @@ def set_model(self:Agent, name, job='turn'):
 @patch
 def settle(self:Agent):
     "Move a turn that nobody named off a model that cannot run here, onto `Routing.settled()`. Returns the line that says so, or ''."
-    was = self.routing.turn
     if not (alt := self.routing.settled()): return ''
-    why = needs_setup(self.routing)
+    line = self.routing.settled_line(alt)
     self.set_model(alt)
     self.routing.picked.discard('turn'); self.routing.named = False   # a stand-in; config.toml can still name the turn
-    return f'{was} cannot run here ({why.split(";")[0]}), so this session runs on {alt}, the model ready here · /model to change it, /login to add another'
+    return line
 
 @patch
 def apply_config(self:Agent):

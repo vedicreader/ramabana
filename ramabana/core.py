@@ -8,23 +8,24 @@ Docs: https://vedicreader.github.io/ramabana/core.html.md"""
 __all__ = ['ENV_PREFIX', 'ENV_FALLBACK', 'AgentError', 'JOBS', 'ONESHOT_JOBS', 'LOCAL', 'MLX', 'LLAMA', 'GPT', 'CLOUD',
            'CLAUDE_MODELS', 'CLAUDE_ALIASES', 'CLAUDE', 'DFLT_AGENT_CTX', 'CLAUDE_CTX', 'RUNTIME_NAMES', 'AGENTS',
            'HOSTED', 'COPILOT_UNAVAILABLE', 'CUSTOM', 'RUNTIME_REMEDY', 'MODELS', 'PROBE_TTL', 'PROBE_DIR', 'HARNESS',
-           'CLAUDE_LOGIN_TTL', 'AZURE_KEY_ENV', 'AZURE_HOSTS', 'API_KEYS', 'MODEL_ALIASES', 'DEFINES',
-           'OLLAMA_LIST_TIMEOUT', 'VENDORS', 'DFLT_TURN', 'DFLT_SMALL', 'DFLT_SUBAGENT', 'DFLT_MEDIUM', 'DFLT_LOCAL',
-           'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED', 'SETUP_HINT',
-           'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX', 'SMALL_TOOLS',
-           'TOOL_CHANNELS', 'EFFORT_RUNTIMES', 'KEY_ENVS', 'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS', 'READY_ORDER',
-           'CLAUDE_SIGNED_OUT', 'KEY_VARS', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO', 'GEMINI_BASE', 'BranchChanged',
-           'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'claude_wire', 'probe_path', 'probed',
-           'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available', 'azure_base', 'azure_endpoint',
-           'azure_key_env', 'azure_ready', 'azure_host', 'is_azure', 'auth_status', 'register_model',
-           'unregister_model', 'use_aliases', 'alias_path', 'saved_models', 'load_models', 'save_model', 'delete_model',
-           'config_models', 'sync_models', 'model_problems', 'remote_models', 'copilot_catalog', 'available_models',
-           'local_window', 'local_ctx', 'ModelSpec', 'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve',
-           'spec_caps', 'accepts', 'model_note', 'Budget', 'budget_for', 'profile_for', 'force_tags',
-           'forget_forced_tags', 'norm_channel', 'norm_effort', 'claude_native', 'tool_channel', 'effort_support',
-           'native_support', 'models_table', 'missing_key', 'needs', 'is_local', 'Routing', 'provider_ready',
-           'ready_model', 'ready_turn', 'job_source', 'needs_setup', 'setup_guide', 'welcome', 'on_wsl',
-           'getting_started', 'checklist', 'watch_getting_started', 'image_route', 'video_route']
+           'LOCAL_SIZE', 'WEIGHTS_TTL', 'CLAUDE_LOGIN_TTL', 'AZURE_KEY_ENV', 'AZURE_HOSTS', 'API_KEYS', 'MODEL_ALIASES',
+           'DEFINES', 'OLLAMA_LIST_TIMEOUT', 'VENDORS', 'DFLT_TURN', 'DFLT_SMALL', 'DFLT_SUBAGENT', 'DFLT_MEDIUM',
+           'DFLT_LOCAL', 'DFLT_FALLBACK', 'LOCAL_RUNTIMES', 'DEFAULT_POLICY', 'DFLT_LOCAL_CTX', 'PREFIXES', 'RETIRED',
+           'SETUP_HINT', 'SMALL_CTX', 'TOOL_MAX_FLOOR', 'FRUGAL_DROP', 'TAGS_SCHEMA_TOKENS', 'SMALL_PROFILE_CTX',
+           'SMALL_TOOLS', 'TOOL_CHANNELS', 'EFFORT_RUNTIMES', 'KEY_ENVS', 'CODEX_LOGIN', 'DOWN_TTL', 'PROVIDERS',
+           'READY_ORDER', 'CLAUDE_SIGNED_OUT', 'KEY_VARS', 'DFLT_IMAGE', 'NO_IMAGES', 'DFLT_VIDEO', 'GEMINI_BASE',
+           'BranchChanged', 'ContextFull', 'agent_err', 'use_env_prefix', 'env', 'claude_ctx', 'claude_wire',
+           'probe_path', 'probed', 'forget_probes', 'runtime_remedy', 'runtime_detail', 'runtime_available',
+           'weights_here', 'azure_base', 'azure_endpoint', 'azure_key_env', 'azure_ready', 'azure_host', 'is_azure',
+           'auth_status', 'register_model', 'unregister_model', 'use_aliases', 'alias_path', 'saved_models',
+           'load_models', 'save_model', 'delete_model', 'config_models', 'sync_models', 'model_problems',
+           'remote_models', 'copilot_catalog', 'available_models', 'local_window', 'local_ctx', 'ModelSpec',
+           'unknown_model', 'missing_runtime', 'reachable_hint', 'resolve', 'spec_caps', 'accepts', 'model_note',
+           'Budget', 'budget_for', 'profile_for', 'force_tags', 'forget_forced_tags', 'norm_channel', 'norm_effort',
+           'claude_native', 'tool_channel', 'effort_support', 'native_support', 'models_table', 'missing_key', 'needs',
+           'is_local', 'Routing', 'provider_ready', 'ready_model', 'ready_local', 'ready_turn', 'job_source',
+           'needs_setup', 'setup_guide', 'welcome', 'on_wsl', 'getting_started', 'checklist', 'watch_getting_started',
+           'image_route', 'video_route']
 
 # %% ../nbs/00_core.ipynb #41a0b203
 import difflib, functools, importlib, importlib.util, json, os, platform, re, shutil, subprocess, sys, threading, time, warnings
@@ -146,12 +147,14 @@ def probed(key, fn, ttl=PROBE_TTL, dir=None, disk=True):
     threading.Thread(target=again, daemon=True, name=f'ramabana-probe-{key}').start()
     return row['value']
 
+_WEIGHTS = {}   # name -> (when, answer) from `weights_here`
+
 def forget_probes(disk=False, dir=None):
     "Drop every cached answer, and with `disk` the files too: each answer in `dir`, and each one this process wrote to another folder."
     global _probe_gen
     with _probe_lock:
         rows, _probe_gen = dict(_PROBED), _probe_gen+1
-        _PROBED.clear()
+        _PROBED.clear(); _WEIGHTS.clear()
         if not disk: return
         files = {*Path(dir or PROBE_DIR).expanduser().glob('*.json'), *(probe_path(k, r.get('dir')) for k, r in rows.items() if r.get('disk'))}
         for p in files:
@@ -212,6 +215,30 @@ def runtime_available(runtime):
     if runtime == 'ollama': return _ollama_available()
     try: return importlib.util.find_spec(_RUNTIME_DEPS[runtime]) is not None
     except (ImportError, KeyError, ValueError): return False
+
+#: what a litert model downloads before its first turn when its weights are not on this machine yet
+LOCAL_SIZE = {'gemma-e2b': '3.5 GB', 'gemma-e4b': '5.9 GB'}
+WEIGHTS_TTL = 60   #: seconds `weights_here` keeps one look at the Hugging Face cache
+
+_WEIGHT_EXT = {'mlx': '.safetensors', 'llama': '.gguf'}
+
+def _weights_on_disk(rt, model_id):
+    "Whether rishi loads `model_id` on `rt` from the Hugging Face cache, not the network."
+    try:
+        if rt == 'litert':
+            from rishi.litert import cached_model, _portable
+            return _portable(cached_model(model_id))
+        from urai.caps import hub_files
+        return any(f.endswith(_WEIGHT_EXT[rt]) and 'mmproj' not in f for f in hub_files(model_id))
+    except Exception: return False
+
+def weights_here(name):
+    "Whether model `name` starts with no download: a litert, mlx or llama.cpp model once its weights are in the Hugging Face cache, any other model always."
+    rt, mid = MODELS.get(name) or (str(name).partition('/')[::2] if str(name).split('/')[0] in ('litert', 'mlx', 'llama') else (None, None))
+    if rt not in ('litert', *_WEIGHT_EXT): return True
+    at, ok = _WEIGHTS.get(name, (0, False))
+    if time.time() - at > WEIGHTS_TTL: _WEIGHTS[name] = (time.time(), ok := _weights_on_disk(rt, mid))
+    return ok
 
 # %% ../nbs/00_core.ipynb #2b914187
 from .setup import EXTRAS, SCRIPTS, installed, need
@@ -483,6 +510,13 @@ def _facts(row):
     except Exception: return {**row, 'local': row['provider'] in ('litert', 'mlx', 'llama'), 'model_id': '', 'name': name, 'vendor': ''}
     return {**row, 'local': spec.local, 'model_id': spec.model_id, 'name': name, 'vendor': '' if spec.local else vendor_of(v)}
 
+def _local_row(name, runtime):
+    "The `available_models` row for local model `name`; one whose weights are not here yet names the download and its size."
+    row = {'value': name, 'label': name, 'provider': runtime, 'source': f'on device via Rishi {runtime}'}
+    if weights_here(name): return row
+    size = LOCAL_SIZE.get(name, 'size unknown')
+    return {**row, 'download': size, 'source': f"{row['source']}; download needed, {size}"}
+
 def _model_rows(include_legacy=False):
     "Every row of `available_models`, asked now. The slow probes start together: ollama's list, Copilot's catalogue, the sign-ins and each vendor's live list."
     when = lambda rt, f: (lambda: f() if runtime_available(rt) else [])
@@ -492,7 +526,7 @@ def _model_rows(include_legacy=False):
     rows = []
     for runtime, models in (('litert', LOCAL), ('mlx', MLX), ('llama', LLAMA)):
         if not runtime_available(runtime): continue
-        rows += [{'value': name, 'label': name, 'provider': runtime, 'source': f'on device via Rishi {runtime}'} for name in models]
+        rows += [_local_row(name, runtime) for name in models]
     rows += [{'value': f'ollama/{m}', 'label': m, 'provider': 'ollama', 'source': 'on device via the ollama daemon'} for m in ollama or []]
     rows += [{'value': f'claude/{m}', 'label': m, 'provider': 'claude', 'source': 'Claude Code (CLI or SDK)'} for m in claude or []]
     rows += [{'value': f'copilot/{m}', 'label': m, 'provider': 'copilot', 'source': 'GitHub Copilot subscription'} for m in copilot or []]
@@ -625,10 +659,13 @@ def missing_runtime(spec):
     return f"{rt} runtime is unavailable{f' ({why})' if why else ''}; {runtime_remedy(rt)}"
 
 def reachable_hint():
-    "Which model to try instead, from `available_models`. It suggests a model and switches nothing."
-    try: alt = next((r['value'] for r in available_models()), None)
-    except Exception: alt = None
-    hint = f'{alt} runs here; choose it with `/model {alt}` or the model picker' if alt else 'no model runs on this machine yet'
+    "Which model to try instead, from `available_models`: one that runs now, else a local one after its download. It suggests a model and switches nothing."
+    try: rows = available_models()
+    except Exception: rows = []
+    alt, dl = first(r['value'] for r in rows if not r.get('download')), first(r for r in rows if r.get('download'))
+    if alt: hint = f'{alt} runs here; choose it with `/model {alt}` or the model picker'
+    elif dl: hint = f"no model runs on this machine yet; {dl['value']} runs here after a {dl['download']} download, which `/model {dl['value']}` starts"
+    else: hint = 'no model runs on this machine yet'
     return f'{hint}. {SETUP_HINT}'
 
 SETUP_HINT = '`/login` adds a provider in a session, `ramabana setup` from a shell'
@@ -899,7 +936,7 @@ class Routing:
         return spec
 
     def alternatives(self, job):
-        "Where `job` goes when its own model cannot run here, best first. The turn comes first for a job with no model of its own, and Sonnet for a job on `DFLT_SMALL`. The other cloud routes follow, then `DFLT_FALLBACK` on the machine. A job on a local turn has none."
+        "Where `job` goes when its own model cannot run here, best first. The turn comes first for a job with no model of its own, and Sonnet for a job on `DFLT_SMALL`. The other cloud routes follow, then `ready_local()`, a model on the machine whose weights are already here. A job on a local turn has none."
         if self.follows_turn(job): return []
         seen, out, n = {self.name_for(job)}, [], self.name_for(job)
         lead = (self.turn,) if not self.chose(job) else (DFLT_SUBAGENT if n == DFLT_SMALL else None,)
@@ -907,7 +944,7 @@ class Routing:
                     self.turn, *(self.policy.get(j) for j in JOBS)):
             if alt and alt not in seen and not is_local(alt):
                 seen.add(alt); out.append(alt)
-        return out + ([] if DFLT_FALLBACK in seen else [DFLT_FALLBACK])
+        return out + ([l] if (l := ready_local()) and l not in seen else [])
 
     def _why(self, name):
         "Why `name` cannot run here, or '' when it can."
@@ -922,7 +959,7 @@ class Routing:
         self.news.append(f"{n} unavailable ({f'no {k}' if k else why}); {'small jobs' if n == DFLT_SMALL else 'its jobs'} use {alt}")
 
     def spec(self, job='turn', fallback=True):
-        "The `ModelSpec` for `job`, else another cloud route, else `DFLT_FALLBACK`; failing that, an error naming the job, the model and what it needs."
+        "The `ModelSpec` for `job`, else another cloud route, else `ready_local()`; failing that, an error naming the job, the model and what it needs."
         n = self.name_for(job)
         try: return self._resolve(n) if job == 'turn' else self._usable(n)   # the turn's key and runtime are `Agent.start`'s to report
         except Exception as e:
@@ -932,7 +969,7 @@ class Routing:
             for alt in self.alternatives(job):
                 try: spec = self._usable(alt)
                 except Exception: continue
-                if spec.local and alt != DFLT_FALLBACK: continue
+                if spec.local and alt != ready_local(): continue
                 if self.chose(job) or alt != self.turn:   # a default job moving to the turn is the plan, not news
                     self.notes[job] = f'{n} {why}; using {alt}'
                     self.fell(n, alt, why)
@@ -962,9 +999,13 @@ class Routing:
         return spec
 
     def settled(self):
-        "Where a turn nobody named for this run should go because its model cannot run here: `ready_turn()`, or '' when it stays."
-        if self.named or not needs_setup(self) or not (alt := ready_turn()) or alt == self.turn or self._why(alt): return ''
+        "Where a turn nobody named, for this run, in env or in config.toml, should go because its model cannot run here: `ready_turn()`, or '' when it stays."
+        if self.named or setting('jobs.turn') or not needs_setup(self) or not (alt := ready_turn()) or alt == self.turn or self._why(alt): return ''
         return alt
+
+    def settled_line(self, alt):
+        "The line that says this turn moves to `alt`, and why."
+        return f'{self.turn} cannot run here ({needs_setup(self).split(";")[0]}), so this session runs on {alt}, the model ready here · /model to change it, /login to add another'
 
     def backends(self):
         "The distinct backend/model pairs this policy needs."
@@ -1009,7 +1050,7 @@ def provider_ready(key, auth=None):
     "Whether provider `key`'s credential or runtime is on this machine. Chooses nothing."
     if key == 'bedrock': return bool(os.environ.get('AWS_BEARER_TOKEN_BEDROCK'))
     if key == 'openrouter': return bool(os.environ.get('OPENROUTER_API_KEY'))
-    if key == 'local': return any(runtime_available(r) for r in LOCAL_RUNTIMES)
+    if key == 'local': return bool(ready_local()) or any(runtime_available(r) for r in LOCAL_RUNTIMES if r != 'litert')
     if key == 'custom': return bool(remote_models())
     return bool(((auth or auth_status()).get(key) or {}).get('available'))
 
@@ -1025,10 +1066,15 @@ def ready_model(key):
     cat = CATALOG.get(key, ())
     return f'{key}/{DFLT_TURN if DFLT_TURN in cat else cat[0]}' if cat else ''
 
+def ready_local():
+    "The litert model a turn or job can fall to here with no download: `DFLT_FALLBACK`, then the rest of `LOCAL`; '' when no weights are here."
+    if not runtime_available('litert'): return ''
+    return first(n for n in dict.fromkeys((DFLT_FALLBACK, *LOCAL)) if weights_here(n)) or ''
+
 def ready_turn(auth=None):
-    "The model a turn nobody named should run on here: the first ready provider in `READY_ORDER`, or '' when none is."
+    "The model a turn nobody named should run on here: the first ready provider in `READY_ORDER`, else `ready_local()`, else ''."
     auth = auth or auth_status()
-    return next((m for k in READY_ORDER if provider_ready(k, auth) and (m := ready_model(k))), '')
+    return next((m for k in READY_ORDER if provider_ready(k, auth) and (m := ready_model(k))), '') or ready_local()
 
 def job_source(routing, job):
     "Where `job`'s model comes from: an env var, config.toml, `set`, the turn it follows, or the default."

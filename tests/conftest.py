@@ -69,6 +69,23 @@ def _own_config(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def hf_cache(tmp_path_factory, monkeypatch):
+    "An empty Hugging Face cache for each test; `hf_cache('gemma-e2b')` puts a stand-in for that litert model's weights in it."
+    from huggingface_hub.utils import _cache_manager
+    import ramabana.core as core
+    d = tmp_path_factory.mktemp('hf')
+    monkeypatch.setattr(_cache_manager, 'HF_HUB_CACHE', str(d)); core._WEIGHTS.clear()
+    def put(*names):
+        for n in names:
+            repo = d/f"models--{core.LOCAL[n].replace('/', '--')}"
+            (repo/'refs').mkdir(parents=True, exist_ok=True); (repo/'refs'/'main').write_text('0'*40)
+            snap = repo/'snapshots'/('0'*40); snap.mkdir(parents=True, exist_ok=True)
+            (snap/f"{core.LOCAL[n].split('/')[1].removesuffix('-litert-lm')}.litertlm").write_bytes(b'weights')
+        core._WEIGHTS.clear()
+    return put
+
+
+@pytest.fixture(autouse=True)
 def _own_aliases(tmp_path_factory, monkeypatch):
     "Saved aliases in a file of each test's own, and no Azure OpenAI from the machine's environment."
     import ramabana.core as core

@@ -213,10 +213,12 @@ def test_without_a_codex_login_medium_jobs_fall_back_to_the_turn_quietly(monkeyp
 
 # -- with no cloud route left, a job runs on Gemma on the machine ------------------------
 
-def test_a_job_no_cloud_route_can_run_falls_to_local_gemma_and_the_turn_never_does(monkeypatch, tmp_path):
+def test_a_job_no_cloud_route_can_run_falls_to_local_gemma_and_the_turn_never_does(monkeypatch, tmp_path, hf_cache):
     no_model_env(monkeypatch); no_codex_login(monkeypatch, tmp_path)
     real = core.runtime_available
     monkeypatch.setattr(core, 'runtime_available', lambda rt: rt == 'litert' or (rt != 'claude' and real(rt)))
+    with pytest.raises(core.AgentError, match='summary job'): Routing().spec('summary')   # no weights here, so no fallback that downloads them
+    hf_cache(core.DFLT_FALLBACK)
     r = Routing()
     for job in ('summary', 'classify', 'subagent'): assert r.spec(job).name == core.DFLT_FALLBACK, job
     assert r.spec('summary').local and core.DFLT_FALLBACK in r.notes['summary']
@@ -231,8 +233,8 @@ class Silent(FakeBackend):
         self.calls.append(self.spec.name)
         return 'from gemma' if self.spec.local else ''
 
-def test_a_cloud_model_that_answers_nothing_is_set_aside_until_a_job_reaches_gemma(monkeypatch):
-    no_model_env(monkeypatch)
+def test_a_cloud_model_that_answers_nothing_is_set_aside_until_a_job_reaches_gemma(monkeypatch, hf_cache):
+    no_model_env(monkeypatch); hf_cache(core.DFLT_FALLBACK)
     monkeypatch.setenv('CODEX_AUTH_TOKEN', 'x')
     real = core.runtime_available
     monkeypatch.setattr(core, 'runtime_available', lambda rt: rt in ('claude', 'litert') or real(rt))

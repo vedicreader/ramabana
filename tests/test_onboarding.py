@@ -58,7 +58,49 @@ def test_a_turn_someone_named_is_never_replaced(machine, monkeypatch):
     assert Routing().settled() == '' and Routing().turn == gone
     monkeypatch.delenv('RAMABANA_MODEL')
     config_path().write_text(f'[jobs]\nturn = "{gone}"\n')
-    assert Routing().settled() == ready_turn(), 'config.toml names a default, not this run'
+    assert Routing().settled() == '' and Routing().turn == gone, 'config.toml names the turn too'
+    config_path().write_text('')
+    r = Routing(); r.set(gone)
+    assert r.settled() == '', '/model and the picker name it'
+
+
+def test_with_nothing_ready_the_turn_runs_on_a_gemma_already_on_disk(machine, hf_cache):
+    assert ready_turn() == '' and core.ready_local() == ''
+    hf_cache('gemma-e2b')
+    assert ready_turn() == 'gemma-e2b' and Routing().settled() == 'gemma-e2b'
+    hf_cache('gemma-e4b')
+    assert ready_turn() == core.DFLT_FALLBACK == 'gemma-e4b', 'E4B leads once both are here'
+    assert core.provider_ready('local')
+    machine('codex')
+    assert ready_turn() == f'codex/{CATALOG["codex"][0]}', 'a ready provider beats a model on the machine'
+
+
+def test_with_nothing_ready_and_no_weights_nothing_downloads(machine, monkeypatch):
+    import rishi.litert as lt
+    got = []
+    monkeypatch.setattr(lt, 'hf_hub_download', lambda *a, **kw: got.append(a))
+    monkeypatch.setattr(lt, 'list_repo_files', lambda *a, **kw: got.append(a) or [])
+    monkeypatch.setattr(core, 'runtime_available', lambda rt: rt == 'litert')
+    r = Routing()
+    assert ready_turn() == '' and r.settled() == '' and r.turn == DFLT_TURN
+    assert not core.provider_ready('local'), 'litert alone, with no weights, is not a ready provider'
+    with pytest.raises(core.AgentError, match='classify job'): r.spec('classify')
+    rows = {x['value']: x for x in core.available_models()}
+    assert rows['gemma-e2b']['download'] == '3.5 GB' and rows['gemma-e2b']['source'].endswith('download needed, 3.5 GB')
+    hint = core.reachable_hint()
+    assert 'runs here;' not in hint and 'gemma-e2b runs here after a 3.5 GB download' in hint, hint
+    assert not got, 'nothing asked the Hub'
+
+
+def test_settle_moves_the_agent_and_says_why(machine, monkeypatch):
+    import ramabana.agent as agent
+    from ramabana.testing import FakeBackend, MemHost
+    monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: FakeBackend(spec, **kw))
+    machine('codex')
+    a = agent.Agent(MemHost(), extensions=False, subagents=False)
+    line = a.settle()
+    assert a.routing.turn == ready_turn() and line.startswith(f'{DFLT_TURN} cannot run here') and ready_turn() in line, line
+    assert a.settle() == '', 'a turn that moved stays'
 
 
 def test_a_job_without_a_model_of_its_own_follows_the_turn_quietly(machine):
