@@ -817,6 +817,9 @@ RULES = (
                    '  `inspect_python()` with no code first, then run only the transformation the user asked for.'),
     ('run_python', '`run_python` shares the user’s kernel namespace. Read anything; bind results to NEW\n'
                    '  names. You cannot rebind or delete the user’s variables, so do not try.'),
+    ('own_python', '`run_python` runs on the project’s interpreter, which has the project’s packages only. Your own\n'
+                   '  packages (rupaka, kosha, ramabana, nbformat, the host’s own) import in `own_python`, a kernel of\n'
+                   '  your own with the project folder as cwd. The user’s variables are not there: use `run_python` for them.'),
     ('web_search', '`web_search` and `read_url` reach what is outside this machine: current documentation,\n'
                    '  releases, news. The repository and its installed packages are answered locally.'),
     ('memory_search', 'When prior context could change what you do -- a project you have worked on before, a\n'
@@ -865,6 +868,7 @@ SMALL_RULES = (
     ('notebook_cells', 'Never use `view_file` or `replace_text` on an `.ipynb`: call `notebook_cells` on its exact path, then `view_cell` and `edit_cell` by cell id.'),
     ('run_shell', 'Check your work with `run_shell`: run the project’s own tests after an edit. Only commands that exit on their own.'),
     ('run_python', '`run_python` shares the user’s kernel: read anything, bind results to NEW names, never rebind theirs.'),
+    ('own_python', 'Your own packages (rupaka, kosha, ramabana, nbformat) import in `own_python`, not `run_python`; the user’s variables are only in `run_python`.'),
     ('git_status', 'Git goes through `git_status`, `git_diff` and `git_commit`; `run_shell` refuses `git commit`.'),
     (None, 'Make the change the user asked for and no other. Never reformat or “improve” code you were not asked to touch.'),
     (None, 'Writes may be put to the user for approval. A refusal comes back with their reason: change the approach, do not retry the same call.'),
