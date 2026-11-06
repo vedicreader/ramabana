@@ -2,6 +2,14 @@
 
 <!-- do not remove -->
 
+## 0.2.109
+- The `now` pane draws each section that a mod adds with shalya's `reg.section`, below the plan. The rows of a section are drawn in its palette colour. It needs shalya 0.1.30.
+- A mod's `reg.redraw()` also rewrites the pane snapshot, so a change made while the agent is idle shows in the pane at once.
+- The pane gets its first snapshot when start-up ends. Before, it showed "waiting for the agent" until the first change.
+- `add_tool` rebuilds the tool list without loading the mods again. Before, each tool added at start-up set every mod up again, and the model could keep a tool from an older copy of a mod.
+- New example mod `examples/mods/decisions`. It keeps open questions and decisions for each session, and items on hold for each folder. The pane shows them in four sections: "Needs your decision", "Decide later", "Build later" and "Decided". The agent gets a `decision` tool, and the person gets `/decide`.
+- A turn falls back to a local model only when the weights of that model are on disk. A turn model named in `config.toml` is kept.
+
 ## 0.2.108
 - New `Agent.events(prompt)` gives a turn as typed events, with the names and fields of the AG-UI protocol: `RUN_STARTED`, `STEP_STARTED` and `STEP_FINISHED`, `TEXT_MESSAGE_START`, `_CONTENT` and `_END`, `TOOL_CALL_START`, `_ARGS`, `_END` and `_RESULT`, `STATE_SNAPSHOT`, `CUSTOM`, then `RUN_FINISHED` or `RUN_ERROR`. Each event is a plain dict with a `timestamp`. ramabana does not depend on the `ag-ui-protocol` package.
 - Tool arguments and results in the events are masked as in the logs. A sub-agent's calls have the `toolCallId` of the delegate call that started it as their `parentMessageId`.
