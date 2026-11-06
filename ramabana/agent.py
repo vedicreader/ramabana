@@ -2574,10 +2574,14 @@ def _forget(self:Agent,
 
 @patch
 def reload(self:Agent):
-    "Re-discover skills, extensions and tools, closing every backend."
+    "Re-discover skills, extensions and tools, closing every backend. The new turn backend goes on with the conversation."
+    spec = self.spec_or_none()
+    turn = self._backends.get((spec.backend, spec.model_id)) if spec is not None else None
+    hist = turn.snapshot_hist() if turn is not None else None
     self._forget()
     for b in self._backends.values(): b.close()
     self._backends.clear()
+    if hist: self._be('turn').resume_hist(hist)
     return self
 
 # %% ../nbs/03_agent.ipynb #b4349eb8

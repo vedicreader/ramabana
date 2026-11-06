@@ -52,3 +52,15 @@ def test_a_stop_that_leaves_its_backend_running_hands_the_conversation_on(monkey
     a._release_run(run)
     new = a._be('turn')
     assert new is not old and new.snapshot_hist() == old.snapshot_hist()
+
+
+def test_reload_carries_the_conversation_to_the_new_backend(monkeypatch):
+    "`/reload` closes every backend to pick up new tools; the turn backend that replaces it goes on with the same conversation."
+    monkeypatch.setattr(agent, 'make_backend', lambda spec, **kw: FakeBackend(spec, **kw))
+    a = agent.Agent(MemHost(), extensions=False, subagents=False)
+    old = a._be('turn'); old.start()
+    old.hist_.extend([{'role': 'user', 'content': 'the mod.py example is wrong'}, {'role': 'assistant', 'content': 'Reload, then I will fix it.'}])
+    said = a.command('/reload')
+    new = a._be('turn')
+    assert said.startswith('reloaded') and new is not old
+    assert [m['content'] for m in new.snapshot_hist()] == ['the mod.py example is wrong', 'Reload, then I will fix it.']
