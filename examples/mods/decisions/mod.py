@@ -157,7 +157,7 @@ def setup(reg):
         "Keep the person's decision log, shown in their side pane: log each choice you put to them and each choice they or you settle."
         agent = reg.agent
         if action == 'list': return listing(*items(agent)) or 'no decisions yet'
-        if action == 'record' and question.strip().lower().startswith('h'): action = 'done'
+        if action == 'record' and re.fullmatch(r'h\d+', question.strip(), re.I): action = 'done'
         if action in ('done', 'edit', 'reopen', 'park', 'resume', 'drop'): return change(agent, lambda its, held: fix(its, held, action, question, text, choice))
         if action not in ('ask', 'record'): return f'unknown action {action!r}; use ask, record, list, park, resume, edit, reopen or drop'
         if not question.strip(): return f'nothing to {action}: question is empty'

@@ -87,6 +87,12 @@ def test_numbers_stay_and_the_agent_fixes_entries(agent):
     assert [d['state'] for d in saved(agent)] == ['dropped', 'open', 'dropped', 'open']
 
 
+def test_record_text_starting_with_h(agent):
+    tool = load(agent).tools[0]
+    assert tool('record', 'How should mods add panels to the side pane?').startswith('decided 1')
+    assert 'no item h9' in tool('record', 'h9', 'yes')
+
+
 def test_on_hold_outlives_the_session(agent):
     reg = load(agent)
     cmd, tool, status = reg.commands['decide'][0], reg.tools[0], reg.status_segments[0]
