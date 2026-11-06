@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.110
+- `/reload` keeps the conversation. Before, it closed every model backend, and the next turn started with no history. Now the new turn backend starts with the history of the backend it replaces. Pictures in that history become placeholders.
+- Fix: in the `decisions` example mod, `record` read any question that starts with "h", such as "How should…", as a hold number such as h1, and failed with "no item". Now only text such as `h1` or `h12` is a hold number.
+
 ## 0.2.109
 - The `now` pane draws each section that a mod adds with shalya's `reg.section`, below the plan. The rows of a section are drawn in its palette colour. It needs shalya 0.1.30.
 - A mod's `reg.redraw()` also rewrites the pane snapshot, so a change made while the agent is idle shows in the pane at once.
