@@ -4089,7 +4089,7 @@ requires-dist = [
     { name = "teleprint", marker = "extra == 'all'", specifier = ">=0.1.4,<0.1.5" },
     { name = "teleprint", marker = "extra == 'cli'", specifier = ">=0.1.4,<0.1.5" },
     { name = "teleprint", marker = "extra == 'dev'", specifier = ">=0.1.4,<0.1.5" },
-    { name = "uraiyadal", specifier = ">=0.0.21" },
+    { name = "uraiyadal", specifier = ">=0.0.22" },
     { name = "vishalakshi", marker = "extra == 'all'", specifier = ">=0.1.36" },
     { name = "vishalakshi", marker = "extra == 'cli'", specifier = ">=0.1.36" },
     { name = "vishalakshi", marker = "extra == 'dev'", specifier = ">=0.1.36" },
@@ -4868,20 +4868,19 @@ wheels = [
 
 [[package]]
 name = "uraiyadal"
-version = "0.0.21"
+version = "0.0.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aidialog" },
-    { name = "diskcache" },
     { name = "fastcore" },
     { name = "httpx" },
     { name = "python-fastllm" },
     { name = "safepyrun" },
     { name = "truststore" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/44/58/d5b1288a1c025fb41dfa73e9464b35cdb26eaa8ee3099b13b7d2de7ed543/uraiyadal-0.0.21.tar.gz", hash = "sha256:c2c15ce2aeafcf7d3e5dca0f6ed8ec174a041bb6304bc9348f10b066f8a870ca", size = 52486, upload-time = "2026-11-04T04:10:21.1Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2f/c0/f05ce6a024fb5966887c2595468f0e94b6b1d0c55864c2dcb3e0a8377654/uraiyadal-0.0.22.tar.gz", hash = "sha256:7cb56b8685ac79237cb2fbd12bd005239d1448c05ad12917e314cdafdc33e69b", size = 52948, upload-time = "2026-11-07T21:47:17.733Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/17/f94ffa5f59c57252bed1177a4f53c7f1e3ec5878f84ae966ae5959605522/uraiyadal-0.0.21-py3-none-any.whl", hash = "sha256:d514891e56df64ec7f3cc3f781f615b7f067e9d9c21a67c435f14ad80f31e767", size = 59267, upload-time = "2026-11-04T04:10:19.375Z" },
+    { url = "https://files.pythonhosted.org/packages/54/8f/ecf5a114f3cd1e78b63271661d7159f7e5d7771368e4c7b3b1fbad40151d/uraiyadal-0.0.22-py3-none-any.whl", hash = "sha256:b11dd62167434201a33738d32f103199a1948907fc8841acf862407b1f79a43e", size = 59758, upload-time = "2026-11-07T21:47:16.185Z" },
 ]
 
 [[package]]

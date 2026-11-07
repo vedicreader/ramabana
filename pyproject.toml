@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "shalya>=0.1.30",   # 0.1.30 mods add side-pane sections; 0.1.29 mods: status segments, bands, notices, timers, per-mod off and store, gate hooks that fail closed; 0.1.27 reads refuse hard links and keychain, kdbx and pfx files; 0.1.26 git_sync merges or rebases onto any ref and git_conflicts settles conflicts; 0.1.25 grep searches a skipped folder that path_filter names; 0.1.24 web fetches reach the logged-in Chrome only for SESSION_HOSTS, and the read-only Kosha index gets env_path; 0.1.23 shell and Python output go through read_guard; 0.1.22 memory_search says what limit counts; 0.1.21 index writes run in a child process; 0.1.20 panes open beside $TMUX_PANE; 0.1.19 commands get /dev/null as stdin; 0.1.18 docments on every tool parameter; 0.1.17 grep path_filter finds folders
-    "uraiyadal>=0.0.21",
+    "uraiyadal>=0.0.22",
     "gheasy>=0.0.19",   # 0.0.19 a commit waits up to 900 s for its pre-commit hook; 0.0.18 remote commands drop a stale GITHUB_TOKEN; 0.0.15 merges never reset away conflicts; 0.0.14 git gets /dev/null as stdin
     "exhash>=0.4.11",
     "fastcore>=2.2.19",
