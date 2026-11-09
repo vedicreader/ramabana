@@ -47,6 +47,40 @@ def test_session_start_registers_and_briefs(world):
     assert '--session' not in text, 'Claude Code gives the session id in an environment variable'
 
 
+def test_pinned_name_registers_and_names_a_target(world, monkeypatch):
+    cfg, d = world
+    monkeypatch.setenv('RAMABANA_PEER_NAME', 'night shift')
+    hook(cfg, 'session-start')
+    [me] = registered(d)
+    assert me['name'] == 'night shift' and 'night shift' in context(hook(cfg, 'session-start')[1], 'SessionStart')
+    assert peers.match_peer([me], 'Night Shift') == me
+
+
+def test_peer_run_is_plain_ramabana_only_for_the_script_beside_this_python(tmp_path, monkeypatch):
+    bin = tmp_path/'Application Support'/'bin'; bin.mkdir(parents=True)
+    (bin/'python').touch(); (bin/'ramabana').touch()
+    monkeypatch.setattr(sys, 'executable', str(bin/'python'))
+    on_path = lambda p: monkeypatch.setattr(ph.shutil, 'which', lambda name: p and str(p))
+    on_path(bin/'ramabana')
+    assert ph.peer_run() == 'ramabana' and ph.peer_run('report') == 'ramabana report'
+    (tmp_path/'link').symlink_to(bin/'ramabana'); on_path(tmp_path/'link')
+    assert ph.peer_run() == 'ramabana', 'a link to that script is that script'
+    (tmp_path/'other').mkdir(); (tmp_path/'other'/'ramabana').touch(); on_path(tmp_path/'other'/'ramabana')
+    assert ph.peer_run() == f"'{bin}/python' -m ramabana.peers" and ph.peer_run('report') == f"'{bin}/python' -m ramabana.peer_report"
+    on_path(None)
+    assert ph.peer_run().endswith(' -m ramabana.peers')
+
+
+def test_brief_reply_hint_and_report_use_peer_run(world, monkeypatch):
+    cfg, d = world
+    monkeypatch.setattr(ph, 'peer_run', lambda sub='': f'RUN{sub}')
+    assert 'run peer commands as: `RUN`' in context(hook(cfg, 'session-start')[1], 'SessionStart')
+    note(d, 'add a Card part', 'ask')
+    assert 'Answer with `RUN tell ' in context(hook(cfg, 'prompt')[1], 'UserPromptSubmit')
+    st = expire(d)
+    assert f"`RUNreport --since {st['started']}`" in context(hook(cfg, 'prompt')[1], 'UserPromptSubmit')
+
+
 def test_codex_session_start_says_pass_session(world):
     cfg, d = world
     code, out, _ = hook(cfg, 'session-start', kind='codex', session_id='c1')
@@ -196,13 +230,22 @@ def test_codex_pre_tool_reads_the_patch(world):
     assert ok == (0, '', '')
 
 
-def test_prompt_ends_together_and_points_at_report(world):
+def expire(d, key='claude-s1'):
+    "Work together mode of `key`, started 100 seconds ago and past its end time."
+    st = together_on(d, key, now=time.time() - 100)
+    (d/f'{key}.together.json').write_text(json.dumps(st | {'until': time.time() - 1}))
+    return st
+
+
+def test_typed_prompt_keeps_together_and_points_at_report_of_one_that_ended(world):
     cfg, d = world
-    st = together_on(d, 'claude-s1')
+    together_on(d, 'claude-s1')
+    assert hook(cfg, 'prompt', prompt='how is it going?') == (0, '', '') and together_state(d, 'claude-s1'), 'a typed prompt keeps the mode on'
+    st = expire(d)
     text = context(hook(cfg, 'prompt')[1], 'UserPromptSubmit')
-    assert together_state(d, 'claude-s1') is None and f'{sys.executable} -m ramabana.peer_report --since ' in text
+    assert together_state(d, 'claude-s1') is None and f"--since {st['started']}" in text
     assert hook(cfg, 'prompt') == (0, '', ''), 'the end shows once'
-    st = together_on(d, 'claude-s1', now=time.time() - 100)
+    st = expire(d)
     p = report_path(st['started'], cfg); p.parent.mkdir(exist_ok=True); p.write_text('# Night of now\nall done')
     text = context(hook(cfg, 'prompt')[1], 'UserPromptSubmit')
     assert 'all done' in text and str(p) in text
@@ -219,22 +262,20 @@ PEER_SESSION = ('Another Claude session sent a message:\n<cross-session-message 
                 'The runner findings are fixed on main.\n</cross-session-message>')
 
 
-def test_only_typed_prompt_ends_together(world):
+def test_only_typed_prompt_shows_that_together_ended(world):
     cfg, d = world
-    together_on(d, 'claude-s1')
-    assert hook(cfg, 'prompt', prompt=HAND_BACK) == (0, '', '') and together_state(d, 'claude-s1'), 'a subagent hand-back is not the user'
-    assert hook(cfg, 'prompt', prompt=TASK_NOTE) == (0, '', '') and together_state(d, 'claude-s1'), 'a task notification is not the user'
-    assert hook(cfg, 'prompt', prompt=AGENT_HAND_BACK) == (0, '', '') and together_state(d, 'claude-s1'), 'an agent message is not the user'
-    assert hook(cfg, 'prompt', prompt=PEER_SESSION) == (0, '', '') and together_state(d, 'claude-s1'), 'another session is not the user'
+    expire(d)
+    for p in (HAND_BACK, TASK_NOTE, AGENT_HAND_BACK, PEER_SESSION): assert hook(cfg, 'prompt', prompt=p) == (0, '', ''), 'a prompt the agent made is not the user'
     assert 'Work together mode ended' in context(hook(cfg, 'prompt', prompt='how did it go?')[1], 'UserPromptSubmit')
-    assert together_state(d, 'claude-s1') is None
 
 
-def test_typed_prompt_that_names_a_frame_ends_together(world):
+def test_typed_prompt_that_names_a_frame_is_typed(world):
     cfg, d = world
-    together_on(d, 'claude-s1')
+    expire(d)
     out = hook(cfg, 'prompt', prompt='why does a `<task-notification>` block end up in my prompt?')[1]
-    assert 'Work together mode ended' in context(out, 'UserPromptSubmit') and together_state(d, 'claude-s1') is None
+    assert 'Work together mode ended' in context(out, 'UserPromptSubmit')
+    together_on(d, 'claude-s1')
+    assert hook(cfg, 'prompt', prompt='and now?') == (0, '', '') and together_state(d, 'claude-s1')
 
 
 def test_prompt_shows_report_of_mode_that_expired_while_away(world):

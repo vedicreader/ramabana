@@ -6,14 +6,15 @@ Docs: https://vedicreader.github.io/ramabana/peers.html.md"""
 
 # %% auto #0
 __all__ = ['HOP_MAX', 'TOGETHER_HOURS', 'PEER_BUDGET', 'CONTROL', 'PEER_ASK', 'PEER_NOTE', 'PEER_MARK', 'peers_dir', 'Envelope',
-           'log', 'read_log', 'post', 'take', 'wait_take', 'pid_alive', 'register', 'unregister', 'registered',
-           'agent_pid', 'git_top', 'git_root', 'guard_of', 'add_folder', 'together_on', 'together_off',
+           'log', 'read_log', 'post', 'take', 'wait_take', 'pid_alive', 'pinned_name', 'register', 'unregister',
+           'registered', 'agent_pid', 'git_top', 'git_root', 'guard_of', 'add_folder', 'together_on', 'together_off',
            'together_state', 'together_end', 'is_partner', 'limit_refusal', 'match_peer', 'folder_denial',
            'split_proof', 'control_call', 'socket_peers', 'all_peers', 'peer_lines', 'me', 'answer', 'next_hops',
-           'tell', 'peer_text', 'peers_cli']
+           'last_hop', 'tell', 'peer_text', 'peers_cli']
 
 # %% ../nbs/23_peers.ipynb #d3f55a39
 import argparse, fcntl, json, os, re, socket, subprocess, sys, tempfile, time, uuid
+from collections import Counter
 from dataclasses import dataclass, field, asdict, fields
 from contextlib import suppress
 from functools import cache
@@ -44,6 +45,7 @@ class Envelope:
     proof: list = field(default_factory=list)
     id: str = ''
     at: float = 0.
+    to_frm: dict = field(default_factory=dict)   # the receiver's `name` and `folders`, as `is_partner` reads them
     def __post_init__(self):
         self.id = self.id or uuid.uuid4().hex[:12]
         self.thread = self.thread or self.id
@@ -149,11 +151,15 @@ def _reg(p):
     except (OSError, ValueError): return None
     return r if isinstance(r, dict) and isinstance(r.get('pid'), int) and {'kind', 'session', 'key', 'at', 'folders'} <= r.keys() else None
 
+def pinned_name(default=''):
+    "The name in `RAMABANA_PEER_NAME`, else `default`: it keeps a session's name as it is shown to peers."
+    return os.environ.get('RAMABANA_PEER_NAME') or default
+
 def register(d, kind, session, folders, pid, name='', guard=None, wakes=True):
-    "Write the registration of a session; any other of the same `kind` and `pid` is removed. `guard` (default `folders`) is what the folder guard keeps."
+    "Write the registration of a session; any other of the same `kind` and `pid` is removed. `guard` (default `folders`) is what the folder guard keeps. A pinned name wins."
     for p in _regs(d):
         if (r := _reg(p)) and r['kind'] == kind and r['pid'] == pid: p.unlink(missing_ok=True)
-    row = dict(kind=kind, session=session, name=name or f'{Path(folders[0]).name} · {kind}', folders=list(folders), pid=pid, key=f'{kind}-{session}', at=time.time(),
+    row = dict(kind=kind, session=session, name=pinned_name(name or f'{Path(folders[0]).name} · {kind}'), folders=list(folders), pid=pid, key=f'{kind}-{session}', at=time.time(),
                wakes=wakes, **({} if guard is None else {'guard': list(guard)}))
     _atomic_write(Path(d)/f'{row["key"]}.json', json.dumps(row))
     return row
@@ -216,8 +222,15 @@ def add_folder(d, key, path):
     return row
 
 # %% ../nbs/23_peers.ipynb #7643ed58
-def together_on(d, key, partners=(), until=None, now=None):
-    "Start work together mode for `key`; `until` is 'HH:MM' (next such local time) or None (`TOGETHER_HOURS` hours)."
+def together_on(
+    d,
+    key,
+    partners=(),
+    until=None,   # 'HH:MM' (next such local time) or None (`TOGETHER_HOURS` hours)
+    now=None,
+    messages=None   # the most notes and asks `key` may send to its partners while the mode is on; None keeps `PEER_BUDGET['messages']`
+):
+    "Start work together mode for `key`."
     now = ifnone(now, time.time())
     if until:
         h, m = map(int, until.split(':'))
@@ -225,6 +238,7 @@ def together_on(d, key, partners=(), until=None, now=None):
         end = (t if t.timestamp() > now else t + timedelta(days=1)).timestamp()
     else: end = now + TOGETHER_HOURS*3600
     st = dict(started=now, until=end, partners=list(partners))
+    if messages: st['messages'] = messages
     _atomic_write(Path(d)/f'{key}.together.json', json.dumps(st))
     return st
 
@@ -257,17 +271,28 @@ def is_partner(state, frm):
     return bool(set(state['partners']) & {name, *name.split()[:1], *(Path(f).name for f in frm.get('folders', []))})
 
 # %% ../nbs/23_peers.ipynb #5ed415a2
+def _spent(key, rows, m, when):
+    "The budget refusal: who sent the `rows` (`m` is the cap), `when`, and how they split by receiver."
+    names = {f.get('key'): f.get('name') for r in rows if (f := r.get('from', {}))}
+    who = f"{names[key]} ({key})" if names.get(key) else key
+    to = Counter(r.get('to_frm', {}).get('name') or names.get(r.get('to')) or r.get('to') or 'unknown' for r in rows)
+    return f"budget: {who} sent {len(rows)} of {m} messages {when}: " + ', '.join(f'{c} to {t}' for t, c in to.most_common())
+
 def limit_refusal(d, key, env, now=None):
     "Why `env` must not go on, or ''; a refusal is logged. Only notes and asks count, and only the hop limit stops a reply. `env` itself is not counted, so a receiver can judge an ask already in the log."
     now, why = ifnone(now, time.time()), ''
     st, day = together_state(d, key, now), now - TOGETHER_HOURS*3600
     rows = [r for r in read_log(d, min(day, st['started']) if st else day) if r.get('id') != env.id]
-    sent = lambda since: sum(r.get('from', {}).get('key') == key and r.get('kind') in ('note', 'ask') for r in rows if r.get('at', 0) > since)
+    cap = st and st.get('messages')
+    own = lambda r: bool(cap) and r.get('at', 0) > st['started'] and is_partner(st, r.get('to_frm', {}))   # a message the raised cap counts
+    sent = lambda since, pick=lambda r: True: [r for r in rows if r.get('at', 0) > since and r.get('from', {}).get('key') == key and r.get('kind') in ('note', 'ask') and pick(r)]
     capped = env.kind != 'reply'
+    ours = capped and bool(cap) and is_partner(st, env.to_frm if env.frm.get('key') == key else env.frm)
     m, t = PEER_BUDGET['messages'], PEER_BUDGET['turns']
     if env.hops >= HOP_MAX: why = f'hop limit: {env.hops} of {HOP_MAX} hops used'
-    elif capped and (n := sent(day)) >= m: why = f'budget: {n} of {m} messages sent in {TOGETHER_HOURS} h'
-    elif capped and st and (n := sent(st['started'])) >= m: why = f'budget: {n} of {m} messages sent'
+    elif ours and len(n := sent(st['started'], own)) >= cap: why = _spent(key, n, cap, 'to its partners since work together began')
+    elif capped and not ours and len(n := sent(day, lambda r: not own(r))) >= m: why = _spent(key, n, m, f'in {TOGETHER_HOURS} h')
+    elif capped and not ours and st and len(n := sent(st['started'], lambda r: not own(r))) >= m: why = _spent(key, n, m, 'since work together began')
     elif capped and st and (n := sum(r.get('to') == key and r.get('kind') == 'ask' for r in rows if r.get('at', 0) > st['started'])) >= t:
         why = f'budget: {n} of {t} asks received'
     if why: log(d, {'event': 'refused', 'key': key, 'why': why, 'thread': env.thread, 'at': now})
@@ -277,9 +302,9 @@ def limit_refusal(d, key, env, now=None):
 def _fnames(r): return [Path(f).name for f in r.get('folders', [])]
 
 def match_peer(rows, target):
-    "The one row in `rows` that `target` names: list number (from 1), session id, key, or folder base name."
+    "The one row in `rows` that `target` names: list number (from 1), session id, key, folder base name, or the name `peers` shows, in any case."
     t = str(target)
-    hits = [(i, r) for i, r in enumerate(rows, 1) if t in (str(i), r.get('session'), r.get('key'), *_fnames(r))]
+    hits = [(i, r) for i, r in enumerate(rows, 1) if t in (str(i), r.get('session'), r.get('key'), *_fnames(r)) or t.lower() == (r.get('name') or '').lower()]
     if not hits: raise LookupError(f'no live session {t!r}')
     if len(hits) > 1: raise LookupError(f'more than one session matches {t!r}: ' + ', '.join(f"{i} {r['key']} ({', '.join(_fnames(r))})" for i, r in hits))
     return hits[0][1]
@@ -383,6 +408,13 @@ def next_hops(d, thread, hops=0):
     "The hops of a new message in `thread`: one more than any message there has, and at least `hops`."
     return max(hops, 1 + max((r.get('hops', 0) for r in read_log(d) if r.get('thread') == thread and r.get('kind')), default=0))
 
+def last_hop(env, receiving=False):
+    "What to tell the one who sends or (`receiving`) gets `env`, when it is the last message its thread allows; else ''."
+    if env.hops != HOP_MAX - 1: return ''
+    return (f'this is the last message this thread allows (hop {env.hops} of {HOP_MAX})' +
+            ('; a reply to it is refused: tell the user the result, or start a new thread with one summarising ask' if receiving else
+             '; put the whole state in it, or start a new thread with one summarising ask'))
+
 def tell(target, text, kind='note', frm=None, repo='', thread='', hops=0, everyone=False, wait=0, cfg=None):
     "Post `text` to the peer `target` (or every peer); with `wait`, return the reply to it. A refusal or a missing peer comes back as text or `LookupError`; a refused reply reaches the asker as `failed: <why>`."
     d, frm = peers_dir(cfg), frm or me(cfg)
@@ -393,7 +425,7 @@ def tell(target, text, kind='note', frm=None, repo='', thread='', hops=0, everyo
     body, changes, proof = split_proof(text) if kind == 'reply' else (text, [], [])
     sent, said = [], []
     for row in rows:
-        env = Envelope(kind, body, frm, row['key'], repo, thread, hops, changes, proof)
+        env = Envelope(kind, body, frm, row['key'], repo, thread, hops, changes, proof, to_frm=dict(name=row.get('name', ''), folders=row.get('folders') or [row.get('folder', '')]))
         if why := limit_refusal(d, frm['key'], env):
             said.append(f"not sent to {row.get('name') or row['key']}: {why}")
             if kind == 'reply': post(d, row['key'], Envelope('reply', f'failed: {why}', frm, row['key'], repo, thread, hops))
@@ -401,7 +433,7 @@ def tell(target, text, kind='note', frm=None, repo='', thread='', hops=0, everyo
             post(d, row['key'], env)
             why = _ring(row, env)
             sent.append(env)
-            said.append(f"told {row.get('name') or row['key']}" + (f' (queued; not rung: {why})' if why else ''))
+            said.append(f"told {row.get('name') or row['key']}" + (f' (queued; not rung: {why})' if why else '') + (f'; {w}' if (w := last_hop(env)) else ''))
     if wait and len(sent) == 1:
         got = wait_take(d, frm['key'], wait, lambda e: e.kind == 'reply' and e.thread == sent[0].thread)
         return _show(got[0]) if got else f"{said[0]}; no reply within {wait} s"
@@ -415,11 +447,11 @@ PEER_MARK = '<peer-message '   #: the start of every block `peer_text` writes
 def _esc(s): return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 def peer_text(env, *lines):
-    "The peer message `env` as an escaped `<peer-message>` block, after the system lines: `PEER_NOTE` or `PEER_ASK`, then `lines`."
+    "The peer message `env` as an escaped `<peer-message>` block, after the system lines: `PEER_NOTE` or `PEER_ASK` (with the `last_hop` warning for an ask at the last hop), then `lines`."
     attr = lambda s: _esc(s).replace('"', "'")
     who = env.frm.get('name') or env.frm.get('key', '?')
     head = f'{PEER_MARK}id="{attr(env.id)}" kind="{attr(env.kind)}" from="{attr(who)}" repo="{attr(env.repo)}">'
-    rule = {'note': [PEER_NOTE], 'ask': [PEER_ASK]}.get(env.kind, [])
+    rule = {'note': [PEER_NOTE], 'ask': [PEER_ASK, *([f'Warning: {w}.'] if (w := last_hop(env, True)) else [])]}.get(env.kind, [])
     return '\n'.join([*rule, *lines, f'{head}{_esc(_show(env))}</peer-message>'])
 
 # %% ../nbs/23_peers.ipynb #395cda58
@@ -436,7 +468,7 @@ def _parser():
     s = add('tell', '--ask', '--reply-to', '--all', '--repo', '--wait', **{'--ask': dict(action='store_true'), '--all': dict(action='store_true'), '--wait': dict(type=int, default=0)})
     s.add_argument('words', nargs='+', metavar='TARGET TEXT')
     add('inbox', '--wait', **{'--wait': dict(type=int, default=0)})
-    s = add('together', '--with', '--until', **{'--with': dict(dest='with_')})
+    s = add('together', '--with', '--until', '--messages', **{'--with': dict(dest='with_'), '--messages': dict(type=int)})
     s.add_argument('action', choices=('on', 'off', 'status'))
     return p
 
@@ -447,9 +479,9 @@ def _together(a, d, frm, rows):
     if a.action == 'off': print('work together ended' if together_off(d, frm['key']) else 'work together was off'); return 0
     if a.action == 'status':
         st = together_state(d, frm['key'])
-        print(f"work together until {_hhmm(st['until'])}" + (f" with {', '.join(st['partners'])}" if st['partners'] else '') if st else 'work together is off')
+        print(f"work together until {_hhmm(st['until'])}" + (f" with {', '.join(st['partners'])}" if st['partners'] else '') + (f"; up to {st['messages']} messages to them" if st.get('messages') else '') if st else 'work together is off')
         return 0
-    try: st = together_on(d, frm['key'], [s for s in (a.with_ or '').split(',') if s], a.until)
+    try: st = together_on(d, frm['key'], [s for s in (a.with_ or '').split(',') if s], a.until, messages=a.messages)
     except ValueError: print(f'bad time {a.until!r}: use HH:MM', file=sys.stderr); return 2
     print(f"work together until {_hhmm(st['until'])}")
     for r in rows():

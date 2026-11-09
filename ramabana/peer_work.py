@@ -11,12 +11,15 @@ Two roles exist. The worker does the work. The owner holds the repo. One session
 3. Agree the shape with the owner before you add code that the owner's repo will keep. Send an ask: `ramabana tell OWNER "..." --ask --repo R --wait N`. Name the blocks to use, the place for the code and the API. Wait for a reply from the owner that starts with `agreed:`. Then write the code.
 4. Do not edit a folder that another live session works in. The tool or hook refuses the write and names the folder. Ask the owner to make the change.
 5. Show proof before you say "done". Show the test command and its output. For UI, check the page in Chrome for Testing and show the screenshot path. Never use the user's own Chrome. No proof means the work is not done.
+6. If you stop or fail, write `.scratch/handoff-<thread>.md` in the repo. Put three parts in it: the plan with the state of each step; `git diff --stat` and the diff of your uncommitted work; the open questions. Name the file in your `failed:` reply. A session that takes over reads this file first. It does not start from a free-text note.
+7. Checkpoint long write work. Ask the user once to approve checkpoint commits on a local branch `wip/<thread>`. With approval, commit there after each step that you verified. Without approval, write the handoff file from rule 6. Never push the `wip/<thread>` branch. Never commit to the user's branch without approval.
+8. Before you report done, ask a session that did not write the change to review the diff. Put the reviewer and the verdict in the `proof:` line. This review does not replace the owner's review.
 
 ## When you own the repo (owner)
 
 1. Review the diff against your repo's rules. Do this before you accept the work.
 2. If the code is too large or does not follow the repo's patterns, ask for changes.
-3. Accept the work only when the code follows the rules.
+3. Accept the work only when the code follows the rules. Do not accept "done" when the `proof:` line has no reviewer and verdict.
 4. Before you do the work in an ask, read your repo rules. If the ask breaks them, reply `refused: <why>` and name the rule.
 5. When you agree to the shape that a worker sends, start your reply with `agreed:`.
 
@@ -44,14 +47,14 @@ Two roles exist. The worker does the work. The owner holds the repo. One session
 - Answer with `ramabana tell TARGET TEXT --reply-to THREAD`. Take THREAD from the message.
 - End a finished reply with these two lines:
   - `changes: file or commit; file or commit`
-  - `proof: command → result; screenshot path`
-- If you decline, start the reply with `refused: <why>`. If you fail, start it with `failed: <why>`.
+  - `proof: command → result; screenshot path; reviewer and verdict`
+- If you decline, start the reply with `refused: <why>`. If you fail, start it with `failed: <why>` and name your handoff file.
 - Do not reply to a reply that has no new request.
 
 ## Work together mode
 
 - `ramabana together on` lets those sessions send asks to you without approval. Add `--with A,B` to name them. Add `--until HH:MM` to set the end. Without `--until`, it ends after 12 hours.
-- `ramabana together off` ends it. `ramabana together status` shows it. In Claude Code and Codex it also ends when the user types. In Ramabana it stays on, and `work_together()` turns it on or off when the user tells you to work with peers.
+- `ramabana together off` ends it. `ramabana together status` shows it. It stays on when the user types, and `work_together()` in Ramabana turns it on or off when the user tells you to work with peers.
 - `ramabana report` shows what the sessions did: changes, proof and the user's action list.
 
 Docs: https://vedicreader.github.io/ramabana/peer_work.html.md"""

@@ -224,6 +224,13 @@ def test_tell_tool_sends_ask_envelope(cfg):
     finally: ctl.close()
 
 
+def test_pinned_name_is_the_name_of_a_session(cfg, monkeypatch):
+    ctl = Control(fake_agent(cfg=cfg)[0])
+    assert ' · ' in ctl.do_status()['name'] and 'night shift' not in ctl.do_status()['name']
+    monkeypatch.setenv('RAMABANA_PEER_NAME', 'night shift')
+    assert ctl.do_status()['name'] == 'night shift'
+
+
 def test_mode_end_saves_report(cfg, monkeypatch):
     calls = []
     monkeypatch.setattr(control, 'TOGETHER_CHECK', .05)
@@ -344,19 +351,32 @@ def test_failed_ask_turn_replies_failed(cfg, be, why):
     finally: ctl.close()
 
 
-def test_cancelled_ask_gets_failed_reply(cfg):
+def test_cancelled_ask_gets_failed_reply_and_a_queued_ask_waits(cfg):
     agent, _ = fake_agent(cfg=cfg)
     agent._be = agent._be_or_none = lambda job='turn': Slow(replies=['done'] * 3)
     ctl = Control(agent).start()
     together_on(ctl.d, ctl.key)
+    got = []
     try:
-        ctl.do_prompt('a long job')
+        first = _ring(ctl, 'ask', 'add a Card part')
         _until(lambda: agent.run() is not None and not agent.run().terminal, 'the turn to start')
-        env = _ring(ctl, 'ask', 'add a Card part')
+        second = _ring(ctl, 'ask', 'and a Badge part')
         _until(lambda: agent.queued, 'the ask to queue')
         ctl.do_cancel()
-        r = _reply(cfg)
-        assert (r.text, r.thread) == ('failed: cancelled by the user', env.thread)
+        by = lambda env: [r.text for r in got if r.thread == env.thread]
+        _until(lambda: got.extend(take(peers_dir(cfg), 'claude-s1')) or len(by(second)) == 2, 'both replies of the queued ask')
+        assert by(first) == ['failed: cancelled by the user'], 'the user stopped the ask that ran'
+        assert by(second)[0].startswith('deferred:') and by(second)[1] == 'done', 'the ask that never started waited, then ran'
+    finally: ctl.close()
+
+
+def test_cancel_drops_a_queued_prompt_that_is_no_ask(cfg):
+    agent, _ = fake_agent(cfg=cfg)
+    agent._be = agent._be_or_none = lambda job='turn': Slow(replies=['done'] * 3)
+    ctl = Control(agent).start()
+    try:
+        ctl.do_prompt('a long job'); ctl.do_prompt('and another')
+        assert ctl.do_cancel()['dropped'] == 1 and not agent.queued
     finally: ctl.close()
 
 

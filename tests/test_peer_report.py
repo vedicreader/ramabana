@@ -61,7 +61,9 @@ def test_failed_summary_still_saves(peers, monkeypatch):
     def boom(ts, agent=None): raise RuntimeError('no model')
     monkeypatch.setattr(pr, 'summarise', boom)
     out = pr.report(0)
-    assert 'examples are missing' in out and '| Asked by |' in out and '## Glossary' in out
+    assert pr.MISSING in out and 'RuntimeError: no model' in out and '| Asked by |' in out and '## Glossary' in out
+    changed = out.split('## What changed')[1].split('## Your actions')[0]
+    assert '- Ramabana for Leela: ramabana/cli.py (proof: pytest: 12 passed)' in changed and '- Abhyasa for Ramabana: card.py (proof: none)' in changed
 
 def test_report_sections(peers, monkeypatch):
     monkeypatch.setattr(pr, 'summarise', STUB)
@@ -127,10 +129,22 @@ def test_waiting_thread_shows_receiver_name_and_folder():
     assert pr.derived_actions(ts) == ["- Get an answer to 'Wait for me': Abhyasa (abhyasa)"]
 
 def test_no_made_up_asker_or_ask():
-    t, = pr.threads([ROWS[1]])
+    t, = pr.threads([ROWS[1]], full=ROWS[2:])
     assert (t['asker'], t['worker'], t['ask']) == ('claude-1', 'Ramabana', pr.NO_ASK)
     t, = pr.threads([ROWS[-1]])
     assert (t['asker'], t['worker'], t['ask']) == ('?', '', 'hop limit: 6 of 6 hops used')
+
+def test_ask_before_since_is_found_in_the_whole_log(peers, monkeypatch):
+    t, = pr.threads([ROWS[1]], full=ROWS)
+    assert (t['asker'], t['worker'], t['ask'], t['state']) == ('Leela', 'Ramabana', 'Add the tell shortcut', 'replied')
+    monkeypatch.setattr(pr, 'summarise', STUB)
+    out = pr.report(101.5)
+    assert 'Add the tell shortcut' in out and pr.NO_ASK not in out and '| Leela | Ramabana |' in out
+
+def test_failed_reply_is_failed_not_unproven():
+    ts = pr.threads([ROWS[0], env('r', 'reply', B, A['key'], 'failed: cancelled by the user', 'a1')])
+    assert ts[0]['state'] == 'failed'
+    assert pr.derived_actions(ts) == ["- Re-send or drop 'Add the tell shortcut': Ramabana"]
 
 def test_checked_changes_skips_non_repo_and_missing_git(tmp_path, monkeypatch):
     t = dict(changes=['a.py'], folders=[str(tmp_path)])

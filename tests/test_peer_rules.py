@@ -87,9 +87,36 @@ def test_registered_skips_corrupt_files(tmp_path):
 
 
 def test_rolling_cap_outside_together_mode(tmp_path):
-    for i in range(PEER_BUDGET['messages']): log(tmp_path, Envelope('note', str(i), {'key': 'k'}).dict())
-    assert f"budget: {PEER_BUDGET['messages']} of {PEER_BUDGET['messages']} messages sent in 12 h" == limit_refusal(tmp_path, 'k', Envelope('note', 'x', {'key': 'k'}))
+    m, frm = PEER_BUDGET['messages'], {'key': 'k', 'name': 'orgs · claude'}
+    for i in range(m): log(tmp_path, Envelope('note', str(i), frm, to='y' if i == 0 else 'x', to_frm={'name': 'Y' if i == 0 else 'X'}).dict())
+    assert f"budget: orgs · claude (k) sent {m} of {m} messages in 12 h: {m - 1} to X, 1 to Y" == limit_refusal(tmp_path, 'k', Envelope('note', 'x', frm))
     assert limit_refusal(tmp_path, 'o', Envelope('note', 'x', {'key': 'o'})) == '', 'the cap is per sender'
+
+def test_together_messages_raise_the_cap_for_partners(tmp_path):
+    m = PEER_BUDGET['messages']
+    say = lambda who: Envelope('note', 'x', {'key': 'k', 'name': 'orgs'}, to=who, to_frm={'name': f'{who} · claude'})
+    together_on(tmp_path, 'k', ['leela'], now=time.time() - 1, messages=m + 5)
+    for i in range(m + 4): log(tmp_path, say('leela').dict())
+    assert limit_refusal(tmp_path, 'k', say('leela')) == ''
+    log(tmp_path, say('leela').dict())
+    assert f'sent {m + 5} of {m + 5}' in limit_refusal(tmp_path, 'k', say('leela'))
+    assert limit_refusal(tmp_path, 'k', say('abhyasa')) == '', 'others keep the normal cap, which partners do not use'
+    for i in range(m): log(tmp_path, say('abhyasa').dict())
+    assert f'sent {m} of {m}' in limit_refusal(tmp_path, 'k', say('abhyasa'))
+    together_on(tmp_path, 'k', ['leela'], now=time.time() - 1)
+    assert 'budget' in limit_refusal(tmp_path, 'k', say('leela')), 'without `messages` the normal cap holds'
+
+def test_last_hop_is_flagged_to_sender_and_receiver(tmp_path, monkeypatch):
+    monkeypatch.setenv('RAMABANA_PEERS', str(tmp_path))
+    monkeypatch.delenv('CLAUDE_CODE_SESSION_ID', raising=False)
+    register(tmp_path, 'claude', 's1', ['/r/abhyasa'], os.getpid())
+    hint = f'(hop {HOP_MAX - 1} of {HOP_MAX})'
+    said = tell('s1', 'x', 'ask', me(tmp_path), thread='t', hops=HOP_MAX - 1, cfg=tmp_path)
+    assert 'last message this thread allows' in said and hint in said, said
+    first = tell('s1', 'x', 'ask', me(tmp_path), cfg=tmp_path)
+    assert 'last message' not in first, first
+    assert hint in peer_text(Envelope('ask', 'x', {}, hops=HOP_MAX - 1))
+    assert 'last message' not in peer_text(Envelope('ask', 'x', {}, hops=1))
 
 def test_exactly_the_configured_asks_run(tmp_path):
     together_on(tmp_path, 'k', now=time.time() - 1)

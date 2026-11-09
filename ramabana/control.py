@@ -6,8 +6,8 @@ Docs: https://vedicreader.github.io/ramabana/control.html.md"""
 
 # %% auto #0
 __all__ = ['METHODS', 'SOCKET_MAX', 'REQUEST_MAX', 'EVENTS_MAX', 'EVENT_FILE', 'TOGETHER_CHECK', 'ASK_ID', 'CANCELLED',
-           'PEER_WAIT', 'control_path', 'ago', 'pick_row', 'session_name', 'Control', 'peers_of', 'peer_label',
-           'find_peer', 'self_frm', 'note_peer', 'peer_tools']
+           'DEFERRED', 'PEER_WAIT', 'control_path', 'ago', 'pick_row', 'session_name', 'Control', 'peers_of',
+           'peer_label', 'find_peer', 'self_frm', 'note_peer', 'peer_tools']
 
 # %% ../nbs/20_control.ipynb #f32d5009
 import json, os, re, socket, socketserver, stat, tempfile, threading, time
@@ -18,7 +18,7 @@ from shalya import acts, err
 from .core import agent_err
 from .agent import TurnResult, model_title
 from .peers import (CONTROL, Envelope, _atomic_write, _hhmm, _rows, all_peers, answer, control_call, guard_of, is_partner, limit_refusal, next_hops, peer_lines, peer_text,
-                            peers_dir, take, together_off, together_on, together_state, tell as send)
+                            peers_dir, pinned_name, take, together_off, together_on, together_state, tell as send)
 from .peer_report import save_report
 
 # %% ../nbs/20_control.ipynb #9c6353b2
@@ -43,7 +43,8 @@ def pick_row(rows, choice):
     return rows[int(choice) - 1] if str(choice).isdigit() and 1 <= int(choice) <= len(rows) else None
 
 def session_name(agent, at):
-    "A live session's name for a person, titled as `Agent.sessions` titles it for `/resume`, else by its first folder's name, then its model and how long ago it was `at`."
+    "A live session's name for a person, titled as `Agent.sessions` titles it for `/resume`, else by its first folder's name, then its model and how long ago it was `at`; `RAMABANA_PEER_NAME` pins it."
+    if pin := pinned_name(): return pin
     m = agent.session_meta()   # the stored index row: `sessions()` would rebuild the whole index on every `status`
     title = (m['title'] if m.get('manual') else model_title(m['title'])) or m.get('first_title', '')
     roots = list(agent.host.roots)
@@ -131,10 +132,11 @@ class Control:
     def do_steer(self, text): return {'told': self.agent.steer(text)}
     def do_tell(self, run_id, text): return self.agent.tell(run_id, text)
     def do_cancel(self):
-        "Stop the running turn, and drop the prompts queued behind it."
+        "Stop the running turn, and drop the prompts queued behind it, except the peer asks, which wait for their turn."
         with self._lock:
-            dropped = len(self.agent.queued)
-            self.agent.queued.clear()
+            keep = [t for t in self.agent.queued if set(ASK_ID.findall(t)) & set(self._asks)]
+            dropped = len(self.agent.queued) - len(keep)
+            self.agent.queued.clear(); self.agent.queued.extend(keep)
         return self.agent.cancel() | {'dropped': dropped}
     def do_asks(self): return [a.dict() for a in self.agent.approvals.waiting] if self.agent.approvals is not None else []
 
@@ -174,7 +176,8 @@ class Control:
 # %% ../nbs/20_control.ipynb #65d7f92e
 TOGETHER_CHECK = 60   #: seconds between two looks at work together mode, to see it end
 ASK_ID = re.compile(r'<peer-message id="([^"]+)" kind="ask"')
-CANCELLED = 'failed: cancelled by the user'   #: the reply to an ask whose turn was stopped or dropped
+CANCELLED = 'failed: cancelled by the user'   #: the reply to an ask whose turn was stopped
+DEFERRED = 'deferred: the user stopped a turn in this session; your ask had not started and waits for its turn'   #: the reply to an ask that was only queued behind a stopped turn
 
 def _daemon(f, name, *a): threading.Thread(target=f, args=a, daemon=True, name=name).start()
 
@@ -255,11 +258,12 @@ def _reply(self:Control, env, text,
 
 @patch
 def _turn_end(self:Control, turn):
-    "Reply to each ask the turn read, in its prompt or steered in: the turn's text, or `failed: <why>`. A stopped turn fails every ask still open, the dropped queued ones too."
+    "Reply to each ask the turn read, in its prompt or steered in: the turn's text, or `failed: <why>`. A stopped turn fails the asks it read; an ask only queued behind it gets `DEFERRED` and keeps its place."
     ids = set(ASK_ID.findall('\n'.join([turn.get('prompt') or '', *(turn.get('steered') or ())])))
     state, error = turn.get('state'), turn.get('error')
     if state == 'cancelled':
-        with self._plock: ids |= set(self._asks)
+        with self._plock: waiting = [e for i, e in self._asks.items() if i not in ids]
+        for env in waiting: _daemon(self._reply, 'ramabana-peer-reply', env, DEFERRED, False)
     text = CANCELLED if state == 'cancelled' else f'failed: {error or state}' if error or state != 'complete' else turn.get('reply') or ''
     for i in ids:
         if (env := self._asks.pop(i, None)) is not None: _daemon(self._reply, 'ramabana-peer-reply', env, text)
@@ -366,15 +370,16 @@ def peer_tools(agent):
         on: bool = True,     # False ends it
         partners: str = '',  # comma-separated session names; empty means every peer
         until: str = '',     # 'HH:MM' local time; empty means `TOGETHER_HOURS` hours
+        messages: int = 0,   # the most notes and asks this session may send to its partners; 0 keeps the normal cap
     ) -> str:
         "Turn work together mode on or off for this session when the user tells you to work with peers. While it is on, a partner's ask runs without asking the user. Auto approval mode runs this tool unasked; `ask` and `edits` ask the user. A turn that a peer message reached cannot change it."
         if agent.peer_turn: return err('a peer message reached this turn; only the user turns work together mode on or off')
         ap = agent.approvals
-        if ap is not None and not ap.request('work_together', dict(on=on, partners=partners, until=until), force=True).answer: return err('work together refused')
+        if ap is not None and not ap.request('work_together', dict(on=on, partners=partners, until=until, messages=messages), force=True).answer: return err('work together refused')
         d, key = peers_dir(agent.cfg), f'ramabana-{agent.session_id}'
         if not on: return 'work together ended' if together_off(d, key) else 'work together was off'
         names = [s.strip() for s in partners.split(',') if s.strip()]
-        try: st = together_on(d, key, names, until or None)
+        try: st = together_on(d, key, names, until or None, messages=messages)
         except ValueError: return err(f'bad time {until!r}: use HH:MM')
-        return f"work together until {_hhmm(st['until'])}" + (f" with {', '.join(names)}" if names else ' with every peer')
+        return f"work together until {_hhmm(st['until'])}" + (f" with {', '.join(names)}" if names else ' with every peer') + (f"; up to {messages} messages to them" if messages else '')
     return [peers, tell, work_together]
