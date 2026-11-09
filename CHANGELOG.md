@@ -2,6 +2,19 @@
 
 <!-- do not remove -->
 
+## 0.2.112
+
+- A budget refusal names the session that sent the messages and splits the count by receiver, for example `budget: orgs · claude (key) sent 80 of 80 messages in 12 h: 79 to X, 1 to Y`.
+- `ramabana together on --with A --messages N` and `work_together(messages=N)` set a separate cap for notes and asks to the named partners while work together mode is on. Messages to other sessions keep the normal cap. Without `--messages`, nothing changes.
+- At the last hop that a thread allows, `tell` tells the sender to put the whole state in the message or to start a new thread with one summarising ask. The receiver's prompt says that a reply to the ask is refused.
+- A stopped turn replies `failed: cancelled by the user` only to the asks that the turn ran. Asks queued behind it stay queued, and their senders get a reply that starts with `deferred:`. Before, a stop failed every queued ask. In the Ramabana terminal, a stop moves the queued lines back to the composer, so a deferred ask runs when you send it.
+- In Claude Code and Codex, a typed prompt no longer ends work together mode. It shows the report of a mode that ended since you last looked. Only `ramabana together off`, `work_together(on=False)` or the end time ends the mode.
+- The peer brief, the reply hint and the report command print plain `ramabana` when `ramabana` on `PATH` is the same install as the hook's Python. Otherwise they print the quoted Python path, as before.
+- `RAMABANA_PEER_NAME` pins the name that peers see for a session, in Claude Code, Codex and Ramabana. `tell` also matches the name that `ramabana peers` shows, in any case. When two sessions have that name, `tell` lists both and sends nothing.
+- The peer report finds an ask from before its time window in the whole log, so the asker, the worker and the ask text show. When the summary model fails, What changed lists the `changes` and `proof` of each thread's replies. A reply that starts with `failed:` has the state `failed`, with the action "Re-send or drop".
+- The peer_work skill has three new worker rules. A worker that stops or fails writes `.scratch/handoff-<thread>.md` with the plan, the diff and the open questions. A worker asks the user once to approve checkpoint commits on a local `wip/<thread>` branch, and never pushes it. Before a worker reports done, a session that did not write the change reviews the diff, and the `proof:` line names the reviewer and the verdict.
+- Needs uraiyadal 0.0.22. The test recordings are in `chatcache/records.sqlite`.
+
 ## 0.2.111
 
 - A rule tells the model to import its own packages (rupaka, kosha, ramabana, nbformat) with `own_python`, and to keep `run_python` for the user's kernel and variables. A host without `own_python` does not get the rule.
