@@ -257,7 +257,7 @@ def run_cli():
     if sys.argv[1:2] == ['setup']: return setup_cli(sys.argv[2:])
     if sys.argv[1:2] == ['history']: return history_cli(sys.argv[2:])
     if sys.argv[1:2] == ['mods']: return mods_cli(sys.argv[2:])
-    if sys.argv[1:2] in (['peers'], ['tell'], ['inbox'], ['together']):
+    if sys.argv[1:2] in (['peers'], ['tell'], ['inbox'], ['together'], ['commit'], ['checkpoint']):
         from ramabana.peers import peers_cli
         return peers_cli(sys.argv[1:])
     if sys.argv[1:2] == ['report']:
