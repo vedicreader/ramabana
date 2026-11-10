@@ -1165,13 +1165,13 @@ def watch_getting_started(every=3, env_file=None):
         if rows[-1][0]: return print('\nA model is ready. You can close this pane.', flush=True)
         time.sleep(every)
 
-DFLT_IMAGE = 'openai/gpt-image-1'
+DFLT_IMAGE = 'openai/gpt-image-2.5-sunburst'   #: gpt-image-1 shut down on 23 Oct 2026
 NO_IMAGES = ('bedrock-mantle', 'openrouter.ai')   #: hosts with no images endpoint
 
 def image_route():
     "The `image` job's endpoint, `{name, base_url, api_key, model}`, from `$RAMABANA_MODEL_IMAGE`, config.toml's `[jobs] image` or `DFLT_IMAGE`; else what to set up."
     name = env('MODEL_IMAGE') or setting('jobs.image') or DFLT_IMAGE
-    fix = f'set [jobs] image in config.toml to an OpenAI-compatible image model you have, such as an Azure gpt-image-1 deployment'
+    fix = f'set [jobs] image in config.toml to an OpenAI-compatible image model you have, such as an Azure gpt-image-2.5-sunburst deployment'
     try: spec = resolve(name)
     except Exception as e: return f'image job: {agent_err(e)}; {fix}'
     cfg, vendor = spec.config or {}, spec.model_id.partition('/')[0]

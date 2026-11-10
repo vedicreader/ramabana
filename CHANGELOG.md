@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.113
+
+- The default `image` model is now `openai/gpt-image-2.5-sunburst`. OpenAI shut down `gpt-image-1` on 23 October 2026, so `generate_image` failed with the old default. A model you set in `[jobs] image` or `$RAMABANA_MODEL_IMAGE` is not changed.
+
 ## 0.2.112
 
 - A budget refusal names the session that sent the messages and splits the count by receiver, for example `budget: orgs · claude (key) sent 80 of 80 messages in 12 h: 79 to X, 1 to Y`.

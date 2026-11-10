@@ -332,6 +332,17 @@ def test_the_image_group_reads_the_turns_model_on_every_call(tmp_path, monkeypat
     current['spec'] = _spec('anthropic/claude-opus-4-5')        # the same built tool, a new model
     assert not failed(gi('a bottle'))
     assert 'responses' not in seen, 'it drew as a model that cannot draw'
-    assert seen == {'images': 'gpt-image-1'}, seen              # the endpoint, not the stale id
+    assert seen == {'images': 'gpt-image-2.5-sunburst'}, seen   # the endpoint, not the stale id
+
+
+def test_the_default_image_model_is_not_the_shut_down_one(monkeypatch):
+    "OpenAI shut `gpt-image-1` down on 23 Oct 2026; `image_route` must not hand it out by default."
+    from ramabana import core
+    monkeypatch.setenv('OPENAI_API_KEY', 'k')
+    monkeypatch.delenv('RAMABANA_MODEL_IMAGE', raising=False)
+    monkeypatch.setattr(core, 'setting', lambda *a, **kw: None)
+    assert core.DFLT_IMAGE != 'openai/gpt-image-1'
+    rt = core.image_route()
+    assert rt['model'] == 'gpt-image-2.5-sunburst' and rt['name'] == core.DFLT_IMAGE, rt
 
 

@@ -195,8 +195,8 @@ Azure OpenAI, by hand:
 [azure]
 endpoint = "https://NAME.openai.azure.com"   # or $AZURE_OPENAI_ENDPOINT; the key stays in $AZURE_OPENAI_API_KEY
 
-[model."az-image"]                            # an Azure deployment of gpt-image-1, for generate_image
-model_id = "gpt-image-1"
+[model."az-image"]                            # an Azure deployment of gpt-image-2.5-sunburst, for generate_image
+model_id = "gpt-image-2.5-sunburst"
 base_url = "https://NAME.openai.azure.com/openai/v1"
 
 [jobs]
