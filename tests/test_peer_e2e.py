@@ -57,6 +57,6 @@ def test_two_sessions_work_together_and_report(monkeypatch):
         text = ctl.report.read_text()
         rows = [l for l in text.splitlines() if l.startswith('| ') and '---' not in l][1:]
         assert [r.split('|')[-2].strip() for r in rows].count('replied') == 1 and any(r.endswith('| stopped |') for r in rows), text
-        assert 'The Card part was added.' in text and 'pytest -q: 3 passed' in text
+        assert 'rupaka/card.py' in text and 'pytest -q: 3 passed' in text, 'the saved report needs no model'
         assert read_log(d, 0)
     finally: ctl.close()

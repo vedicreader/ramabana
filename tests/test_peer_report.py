@@ -41,7 +41,7 @@ def test_threads_states():
 
 def test_table_columns_and_rows():
     lines = pr.table(pr.threads(ROWS)).splitlines()
-    assert lines[0] == '| Asked by | Done by | What | Changed | Proof | State |'
+    assert lines[0] == '| Asked by | Done by | What | Changed | Proof | Replies | State |'
     assert len(lines) == 2 + 3
     assert 'Fix the card \\| layout' in lines[3] and 'not proven' in lines[3]
 
@@ -52,22 +52,22 @@ def test_glossary_only_used_terms():
 
 def test_actions_always_list_unproven_and_stopped(peers, monkeypatch):
     monkeypatch.setattr(pr, 'summarise', lambda ts, agent=None: ('', ''))
-    out = pr.report(0)
+    out = pr.report(0, model=True)
     acts = out.split('## Your actions')[1].split('## Glossary')[0]
     assert 'Fix the card' in acts and 'Rename the module' in acts
-    assert 'Add the tell shortcut' not in acts
+    assert 'Ask for proof of' in acts and "review 'Add the tell shortcut'" in acts and 'Get an answer' not in acts, 'a thread with proof but no reviewer gets a review action only'
 
 def test_failed_summary_still_saves(peers, monkeypatch):
     def boom(ts, agent=None): raise RuntimeError('no model')
     monkeypatch.setattr(pr, 'summarise', boom)
-    out = pr.report(0)
+    out = pr.report(0, model=True)
     assert pr.MISSING in out and 'RuntimeError: no model' in out and '| Asked by |' in out and '## Glossary' in out
     changed = out.split('## What changed')[1].split('## Your actions')[0]
     assert '- Ramabana for Leela: ramabana/cli.py (proof: pytest: 12 passed)' in changed and '- Abhyasa for Ramabana: card.py (proof: none)' in changed
 
 def test_report_sections(peers, monkeypatch):
     monkeypatch.setattr(pr, 'summarise', STUB)
-    out = pr.report(0)
+    out = pr.report(0, model=True)
     assert out.startswith('# Night of ') and all(h in out for h in ('## What changed', '## Your actions', '## Glossary'))
     assert 'Ramabana added a shortcut.' in out and 'Read the diff' in out
 
@@ -138,7 +138,7 @@ def test_ask_before_since_is_found_in_the_whole_log(peers, monkeypatch):
     t, = pr.threads([ROWS[1]], full=ROWS)
     assert (t['asker'], t['worker'], t['ask'], t['state']) == ('Leela', 'Ramabana', 'Add the tell shortcut', 'replied')
     monkeypatch.setattr(pr, 'summarise', STUB)
-    out = pr.report(101.5)
+    out = pr.report(101.5, model=True)
     assert 'Add the tell shortcut' in out and pr.NO_ASK not in out and '| Leela | Ramabana |' in out
 
 def test_failed_reply_is_failed_not_unproven():
@@ -166,3 +166,61 @@ def test_the_summary_with_no_agent_given_uses_the_agent_mk_agent_makes(monkeypat
     monkeypatch.setattr(ag, 'mk_agent', lambda *a, **kw: (Agent(), object()))
     ts = pr.threads(ROWS, {r['key']: r for r in (A, B, C)})
     assert pr.summarise(ts) == ('- Ramabana added a shortcut.', '- Read the diff: ramabana/cli.py')
+
+
+def test_report_with_no_model_makes_no_oneshot_call(peers, monkeypatch):
+    import ramabana.agent as ag
+    def boom(*a, **k): raise AssertionError('a model was made')
+    monkeypatch.setattr(ag, 'mk_agent', boom)
+    out = pr.report(0, sessions=[])
+    assert pr.MISSING not in out and '- Ramabana for Leela: ramabana/cli.py (proof: pytest: 12 passed)' in out
+    with pytest.raises(AssertionError): pr.summarise(pr.threads(ROWS))
+    assert pr.MISSING in pr.report(0, model=True, sessions=[]), 'the model opt-in calls mk_agent and falls back when it fails'
+
+def test_report_lists_the_ask_reply_changes_and_proof(peers):
+    out = pr.report(0, sessions=[])
+    row = next(l for l in out.splitlines() if 'Add the tell shortcut' in l and l.startswith('|'))
+    assert [c.strip() for c in row.strip('|').split('|')] == ['Leela', 'Ramabana', 'Add the tell shortcut', 'ramabana/cli.py', 'pytest: 12 passed', '1', 'replied']
+    assert '| Replies |' in out.splitlines()[2]
+
+def test_report_lists_subagent_runs_from_a_given_list(peers):
+    runs = [dict(first='Find the old tests', at=3600., size=4096, path='x')]
+    out = pr.report(0, sessions=runs)
+    assert '## Your own subagent runs' in out and 'Find the old tests' in out and '4 KB' in out
+    assert '## Your own subagent runs' not in pr.report(0, sessions=[])
+
+def test_subagent_runs_read_only_the_first_user_line(tmp_path):
+    f = tmp_path/'proj'/'subagents'/'agent-1.jsonl'; f.parent.mkdir(parents=True)
+    f.write_text('{"type": "system"}\n{"type": "user", "message": {"role": "user", "content": "Find the old tests"}}\n{"type": "user", "message": {"content": "later"}}\n')
+    [r] = pr.subagent_runs(0, tmp_path)
+    assert r['first'] == 'Find the old tests' and r['size'] == f.stat().st_size and r['at'] == f.stat().st_mtime
+    assert pr.subagent_runs(0, tmp_path/'none') == [] and pr.subagent_runs(f.stat().st_mtime + 1, tmp_path) == []
+
+def test_report_with_nothing_still_says_so(tmp_path, monkeypatch):
+    monkeypatch.setenv('RAMABANA_PEERS', str(tmp_path))
+    assert 'No thread in this time.' in pr.report(0, sessions=[])
+    assert 'No thread in this time.' in pr.report(0, sessions=[dict(first='x', at=1., size=1, path='p')])
+
+def test_diff_flags_xfail_and_skip(tmp_path):
+    git = lambda *a: subprocess.run(['git', '-C', str(tmp_path), '-c', 'user.name=t', '-c', 'user.email=t@t', *a], capture_output=True, text=True, check=True).stdout
+    git('init', '-q'); (tmp_path/'t.py').write_text('def test_a(): pass\n'); git('add', '.'); git('commit', '-qm', 'base')
+    assert pr.diff_flags(tmp_path, 0) == []
+    (tmp_path/'t.py').write_text('import pytest\n@pytest.mark.xfail\ndef test_a(): pytest.skip("x")\nx = 1  # noqa\ny: int = "a"  # type: ignore\n'); git('commit', '-qam', 'turn it off')
+    (tmp_path/'u.py').write_text('@pytest.mark.skip\n'); git('add', '.')
+    got = pr.diff_flags(tmp_path, 0)
+    assert [(f['file'], f['line']) for f in got] == [('t.py', '@pytest.mark.xfail'), ('t.py', 'def test_a(): pytest.skip("x")'), ('t.py', 'x = 1  # noqa'), ('t.py', 'y: int = "a"  # type: ignore'), ('u.py', '@pytest.mark.skip')]
+    assert [f['file'] for f in pr.diff_flags(tmp_path, time.time() + 3600)] == ['u.py'], 'commits older than since are left out; the working tree stays'
+
+def test_report_shows_diff_flags_as_rows(peers, tmp_path, monkeypatch):
+    monkeypatch.setattr(pr, 'diff_flags', lambda folder, since: [dict(file='t.py', line='@pytest.mark.xfail')])
+    log(peers, env('f1', 'ask', A, B['key'], 'Fix t', at=200)); log(peers, env('f2', 'reply', dict(B, folders=[str(tmp_path/'repo')]), A['key'], 'Done', 'f1', at=201, hops=1))
+    out = pr.report(0, sessions=[])
+    assert '## Checks switched off in the diff' in out and '| repo | t.py | @pytest.mark.xfail |' in out
+
+def test_thread_without_reviewer_is_flagged():
+    t = lambda proof: dict(proof=proof)
+    assert pr.proof_reviewer(t(['pytest: 12 passed'])) == 'no reviewer in the proof'
+    assert pr.proof_reviewer(t(['pytest: 12 passed', 'reviewed by Leela: approved'])) == ''
+    assert pr.proof_reviewer(t([])) == '', 'no proof is a different flag: not proven'
+    ts = pr.threads(ROWS)
+    assert any('review' in a and 'Add the tell shortcut' in a for a in pr._reviews(ts))
