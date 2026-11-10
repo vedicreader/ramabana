@@ -2,7 +2,7 @@
 
 <!-- do not remove -->
 
-## Unreleased
+## 0.2.114
 
 - A session cannot write a file that another live session in the same repo edited in the last 10 minutes. The hook says: "Another session edited this file. Commit your hunk now: ramabana commit PATH". A lone session or an old record never blocks.
 - `ramabana commit PATH... [--message M]` commits only the files you name.
