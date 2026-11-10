@@ -2,6 +2,20 @@
 
 <!-- do not remove -->
 
+## Unreleased
+
+- A session cannot write a file that another live session in the same repo edited in the last 10 minutes. The hook says: "Another session edited this file. Commit your hunk now: ramabana commit PATH". A lone session or an old record never blocks.
+- `ramabana commit PATH... [--message M]` commits only the files you name.
+- `ramabana together status`, the session brief and `/together status` show the budget as `N of M messages, K of 20 asks`. `ramabana together raise --messages N` and `work_together(messages=N, keep=True)` raise the cap and keep the start time.
+- `ramabana report` makes no model call now. The examples come from the replies. Add `--model` to let the summary model write them. The table has a Replies column, and a new section lists your own Claude Code subagent runs (first line, time and size only).
+- The report lists lines that a diff adds with `xfail`, `skip`, `# noqa` or `type: ignore`, and asks for a review when a proof names no reviewer.
+- A session that starts in a folder with a live or ended work together mode takes that mode, with the same end time.
+- A new session reads the newest `.scratch/handoff-<thread>.md` of its folder at start. A `failed:` reply from a worker that wrote none gets one, made from `git diff`.
+- A `tell` to an unknown session lists the live peers. The target `cli` says it has no session: reply with `--reply-to`.
+- At the last hop of a thread, `tell` logs and returns a summary of the thread, so a new thread can start with it.
+- The brief and the peer_work skill say where a worker may write: its repo and `.scratch/`. Findings go in the reply.
+- `ramabana checkpoint THREAD` saves the working tree in the local branch `wip/<thread>`. It does not move your branch or index, and never pushes.
+
 ## 0.2.112
 
 - A budget refusal names the session that sent the messages and splits the count by receiver, for example `budget: orgs · claude (key) sent 80 of 80 messages in 12 h: 79 to X, 1 to Y`.
