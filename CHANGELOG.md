@@ -16,6 +16,10 @@
 - The brief and the peer_work skill say where a worker may write: its repo and `.scratch/`. Findings go in the reply.
 - `ramabana checkpoint THREAD` saves the working tree in the local branch `wip/<thread>`. It does not move your branch or index, and never pushes.
 
+## 0.2.113
+
+- The default `image` model is now `openai/gpt-image-2.5-sunburst`. OpenAI shut down `gpt-image-1` on 23 October 2026, so `generate_image` failed with the old default. A model you set in `[jobs] image` or `$RAMABANA_MODEL_IMAGE` is not changed. Requires shalya 0.1.33, which uses the same default model and sends `input_fidelity` only to `gpt-image-1` models.
+
 ## 0.2.112
 
 - A budget refusal names the session that sent the messages and splits the count by receiver, for example `budget: orgs · claude (key) sent 80 of 80 messages in 12 h: 79 to X, 1 to Y`.
