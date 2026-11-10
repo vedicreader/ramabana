@@ -4,7 +4,7 @@
 
 ## 0.2.113
 
-- The default `image` model is now `openai/gpt-image-2.5-sunburst`. OpenAI shut down `gpt-image-1` on 23 October 2026, so `generate_image` failed with the old default. A model you set in `[jobs] image` or `$RAMABANA_MODEL_IMAGE` is not changed.
+- The default `image` model is now `openai/gpt-image-2.5-sunburst`. OpenAI shut down `gpt-image-1` on 23 October 2026, so `generate_image` failed with the old default. A model you set in `[jobs] image` or `$RAMABANA_MODEL_IMAGE` is not changed. Requires shalya 0.1.33, which uses the same default model and sends `input_fidelity` only to `gpt-image-1` models.
 
 ## 0.2.112
 
