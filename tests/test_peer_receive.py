@@ -492,3 +492,21 @@ def test_reply_to_cli_lands_in_its_inbox(cfg):
         [r] = take(peers_dir(cfg), 'cli')
         assert (r.text, r.thread) == ('all well', env.thread)
     finally: ctl.close()
+
+
+def test_work_together_tool_raises_the_cap_and_keeps_started(cfg):
+    agent, _ = fake_agent(cfg=cfg)
+    peers, tell, work_together = peer_tools(agent)
+    d, key = peers_dir(cfg), f'ramabana-{agent.session_id}'
+    assert failed(work_together(messages=9, keep=True)) and together_state(d, key) is None, 'a raise needs a mode that is on'
+    started = together_on(d, key, now=time.time() - 5)['started']
+    out = work_together(messages=9, keep=True)
+    assert 'cap is now 9 messages' in out and ' of 9 messages' in out and together_state(d, key)['started'] == started
+
+
+def test_tell_tool_to_an_unknown_session_lists_the_live_peers(cfg):
+    agent, _ = fake_agent(cfg=cfg)
+    register(peers_dir(cfg), 'claude', 's1', ['/r/abhyasa'], os.getpid())
+    peers, tell, work_together = peer_tools(agent)
+    out = tell('zz', 'hello')
+    assert failed(out) and 'live peers: 1 abhyasa · claude' in out

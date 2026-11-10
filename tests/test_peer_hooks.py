@@ -440,3 +440,51 @@ def test_save_report_runs_this_python(monkeypatch):
 def test_report_module_runs_without_path(tmp_path):
     r = subprocess.run(['env', '-i', f'HOME={tmp_path}', sys.executable, '-m', 'ramabana.peer_report', '--since', '0', '--save'], capture_output=True, text=True, timeout=120)
     assert r.returncode == 0 and r.stdout.strip().endswith('.md'), r.stderr
+
+
+def _git_repo():
+    repo = Path(tempfile.mkdtemp(dir='/tmp')).resolve()
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    return repo
+
+
+def test_pre_tool_denies_a_shared_file_edited_by_a_live_peer(world):
+    cfg, d = world
+    repo = _git_repo()
+    hook(cfg, 'session-start', cwd=str(repo))
+    write = lambda f: hook(cfg, 'pre-tool', cwd=str(repo), tool_name='Write', tool_input={'file_path': str(repo/f), 'content': ''})
+    assert write('a.py') == write('a.py') == (0, '', ''), 'a sole session is never blocked'
+    register(d, 'codex', 'c9', [str(repo)], os.getpid(), guard=[str(repo)])
+    peers.note_edits(d, 'codex-c9', [repo/'a.py'])
+    o = json.loads(write('a.py')[1])['hookSpecificOutput']
+    assert o['permissionDecision'] == 'deny' and o['permissionDecisionReason'] == f'Another session edited this file. Commit your hunk now: ramabana commit {repo}/a.py'
+    assert write('b.py') == (0, '', ''), 'another file is free'
+    peers.note_edits(d, 'codex-c9', [repo/'old.py'], now=time.time() - 3600)
+    assert write('old.py') == (0, '', ''), 'an old record does not block'
+    register(d, 'codex', 'dead', [str(repo)], 999999, guard=[str(repo)])
+    peers.note_edits(d, 'codex-dead', [repo/'ghost.py'])
+    assert write('ghost.py') == (0, '', ''), 'a peer that is not live does not block'
+    other = _git_repo()
+    peers.note_edits(d, 'codex-c9', [other/'x.py'])
+    assert write('x.py') == (0, '', ''), 'the peer edited a file in another repo'
+    peers.clear_edits(d, [repo/'a.py'])
+    assert write('a.py') == (0, '', ''), 'a commit clears the record'
+
+
+def test_session_start_injects_the_handoff_file(world):
+    cfg, d = world
+    repo = _git_repo()
+    assert 'handoff' not in context(hook(cfg, 'session-start', cwd=str(repo))[1], 'SessionStart')
+    peers.write_handoff(repo, 'th1', 'step 1 done; step 2 open', 'a.py | 2 +-', 'Which name?')
+    text = context(hook(cfg, 'session-start', cwd=str(repo))[1], 'SessionStart')
+    assert 'handoff-th1.md' in text and 'step 2 open' in text and '## Open questions' in text and 'Which name?' in text
+    assert 'handoff' not in context(hook(cfg, 'session-start', cwd=str(_git_repo()))[1], 'SessionStart'), 'only this folder'
+
+
+def test_brief_tells_where_a_worker_may_write(world):
+    cfg, d = world
+    from ramabana.peer_work import __doc__ as skill
+    text = context(hook(cfg, 'session-start')[1], 'SessionStart')
+    rule = 'Write only in your repo and .scratch/. Return findings as text in your reply. Do not write report files.'
+    assert rule in skill and rule.replace('.scratch/', '`.scratch/`') in text
+    assert f"Budget used: 0 of {PEER_BUDGET['messages']} messages, 0 of {PEER_BUDGET['turns']} asks" in text

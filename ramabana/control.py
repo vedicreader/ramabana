@@ -17,8 +17,8 @@ from fastcore.basics import patch
 from shalya import acts, err
 from .core import agent_err
 from .agent import TurnResult, model_title
-from .peers import (CONTROL, Envelope, _atomic_write, _hhmm, _rows, all_peers, answer, control_call, guard_of, is_partner, limit_refusal, next_hops, peer_lines, peer_text,
-                            peers_dir, pinned_name, take, together_off, together_on, together_state, tell as send)
+from .peers import (CONTROL, Envelope, _atomic_write, _hhmm, _rows, all_peers, answer, control_call, budget_line, guard_of, is_partner, limit_refusal, next_hops, no_peer, peer_lines, peer_text,
+                            peers_dir, pinned_name, take, together_off, together_on, together_raise, together_state, tell as send)
 from .peer_report import save_report
 
 # %% ../nbs/20_control.ipynb #9c6353b2
@@ -359,7 +359,7 @@ def peer_tools(agent):
         if (row := find_peer(shown, session)) is None:
             shown[:] = peers_of(agent)
             row = find_peer(shown, session)
-        if row is None: return err(f'no live session {session!r}; peers() lists them')
+        if row is None: return err(no_peer(shown, session))
         wait = wait if kind == 'ask' else 0
         if wait: agent.peer_waits.add(row['key']); agent.peer_turn = True   # the reply is a peer's text
         try: return note_peer(agent, row, text, kind, wait)
@@ -371,12 +371,16 @@ def peer_tools(agent):
         partners: str = '',  # comma-separated session names; empty means every peer
         until: str = '',     # 'HH:MM' local time; empty means `TOGETHER_HOURS` hours
         messages: int = 0,   # the most notes and asks this session may send to its partners; 0 keeps the normal cap
+        keep: bool = False,  # True: only set `messages` on the mode that is on, and keep its start and the messages it counts
     ) -> str:
-        "Turn work together mode on or off for this session when the user tells you to work with peers. While it is on, a partner's ask runs without asking the user. Auto approval mode runs this tool unasked; `ask` and `edits` ask the user. A turn that a peer message reached cannot change it."
+        "Turn work together mode on or off for this session when the user tells you to work with peers; with `keep` and `messages`, raise the message cap of the mode that is on. While it is on, a partner's ask runs without asking the user. Auto approval mode runs this tool unasked; `ask` and `edits` ask the user. A turn that a peer message reached cannot change it."
         if agent.peer_turn: return err('a peer message reached this turn; only the user turns work together mode on or off')
         ap = agent.approvals
-        if ap is not None and not ap.request('work_together', dict(on=on, partners=partners, until=until, messages=messages), force=True).answer: return err('work together refused')
+        if ap is not None and not ap.request('work_together', dict(on=on, partners=partners, until=until, messages=messages, keep=keep), force=True).answer: return err('work together refused')
         d, key = peers_dir(agent.cfg), f'ramabana-{agent.session_id}'
+        if keep and on:
+            if not messages: return err('keep needs messages')
+            return f"work together cap is now {messages} messages; used {budget_line(d, key)}" if together_raise(d, key, messages) else err('work together is off')
         if not on: return 'work together ended' if together_off(d, key) else 'work together was off'
         names = [s.strip() for s in partners.split(',') if s.strip()]
         try: st = together_on(d, key, names, until or None, messages=messages)

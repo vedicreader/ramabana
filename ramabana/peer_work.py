@@ -9,11 +9,12 @@ Two roles exist. The worker does the work. The owner holds the repo. One session
 1. Read the repo rules before you write code. Read `CLAUDE.md` or `AGENTS.md` and the repo skills. Some repos have their own pattern. For example, vedicreader builds features from small lego blocks. Read the repo's rules to find its pattern.
 2. Follow the user's general rules. Use functional style. Write short and efficient code. Write one-line docstrings. Add no comments that are not needed. Write prose in STE. Do not add code that you do not need. Do not write a helper that already exists.
 3. Agree the shape with the owner before you add code that the owner's repo will keep. Send an ask: `ramabana tell OWNER "..." --ask --repo R --wait N`. Name the blocks to use, the place for the code and the API. Wait for a reply from the owner that starts with `agreed:`. Then write the code.
-4. Do not edit a folder that another live session works in. The tool or hook refuses the write and names the folder. Ask the owner to make the change.
+4. Do not edit a folder that another live session works in. The tool or hook refuses the write and names the folder. Ask the owner to make the change. The hook also refuses a file that another session edited in the last 10 minutes: run `ramabana commit PATH...` to commit only the named files.
 5. Show proof before you say "done". Show the test command and its output. For UI, check the page in Chrome for Testing and show the screenshot path. Never use the user's own Chrome. No proof means the work is not done.
 6. If you stop or fail, write `.scratch/handoff-<thread>.md` in the repo. Put three parts in it: the plan with the state of each step; `git diff --stat` and the diff of your uncommitted work; the open questions. Name the file in your `failed:` reply. A session that takes over reads this file first. It does not start from a free-text note.
-7. Checkpoint long write work. Ask the user once to approve checkpoint commits on a local branch `wip/<thread>`. With approval, commit there after each step that you verified. Without approval, write the handoff file from rule 6. Never push the `wip/<thread>` branch. Never commit to the user's branch without approval.
+7. Checkpoint long write work. Ask the user once to approve checkpoint commits on a local branch `wip/<thread>`. With approval, commit there with `ramabana checkpoint THREAD` after each step that you verified. Without approval, write the handoff file from rule 6. Never push the `wip/<thread>` branch. Never commit to the user's branch without approval.
 8. Before you report done, ask a session that did not write the change to review the diff. Put the reviewer and the verdict in the `proof:` line. This review does not replace the owner's review.
+9. Write only in your repo and .scratch/. Return findings as text in your reply. Do not write report files.
 
 ## When you own the repo (owner)
 
@@ -54,7 +55,7 @@ Two roles exist. The worker does the work. The owner holds the repo. One session
 ## Work together mode
 
 - `ramabana together on` lets those sessions send asks to you without approval. Add `--with A,B` to name them. Add `--until HH:MM` to set the end. Without `--until`, it ends after 12 hours.
-- `ramabana together off` ends it. `ramabana together status` shows it. It stays on when the user types, and `work_together()` in Ramabana turns it on or off when the user tells you to work with peers.
+- `ramabana together off` ends it. `ramabana together status` shows it and the budget used (`N of M messages, K of 20 asks`); `ramabana together raise --messages N` raises the cap. It stays on when the user types, and `work_together()` in Ramabana turns it on or off when the user tells you to work with peers.
 - `ramabana report` shows what the sessions did: changes, proof and the user's action list.
 
 Docs: https://vedicreader.github.io/ramabana/peer_work.html.md"""
