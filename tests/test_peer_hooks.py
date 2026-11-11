@@ -416,7 +416,9 @@ def test_claude_session_replies_to_cli(world):
     assert [e.text for e in take(d, 'cli')] == ['done']
 
 
-def test_hook_text_names_this_python(world):
+def test_hook_text_names_this_python(world, monkeypatch):
+    """`uv run` puts this venv's `ramabana` first on PATH, and then the hook prints plain `ramabana`, so PATH here holds no `ramabana`."""
+    monkeypatch.setenv('PATH', '/usr/bin:/bin')
     cfg, d = world
     run = f'{sys.executable} -m ramabana.peers'
     text = context(hook(cfg, 'session-start')[1], 'SessionStart')

@@ -82,9 +82,8 @@ CUSTOM = {}
 _RUNTIME_DEPS = {'litert': 'litert_lm', 'mlx': 'mlx_lm', 'llama': 'llama_cpp'}
 RUNTIME_REMEDY = {
     'remote': 'hosted models need an API key in the environment',
-    'claude': 'install Claude Code (https://claude.com/claude-code) and run `claude /login`',
+    'claude': 'install the Claude SDK with `pip install rishi[claude]`, then install Claude Code (https://claude.com/claude-code) and run `claude /login`',
     'copilot': 'sign in to GitHub Copilot in an editor, or run `copilot_login()` from rishi.copilot',
-    'litert': 'LiteRT ships with rishi; reinstall it with `pip install --upgrade rishi`',
 }
 MODELS = {**{k: ('litert', v) for k, v in LOCAL.items()}, **{k: ('mlx', v) for k, v in MLX.items()},**{k: ('llama', v) for k, v in LLAMA.items()},**{k: ('claude', v) for k, v in {**CLAUDE, **CLAUDE_ALIASES}.items()},**{k: ('remote', v) for k, v in CLOUD.items()}}
 
@@ -1044,7 +1043,7 @@ PROVIDERS = (
          login=(sys.executable, '-c', 'from rishi.copilot import copilot_login; copilot_login()')),
     dict(key='custom', vendor='', label='Any OpenAI-compatible endpoint', needs='its base URL, and an env var holding its key',
          example='[model."mine"]\nmodel_id = "<model>"\nbase_url = "https://<host>/v1"\napi_key_env = "MY_API_KEY"\napi_name = "openai_chat"'),
-    dict(key='local', vendor='', label='On this machine', needs='a local runtime: LiteRT ships with rishi; mlx, llama.cpp or ollama', example='[jobs]\nturn = "gemma-e4b"'))
+    dict(key='local', vendor='', label='On this machine', needs='a local runtime: `pip install rishi[litert]`, `rishi[mlx]` or `rishi[llama]`, or ollama', example='[jobs]\nturn = "gemma-e4b"'))
 
 def provider_ready(key, auth=None):
     "Whether provider `key`'s credential or runtime is on this machine. Chooses nothing."

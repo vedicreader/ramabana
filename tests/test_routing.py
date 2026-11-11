@@ -96,12 +96,14 @@ def test_a_remedy_names_an_extra_only_where_rishi_still_declares_one():
     """Telling someone to install an extra rishi does not declare sends them to do nothing and come
     back to the same error: pip reports an unknown extra as a warning and installs nothing.
 
-    `rishi[claude]`, `[copilot]` and `[remote]` went when rishi took those dependencies on itself,
-    and `[litert]` went the same way in 0.1.32."""
+    rishi 0.1.70 moved the Claude SDK, LiteRT, llama.cpp and MLX into the `claude`, `litert`,
+    `llama` and `mlx` extras, so the remedy for each of those runtimes names its extra."""
     import importlib.metadata as md, re
     from ramabana.core import RUNTIME_NAMES, runtime_remedy
     declared = set(md.metadata('rishi').get_all('Provides-Extra') or [])
-    assert 'litert' not in declared, 'litert-lm-api is a base dependency now'
+    for r in ('claude', 'litert', 'llama', 'mlx'):
+        assert r in declared, f'rishi declares no {r} extra'
+        assert f'pip install rishi[{r}]' in runtime_remedy(r), f'the {r} remedy does not name rishi[{r}]'
     for r in RUNTIME_NAMES:
         remedy = runtime_remedy(r)
         assert remedy, f'{r} has no answer'

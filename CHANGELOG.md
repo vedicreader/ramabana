@@ -2,6 +2,13 @@
 
 <!-- do not remove -->
 
+## 0.2.115
+
+- Ramabana now needs `rishi[claude]>=0.1.70`. rishi 0.1.70 moved the Claude SDK, LiteRT, llama.cpp and MLX into extras. Without the `claude` extra, the default `claude/` models cannot run.
+- When the Claude runtime is missing, the message tells you to run `pip install rishi[claude]`, then to install Claude Code and run `claude /login`.
+- When LiteRT is missing, the message tells you to run `pip install rishi[litert]`. Before, it said that LiteRT ships with rishi, which is no longer true.
+- The setup guide's "On this machine" line names the `rishi[litert]`, `rishi[mlx]` and `rishi[llama]` extras.
+
 ## 0.2.114
 
 - A session cannot write a file that another live session in the same repo edited in the last 10 minutes. The hook says: "Another session edited this file. Commit your hunk now: ramabana commit PATH". A lone session or an old record never blocks.
