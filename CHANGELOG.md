@@ -2,6 +2,11 @@
 
 <!-- do not remove -->
 
+## 0.2.116
+
+- Ramabana now needs `rishi[claude]>=0.1.71`. rishi 0.1.71 needs `aidialog>=0.0.42`, `python-fastllm>=0.0.70` and `llmsurgery>=0.0.19`. With aidialog 0.0.42 and an older fastllm or llmsurgery, every model call failed with `ImportError: cannot import name 'usage_info' from 'aidialog.msg_parts'` or `No module named 'aidialog.hist'`.
+- Ramabana now needs `shalya>=0.1.34`. Its `grep` skips a `build`, `dist`, `_docs` or `_proc` folder only directly under a search root. A `path_filter` that names one file gives that file's exact path.
+
 ## 0.2.115
 
 - Ramabana now needs `rishi[claude]>=0.1.70`. rishi 0.1.70 moved the Claude SDK, LiteRT, llama.cpp and MLX into extras. Without the `claude` extra, the default `claude/` models cannot run.
