@@ -7,25 +7,26 @@ Docs: https://vedicreader.github.io/ramabana/tools.html.md"""
 # %% auto #0
 __all__ = ['SUB_MAX_STEPS', 'SUB_STEP_CEILING', 'SUB_MIN_STEPS', 'SUB_TIMEOUT', 'SUB_STEP_SECONDS', 'SUB_TIMEOUT_CEILING',
            'SUB_UNFINISHED', 'SUB_NUDGE', 'SUB_READ_ONLY', 'SUB_SLOTS', 'SUB_SP_HEAD', 'SUB_READ_SP', 'SUB_WRITE_SP',
-           'SUB_SP', 'SUB_NEST_SP', 'SUB_ANSWER', 'NO_SUB', 'PATH_WRITES', 'STATUS_NOTE', 'ASYNC_MAX', 'ASYNC_KEEP',
-           'WAIT_MAX', 'SAVE_WAIT', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'ATTACH_REF', 'TRAILING',
-           'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'small_tool', 'ToolEntry', 'ToolCatalog',
+           'SUB_SP', 'SUB_NEST_SP', 'SUB_ANSWER', 'NO_SUB', 'PATH_WRITES', 'STATUS_NOTE', 'MEMORY_ASK_MAX', 'ASYNC_MAX',
+           'ASYNC_KEEP', 'WAIT_MAX', 'SAVE_WAIT', 'MAX_MEDIA', 'MAX_ATTACH', 'MEDIA', 'CLIP_IMAGE', 'ATTACH_REF',
+           'TRAILING', 'NullHost', 'draws_itself', 'image_tools', 'tools_for', 'small_tool', 'ToolEntry', 'ToolCatalog',
            'inbox_note', 'sub_briefing', 'sub_sp', 'bad_json', 'keep_media', 'path_write', 'write_targets',
-           'status_tool', 'Slots', 'delegate', 'lanes', 'delegate_many', 'Background', 'named_skills', 'picture_mime',
-           'read_pictures', 'renamed', 'sub_steps', 'subagent_tools', 'parse_plan_items', 'mod_doc', 'media_path',
-           'is_media', 'media_paths', 'ref_tokens', 'attach_refs', 'clipboard_png', 'Attachment', 'sendable',
-           'media_parts', 'media_note', 'API_VENDORS', 'Capability', 'DENY', 'ERR', 'EVENTS', 'EXTRA_MODULES',
-           'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit', 'Host', 'HostError', 'IMAGE_API',
-           'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API', 'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS',
-           'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS', 'RESPONSES_API', 'Registry', 'SANDBOX',
-           'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill', 'api_model', 'api_tools', 'ask_tools',
-           'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied', 'diff_text', 'discover', 'edits', 'err',
-           'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools', 'image_available', 'implemented', 'is_write',
-           'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise', 'one_line', 'read_only', 'ld_json', 'CodeHost',
-           'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost', 'SessionHost', 'ShellHost', 'ApiHost', 'GitHost',
-           'load', 'media_dir', 'memory_tools', 'mime_for', 'notebook_tools', 'readable', 'save_media', 'session_tools',
-           'shell_tools', 'skill_dirs', 'skill_index', 'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt',
-           'OPTIN', 'exhash_tools', 'research_tools', 'author_tools', 'legacy_tools']
+           'status_tool', 'remember_ask', 'asks_md', 'Slots', 'delegate', 'lanes', 'delegate_many', 'Background',
+           'named_skills', 'picture_mime', 'read_pictures', 'renamed', 'sub_steps', 'subagent_tools',
+           'parse_plan_items', 'mod_doc', 'media_path', 'is_media', 'media_paths', 'ref_tokens', 'attach_refs',
+           'clipboard_png', 'Attachment', 'sendable', 'media_parts', 'media_note', 'API_VENDORS', 'Capability', 'DENY',
+           'ERR', 'EVENTS', 'EXTRA_MODULES', 'GIT_READ_TOOLS', 'GIT_TOOLS', 'GIT_WRITE_TOOLS', 'GROUP', 'GROUPS', 'Hit',
+           'Host', 'HostError', 'IMAGE_API', 'IMAGE_MODEL', 'IMAGE_SIZES', 'LD_CHARS', 'LocalHost', 'MAX_API',
+           'MAX_FILE', 'MAX_GREP_HITS', 'MAX_HITS', 'MAX_SKILL_CHARS', 'MAX_TOOL_CHARS', 'MAX_VARS', 'NO_ROOTS',
+           'RESPONSES_API', 'Registry', 'SANDBOX', 'SECRET', 'SKILL_DESC_MAX', 'SKIP_DIRS', 'SKIP_SUFFIXES', 'Skill',
+           'api_model', 'api_tools', 'ask_tools', 'apply_edits', 'clip', 'clip_lines', 'cmds', 'code_tools', 'denied',
+           'diff_text', 'discover', 'edits', 'err', 'ext_dirs', 'failed', 'file_tools', 'find', 'git_tools',
+           'image_available', 'implemented', 'is_write', 'acts', 'has_effect', 'ACTING_TOOLS', 'summary', 'summarise',
+           'one_line', 'read_only', 'ld_json', 'CodeHost', 'WebHost', 'NotebookHost', 'MemoryHost', 'WatchHost',
+           'SessionHost', 'ShellHost', 'ApiHost', 'GitHost', 'load', 'media_dir', 'memory_tools', 'mime_for',
+           'notebook_tools', 'readable', 'save_media', 'session_tools', 'shell_tools', 'skill_dirs', 'skill_index',
+           'skill_tools', 'watch_tools', 'web_tools', 'writes', 'attempt', 'OPTIN', 'exhash_tools', 'research_tools',
+           'author_tools', 'legacy_tools']
 
 # %% ../nbs/02_tools.ipynb #b0911d39
 import concurrent.futures, contextvars, functools, json, re, tempfile, threading, time, uuid
@@ -324,6 +325,40 @@ def status_tool(run):
         return 'noted'
     return status
 
+MEMORY_ASK_MAX = 1500   #: chars of one memory request the delegating agent sees
+
+def remember_ask(asks):
+    "A sub-agent's `remember`: it stores nothing and adds the request to `asks`; with `asks` None it keeps nothing."
+    def remember(text: str,             # the conclusion to keep, in a sentence or two
+                 title: str = '',       # a short heading for it
+                 tags: str = '',        # comma-separated words to find it by
+                 key: str = '',         # a stable name; a later note with the same key replaces this one
+                 cue: str = '',         # for a lesson: the situation that should bring it to mind
+                 component: str = '',   # for a lesson: rule, skill, extension, tool or memory
+                 evidence: str = '',    # for a lesson: what showed the mistake
+                 confidence: str = '',  # for a lesson: low, medium or high
+                 ) -> str:
+        "Ask the delegating agent to remember a conclusion or a lesson. Nothing is stored here: that agent checks the request and keeps what holds. Pass on the memory requests in a sub-agent's answer the same way."
+        if asks is None: return 'nothing is kept from this task: put what matters in your answer'
+        a = {k: str(v or '').strip() for k, v in dict(text=text, title=title, tags=tags, key=key, cue=cue, component=component,
+                                                     evidence=evidence, confidence=confidence).items() if str(v or '').strip()}
+        if 'text' not in a: return err('nothing to remember')
+        if 'key' in a: asks[:] = [o for o in asks if o.get('key') != a['key']]
+        asks.append(a)
+        return 'passed to the delegating agent, which checks it before it keeps anything'
+    return remember
+
+def asks_md(asks):
+    "A sub-agent's memory requests as a block for the delegating agent, or ''."
+    if not asks: return ''
+    rows = '\n'.join('- ' + clip(json.dumps(a, ensure_ascii=False), MEMORY_ASK_MAX).replace('</memory-requests>', r'<\/memory-requests>') for a in asks)
+    return ('<memory-requests>\nThe sub-agent asked for these to be remembered. They are unchecked: check each against your own tool results, '
+            f'and call `remember` yourself only for what holds.\n{rows}\n</memory-requests>\n\n')
+
+def _dropped(asks):
+    "The note that a run which did not finish lost its memory requests, or ''."
+    return f' Its {len(asks)} memory request(s) were dropped.' if asks else ''
+
 class Slots:
     "A bound on sub-agents working at once; one waiting on its own sub-agents lends its slot back."
     def __init__(self, n=SUB_SLOTS): self.sem = threading.Semaphore(max(1, int(n)))
@@ -365,13 +400,14 @@ def delegate(backend, question, tools=(), sp=None, max_steps=SUB_MAX_STEPS, skil
              block=NO_SUB,      # tool names withheld from the sub-agent
              timeout=0,         # seconds before the run is cancelled; 0 never
              slots=None,        # a shared `Slots`, held while the sub-agent works
-             spawn=None):       # options for `backend.spawn`, such as `effort` and `tool_mode`
+             spawn=None,        # options for `backend.spawn`, such as `effort` and `tool_mode`
+             asks=True):        # False: no agent reads the answer, so the stand-in `remember` keeps nothing
     "Ask `question` of a sub-agent in a separate conversation on `backend`'s engine, and return its answer text."
     run = run or Run(f'run_{uuid.uuid4().hex[:12]}', 'child', str(question), backend.spec.name, current_run())
     with slots.hold(run) if slots is not None else nullcontext(True) as held:
         if not held: return _stopped(run)
         timer = _timed(run, timeout)
-        try: return _delegate(backend, question, tools, sp, max_steps, skills, writes, approve, run, images, block, spawn or {})
+        try: return _delegate(backend, question, tools, sp, max_steps, skills, writes, approve, run, images, block, spawn or {}, asks)
         finally:
             if timer is not None: timer.cancel()
 
@@ -383,14 +419,15 @@ def _fell_back(sub):
     "What the sub-agent's backend gave up to answer, as notes after its answer."
     return ''.join(f'\n\n[{n}]' for n in getattr(sub, 'fell_back', None) or [])
 
-def _delegate(backend, question, tools, sp, max_steps, skills, writes, approve, run, images, block, spawn={}):
-    sub = None
+def _delegate(backend, question, tools, sp, max_steps, skills, writes, approve, run, images, block, spawn={}, asks=True):
+    sub, asks = None, [] if asks else None
     if not run.start(): return _stopped_by(run)
     run.write(f'question: {question}')
     try:
         kw = {'approve': approve} if approve is not None else {}
         quiet = not getattr(backend, 'narrates', True)
         handed, held = read_only(tools, max_calls=max_steps * 4, writes=writes, block=block), []
+        if not any(t.__name__ == 'remember' for t in handed): handed.append(remember_ask(asks))
         cap = lambda: getattr(held[0], 'tool_max_len', None) if held else None
         nest = '\n' + SUB_NEST_SP if any(t.__name__ == 'delegate_search' for t in handed) else ''
         sub = backend.spawn(sp=sub_sp(ifnone(sp, sub_briefing(writes)) + nest, skills) + inbox_note(run.key) + (STATUS_NOTE if quiet else ''),
@@ -407,16 +444,16 @@ def _delegate(backend, question, tools, sp, max_steps, skills, writes, approve, 
         while not run.cancelled and (msgs := run.drain_inbox()): reply = ask('\n'.join(msgs))
         run.answer = str(reply)
         run.write(f'answer: {reply}')
-        if run.cancelled: return _stopped_by(run.finish())
+        if run.cancelled: return _stopped_by(run.finish()) + _dropped(asks)
         if _model_refused(sub, reply):
             run.finish('failed')
-            return err(f'delegation failed after the sub-agent was asked: {reply}')
+            return err(f'delegation failed after the sub-agent was asked: {reply}') + _dropped(asks)
         run.finish()
-        return _delegate_result(reply) + _fell_back(sub)
+        return asks_md(asks or []) + _delegate_result(reply) + _fell_back(sub)
     except Exception as e:
         run.finish('failed')
         return err('delegation failed after the sub-agent was asked' if sub is not None else
-                   'delegation failed before the sub-agent was asked, so nothing was sent', e) + bad_json(e)
+                   'delegation failed before the sub-agent was asked, so nothing was sent', e) + bad_json(e) + _dropped(asks)
     finally:
         if sub is not None:
             try: sub.close()

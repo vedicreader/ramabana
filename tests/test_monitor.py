@@ -78,7 +78,7 @@ def test_a_reviewing_sub_agent_cannot_write_and_cannot_open_another_watch():
     m.check(force=True)
 
     sub, = be.spawned
-    assert {t.__name__ for t in sub.tools} == {'view_file'}
+    assert {t.__name__ for t in sub.tools} == {'view_file', 'remember'}   # `remember` is the stand-in that only asks
 
 
 # -- where the review goes ------------------------------------------------------------------

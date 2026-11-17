@@ -262,7 +262,7 @@ def _review(self: Monitors, w, chg):
             self.runs[rid] = run
             for old in list(self.runs)[:-50]: self.runs.pop(old)
         answer = delegate(b, review_prompt(w.instructions, text, w.folder), tools,
-                          sp=REVIEW_SP, max_steps=sub_steps(setting=self.get_steps() if self.get_steps is not None else "auto"), run=run)
+                          sp=REVIEW_SP, max_steps=sub_steps(setting=self.get_steps() if self.get_steps is not None else "auto"), run=run, asks=False)
         rec = (self._record(w, 'ok', review=answer, run_id=rid, **kw) if run.state == 'completed'
                else self._record(w, 'error', error=str(answer), run_id=rid, **kw))
     w.reviews += 1

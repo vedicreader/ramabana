@@ -218,7 +218,7 @@ def test_read_only_questions_run_at_once_even_when_sub_agents_may_write():
     be = _Overlap()
     out = _writing(be)['delegate_search'](['a', 'b', 'c'], writes=False)
     assert out.count('found it') == 3 and be.peak > 1, be.peak
-    assert all(names == {'view_file'} and approve is None for names, approve in be.handed), be.handed
+    assert all(names == {'view_file', 'remember'} and approve is None for names, approve in be.handed), be.handed   # `remember` is the stand-in that only asks
     assert be.ctx == [True] * 3, 'a nested delegation inherits read-only'
 
 
@@ -226,7 +226,7 @@ def test_delegate_search_is_read_only_unless_asked_to_write():
     "Several read-only questions run at once, so read-only is the default and `writes=True` asks for the write tools."
     be = _Overlap()
     _writing(be)['delegate_search'](['a', 'b', 'c'])
-    assert be.peak > 1 and all(names == {'view_file'} for names, _ in be.handed), be.handed
+    assert be.peak > 1 and all(names == {'view_file', 'remember'} for names, _ in be.handed), be.handed
 
 
 def test_sub_agents_that_may_write_still_run_one_after_another():
