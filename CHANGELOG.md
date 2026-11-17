@@ -2,6 +2,15 @@
 
 <!-- do not remove -->
 
+## 0.2.117
+
+- A sub-agent does not write memory unless the session grants it `remember`. Without the grant, its `remember` is a stand-in that stores nothing and passes the request to the delegating agent. Before, a sub-agent's `remember` call returned `KeyError: 'remember'`.
+- A sub-agent's answer starts with a `<memory-requests>` block when it asked to remember something. The delegating agent checks each request and calls `remember` itself for what holds.
+- A later request with the same `key` replaces an earlier one. Each request is clipped to `MEMORY_ASK_MAX` characters.
+- A cancelled, refused or failed delegation reports how many memory requests it dropped.
+- `delegate(..., asks=False)` gives a stand-in that keeps nothing. Folder reviews use it, because the monitor files each review into memory without an agent reading it.
+- A session that grants the real `remember` to sub-agents through `subagent_grants` still hands them the real tool.
+
 ## 0.2.116
 
 - Ramabana now needs `rishi[claude]>=0.1.71`. rishi 0.1.71 needs `aidialog>=0.0.42`, `python-fastllm>=0.0.70` and `llmsurgery>=0.0.19`. With aidialog 0.0.42 and an older fastllm or llmsurgery, every model call failed with `ImportError: cannot import name 'usage_info' from 'aidialog.msg_parts'` or `No module named 'aidialog.hist'`.
