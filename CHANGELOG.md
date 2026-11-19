@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.118
+
+- The `search` extra needs `vishalakshi>=0.1.41` and `litesearch>=0.1.65`. Their default encoder is `blink-multilingual-64M`, and `Vault()` opens a shelf with the encoder the shelf records. With an older vishalakshi, a vault shelf re-encoded to blink raises `StoreMismatch`.
+
 ## 0.2.117
 
 - A sub-agent does not write memory unless the session grants it `remember`. Without the grant, its `remember` is a stand-in that stores nothing and passes the request to the delegating agent. Before, a sub-agent's `remember` call returned `KeyError: 'remember'`.
