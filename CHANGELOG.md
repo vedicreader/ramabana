@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.119
+
+- While the `now` pane is open, the main window does not show the plan. A plan change adds no plan block to the transcript, and no plan shows above the prompt. `/plan` still prints the plan. When the pane closes, the main window shows the plan again at the next plan change.
+
 ## 0.2.118
 
 - The `search` extra needs `vishalakshi>=0.1.41` and `litesearch>=0.1.65`. Their default encoder is `blink-multilingual-64M`, and `Vault()` opens a shelf with the encoder the shelf records. With an older vishalakshi, a vault shelf re-encoded to blink raises `StoreMismatch`.

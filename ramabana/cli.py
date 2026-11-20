@@ -2026,7 +2026,8 @@ class Ui:
 
 
     def on_plan(self, plan):
-        "Repaint when the checklist changes."
+        "Repaint when the checklist changes; while the now pane is open, the plan shows there and not here."
+        if self.pane is not None: return
         self.show_plan = bool(plan)
         self._post(self._paint_plan, plan)
 
@@ -2402,8 +2403,8 @@ PLAN_ROWS, PLAN_RESERVE = 12, 4   #: the most plan lines the tail shows, and the
 
 @patch
 def _plan_rows(self:Ui, rows):
-    "The plan checklist to head the tail, in the rows the screen can spare beside `rows`; none while a menu, completion or the browsing view is up."
-    if not (self.show_plan and self.agent.plan) or self.menu is not None or self.complete is not None or self.transcript.active: return []
+    "The plan checklist to head the tail, in the rows the screen can spare beside `rows`; none while the now pane, a menu, completion or the browsing view is up."
+    if not (self.show_plan and self.agent.plan) or self.pane is not None or self.menu is not None or self.complete is not None or self.transcript.active: return []
     used = sum(len(self.comp.console.render_lines(r, pad=False)) for r in rows)
     room = self.comp.rows - used - PLAN_RESERVE
     return [Tooltip(self.agent.plan.md(), max_lines=min(PLAN_ROWS, room - 1)).renderable()] if room >= 2 else []
