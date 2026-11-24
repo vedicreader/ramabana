@@ -5178,8 +5178,10 @@ def _fence_tail(text):
     return rest.partition('\n')[2] if '\n' in rest else ''
 
 
-_TAGS = re.compile(r'</?(?:before|after|cursor|completion|code|insert|answer|output)>')
-_PROSE = re.compile(r"^(?:here(?:'s| is)|sure|certainly|the (?:completion|code)|completion|answer|output)\b[^\n]*:\s*$", re.I)
+# `code`, `answer` and `output` are also HTML elements, so they go only where they wrap the reply.
+_TAGS = re.compile(r'</?(?:before|after|cursor|completion|insert)>|^\s*<(?:code|answer|output)>|</(?:code|answer|output)>\s*$')
+# Prose by its wording, so a line of code such as `answer in answers:` or `here is None:` stays.
+_PROSE = re.compile(r"^(?:(?i:here(?:'s| is) (?:the|your|a|an|my)\b|sure[,!.]|certainly[,!.]|the (?:completion|code)\b)[^\n]*|Completion|Answer|Output|Code)\s*:\s*$")
 _PAIRS = {')': '(', ']': '[', '}': '{'}
 
 def _spare(s):

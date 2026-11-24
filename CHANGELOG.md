@@ -7,6 +7,7 @@
 - Inline completion removes more of what a small model adds to its reply: `<think>` blocks, tags such as `<completion>`, and a first line of prose such as "Here is the completion:". A closing bracket or quote that the code after the cursor already has is removed from the end of the reply. Before, `foo(` with `)` after the cursor became `foo(a, b))`.
 - When the cursor's line has code after it, a completion is one line.
 - A reply that starts with one bracket or space that `before` ends with keeps it. Before, `x = [` and the reply `[1], [2]` became `x = [1], [2]`.
+- A first line of code that starts with `answer`, `output`, `completion` or `here is` stays. Only prose such as "Here is the completion:" or a label such as "Completion:" is removed. The tags `<code>`, `<answer>` and `<output>` are removed only where they wrap the reply, so HTML in a completion stays.
 
 ## 0.2.119
 
