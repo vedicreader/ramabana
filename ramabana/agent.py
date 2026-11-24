@@ -5162,10 +5162,11 @@ CTX_BEFORE, CTX_AFTER = 2000, 600   # chars of code around the cursor
 
 
 def _strip_echo(before, out):
-    "Drop a re-emitted tail of `before` from the front of `out`."
+    "Drop a re-emitted tail of `before` from the front of `out`; a lone bracket or space is the reply's own."
     tail = before[-200:]
     for n in range(len(tail), 0, -1):
-        if out.startswith(tail[-n:]): return out[n:]
+        seen = tail[-n:]
+        if out.startswith(seen) and (n >= 3 or re.search(r'\w', seen)): return out[n:]
     return out
 
 # %% ../nbs/03_agent.ipynb #35da5eee
@@ -5177,17 +5178,49 @@ def _fence_tail(text):
     return rest.partition('\n')[2] if '\n' in rest else ''
 
 
-def _clean(text, before, max_lines):
-    "A raw model reply made safe to insert: fence, prose and echo removed, and cut to `max_lines` lines."
+_TAGS = re.compile(r'</?(?:before|after|cursor|completion|code|insert|answer|output)>')
+_PROSE = re.compile(r"^(?:here(?:'s| is)|sure|certainly|the (?:completion|code)|completion|answer|output)\b[^\n]*:\s*$", re.I)
+_PAIRS = {')': '(', ']': '[', '}': '{'}
+
+def _spare(s):
+    "Closing brackets and quotes in `s` that nothing in `s` opened."
+    stack, spare = [], []
+    for ch in s:
+        if stack and stack[-1] in '\'"' and ch != stack[-1]: continue
+        if ch in '([{': stack.append(ch)
+        elif ch in _PAIRS:
+            if stack and stack[-1] == _PAIRS[ch]: stack.pop()
+            else: spare.append(ch)
+        elif ch in '\'"':
+            if stack and stack[-1] == ch: stack.pop()
+            else: stack.append(ch)
+    return spare + [q for q in stack if q in '\'"']
+
+def _drop_after(out, after):
+    "Trim the end of `out` that repeats the start of `after`'s first line, when `out` cannot own it."
+    head, last = after.split('\n', 1)[0].strip(), out.rstrip()
+    for n in range(min(len(head), len(last)), 0, -1):
+        if not last.endswith(head[:n]): continue
+        cut, extra = last[:-n], [c for c in head[:n] if c in ')]}\'"']
+        if len(extra) == n and len(_spare(cut)) < len(_spare(last)): return cut
+        if not extra and n >= 3: return cut.rstrip(' ')
+        return out
+    return out
+
+def _clean(text, before, max_lines, after=''):
+    "A raw model reply made safe to insert: thinking, tags, fence, prose and echo removed, and cut to `max_lines` lines."
     from fastcore.xtras import fenced_blocks
-    text = text or ''
+    text = _TAGS.sub('', re.sub(r'<think>.*?(?:</think>|$)', '', text or '', flags=re.S))
     if (blocks := fenced_blocks(text)): out = blocks[-1][1]
     elif (tail := _fence_tail(text)) is not None: out = tail
     else: out = text
-    out = _strip_echo(before, (out or '').strip('\n'))
-    lines = out.split('\n')[:max_lines]
+    lines = (out or '').strip('\n').split('\n')
+    while lines and _PROSE.match(lines[0].strip()): lines.pop(0)
+    out = _strip_echo(before, '\n'.join(lines).strip('\n'))
+    # Text after the cursor on its line means the reply finishes that line, not a block.
+    lines = out.split('\n')[:1 if after.split('\n', 1)[0].strip() else max_lines]
     while lines and not lines[-1].strip(): lines.pop()
-    return '\n'.join(lines)
+    return _drop_after('\n'.join(lines), after)
 
 # %% ../nbs/03_agent.ipynb #d5db0743
 class Completer:
@@ -5227,7 +5260,7 @@ class Completer:
         if not text:
             self.note = b.note if not b.ready else 'no suggestion'
             return ''
-        out = _clean(text, code[:pos], self.max_lines)
+        out = _clean(text, code[:pos], self.max_lines, code[pos:])
         self.note = f'{len(out.splitlines())} line(s) from {b.spec.name}' if out else 'no suggestion'
         return out
 

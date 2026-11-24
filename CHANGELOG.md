@@ -2,6 +2,12 @@
 
 <!-- do not remove -->
 
+## 0.2.120
+
+- Inline completion removes more of what a small model adds to its reply: `<think>` blocks, tags such as `<completion>`, and a first line of prose such as "Here is the completion:". A closing bracket or quote that the code after the cursor already has is removed from the end of the reply. Before, `foo(` with `)` after the cursor became `foo(a, b))`.
+- When the cursor's line has code after it, a completion is one line.
+- A reply that starts with one bracket or space that `before` ends with keeps it. Before, `x = [` and the reply `[1], [2]` became `x = [1], [2]`.
+
 ## 0.2.119
 
 - While the `now` pane is open, the main window does not show the plan. A plan change adds no plan block to the transcript, and no plan shows above the prompt. `/plan` still prints the plan. When the pane closes, the main window shows the plan again at the next plan change.
