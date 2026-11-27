@@ -1386,10 +1386,12 @@ class Agent:
                  profile='auto',            # 'auto', 'small' or 'full'; see `profile_for`
                  warm=None,                 # seed with dhrona's examples; None is off
                  learned=True,              # brief from `<cfg>/learned`; False runs without it
+                 beat=True,                 # carry the beat's notes into turns; False, for an agent embedded in another app, never opens the beat
                  fresh_hint=None,           # what a turn too large for any window tells the user to do, `{session}` its id; None suits any host
                  auto_turns=None,           # 'on', 'report' or 'off': whether finished background work starts a turn; None reads `auto_turns`, else `on` under `edits`/`auto` approvals and `report` otherwise
                  auto_turns_per_hour=None): # most automatic turns an hour; None reads `auto_turns_per_hour`, else 6
         self.host, self.cfg, self.inline_skills, self.learned = host, cfg, inline_skills, learned
+        if not beat: self._beat = None
         if instruction_style not in ('ramabana', 'aai'): raise ValueError('instruction_style must be ramabana or aai')
         if profile not in PROFILES: raise ValueError(f'profile must be one of {", ".join(PROFILES)}, not {profile!r}')
         self.profile_choice = profile
@@ -5869,8 +5871,8 @@ def mk_agent(roots=('.',),
 
 # %% ../nbs/03_agent.ipynb #fbf27fa9
 def model_agent(turn=None, sp='', host=None, **kw):
-    "An `Agent` that only calls the model: read-only, approvals refused, no sub-agents, extensions, skills, learned notes, compaction or polling. `kw` goes to `Agent` and wins."
+    "An `Agent` that only calls the model: read-only, approvals refused, no sub-agents, extensions, skills, learned notes, beat notes, compaction or polling. `kw` goes to `Agent` and wins."
     from ramabana.tools import NullHost
     opts = dict(routing=Routing(turn=turn), cfg=None, sp=sp, approvals=Approvals(mode='ask', no_listener='refuse', timeout=0), readonly=True,
-                subagents=False, extensions=False, global_skills=False, learned=False, compact=False, poll_every=0, auto_turns='off')
+                subagents=False, extensions=False, global_skills=False, learned=False, beat=False, compact=False, poll_every=0, auto_turns='off')
     return Agent(host or NullHost(), **{**opts, **kw})

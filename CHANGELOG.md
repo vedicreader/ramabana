@@ -2,6 +2,10 @@
 
 <!-- do not remove -->
 
+## 0.2.121
+
+- `Agent(beat=False)` never opens the beat, so no beat notes reach its turns. `model_agent` sets it. An agent embedded in another app, such as abhyasa's builder, used to get the notes of the person's own sessions and treat them as facts about its task.
+
 ## 0.2.120
 
 - Inline completion removes more of what a small model adds to its reply: `<think>` blocks, tags such as `<completion>`, and a first line of prose such as "Here is the completion:". A closing bracket or quote that the code after the cursor already has is removed from the end of the reply. Before, `foo(` with `)` after the cursor became `foo(a, b))`.
